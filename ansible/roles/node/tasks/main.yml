@@ -48,7 +48,9 @@
     - restart kubelet
 
 - name: Enable kubelet
-  service: name=kubelet enabled=yes state=started
+  service: name=kubelet enabled=yes 
+  notify:
+    - restart kubelet
 
 - name: write the config files for proxy
   template: src=proxy.j2 dest={{ kube_config_dir }}/proxy
