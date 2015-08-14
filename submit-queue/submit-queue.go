@@ -65,7 +65,7 @@ var (
 )
 
 const (
-	org     = "GoogleCloudPlatform"
+	org     = "kubernetes"
 	project = "kubernetes"
 )
 
