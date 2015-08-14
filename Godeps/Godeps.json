@@ -6,10 +6,6 @@
 	],
 	"Deps": [
 		{
-			"ImportPath": "bitbucket.org/bertimus9/systemstat",
-			"Rev": "1468fd0db20598383c9393cccaa547de6ad99e5e"
-		},
-		{
 			"ImportPath": "bitbucket.org/ww/goautoneg",
 			"Comment": "null-5",
 			"Rev": "75cd24fc2f2c2a2088577d12123ddee5f54e0675"
@@ -157,16 +153,6 @@
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "d466437aa4adc35830964cffc5b5f262c63ddcb4"
-		},
-		{
-			"ImportPath": "k8s.io/kubernetes/contrib/submit-queue/github",
-			"Comment": "v1.1.0-alpha.0-1789-gea59172",
-			"Rev": "ea591728747c3c20f0a7b5e3e4eaa06b0bda8758"
-		},
-		{
-			"ImportPath": "k8s.io/kubernetes/contrib/submit-queue/jenkins",
-			"Comment": "v1.1.0-alpha.0-1789-gea59172",
-			"Rev": "ea591728747c3c20f0a7b5e3e4eaa06b0bda8758"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/pkg/api",
