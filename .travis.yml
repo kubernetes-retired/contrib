@@ -1,0 +1,25 @@
+sudo: false
+
+language: go
+
+matrix:
+  include:
+    - go: 1.4
+
+install:
+  - mkdir -p $HOME/gopath/src/k8s.io
+  - mv $TRAVIS_BUILD_DIR $HOME/gopath/src/k8s.io/contrib
+  - mkdir hack
+  - wget -O ./hack/verify-gofmt.sh https://raw.githubusercontent.com/kubernetes/kubernetes/v1.0.3/hack/verify-gofmt.sh
+  - chmod +x ./hack/verify-gofmt.sh 
+  - go get github.com/tools/godep
+  - export PATH=$GOPATH/bin:$PATH
+  - godep go install ./...
+
+
+script:
+  - ./hack/verify-gofmt.sh
+  - godep go test ./...
+
+notifications:
+  irc: "chat.freenode.net#kubernetes-dev"
