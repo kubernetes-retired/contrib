@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: submit-queue
+  namespace: default
+spec:
+  containers:
+  - image: gcr.io/google_containers/submit-queue:0.1
+    command:
+      - bash
+      - -c
+      - "/submit-queue --user-whitelist=/whitelist.txt --jenkins-host=http://jenkins-master:8079 --token=$(cat /etc/secret-volume/token) --alsologtostderr"
+    imagePullPolicy: IfNotPresent
+    name: submit-queue
+    volumeMounts:
+          - name: secret-volume
+            mountPath: /etc/secret-volume
+  volumes:
+    - name: secret-volume
+      secret:
+        secretName: github-token
+  restartPolicy: OnFailure
