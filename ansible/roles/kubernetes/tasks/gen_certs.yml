@@ -29,7 +29,7 @@
   args:
     creates: "{{ kube_cert_dir }}/server.crt"
   environment:
-    MASTER_IP: "{{ hostvars[inventory_hostname]['ansible_all_ipv4_addresses'] | join (',IP:') }}"
+    MASTER_IP: "{{ kube_cert_ip }}"
     MASTER_NAME: "{{ inventory_hostname }}"
     DNS_DOMAIN: "{{ dns_domain }}"
     SERVICE_CLUSTER_IP_RANGE: "{{ kube_service_addresses }}"
