@@ -17,6 +17,9 @@ kube_config_dir: /etc/kubernetes
 # This is where all the cert scripts and certs will be located
 kube_cert_dir: "{{ kube_config_dir }}/certs"
 
+# The IP(s) for which the certificate will be valid
+kube_cert_ip: "{{ hostvars[inventory_hostname]['ansible_all_ipv4_addresses'] | join (',IP:') }}"
+
 # This is where all of the bearer tokens will be stored
 kube_token_dir: "{{ kube_config_dir }}/tokens"
 
