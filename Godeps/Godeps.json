@@ -57,6 +57,10 @@
 			"Rev": "588cb435e59ee8b6c2795482887755841ad67207"
 		},
 		{
+			"ImportPath": "github.com/gregjones/httpcache",
+			"Rev": "a2645c9fb8bb4ad1cbad1bef941af9f8a32287de"
+		},
+		{
 			"ImportPath": "github.com/golang/glog",
 			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
 		},

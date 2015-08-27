@@ -18,22 +18,53 @@ package github
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"k8s.io/kubernetes/pkg/util"
 
 	"github.com/golang/glog"
 	"github.com/google/go-github/github"
+	"github.com/gregjones/httpcache"
 	"golang.org/x/oauth2"
 )
 
+type RateLimitRoundTripper struct {
+	delegate http.RoundTripper
+	throttle util.RateLimiter
+}
+
+func (r *RateLimitRoundTripper) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+	r.throttle.Accept()
+	return r.delegate.RoundTrip(req)
+}
+
 func MakeClient(token string) *github.Client {
+	var client *http.Client
+	cacheTransport := httpcache.NewMemoryCacheTransport()
 	if len(token) > 0 {
+		rateLimitTransport := &RateLimitRoundTripper{
+			delegate: cacheTransport,
+			// Global limit is 5000 Q/Hour, try to only use 1800 to make room for other apps
+			throttle: util.NewTokenBucketRateLimiter(0.5, 10),
+		}
 		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-		tc := oauth2.NewClient(oauth2.NoContext, ts)
-		return github.NewClient(tc)
+		client = &http.Client{
+			Transport: &oauth2.Transport{
+				Base:   rateLimitTransport,
+				Source: oauth2.ReuseTokenSource(nil, ts),
+			},
+		}
+	} else {
+		rateLimitTransport := &RateLimitRoundTripper{
+			delegate: cacheTransport,
+			throttle: util.NewTokenBucketRateLimiter(0.01, 10),
+		}
+		client = &http.Client{
+			Transport: rateLimitTransport,
+		}
 	}
-	return github.NewClient(nil)
+	return github.NewClient(client)
 }
 
 func hasLabel(labels []github.Label, name string) bool {
