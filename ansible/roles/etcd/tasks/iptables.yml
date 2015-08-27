@@ -13,5 +13,5 @@
   notify:
     - Save iptables rules
   with_items:
-    - {{ etcd_client_port }}
-    - {{ etcd_peer_port }}
+    - "{{ etcd_client_port }}"
+    - "{{ etcd_peer_port }}"
