@@ -9,7 +9,7 @@ spec:
     command:
       - bash
       - -c
-      - "/submit-queue --user-whitelist=/whitelist.txt --jenkins-host=http://jenkins-master:8079 --token=$(cat /etc/secret-volume/token) --alsologtostderr"
+      - "/submit-queue --user-whitelist=/whitelist.txt --jenkins-host=http://jenkins-master:8080 --token=$(cat /etc/secret-volume/token) --alsologtostderr"
     imagePullPolicy: IfNotPresent
     name: submit-queue
     volumeMounts:
