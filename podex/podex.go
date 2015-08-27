@@ -22,13 +22,14 @@ limitations under the License.
 // Example usage:
 //
 // $ docker pull google/nodejs-hello
-// $ podex -yaml google/nodejs-hello > google/nodejs-hello/pod.yaml
-// $ podex -json google/nodejs-hello > google/nodejs-hello/pod.json
+// $ podex -format yaml google/nodejs-hello > google/nodejs-hello/pod.yaml
+// $ podex -format json google/nodejs-hello > google/nodejs-hello/pod.json
 
 package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -43,12 +44,14 @@ import (
 	goyaml "gopkg.in/yaml.v2"
 )
 
-const usage = "podex [-format=yaml|json] [-type=pod|container] [-id NAME] IMAGES..."
+const usage = "podex [-daemon] [-insecure-registry] [-insecure-skip-verify] [-format=yaml|json] [-type=pod|container] [-name NAME] IMAGES..."
 
 var flManifestFormat = flag.String("format", "yaml", "manifest format to output, `yaml` or `json`")
 var flManifestType = flag.String("type", "pod", "manifest type to output, `pod` or `container`")
 var flManifestName = flag.String("name", "", "manifest name, default to image base name")
 var flDaemon = flag.Bool("daemon", false, "daemon mode")
+var flInsecureRegistry = flag.Bool("insecure-registry", false, "connect to insecure registry")
+var flInsecureSkipVerify = flag.Bool("insecure-skip-verify", false, "skip certificate verify")
 
 func init() {
 	flag.Usage = func() {
@@ -90,7 +93,7 @@ func main() {
 	if *flManifestName == "" {
 		if flag.NArg() > 1 {
 			flag.Usage()
-			log.Fatal("podex: -id arg is required when passing more than one image")
+			log.Fatal("podex: -name arg is required when passing more than one image")
 		}
 		_, _, *flManifestName, _ = splitDockerImageName(flag.Arg(0))
 	}
@@ -135,7 +138,7 @@ func getManifest(manifestName, manifestType, manifestFormat string, images ...st
 			}
 			portEntry := goyaml.MapSlice{{
 				Key:   "name",
-				Value: strings.Join([]string{repo, p.Proto(), p.Port()}, "-"),
+				Value: strings.Join([]string{p.Proto(), p.Port()}, "-"),
 			}, {
 				Key:   "containerPort",
 				Value: port,
@@ -151,28 +154,28 @@ func getManifest(manifestName, manifestType, manifestFormat string, images ...st
 		podContainers = append(podContainers, container)
 	}
 
-	// TODO(proppy): add flag to handle multiple version
 	containerManifest := goyaml.MapSlice{
-		{Key: "version", Value: "v1beta2"},
 		{Key: "containers", Value: podContainers},
 	}
 
 	var data interface{}
 
+	// TODO(proppy): add flag to handle multiple version
+	apiVersion := goyaml.MapItem{Key: "apiVersion", Value: "v1"}
+
 	switch manifestType {
 	case "container":
-		containerManifest = append(goyaml.MapSlice{
-			{Key: "id", Value: manifestName},
+		data = append(goyaml.MapSlice{apiVersion,
+			{Key: "kind", Value: "ContainerList"},
+			{Key: "metadata", Value: goyaml.MapSlice{}},
 		}, containerManifest...)
-		data = containerManifest
 	case "pod":
-		data = goyaml.MapSlice{
-			{Key: "id", Value: manifestName},
+		data = goyaml.MapSlice{apiVersion,
 			{Key: "kind", Value: "Pod"},
-			{Key: "apiVersion", Value: "v1beta1"},
-			{Key: "desiredState", Value: goyaml.MapSlice{
-				{Key: "manifest", Value: containerManifest},
+			{Key: "metadata", Value: goyaml.MapSlice{
+				{Key: "name", Value: manifestName},
 			}},
+			{Key: "spec", Value: containerManifest},
 		}
 	default:
 		return nil, fmt.Errorf("unsupported manifest type %q", manifestFormat)
@@ -244,9 +247,16 @@ type imageMetadata struct {
 	} `json:"container_config"`
 }
 
+type imageManifest struct {
+	History []struct {
+		V1Compatibility string `json:"v1Compatibility"`
+	} `json:"history"`
+}
+
 func getImageMetadata(host, namespace, repo, tag string) (*imageMetadata, error) {
-	if host == "" {
-		host = "index.docker.io"
+	scheme := "https"
+	if *flInsecureRegistry {
+		scheme = "http"
 	}
 	if namespace == "" {
 		namespace = "library"
@@ -254,13 +264,96 @@ func getImageMetadata(host, namespace, repo, tag string) (*imageMetadata, error)
 	if tag == "" {
 		tag = "latest"
 	}
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s/v1/repositories/%s/%s/images", host, namespace, repo), nil)
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: *flInsecureSkipVerify,
+			},
+		},
+	}
+
+	if host == "" {
+		return getImageMetadataV2(client, scheme, "registry-1.docker.io", namespace, repo, tag)
+	}
+
+	metadata, err := getImageMetadataV2(client, scheme, host, namespace, repo, tag)
+	if err != nil {
+		if metadata, err = getImageMetadataV1(client, scheme, host, namespace, repo, tag); err != nil {
+			return nil, fmt.Errorf("can't get image metadata: %v", err)
+		}
+	}
+	return metadata, err
+}
+
+type tokenData struct {
+	Token string `json:"token"`
+}
+
+func getImageMetadataV2(client *http.Client, scheme, host, namespace, repo, tag string) (*imageMetadata, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s://%s/v2/%s/%s/manifests/%s", scheme, host, namespace, repo, tag), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating manifest request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making manifest request to %q: %v", host, err)
+	}
+
+	if auth := resp.Header.Get("WWW-Authenticate"); resp.StatusCode == http.StatusUnauthorized && auth != "" {
+		authParams := parseAuthHeader(auth)
+		authReq, err := http.NewRequest("GET", fmt.Sprintf("%s?service=%s&scope=%s", authParams["realm"], authParams["service"], authParams["scope"]), nil)
+		if err != nil {
+			return nil, fmt.Errorf("error creating auth request: %v", err)
+		}
+
+		authResp, err := client.Do(authReq)
+		if err != nil {
+			return nil, fmt.Errorf("error making auth request to %q: %v", authParams["realm"], err)
+		}
+
+		var token tokenData
+		if err := json.NewDecoder(authResp.Body).Decode(&token); err != nil {
+			return nil, fmt.Errorf("error getting auth token: %v", err)
+		}
+		req.Header.Add("Authorization", "Bearer "+token.Token)
+		resp, err = client.Do(req)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error getting image manifest: %v", resp.Status)
+	}
+
+	var manifest imageManifest
+	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
+		return nil, fmt.Errorf("error decoding image manifest: %v", err)
+	}
+
+	return decodeImageMetadata(strings.NewReader(manifest.History[0].V1Compatibility))
+}
+
+func parseAuthHeader(header string) (params map[string]string) {
+	params = make(map[string]string)
+	prefix := "Bearer "
+	if !strings.HasPrefix(header, prefix) {
+		return
+	}
+	header = header[len(prefix):]
+	for _, param := range strings.Split(header, ",") {
+		if paramPair := strings.SplitN(param, "=", 2); len(paramPair) == 2 {
+			params[paramPair[0]] = strings.Replace(paramPair[1], "\"", "", -1)
+		}
+	}
+	return
+}
+
+func getImageMetadataV1(client *http.Client, scheme, host, namespace, repo, tag string) (*imageMetadata, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s://%s/v1/repositories/%s/%s/images", scheme, host, namespace, repo), nil)
 
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 	req.Header.Add("X-Docker-Token", "true")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error making request to %q: %v", host, err)
 	}
@@ -270,12 +363,12 @@ func getImageMetadata(host, namespace, repo, tag string) (*imageMetadata, error)
 
 	endpoints := resp.Header.Get("X-Docker-Endpoints")
 	token := resp.Header.Get("X-Docker-Token")
-	req, err = http.NewRequest("GET", fmt.Sprintf("https://%s/v1/repositories/%s/%s/tags/%s", endpoints, namespace, repo, tag), nil)
+	req, err = http.NewRequest("GET", fmt.Sprintf("%s://%s/v1/repositories/%s/%s/tags/%s", scheme, endpoints, namespace, repo, tag), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 	req.Header.Add("Authorization", "Token "+token)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error getting image id for %s/%s:%s %v", namespace, repo, tag, err)
 	}
@@ -283,18 +376,22 @@ func getImageMetadata(host, namespace, repo, tag string) (*imageMetadata, error)
 	if err = json.NewDecoder(resp.Body).Decode(&imageID); err != nil {
 		return nil, fmt.Errorf("error decoding image id: %v", err)
 	}
-	req, err = http.NewRequest("GET", fmt.Sprintf("https://%s/v1/images/%s/json", endpoints, imageID), nil)
+	req, err = http.NewRequest("GET", fmt.Sprintf("%s://%s/v1/images/%s/json", scheme, endpoints, imageID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 	req.Header.Add("Authorization", "Token "+token)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error getting json for image %q: %v", imageID, err)
 	}
+	return decodeImageMetadata(resp.Body)
+}
+
+func decodeImageMetadata(r io.Reader) (*imageMetadata, error) {
 	var image imageMetadata
-	if err := json.NewDecoder(resp.Body).Decode(&image); err != nil {
-		return nil, fmt.Errorf("error decoding image %q metadata: %v", imageID, err)
+	if err := json.NewDecoder(r).Decode(&image); err != nil {
+		return nil, fmt.Errorf("error decoding image metadata: %v", err)
 	}
 	return &image, nil
 }
