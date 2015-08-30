@@ -5,7 +5,7 @@ metadata:
   namespace: default
 spec:
   containers:
-  - image: gcr.io/google_containers/submit-queue:0.1
+  - image: gcr.io/google_containers/submit-queue:0.2
     command:
       - bash
       - -c
