@@ -115,6 +115,7 @@ type FilterConfig struct {
 	UserWhitelist          []string
 	WhitelistOverride      string
 	RequiredStatusContexts []string
+	DryRun                 bool
 }
 
 func lastModifiedTime(client *github.Client, user, project string, pr *github.PullRequest) (*time.Time, error) {
@@ -132,11 +133,28 @@ func lastModifiedTime(client *github.Client, user, project string, pr *github.Pu
 	return lastModified, nil
 }
 
+func GetAllEventsForPR(client *github.Client, user, project string, prNumber int) ([]github.IssueEvent, error) {
+	events := []github.IssueEvent{}
+	page := 1
+	for {
+		eventPage, response, err := client.Issues.ListIssueEvents(user, project, prNumber, &github.ListOptions{Page: page})
+		if err != nil {
+			glog.Errorf("Error getting events for issue: %v", err)
+			return nil, err
+		}
+		events = append(events, eventPage...)
+		if response.LastPage == 0 || response.LastPage == page {
+			break
+		}
+		page++
+	}
+	return events, nil
+}
+
 func validateLGTMAfterPush(client *github.Client, user, project string, pr *github.PullRequest, lastModifiedTime *time.Time) (bool, error) {
 	var lgtmTime *time.Time
-	events, _, err := client.Issues.ListIssueEvents(user, project, *pr.Number, &github.ListOptions{})
+	events, err := GetAllEventsForPR(client, user, project, *pr.Number)
 	if err != nil {
-		glog.Errorf("Error getting events for issue: %v", err)
 		return false, err
 	}
 	for ix := range events {
@@ -210,6 +228,10 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 			glog.Errorf("Error validating LGTM: %v, Skipping: %d", err, *pr.Number)
 			continue
 		} else if !ok {
+			if config.DryRun {
+				glog.Info("PR was pushed after LGTM, would have removed LGTM, but DryRun is true")
+				continue
+			}
 			glog.Errorf("PR pushed after LGTM, attempting to remove LGTM and skipping")
 			staleLGTMBody := "LGTM was before last commit, removing LGTM"
 			if _, _, err := client.Issues.CreateComment(user, project, *pr.Number, &github.IssueComment{Body: &staleLGTMBody}); err != nil {
