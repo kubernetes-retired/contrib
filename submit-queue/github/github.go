@@ -17,6 +17,7 @@ limitations under the License.
 package github
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
 	"time"
@@ -27,6 +28,10 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/gregjones/httpcache"
 	"golang.org/x/oauth2"
+)
+
+var (
+	useMemoryCache = flag.Bool("use-http-cache", false, "If true, use a client side HTTP cache for API requests.")
 )
 
 type RateLimitRoundTripper struct {
@@ -41,10 +46,15 @@ func (r *RateLimitRoundTripper) RoundTrip(req *http.Request) (resp *http.Respons
 
 func MakeClient(token string) *github.Client {
 	var client *http.Client
-	cacheTransport := httpcache.NewMemoryCacheTransport()
+	var transport http.RoundTripper
+	if *useMemoryCache {
+		transport = httpcache.NewMemoryCacheTransport()
+	} else {
+		transport = http.DefaultTransport
+	}
 	if len(token) > 0 {
 		rateLimitTransport := &RateLimitRoundTripper{
-			delegate: cacheTransport,
+			delegate: transport,
 			// Global limit is 5000 Q/Hour, try to only use 1800 to make room for other apps
 			throttle: util.NewTokenBucketRateLimiter(0.5, 10),
 		}
@@ -57,7 +67,7 @@ func MakeClient(token string) *github.Client {
 		}
 	} else {
 		rateLimitTransport := &RateLimitRoundTripper{
-			delegate: cacheTransport,
+			delegate: transport,
 			throttle: util.NewTokenBucketRateLimiter(0.01, 10),
 		}
 		client = &http.Client{
