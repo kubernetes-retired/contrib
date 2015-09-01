@@ -153,6 +153,7 @@ func main() {
 		UserWhitelist:          users,
 		RequiredStatusContexts: requiredContexts,
 		WhitelistOverride:      *whitelistOverride,
+		DryRun:                 *dryrun,
 	}
 	for !*oneOff {
 		if err := github.ForEachCandidatePRDo(client, org, project, runE2ETests, *oneOff, config); err != nil {
