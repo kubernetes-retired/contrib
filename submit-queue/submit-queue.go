@@ -40,10 +40,15 @@ Usage of ./submit-queue:
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
+	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"k8s.io/contrib/submit-queue/github"
 	"k8s.io/contrib/submit-queue/jenkins"
@@ -62,6 +67,8 @@ var (
 	userWhitelist     = flag.String("user-whitelist", "", "Path to a whitelist file that contains users to auto-merge.  Required.")
 	requiredContexts  = flag.String("required-contexts", "cla/google,Shippable,continuous-integration/travis-ci/pr,Jenkins GCE e2e", "Comma separate list of status contexts required for a PR to be considered ok to merge")
 	whitelistOverride = flag.String("whitelist-override-label", "ok-to-merge", "Github label, if present on a PR it will be merged even if the author isn't in the whitelist")
+	pollPeriod        = flag.Duration("poll-period", 30*time.Minute, "The period for running the submit-queue.  Default 30 minutes")
+	address           = flag.String("address", ":8080", "The address to listen on for HTTP Status")
 )
 
 const (
@@ -69,27 +76,60 @@ const (
 	project = "kubernetes"
 )
 
+type e2eTester struct {
+	sync.Mutex
+	// exported so that the json marshaller will print them
+	CurrentPR *github_api.PullRequest
+	Message   []string
+	Err       error
+}
+
+func (e *e2eTester) msg(msg string) {
+	e.Lock()
+	defer e.Unlock()
+	if len(e.Message) > 50 {
+		e.Message = e.Message[1:]
+	}
+	e.Message = append(e.Message, msg)
+	glog.V(2).Info(msg)
+}
+
+func (e *e2eTester) error(err error) {
+	e.Lock()
+	defer e.Unlock()
+	e.Err = err
+}
+
 // This is called on a potentially mergeable PR
-func runE2ETests(client *github_api.Client, pr *github_api.PullRequest, issue *github_api.Issue) error {
+func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRequest, issue *github_api.Issue) error {
+	func() {
+		e.Lock()
+		defer e.Unlock()
+		e.CurrentPR = pr
+	}()
 	// Test if the build is stable in Jenkins
 	jenkinsClient := &jenkins.JenkinsClient{Host: *jenkinsHost}
 	builds := strings.Split(*jobs, ",")
 	for _, build := range builds {
 		stable, err := jenkinsClient.IsBuildStable(build)
-		glog.V(2).Infof("Checking build stability for %s", build)
+		e.msg(fmt.Sprintf("Checking build stability for %s", build))
 		if err != nil {
+			e.error(err)
 			return err
 		}
 		if !stable {
 			glog.Errorf("Build %s isn't stable, skipping!", build)
-			return errors.New("Unstable build")
+			err := errors.New("Unstable build")
+			e.error(err)
+			return err
 		}
 	}
-	glog.V(2).Infof("Build is stable.")
+	e.msg("Build is stable.")
 	// Ask for a fresh build
-	glog.V(4).Infof("Asking PR builder to build %d", *pr.Number)
+	e.msg(fmt.Sprintf("Asking PR builder to build %d", *pr.Number))
 	body := "@k8s-bot test this [testing build queue, sorry for the noise]"
 	if _, _, err := client.Issues.CreateComment(org, project, *pr.Number, &github_api.IssueComment{Body: &body}); err != nil {
+		e.error(err)
 		return err
 	}
 
@@ -99,24 +139,42 @@ func runE2ETests(client *github_api.Client, pr *github_api.PullRequest, issue *g
 	// Wait for the status to go back to 'success'
 	ok, err := github.ValidateStatus(client, org, project, *pr.Number, []string{}, true)
 	if err != nil {
+		e.error(err)
 		return err
 	}
 	if !ok {
-		glog.Infof("Status after build is not 'success', skipping PR %d", *pr.Number)
+		e.msg(fmt.Sprintf("Status after build is not 'success', skipping PR %d", *pr.Number))
 		return nil
 	}
 	if !*dryrun {
-		glog.Infof("Merging PR: %d", *pr.Number)
+		e.msg(fmt.Sprintf("Merging PR: %d", *pr.Number))
 		mergeBody := "Automatic merge from SubmitQueue"
 		if _, _, err := client.Issues.CreateComment(org, project, *pr.Number, &github_api.IssueComment{Body: &mergeBody}); err != nil {
 			glog.Warningf("Failed to create merge comment: %v", err)
+			e.error(err)
 			return err
 		}
-		_, _, err := client.PullRequests.Merge(org, project, *pr.Number, "Auto commit by PR queue bot")
-		return err
+		if _, _, err := client.PullRequests.Merge(org, project, *pr.Number, "Auto commit by PR queue bot"); err != nil {
+			e.error(err)
+			return err
+		}
+		return nil
 	}
-	glog.Infof("Skipping actual merge because --dry-run is set")
+	e.msg("Skipping actual merge because --dry-run is set")
 	return nil
+}
+
+func (e *e2eTester) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	e.Lock()
+	defer e.Unlock()
+	res.Header().Set("Content-type", "application/json")
+	if data, err := json.Marshal(e); err != nil {
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write([]byte(err.Error()))
+	} else {
+		res.WriteHeader(http.StatusOK)
+		res.Write(data)
+	}
 }
 
 func loadWhitelist(file string) ([]string, error) {
@@ -155,9 +213,14 @@ func main() {
 		WhitelistOverride:      *whitelistOverride,
 		DryRun:                 *dryrun,
 	}
+	e2e := &e2eTester{}
+	if len(*address) > 0 {
+		go http.ListenAndServe(*address, e2e)
+	}
 	for !*oneOff {
-		if err := github.ForEachCandidatePRDo(client, org, project, runE2ETests, *oneOff, config); err != nil {
-			glog.Fatalf("Error getting candidate PRs: %v", err)
+		if err := github.ForEachCandidatePRDo(client, org, project, e2e.runE2ETests, *oneOff, config); err != nil {
+			glog.Errorf("Error getting candidate PRs: %v", err)
 		}
+		time.Sleep(*pollPeriod)
 	}
 }
