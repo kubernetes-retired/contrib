@@ -3,3 +3,9 @@
 
 - include: client.yml
   when: inventory_hostname in groups['masters'] + groups['nodes']
+
+- include: firewalld.yml
+  when: has_firewalld
+
+- include: iptables.yml
+  when: not has_firewalld and has_iptables
