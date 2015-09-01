@@ -287,7 +287,7 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 		}
 		if err := fn(client, pr, issue); err != nil {
 			glog.Errorf("Failed to run user function: %v", err)
-			continue
+			break
 		}
 		if once {
 			break
