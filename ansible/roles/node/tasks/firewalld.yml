@@ -5,3 +5,10 @@
 - name: Save firewalld port for the kubelet
   firewalld: port=10250/tcp permanent=true state=enabled
 
+- name: Open redirected service traffic
+  command: /bin/firewall-cmd --direct --add-rule ipv4 filter INPUT 1
+           -i docker0 -j ACCEPT -m comment --comment "kube-proxy redirects"
+
+- name: Save redirected service traffic
+  command: /bin/firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 1
+           -i docker0 -j ACCEPT -m comment --comment "kube-proxy redirects"

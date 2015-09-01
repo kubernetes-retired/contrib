@@ -11,6 +11,10 @@
   command: /sbin/iptables -I INPUT 1 -p tcp --dport 10250 -j ACCEPT -m comment --comment "kubelet"
   when: "'kubelet' not in iptablesrules.stdout"
 
+- name: Allow redirected service traffic
+  command: /sbin/iptables -I INPUT 1 -i docker0
+      -j ACCEPT -m comment --comment "kube-proxy redirects"
+
 - name: Save iptables rules
   command: service iptables save
   when: "'kubelet' not in iptablesrules.stdout"
