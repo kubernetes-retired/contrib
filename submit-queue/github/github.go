@@ -216,6 +216,13 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 		}
 		if !hasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*prs[ix].User.Login) {
 			glog.V(4).Infof("Dropping %d since %s isn't in whitelist and %s isn't present", *prs[ix].Number, *prs[ix].User.Login, config.WhitelistOverride)
+			if _, _, err := client.Issues.AddLabelsToIssue(user, project, *prs[ix].Number, []string{"needs-ok-to-merge"}); err != nil {
+				glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *prs[ix].Number)
+			}
+			body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
+			if _, _, err := client.Issues.CreateComment(user, project, *prs[ix].Number, &github.IssueComment{Body: &body}); err != nil {
+				glog.Errorf("Failed to add a comment for %d", *prs[ix].Number)
+			}
 			continue
 		}
 
