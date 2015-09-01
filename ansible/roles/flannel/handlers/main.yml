@@ -5,16 +5,17 @@
     - stop docker
     - delete docker0
     - start docker
-  when: inventory_hostname in groups['nodes']
 
 - name: stop docker
   service: name=docker state=stopped
+  when: '"docker0" in ansible_interfaces'
 
 - name: delete docker0
   command: ip link delete docker0
-  ignore_errors: yes
+  when: '"docker0" in ansible_interfaces'
 
 - name: start docker
   service: name=docker state=started
-  # This might fail if docker isn't installed yet
-  ignore_errors: yes
+  # NB: even if docker0 is deleted above, ansible_interfaces is not affected
+  # since it is set once at the beginning of the role
+  when: '"docker0" in ansible_interfaces'
