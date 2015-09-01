@@ -70,6 +70,14 @@
 - name: write the kubecfg (auth) file for kubectl
   template: src=kubectl.kubeconfig.j2 dest={{ kube_config_dir }}/kubectl.kubeconfig
 
+- name: write the config files for kubelet
+  template: src=kubelet.j2 dest={{ kube_config_dir }}/kubelet
+  notify:
+    - restart kubelet
+
+- name: Enable kubelet
+  service: name=kubelet enabled=yes state=started
+
 - include: firewalld.yml
   when: has_firewalld
 

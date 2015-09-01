@@ -64,6 +64,7 @@
 
 - name: Enable proxy
   service: name=kube-proxy enabled=yes state=started
+  when: networking != "opencontrail"
 
 - include: firewalld.yml
   when: has_firewalld
