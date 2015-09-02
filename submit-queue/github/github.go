@@ -77,7 +77,7 @@ func MakeClient(token string) *github.Client {
 	return github.NewClient(client)
 }
 
-func hasLabel(labels []github.Label, name string) bool {
+func HasLabel(labels []github.Label, name string) bool {
 	for i := range labels {
 		label := &labels[i]
 		if label.Name != nil && *label.Name == name {
@@ -87,9 +87,9 @@ func hasLabel(labels []github.Label, name string) bool {
 	return false
 }
 
-func hasLabels(labels []github.Label, names []string) bool {
+func HasLabels(labels []github.Label, names []string) bool {
 	for i := range names {
-		if !hasLabel(labels, names[i]) {
+		if !HasLabel(labels, names[i]) {
 			return false
 		}
 	}
@@ -126,6 +126,8 @@ type FilterConfig struct {
 	WhitelistOverride      string
 	RequiredStatusContexts []string
 	DryRun                 bool
+	DontRequireE2ELabel    string
+	E2EStatusContext       string
 }
 
 func lastModifiedTime(client *github.Client, user, project string, pr *github.PullRequest) (*time.Time, error) {
@@ -221,10 +223,10 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 		}
 
 		glog.V(8).Infof("%v", issue.Labels)
-		if !hasLabels(issue.Labels, []string{"lgtm", "cla: yes"}) {
+		if !HasLabels(issue.Labels, []string{"lgtm", "cla: yes"}) {
 			continue
 		}
-		if !hasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*prs[ix].User.Login) {
+		if !HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*prs[ix].User.Login) {
 			glog.V(4).Infof("Dropping %d since %s isn't in whitelist and %s isn't present", *prs[ix].Number, *prs[ix].User.Login, config.WhitelistOverride)
 			if _, _, err := client.Issues.AddLabelsToIssue(user, project, *prs[ix].Number, []string{"needs-ok-to-merge"}); err != nil {
 				glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *prs[ix].Number)
@@ -277,7 +279,11 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 		}
 
 		// Validate the status information for this PR
-		ok, err := ValidateStatus(client, user, project, *pr.Number, config.RequiredStatusContexts, false)
+		contexts := config.RequiredStatusContexts
+		if len(config.DontRequireE2ELabel) == 0 || !HasLabel(issue.Labels, config.DontRequireE2ELabel) {
+			contexts = append(contexts, config.E2EStatusContext)
+		}
+		ok, err := ValidateStatus(client, user, project, *pr.Number, contexts, false)
 		if err != nil {
 			glog.Errorf("Error validating PR status: %v", err)
 			continue

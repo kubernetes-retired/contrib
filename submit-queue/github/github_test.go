@@ -72,7 +72,7 @@ func TestHasLabel(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		if test.hasLabel != hasLabel(test.labels, test.label) {
+		if test.hasLabel != HasLabel(test.labels, test.label) {
 			t.Errorf("Unexpected output: %v", test)
 		}
 	}
@@ -124,7 +124,7 @@ func TestHasLabels(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		if test.hasLabel != hasLabels(test.labels, test.seekLabels) {
+		if test.hasLabel != HasLabels(test.labels, test.seekLabels) {
 			t.Errorf("Unexpected output: %v", test)
 		}
 	}
