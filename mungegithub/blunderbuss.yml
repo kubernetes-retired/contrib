@@ -118,12 +118,31 @@ prefixMap:
     - jdef
     - karlkfi
 
-  hack/:
+  docs:
+    - thockin
+    - smarterclayton
+    - brendandburns
+    - bgrant0607
+
+  cluster:
+    - robertbailey
+    - davidopp
+    - zmerlynn
+    - brendandburns
+    - eparis
+
+  examples:
+    - bgrant0607
+    - thockin
+    - brendandburns
+
+  hack:
     - zmerlynn
     - lavalamp
     - ixdy
+    - eparis
 
-  build/:
+  build:
     - zmerlynn
     - lavalamp
     - ixdy
