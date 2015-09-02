@@ -65,10 +65,12 @@ var (
 	jobs              = flag.String("jenkins-jobs", "kubernetes-e2e-gce,kubernetes-e2e-gke-ci,kubernetes-build", "Comma separated list of jobs in Jenkins to use for stability testing")
 	jenkinsHost       = flag.String("jenkins-host", "", "The URL for the jenkins job to watch")
 	userWhitelist     = flag.String("user-whitelist", "", "Path to a whitelist file that contains users to auto-merge.  Required.")
-	requiredContexts  = flag.String("required-contexts", "cla/google,Shippable,continuous-integration/travis-ci/pr,Jenkins GCE e2e", "Comma separate list of status contexts required for a PR to be considered ok to merge")
+	requiredContexts  = flag.String("required-contexts", "cla/google,Shippable,continuous-integration/travis-ci/pr", "Comma separate list of status contexts required for a PR to be considered ok to merge")
 	whitelistOverride = flag.String("whitelist-override-label", "ok-to-merge", "Github label, if present on a PR it will be merged even if the author isn't in the whitelist")
 	pollPeriod        = flag.Duration("poll-period", 30*time.Minute, "The period for running the submit-queue.  Default 30 minutes")
 	address           = flag.String("address", ":8080", "The address to listen on for HTTP Status")
+	dontRequireE2E    = flag.String("dont-require-e2e-label", "e2e-not-required", "If non-empty, a PR with this label will be merged automatically without looking at e2e results")
+	e2eStatusContext  = flag.String("e2e-status-context", "Jenkins GCE e2e", "The name of the github status context for the e2e PR Builder")
 )
 
 const (
@@ -125,6 +127,11 @@ func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRe
 		}
 	}
 	e.msg("Build is stable.")
+	// if there is a 'safe-to-merge' label, just merge it.
+	if len(*dontRequireE2E) > 0 && github.HasLabel(issue.Labels, *dontRequireE2E) {
+		e.msg(fmt.Sprintf("Merging %d since %s is set", *pr.Number, *dontRequireE2E))
+		return e.merge(client, org, project, pr)
+	}
 	// Ask for a fresh build
 	e.msg(fmt.Sprintf("Asking PR builder to build %d", *pr.Number))
 	body := "@k8s-bot test this [testing build queue, sorry for the noise]"
@@ -146,6 +153,10 @@ func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRe
 		e.msg(fmt.Sprintf("Status after build is not 'success', skipping PR %d", *pr.Number))
 		return nil
 	}
+	return e.merge(client, org, project, pr)
+}
+
+func (e *e2eTester) merge(client *github_api.Client, org, project string, pr *github_api.PullRequest) error {
 	if !*dryrun {
 		e.msg(fmt.Sprintf("Merging PR: %d", *pr.Number))
 		mergeBody := "Automatic merge from SubmitQueue"
@@ -212,6 +223,8 @@ func main() {
 		RequiredStatusContexts: requiredContexts,
 		WhitelistOverride:      *whitelistOverride,
 		DryRun:                 *dryrun,
+		DontRequireE2ELabel:    *dontRequireE2E,
+		E2EStatusContext:       *e2eStatusContext,
 	}
 	e2e := &e2eTester{}
 	if len(*address) > 0 {
