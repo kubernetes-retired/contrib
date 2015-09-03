@@ -2,4 +2,4 @@
 kubernetes_version: v1.0.4
 kubernetes_download_filename: "kubernetes-{{ kubernetes_version }}.tar.gz"
 kubernetes_download_url: "https://github.com/kubernetes/kubernetes/releases/download/{{ kubernetes_version }}/kubernetes.tar.gz"
-kubernetes_download_dir: /usr/local/src
+kubernetes_download_dir: /var/run/kube
