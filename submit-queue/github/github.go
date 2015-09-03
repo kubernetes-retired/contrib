@@ -96,6 +96,46 @@ func HasLabels(labels []github.Label, names []string) bool {
 	return true
 }
 
+func fetchAllUsers(client *github.Client, team int) ([]github.User, error) {
+	page := 1
+	var result []github.User
+	for {
+		glog.V(4).Infof("Fetching page %d of all users", page)
+		listOpts := &github.OrganizationListTeamMembersOptions{
+			ListOptions: github.ListOptions{PerPage: 100, Page: page},
+		}
+		users, response, err := client.Organizations.ListTeamMembers(team, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, users...)
+		if response.LastPage == 0 || response.LastPage == page {
+			break
+		}
+		page++
+	}
+	return result, nil
+}
+
+func fetchAllTeams(client *github.Client, org string) ([]github.Team, error) {
+	page := 1
+	var result []github.Team
+	for {
+		glog.V(4).Infof("Fetching page %d of all teams", page)
+		listOpts := &github.ListOptions{PerPage: 100, Page: page}
+		teams, response, err := client.Organizations.ListTeams(org, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, teams...)
+		if response.LastPage == 0 || response.LastPage == page {
+			break
+		}
+		page++
+	}
+	return result, nil
+}
+
 func fetchAllPRs(client *github.Client, user, project string) ([]github.PullRequest, error) {
 	page := 1
 	var result []github.PullRequest
@@ -184,6 +224,41 @@ func validateLGTMAfterPush(client *github.Client, user, project string, pr *gith
 	return lastModifiedTime.Before(*lgtmTime), nil
 }
 
+func usersWithCommit(client *github.Client, org, project string) ([]string, error) {
+	userSet := util.StringSet{}
+
+	teams, err := fetchAllTeams(client, org)
+	if err != nil {
+		glog.Errorf("%v", err)
+		return nil, err
+	}
+
+	teamIDs := []int{}
+	for _, team := range teams {
+		repo, _, err := client.Organizations.IsTeamRepo(*team.ID, org, project)
+		if repo == nil || err != nil {
+			continue
+		}
+		perms := *repo.Permissions
+		if perms["push"] {
+			teamIDs = append(teamIDs, *team.ID)
+		}
+	}
+
+	for _, team := range teamIDs {
+		users, err := fetchAllUsers(client, team)
+		if err != nil {
+			glog.Errorf("%v", err)
+			continue
+		}
+		for _, user := range users {
+			userSet.Insert(*user.Login)
+		}
+	}
+
+	return userSet.List(), nil
+}
+
 // For each PR in the project that matches:
 //   * pr.Number > minPRNumber
 //   * is mergeable
@@ -200,6 +275,9 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 	if config.userWhitelist == nil {
 		userSet := util.StringSet{}
 		userSet.Insert(config.AdditionalUserWhitelist...)
+		if usersWithCommit, err := usersWithCommit(client, user, project); err == nil {
+			userSet.Insert(usersWithCommit...)
+		}
 		config.userWhitelist = &userSet
 	}
 
