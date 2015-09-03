@@ -4,6 +4,7 @@
 #
 # localBuild - requires make release to have been run to build local binaries
 # packageManager - will install packages from your distribution using yum/dnf/apt
+# ghReleases - will download binaries from github releases
 source_type: localBuild
 
 # will be used as the Internal dns domain name if DNS is enabled. Services

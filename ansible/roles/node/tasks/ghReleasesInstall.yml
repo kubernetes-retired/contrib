@@ -1,0 +1,38 @@
+---
+- name: download kubernetes from github
+  get_url: url={{ kubernetes_download_url }} dest={{ kubernetes_download_dir }}/{{ kubernetes_download_filename }}
+
+- name: unarchive kubernetes
+  unarchive: copy=no
+             src={{ kubernetes_download_dir }}/{{ kubernetes_download_filename }}
+             dest={{ kubernetes_download_dir }}
+
+- name: unarchive kubernetes-server
+  unarchive: copy=no
+             src={{ kubernetes_download_dir }}/kubernetes/server/kubernetes-server-linux-amd64.tar.gz
+             dest={{ kubernetes_download_dir }}
+
+- name: copy kubernetes node binaries
+  shell: cp {{ kubernetes_download_dir }}/kubernetes/server/bin/{{ item }} /usr/bin
+  args:
+    creates: "/usr/bin/{{ item }}"
+  with_items:
+    - kubelet
+    - kube-proxy
+    - kubectl
+  notify: restart daemons
+
+- name: Copy node service files
+  copy:
+    src: ../init/systemd/{{ item }}
+    dest: /etc/systemd/system/
+    mode: 644
+  with_items:
+    - kube-proxy.service
+    - kubelet.service
+  notify: reload systemd
+
+- name: Create the /var/lib/kubelet working directory
+  file:
+    path: /var/lib/kubelet
+    state: directory

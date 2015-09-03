@@ -9,6 +9,11 @@
   tags:
     - binary-update
 
+- include: ghReleasesInstall.yml
+  when: source_type == "ghReleases"
+  tags:
+    - binary-update
+
 - name: write the config file for the api server
   template: src=apiserver.j2 dest={{ kube_config_dir }}/apiserver
   notify:
