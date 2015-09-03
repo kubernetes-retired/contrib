@@ -191,6 +191,9 @@ func (e *e2eTester) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 }
 
 func loadWhitelist(file string) ([]string, error) {
+	if len(file) == 0 {
+		return []string{}, nil
+	}
 	fp, err := os.Open(file)
 	if err != nil {
 		return nil, err
@@ -206,9 +209,6 @@ func loadWhitelist(file string) ([]string, error) {
 
 func main() {
 	flag.Parse()
-	if len(*userWhitelist) == 0 {
-		glog.Fatalf("--user-whitelist is required.")
-	}
 	if len(*jenkinsHost) == 0 {
 		glog.Fatalf("--jenkins-host is required.")
 	}
@@ -229,13 +229,13 @@ func main() {
 	}
 	requiredContexts := strings.Split(*requiredContexts, ",")
 	config := &github.FilterConfig{
-		MinPRNumber:            *minPRNumber,
-		UserWhitelist:          users,
-		RequiredStatusContexts: requiredContexts,
-		WhitelistOverride:      *whitelistOverride,
-		DryRun:                 *dryrun,
-		DontRequireE2ELabel:    *dontRequireE2E,
-		E2EStatusContext:       *e2eStatusContext,
+		MinPRNumber:             *minPRNumber,
+		AdditionalUserWhitelist: users,
+		RequiredStatusContexts:  requiredContexts,
+		WhitelistOverride:       *whitelistOverride,
+		DryRun:                  *dryrun,
+		DontRequireE2ELabel:     *dontRequireE2E,
+		E2EStatusContext:        *e2eStatusContext,
 	}
 	e2e := &e2eTester{}
 	if len(*address) > 0 {

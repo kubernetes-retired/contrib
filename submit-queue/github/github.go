@@ -121,13 +121,14 @@ func fetchAllPRs(client *github.Client, user, project string) ([]github.PullRequ
 type PRFunction func(*github.Client, *github.PullRequest, *github.Issue) error
 
 type FilterConfig struct {
-	MinPRNumber            int
-	UserWhitelist          []string
-	WhitelistOverride      string
-	RequiredStatusContexts []string
-	DryRun                 bool
-	DontRequireE2ELabel    string
-	E2EStatusContext       string
+	MinPRNumber             int
+	AdditionalUserWhitelist []string
+	userWhitelist           *util.StringSet
+	WhitelistOverride       string
+	RequiredStatusContexts  []string
+	DryRun                  bool
+	DontRequireE2ELabel     string
+	E2EStatusContext        string
 }
 
 func lastModifiedTime(client *github.Client, user, project string, pr *github.PullRequest) (*time.Time, error) {
@@ -196,8 +197,13 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 		return err
 	}
 
-	userSet := util.StringSet{}
-	userSet.Insert(config.UserWhitelist...)
+	if config.userWhitelist == nil {
+		userSet := util.StringSet{}
+		userSet.Insert(config.AdditionalUserWhitelist...)
+		config.userWhitelist = &userSet
+	}
+
+	userSet := *config.userWhitelist
 
 	for ix := range prs {
 		if prs[ix].User == nil || prs[ix].User.Login == nil {
