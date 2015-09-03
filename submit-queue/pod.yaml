@@ -5,11 +5,11 @@ metadata:
   namespace: default
 spec:
   containers:
-  - image: gcr.io/google_containers/submit-queue:0.3
+  - image: gcr.io/google_containers/submit-queue:0.4
     command:
       - bash
       - -c
-      - "/submit-queue --user-whitelist=/whitelist.txt --jenkins-host=http://jenkins-master:8080 --token=$(cat /etc/secret-volume/token) --alsologtostderr --v=2"
+      - "/submit-queue --user-whitelist=/whitelist.txt --jenkins-host=http://jenkins-master:8080 --token=$(cat /etc/secret-volume/token) --alsologtostderr --v=2 --jenkins-jobs=kubernetes-e2e-gce,kubernetes-e2e-gke-ci,kubernetes-build,kubernetes-e2e-gce-parallel,kubernetes-e2e-gce-reboot,kubernetes-e2e-gce-release,kubernetes-e2e-gce-scalability"
     imagePullPolicy: IfNotPresent
     name: submit-queue
     volumeMounts:
