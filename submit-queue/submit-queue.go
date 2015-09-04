@@ -44,6 +44,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -59,6 +60,7 @@ import (
 
 var (
 	token             = flag.String("token", "", "The OAuth Token to use for requests.")
+	tokenFile         = flag.String("token-file", "", "The file containing the OAuth Token to use for requests.")
 	minPRNumber       = flag.Int("min-pr-number", 0, "The minimum PR to start with [default: 0]")
 	dryrun            = flag.Bool("dry-run", false, "If true, don't actually merge anything")
 	oneOff            = flag.Bool("once", false, "If true, only merge one PR, don't run forever")
@@ -189,6 +191,9 @@ func (e *e2eTester) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 }
 
 func loadWhitelist(file string) ([]string, error) {
+	if len(file) == 0 {
+		return []string{}, nil
+	}
 	fp, err := os.Open(file)
 	if err != nil {
 		return nil, err
@@ -204,13 +209,19 @@ func loadWhitelist(file string) ([]string, error) {
 
 func main() {
 	flag.Parse()
-	if len(*userWhitelist) == 0 {
-		glog.Fatalf("--user-whitelist is required.")
-	}
 	if len(*jenkinsHost) == 0 {
 		glog.Fatalf("--jenkins-host is required.")
 	}
-	client := github.MakeClient(*token)
+	tokenData := *token
+	if len(tokenData) == 0 && len(*tokenFile) != 0 {
+		data, err := ioutil.ReadFile(*tokenFile)
+		if err != nil {
+			glog.Fatalf("error reading token file: %v", err)
+		}
+		tokenData = string(data)
+	}
+
+	client := github.MakeClient(tokenData)
 
 	users, err := loadWhitelist(*userWhitelist)
 	if err != nil {
@@ -218,13 +229,13 @@ func main() {
 	}
 	requiredContexts := strings.Split(*requiredContexts, ",")
 	config := &github.FilterConfig{
-		MinPRNumber:            *minPRNumber,
-		UserWhitelist:          users,
-		RequiredStatusContexts: requiredContexts,
-		WhitelistOverride:      *whitelistOverride,
-		DryRun:                 *dryrun,
-		DontRequireE2ELabel:    *dontRequireE2E,
-		E2EStatusContext:       *e2eStatusContext,
+		MinPRNumber:             *minPRNumber,
+		AdditionalUserWhitelist: users,
+		RequiredStatusContexts:  requiredContexts,
+		WhitelistOverride:       *whitelistOverride,
+		DryRun:                  *dryrun,
+		DontRequireE2ELabel:     *dontRequireE2E,
+		E2EStatusContext:        *e2eStatusContext,
 	}
 	e2e := &e2eTester{}
 	if len(*address) > 0 {
