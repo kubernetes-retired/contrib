@@ -41,7 +41,6 @@ Usage of ./submit-queue:
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -83,9 +82,10 @@ const (
 type e2eTester struct {
 	sync.Mutex
 	// exported so that the json marshaller will print them
-	CurrentPR *github_api.PullRequest
-	Message   []string
-	Err       error
+	CurrentPR   *github_api.PullRequest
+	Message     []string
+	Err         error
+	BuildStatus map[string]string
 }
 
 func (e *e2eTester) msg(msg string, args ...interface{}) {
@@ -94,7 +94,7 @@ func (e *e2eTester) msg(msg string, args ...interface{}) {
 	if len(e.Message) > 50 {
 		e.Message = e.Message[1:]
 	}
-	e.Message = append(e.Message, fmt.Sprintf(msg, args...))
+	e.Message = append(e.Message, fmt.Sprintf("%v: %v", time.Now().UTC(), fmt.Sprintf(msg, args...)))
 	glog.V(2).Info(msg)
 }
 
@@ -110,30 +110,49 @@ func (e *e2eTester) locked(f func()) {
 	f()
 }
 
-// This is called on a potentially mergeable PR
-func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRequest, issue *github_api.Issue) error {
-	e.locked(func() { e.CurrentPR = pr })
-	e.msg("Considering PR %d", *pr.Number)
+func (e *e2eTester) setBuildStatus(build, status string) {
+	e.locked(func() { e.BuildStatus[build] = status })
+}
 
+func (e *e2eTester) checkBuilds() (allStable bool) {
 	// Test if the build is stable in Jenkins
 	jenkinsClient := &jenkins.JenkinsClient{Host: *jenkinsHost}
 	builds := strings.Split(*jobs, ",")
+	allStable = true
 	for _, build := range builds {
-		stable, err := jenkinsClient.IsBuildStable(build)
 		e.msg("Checking build stability for %s", build)
+		stable, err := jenkinsClient.IsBuildStable(build)
 		if err != nil {
-			e.error(err)
-			return err
+			e.msg("Error checking build %v: %v", build, err)
+			e.setBuildStatus(build, "Error checking: "+err.Error())
+			allStable = false
+			continue
 		}
-		if !stable {
-			glog.Errorf("Build %s isn't stable, skipping!", build)
-			err := errors.New("Unstable build")
-			e.error(err)
-			return err
+		if stable {
+			e.setBuildStatus(build, "Stable")
+		} else {
+			e.setBuildStatus(build, "Not Stable")
 		}
 	}
-	e.msg("Build is stable.")
-	// if there is a 'safe-to-merge' label, just merge it.
+	return allStable
+}
+
+func (e *e2eTester) waitForStableBuilds() {
+	for !e.checkBuilds() {
+		e.msg("Not all builds stable. Checking again in 30s")
+		time.Sleep(30 * time.Second)
+	}
+}
+
+// This is called on a potentially mergeable PR
+func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRequest, issue *github_api.Issue) error {
+	e.locked(func() { e.CurrentPR = pr })
+	defer e.locked(func() { e.CurrentPR = nil })
+	e.msg("Considering PR %d", *pr.Number)
+
+	e.waitForStableBuilds()
+
+	// if there is a 'e2e-not-required' label, just merge it.
 	if len(*dontRequireE2E) > 0 && github.HasLabel(issue.Labels, *dontRequireE2E) {
 		e.msg("Merging %d since %s is set", *pr.Number, *dontRequireE2E)
 		return e.merge(client, org, project, pr)
@@ -246,11 +265,14 @@ func main() {
 		DontRequireE2ELabel:     *dontRequireE2E,
 		E2EStatusContext:        *e2eStatusContext,
 	}
-	e2e := &e2eTester{}
+	e2e := &e2eTester{
+		BuildStatus: map[string]string{},
+	}
 	if len(*address) > 0 {
 		go http.ListenAndServe(*address, e2e)
 	}
 	for !*oneOff {
+		e2e.msg("Beginning PR scan...")
 		if err := github.ForEachCandidatePRDo(client, org, project, e2e.runE2ETests, *oneOff, config); err != nil {
 			glog.Errorf("Error getting candidate PRs: %v", err)
 		}
