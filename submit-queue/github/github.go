@@ -284,22 +284,19 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 	userSet := *config.userWhitelist
 
 	for ix := range prs {
-		if prs[ix].User == nil || prs[ix].User.Login == nil {
-			glog.V(2).Infof("Skipping PR %d with no user info %v.", *prs[ix].Number, *prs[ix].User)
+		pr := &prs[ix]
+		if pr.User == nil || pr.User.Login == nil {
+			glog.V(2).Infof("Skipping PR %d with no user info %#v.", *pr.Number, pr.User)
 			continue
 		}
-		if *prs[ix].Number < config.MinPRNumber {
-			glog.V(6).Infof("Dropping %d < %d", *prs[ix].Number, config.MinPRNumber)
-			continue
-		}
-		pr, _, err := client.PullRequests.Get(user, project, *prs[ix].Number)
-		if err != nil {
-			glog.Errorf("Error getting pull request: %v", err)
+		if *pr.Number < config.MinPRNumber {
+			glog.V(6).Infof("Dropping %d < %d", *pr.Number, config.MinPRNumber)
 			continue
 		}
 		glog.V(2).Infof("----==== %d ====----", *pr.Number)
 
 		// Labels are actually stored in the Issues API, not the Pull Request API
+		// Get them first so we can quickly move on if it's not labeled properly.
 		issue, _, err := client.Issues.Get(user, project, *pr.Number)
 		if err != nil {
 			glog.Errorf("Failed to get issue for PR: %v", err)
@@ -308,16 +305,28 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 
 		glog.V(8).Infof("%v", issue.Labels)
 		if !HasLabels(issue.Labels, []string{"lgtm", "cla: yes"}) {
+			glog.V(2).Infof("Skipping %d - doesn't have requisite labels", *pr.Number)
 			continue
 		}
-		if !HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*prs[ix].User.Login) {
-			glog.V(4).Infof("Dropping %d since %s isn't in whitelist and %s isn't present", *prs[ix].Number, *prs[ix].User.Login, config.WhitelistOverride)
-			if _, _, err := client.Issues.AddLabelsToIssue(user, project, *prs[ix].Number, []string{"needs-ok-to-merge"}); err != nil {
-				glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *prs[ix].Number)
+
+		pr, _, err = client.PullRequests.Get(user, project, *pr.Number)
+		if err != nil {
+			glog.Errorf("Error getting pull request: %v", err)
+			continue
+		}
+
+		if !HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*pr.User.Login) {
+			glog.V(4).Infof("Dropping %d since %s isn't in whitelist and %s isn't present", *pr.Number, *pr.User.Login, config.WhitelistOverride)
+			if config.DryRun {
+				glog.Infof("PR %d: would have asked for ok-to-merge but DryRun is true", *pr.Number)
+				continue
+			}
+			if _, _, err := client.Issues.AddLabelsToIssue(user, project, *pr.Number, []string{"needs-ok-to-merge"}); err != nil {
+				glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *pr.Number)
 			}
 			body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
-			if _, _, err := client.Issues.CreateComment(user, project, *prs[ix].Number, &github.IssueComment{Body: &body}); err != nil {
-				glog.Errorf("Failed to add a comment for %d", *prs[ix].Number)
+			if _, _, err := client.Issues.CreateComment(user, project, *pr.Number, &github.IssueComment{Body: &body}); err != nil {
+				glog.Errorf("Failed to add a comment for %d", *pr.Number)
 			}
 			continue
 		}
@@ -352,13 +361,14 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 			glog.Infof("Waiting for mergeability on %s %d", *pr.Title, *pr.Number)
 			// TODO: determine what a good empirical setting for this is.
 			time.Sleep(10 * time.Second)
-			pr, _, err = client.PullRequests.Get(user, project, *prs[ix].Number)
+			pr, _, err = client.PullRequests.Get(user, project, *pr.Number)
 		}
 		if pr.Mergeable == nil {
 			glog.Errorf("No mergeability information for %s %d, Skipping.", *pr.Title, *pr.Number)
 			continue
 		}
 		if !*pr.Mergeable {
+			glog.V(2).Infof("Skipping %d - not mergable", *pr.Number)
 			continue
 		}
 

@@ -88,13 +88,13 @@ type e2eTester struct {
 	Err       error
 }
 
-func (e *e2eTester) msg(msg string) {
+func (e *e2eTester) msg(msg string, args ...interface{}) {
 	e.Lock()
 	defer e.Unlock()
 	if len(e.Message) > 50 {
 		e.Message = e.Message[1:]
 	}
-	e.Message = append(e.Message, msg)
+	e.Message = append(e.Message, fmt.Sprintf(msg, args...))
 	glog.V(2).Info(msg)
 }
 
@@ -104,19 +104,23 @@ func (e *e2eTester) error(err error) {
 	e.Err = err
 }
 
+func (e *e2eTester) locked(f func()) {
+	e.Lock()
+	defer e.Unlock()
+	f()
+}
+
 // This is called on a potentially mergeable PR
 func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRequest, issue *github_api.Issue) error {
-	func() {
-		e.Lock()
-		defer e.Unlock()
-		e.CurrentPR = pr
-	}()
+	e.locked(func() { e.CurrentPR = pr })
+	e.msg("Considering PR %d", *pr.Number)
+
 	// Test if the build is stable in Jenkins
 	jenkinsClient := &jenkins.JenkinsClient{Host: *jenkinsHost}
 	builds := strings.Split(*jobs, ",")
 	for _, build := range builds {
 		stable, err := jenkinsClient.IsBuildStable(build)
-		e.msg(fmt.Sprintf("Checking build stability for %s", build))
+		e.msg("Checking build stability for %s", build)
 		if err != nil {
 			e.error(err)
 			return err
@@ -131,12 +135,12 @@ func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRe
 	e.msg("Build is stable.")
 	// if there is a 'safe-to-merge' label, just merge it.
 	if len(*dontRequireE2E) > 0 && github.HasLabel(issue.Labels, *dontRequireE2E) {
-		e.msg(fmt.Sprintf("Merging %d since %s is set", *pr.Number, *dontRequireE2E))
+		e.msg("Merging %d since %s is set", *pr.Number, *dontRequireE2E)
 		return e.merge(client, org, project, pr)
 	}
 	// Ask for a fresh build
-	e.msg(fmt.Sprintf("Asking PR builder to build %d", *pr.Number))
-	body := "@k8s-bot test this [testing build queue, sorry for the noise]"
+	e.msg("Asking PR builder to build %d", *pr.Number)
+	body := "@k8s-bot test this [submit-queue is verifying that this PR is safe to merge]"
 	if _, _, err := client.Issues.CreateComment(org, project, *pr.Number, &github_api.IssueComment{Body: &body}); err != nil {
 		e.error(err)
 		return err
@@ -152,36 +156,41 @@ func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRe
 		return err
 	}
 	if !ok {
-		e.msg(fmt.Sprintf("Status after build is not 'success', skipping PR %d", *pr.Number))
+		e.msg("Status after build is not 'success', skipping PR %d", *pr.Number)
 		return nil
 	}
 	return e.merge(client, org, project, pr)
 }
 
 func (e *e2eTester) merge(client *github_api.Client, org, project string, pr *github_api.PullRequest) error {
-	if !*dryrun {
-		e.msg(fmt.Sprintf("Merging PR: %d", *pr.Number))
-		mergeBody := "Automatic merge from SubmitQueue"
-		if _, _, err := client.Issues.CreateComment(org, project, *pr.Number, &github_api.IssueComment{Body: &mergeBody}); err != nil {
-			glog.Warningf("Failed to create merge comment: %v", err)
-			e.error(err)
-			return err
-		}
-		if _, _, err := client.PullRequests.Merge(org, project, *pr.Number, "Auto commit by PR queue bot"); err != nil {
-			e.error(err)
-			return err
-		}
+	if *dryrun {
+		e.msg("Skipping actual merge because --dry-run is set")
 		return nil
 	}
-	e.msg("Skipping actual merge because --dry-run is set")
+	e.msg("Merging PR: %d", *pr.Number)
+	mergeBody := "Automatic merge from SubmitQueue"
+	if _, _, err := client.Issues.CreateComment(org, project, *pr.Number, &github_api.IssueComment{Body: &mergeBody}); err != nil {
+		e.msg("Failed to create merge comment: %v", err)
+		e.error(err)
+		return err
+	}
+	if _, _, err := client.PullRequests.Merge(org, project, *pr.Number, "Auto commit by PR queue bot"); err != nil {
+		e.msg("Failed to merge PR %d: %v", *pr.Number, err)
+		e.error(err)
+		return err
+	}
 	return nil
 }
 
 func (e *e2eTester) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	e.Lock()
-	defer e.Unlock()
+	var (
+		data []byte
+		err  error
+	)
+	e.locked(func() { data, err = json.MarshalIndent(e, "", "\t") })
+
 	res.Header().Set("Content-type", "application/json")
-	if data, err := json.Marshal(e); err != nil {
+	if err != nil {
 		res.WriteHeader(http.StatusInternalServerError)
 		res.Write([]byte(err.Error()))
 	} else {
