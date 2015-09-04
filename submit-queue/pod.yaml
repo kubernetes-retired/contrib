@@ -3,9 +3,12 @@ kind: Pod
 metadata:
   name: submit-queue
   namespace: default
+  labels:
+    app: submit-queue
+    version: "0.4"
 spec:
   containers:
-  - image: gcr.io/google_containers/submit-queue:0.3
+  - image: gcr.io/google_containers/submit-queue:0.4
     command:
       - bash
       - -c
@@ -13,8 +16,11 @@ spec:
     imagePullPolicy: IfNotPresent
     name: submit-queue
     volumeMounts:
-          - name: secret-volume
-            mountPath: /etc/secret-volume
+    - name: secret-volume
+      mountPath: /etc/secret-volume
+    ports:
+    - name: status
+      containerPort: 8080
   volumes:
     - name: secret-volume
       secret:
