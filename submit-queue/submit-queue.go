@@ -94,8 +94,9 @@ func (e *e2eTester) msg(msg string, args ...interface{}) {
 	if len(e.Message) > 50 {
 		e.Message = e.Message[1:]
 	}
-	e.Message = append(e.Message, fmt.Sprintf("%v: %v", time.Now().UTC(), fmt.Sprintf(msg, args...)))
-	glog.V(2).Info(msg)
+	expanded := fmt.Sprintf(msg, args...)
+	e.Message = append(e.Message, fmt.Sprintf("%v: %v", time.Now().UTC(), expanded))
+	glog.V(2).Info(expanded)
 }
 
 func (e *e2eTester) error(err error) {

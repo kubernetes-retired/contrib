@@ -136,6 +136,37 @@ func fetchAllTeams(client *github.Client, org string) ([]github.Team, error) {
 	return result, nil
 }
 
+// Get PRs (which are issues) via the issues api, so that we can filter by labels, greatly speeding up the queue.
+// Non-PR issues will be filtered out.
+func fetchAllPRsWithLabels(client *github.Client, user, project string, labels []string) ([]github.Issue, error) {
+	page := 1
+	var result []github.Issue
+	for {
+		glog.V(4).Infof("Fetching page %d", page)
+		listOpts := &github.IssueListByRepoOptions{
+			Sort:        "created",
+			Labels:      labels,
+			State:       "open",
+			ListOptions: github.ListOptions{PerPage: 100, Page: page},
+		}
+		issues, response, err := client.Issues.ListByRepo(user, project, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		for i := range issues {
+			issue := &issues[i]
+			if issue.PullRequestLinks != nil {
+				result = append(result, *issue)
+			}
+		}
+		if response.LastPage == 0 || response.LastPage == page {
+			break
+		}
+		page++
+	}
+	return result, nil
+}
+
 func fetchAllPRs(client *github.Client, user, project string) ([]github.PullRequest, error) {
 	page := 1
 	var result []github.PullRequest
@@ -266,8 +297,8 @@ func usersWithCommit(client *github.Client, org, project string) ([]string, erro
 //   * combinedStatus = 'success' (e.g. all hooks have finished success in github)
 // Run the specified function
 func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunction, once bool, config *FilterConfig) error {
-	// Get all PRs
-	prs, err := fetchAllPRs(client, user, project)
+	// Get all PRs that have lgtm and cla: yes labels
+	issues, err := fetchAllPRsWithLabels(client, user, project, []string{"lgtm", "cla: yes"})
 	if err != nil {
 		return err
 	}
@@ -283,33 +314,25 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 
 	userSet := *config.userWhitelist
 
-	for ix := range prs {
-		pr := &prs[ix]
-		if pr.User == nil || pr.User.Login == nil {
-			glog.V(2).Infof("Skipping PR %d with no user info %#v.", *pr.Number, pr.User)
+	for ix := range issues {
+		issue := &issues[ix]
+		if issue.User == nil || issue.User.Login == nil {
+			glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
 			continue
 		}
-		if *pr.Number < config.MinPRNumber {
-			glog.V(6).Infof("Dropping %d < %d", *pr.Number, config.MinPRNumber)
+		if *issue.Number < config.MinPRNumber {
+			glog.V(6).Infof("Dropping %d < %d", *issue.Number, config.MinPRNumber)
 			continue
 		}
-		glog.V(2).Infof("----==== %d ====----", *pr.Number)
-
-		// Labels are actually stored in the Issues API, not the Pull Request API
-		// Get them first so we can quickly move on if it's not labeled properly.
-		issue, _, err := client.Issues.Get(user, project, *pr.Number)
-		if err != nil {
-			glog.Errorf("Failed to get issue for PR: %v", err)
-			continue
-		}
+		glog.V(2).Infof("----==== %d ====----", *issue.Number)
 
 		glog.V(8).Infof("%v", issue.Labels)
 		if !HasLabels(issue.Labels, []string{"lgtm", "cla: yes"}) {
-			glog.V(2).Infof("Skipping %d - doesn't have requisite labels", *pr.Number)
+			glog.V(2).Infof("Skipping %d - doesn't have requisite labels", *issue.Number)
 			continue
 		}
 
-		pr, _, err = client.PullRequests.Get(user, project, *pr.Number)
+		pr, _, err := client.PullRequests.Get(user, project, *issue.Number)
 		if err != nil {
 			glog.Errorf("Error getting pull request: %v", err)
 			continue
