@@ -194,12 +194,14 @@ type PRFunction func(*github.Client, *github.PullRequest, *github.Issue) error
 type FilterConfig struct {
 	MinPRNumber             int
 	AdditionalUserWhitelist []string
-	userWhitelist           *util.StringSet
 	WhitelistOverride       string
 	RequiredStatusContexts  []string
 	DryRun                  bool
 	DontRequireE2ELabel     string
 	E2EStatusContext        string
+
+	// Private, cached
+	userWhitelist util.StringSet
 }
 
 func lastModifiedTime(client *github.Client, user, project string, pr *github.PullRequest) (*time.Time, error) {
@@ -290,6 +292,17 @@ func usersWithCommit(client *github.Client, org, project string) ([]string, erro
 	return userSet.List(), nil
 }
 
+// RefreshWhitelist updates the whitelist, re-getting the list of committers.
+func (config *FilterConfig) RefreshWhitelist(client *github.Client, user, project string) util.StringSet {
+	userSet := util.StringSet{}
+	userSet.Insert(config.AdditionalUserWhitelist...)
+	if usersWithCommit, err := usersWithCommit(client, user, project); err == nil {
+		userSet.Insert(usersWithCommit...)
+	}
+	config.userWhitelist = userSet
+	return userSet
+}
+
 // For each PR in the project that matches:
 //   * pr.Number > minPRNumber
 //   * is mergeable
@@ -304,15 +317,10 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 	}
 
 	if config.userWhitelist == nil {
-		userSet := util.StringSet{}
-		userSet.Insert(config.AdditionalUserWhitelist...)
-		if usersWithCommit, err := usersWithCommit(client, user, project); err == nil {
-			userSet.Insert(usersWithCommit...)
-		}
-		config.userWhitelist = &userSet
+		config.RefreshWhitelist(client, user, project)
 	}
 
-	userSet := *config.userWhitelist
+	userSet := config.userWhitelist
 
 	for ix := range issues {
 		issue := &issues[ix]

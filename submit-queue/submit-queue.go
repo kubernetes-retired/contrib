@@ -86,6 +86,8 @@ type e2eTester struct {
 	Message     []string
 	Err         error
 	BuildStatus map[string]string
+	Config      *github.FilterConfig
+	Whitelist   []string
 }
 
 func (e *e2eTester) msg(msg string, args ...interface{}) {
@@ -268,12 +270,15 @@ func main() {
 	}
 	e2e := &e2eTester{
 		BuildStatus: map[string]string{},
+		Config:      config,
 	}
 	if len(*address) > 0 {
 		go http.ListenAndServe(*address, e2e)
 	}
 	for !*oneOff {
 		e2e.msg("Beginning PR scan...")
+		wl := config.RefreshWhitelist(client, org, project)
+		e2e.locked(func() { e2e.Whitelist = wl.List() })
 		if err := github.ForEachCandidatePRDo(client, org, project, e2e.runE2ETests, *oneOff, config); err != nil {
 			glog.Errorf("Error getting candidate PRs: %v", err)
 		}
