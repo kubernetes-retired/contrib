@@ -18,3 +18,4 @@ RUN apt-get update
 RUN apt-get install -y -qq ca-certificates
 ADD submit-queue /submit-queue
 ADD whitelist.txt /whitelist.txt
+ADD committers.txt /committers.txt

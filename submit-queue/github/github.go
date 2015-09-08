@@ -34,6 +34,10 @@ var (
 	useMemoryCache = flag.Bool("use-http-cache", false, "If true, use a client side HTTP cache for API requests.")
 )
 
+const (
+	NeedsOKToMergeLabel = "needs-ok-to-merge"
+)
+
 type RateLimitRoundTripper struct {
 	delegate http.RoundTripper
 	throttle util.RateLimiter
@@ -136,6 +140,37 @@ func fetchAllTeams(client *github.Client, org string) ([]github.Team, error) {
 	return result, nil
 }
 
+// Get PRs (which are issues) via the issues api, so that we can filter by labels, greatly speeding up the queue.
+// Non-PR issues will be filtered out.
+func fetchAllPRsWithLabels(client *github.Client, user, project string, labels []string) ([]github.Issue, error) {
+	page := 1
+	var result []github.Issue
+	for {
+		glog.V(4).Infof("Fetching page %d", page)
+		listOpts := &github.IssueListByRepoOptions{
+			Sort:        "created",
+			Labels:      labels,
+			State:       "open",
+			ListOptions: github.ListOptions{PerPage: 100, Page: page},
+		}
+		issues, response, err := client.Issues.ListByRepo(user, project, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		for i := range issues {
+			issue := &issues[i]
+			if issue.PullRequestLinks != nil {
+				result = append(result, *issue)
+			}
+		}
+		if response.LastPage == 0 || response.LastPage == page {
+			break
+		}
+		page++
+	}
+	return result, nil
+}
+
 func fetchAllPRs(client *github.Client, user, project string) ([]github.PullRequest, error) {
 	page := 1
 	var result []github.PullRequest
@@ -161,14 +196,26 @@ func fetchAllPRs(client *github.Client, user, project string) ([]github.PullRequ
 type PRFunction func(*github.Client, *github.PullRequest, *github.Issue) error
 
 type FilterConfig struct {
-	MinPRNumber             int
+	MinPRNumber int
+
+	// non-committer users believed safe
 	AdditionalUserWhitelist []string
-	userWhitelist           *util.StringSet
-	WhitelistOverride       string
-	RequiredStatusContexts  []string
-	DryRun                  bool
-	DontRequireE2ELabel     string
-	E2EStatusContext        string
+
+	// Committers are static here in case they can't be gotten dynamically;
+	// they do not need to be whitelisted.
+	Committers []string
+
+	// The label needed to override absence from whitelist.
+	WhitelistOverride string
+
+	// If true, don't make any mutating API calls
+	DryRun                 bool
+	DontRequireE2ELabel    string
+	E2EStatusContext       string
+	RequiredStatusContexts []string
+
+	// Private, cached
+	userWhitelist util.StringSet
 }
 
 func lastModifiedTime(client *github.Client, user, project string, pr *github.PullRequest) (*time.Time, error) {
@@ -224,7 +271,7 @@ func validateLGTMAfterPush(client *github.Client, user, project string, pr *gith
 	return lastModifiedTime.Before(*lgtmTime), nil
 }
 
-func usersWithCommit(client *github.Client, org, project string) ([]string, error) {
+func UsersWithCommit(client *github.Client, org, project string) ([]string, error) {
 	userSet := util.StringSet{}
 
 	teams, err := fetchAllTeams(client, org)
@@ -259,6 +306,21 @@ func usersWithCommit(client *github.Client, org, project string) ([]string, erro
 	return userSet.List(), nil
 }
 
+// RefreshWhitelist updates the whitelist, re-getting the list of committers.
+func (config *FilterConfig) RefreshWhitelist(client *github.Client, user, project string) util.StringSet {
+	userSet := util.StringSet{}
+	userSet.Insert(config.AdditionalUserWhitelist...)
+	if usersWithCommit, err := UsersWithCommit(client, user, project); err != nil {
+		glog.Info("Falling back to static committers list.")
+		// Use the static list if there was an error getting the list dynamically
+		userSet.Insert(config.Committers...)
+	} else {
+		userSet.Insert(usersWithCommit...)
+	}
+	config.userWhitelist = userSet
+	return userSet
+}
+
 // For each PR in the project that matches:
 //   * pr.Number > minPRNumber
 //   * is mergeable
@@ -266,60 +328,65 @@ func usersWithCommit(client *github.Client, org, project string) ([]string, erro
 //   * combinedStatus = 'success' (e.g. all hooks have finished success in github)
 // Run the specified function
 func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunction, once bool, config *FilterConfig) error {
-	// Get all PRs
-	prs, err := fetchAllPRs(client, user, project)
+	// Get all PRs that have lgtm and cla: yes labels
+	issues, err := fetchAllPRsWithLabels(client, user, project, []string{"lgtm", "cla: yes"})
 	if err != nil {
 		return err
 	}
 
 	if config.userWhitelist == nil {
-		userSet := util.StringSet{}
-		userSet.Insert(config.AdditionalUserWhitelist...)
-		if usersWithCommit, err := usersWithCommit(client, user, project); err == nil {
-			userSet.Insert(usersWithCommit...)
-		}
-		config.userWhitelist = &userSet
+		config.RefreshWhitelist(client, user, project)
 	}
 
-	userSet := *config.userWhitelist
+	userSet := config.userWhitelist
 
-	for ix := range prs {
-		if prs[ix].User == nil || prs[ix].User.Login == nil {
-			glog.V(2).Infof("Skipping PR %d with no user info %v.", *prs[ix].Number, *prs[ix].User)
+	for ix := range issues {
+		issue := &issues[ix]
+		if issue.User == nil || issue.User.Login == nil {
+			glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
 			continue
 		}
-		if *prs[ix].Number < config.MinPRNumber {
-			glog.V(6).Infof("Dropping %d < %d", *prs[ix].Number, config.MinPRNumber)
+		if *issue.Number < config.MinPRNumber {
+			glog.V(6).Infof("Dropping %d < %d", *issue.Number, config.MinPRNumber)
 			continue
 		}
-		pr, _, err := client.PullRequests.Get(user, project, *prs[ix].Number)
+		glog.V(2).Infof("----==== %d ====----", *issue.Number)
+
+		glog.V(8).Infof("%v", issue.Labels)
+		if !HasLabels(issue.Labels, []string{"lgtm", "cla: yes"}) {
+			glog.V(2).Infof("Skipping %d - doesn't have requisite labels", *issue.Number)
+			continue
+		}
+
+		pr, _, err := client.PullRequests.Get(user, project, *issue.Number)
 		if err != nil {
 			glog.Errorf("Error getting pull request: %v", err)
 			continue
 		}
-		glog.V(2).Infof("----==== %d ====----", *pr.Number)
 
-		// Labels are actually stored in the Issues API, not the Pull Request API
-		issue, _, err := client.Issues.Get(user, project, *pr.Number)
-		if err != nil {
-			glog.Errorf("Failed to get issue for PR: %v", err)
+		if !HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*pr.User.Login) {
+			glog.V(4).Infof("Dropping %d since %s isn't in whitelist and %s isn't present", *pr.Number, *pr.User.Login, config.WhitelistOverride)
+			if config.DryRun {
+				glog.Infof("PR %d: would have asked for ok-to-merge but DryRun is true", *pr.Number)
+				continue
+			}
+			if !HasLabel(issue.Labels, NeedsOKToMergeLabel) {
+				if _, _, err := client.Issues.AddLabelsToIssue(user, project, *pr.Number, []string{NeedsOKToMergeLabel}); err != nil {
+					glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *pr.Number)
+				}
+				body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
+				if _, _, err := client.Issues.CreateComment(user, project, *pr.Number, &github.IssueComment{Body: &body}); err != nil {
+					glog.Errorf("Failed to add a comment for %d", *pr.Number)
+				}
+			}
 			continue
 		}
 
-		glog.V(8).Infof("%v", issue.Labels)
-		if !HasLabels(issue.Labels, []string{"lgtm", "cla: yes"}) {
-			continue
-		}
-		if !HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*prs[ix].User.Login) {
-			glog.V(4).Infof("Dropping %d since %s isn't in whitelist and %s isn't present", *prs[ix].Number, *prs[ix].User.Login, config.WhitelistOverride)
-			if _, _, err := client.Issues.AddLabelsToIssue(user, project, *prs[ix].Number, []string{"needs-ok-to-merge"}); err != nil {
-				glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *prs[ix].Number)
+		// Tidy up the issue list.
+		if HasLabel(issue.Labels, NeedsOKToMergeLabel) && !config.DryRun {
+			if _, err := client.Issues.RemoveLabelForIssue(user, project, *pr.Number, NeedsOKToMergeLabel); err != nil {
+				glog.Warningf("Failed to remove 'needs-ok-to-merge' from issue %d, which doesn't need it", *pr.Number)
 			}
-			body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
-			if _, _, err := client.Issues.CreateComment(user, project, *prs[ix].Number, &github.IssueComment{Body: &body}); err != nil {
-				glog.Errorf("Failed to add a comment for %d", *prs[ix].Number)
-			}
-			continue
 		}
 
 		lastModifiedTime, err := lastModifiedTime(client, user, project, pr)
@@ -352,13 +419,14 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 			glog.Infof("Waiting for mergeability on %s %d", *pr.Title, *pr.Number)
 			// TODO: determine what a good empirical setting for this is.
 			time.Sleep(10 * time.Second)
-			pr, _, err = client.PullRequests.Get(user, project, *prs[ix].Number)
+			pr, _, err = client.PullRequests.Get(user, project, *pr.Number)
 		}
 		if pr.Mergeable == nil {
 			glog.Errorf("No mergeability information for %s %d, Skipping.", *pr.Title, *pr.Number)
 			continue
 		}
 		if !*pr.Mergeable {
+			glog.V(2).Infof("Skipping %d - not mergable", *pr.Number)
 			continue
 		}
 
