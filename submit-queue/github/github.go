@@ -34,6 +34,10 @@ var (
 	useMemoryCache = flag.Bool("use-http-cache", false, "If true, use a client side HTTP cache for API requests.")
 )
 
+const (
+	NeedsOKToMergeLabel = "needs-ok-to-merge"
+)
+
 type RateLimitRoundTripper struct {
 	delegate http.RoundTripper
 	throttle util.RateLimiter
@@ -192,13 +196,23 @@ func fetchAllPRs(client *github.Client, user, project string) ([]github.PullRequ
 type PRFunction func(*github.Client, *github.PullRequest, *github.Issue) error
 
 type FilterConfig struct {
-	MinPRNumber             int
+	MinPRNumber int
+
+	// non-committer users believed safe
 	AdditionalUserWhitelist []string
-	WhitelistOverride       string
-	RequiredStatusContexts  []string
-	DryRun                  bool
-	DontRequireE2ELabel     string
-	E2EStatusContext        string
+
+	// Committers are static here in case they can't be gotten dynamically;
+	// they do not need to be whitelisted.
+	Committers []string
+
+	// The label needed to override absence from whitelist.
+	WhitelistOverride string
+
+	// If true, don't make any mutating API calls
+	DryRun                 bool
+	DontRequireE2ELabel    string
+	E2EStatusContext       string
+	RequiredStatusContexts []string
 
 	// Private, cached
 	userWhitelist util.StringSet
@@ -257,7 +271,7 @@ func validateLGTMAfterPush(client *github.Client, user, project string, pr *gith
 	return lastModifiedTime.Before(*lgtmTime), nil
 }
 
-func usersWithCommit(client *github.Client, org, project string) ([]string, error) {
+func UsersWithCommit(client *github.Client, org, project string) ([]string, error) {
 	userSet := util.StringSet{}
 
 	teams, err := fetchAllTeams(client, org)
@@ -296,7 +310,11 @@ func usersWithCommit(client *github.Client, org, project string) ([]string, erro
 func (config *FilterConfig) RefreshWhitelist(client *github.Client, user, project string) util.StringSet {
 	userSet := util.StringSet{}
 	userSet.Insert(config.AdditionalUserWhitelist...)
-	if usersWithCommit, err := usersWithCommit(client, user, project); err == nil {
+	if usersWithCommit, err := UsersWithCommit(client, user, project); err != nil {
+		glog.Info("Falling back to static committers list.")
+		// Use the static list if there was an error getting the list dynamically
+		userSet.Insert(config.Committers...)
+	} else {
 		userSet.Insert(usersWithCommit...)
 	}
 	config.userWhitelist = userSet
@@ -352,14 +370,23 @@ func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunc
 				glog.Infof("PR %d: would have asked for ok-to-merge but DryRun is true", *pr.Number)
 				continue
 			}
-			if _, _, err := client.Issues.AddLabelsToIssue(user, project, *pr.Number, []string{"needs-ok-to-merge"}); err != nil {
-				glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *pr.Number)
-			}
-			body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
-			if _, _, err := client.Issues.CreateComment(user, project, *pr.Number, &github.IssueComment{Body: &body}); err != nil {
-				glog.Errorf("Failed to add a comment for %d", *pr.Number)
+			if !HasLabel(issue.Labels, NeedsOKToMergeLabel) {
+				if _, _, err := client.Issues.AddLabelsToIssue(user, project, *pr.Number, []string{NeedsOKToMergeLabel}); err != nil {
+					glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *pr.Number)
+				}
+				body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
+				if _, _, err := client.Issues.CreateComment(user, project, *pr.Number, &github.IssueComment{Body: &body}); err != nil {
+					glog.Errorf("Failed to add a comment for %d", *pr.Number)
+				}
 			}
 			continue
+		}
+
+		// Tidy up the issue list.
+		if HasLabel(issue.Labels, NeedsOKToMergeLabel) && !config.DryRun {
+			if _, err := client.Issues.RemoveLabelForIssue(user, project, *pr.Number, NeedsOKToMergeLabel); err != nil {
+				glog.Warningf("Failed to remove 'needs-ok-to-merge' from issue %d, which doesn't need it", *pr.Number)
+			}
 		}
 
 		lastModifiedTime, err := lastModifiedTime(client, user, project, pr)
