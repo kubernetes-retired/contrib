@@ -43,5 +43,5 @@ SubmitQueueApp.prototype.getBuilds = function() {
 app.controller('AppCtrl', ['$scope', '$http', '$interval', function($scope, $http, $interval) {
     $scope.controller = new SubmitQueueApp($http, $scope);
     $scope.controller.refresh();
-    //$interval($scope.controller.refresh.bind($scope.controller), 2500) 
+    $interval($scope.controller.refresh.bind($scope.controller), 2500) 
 }]);
