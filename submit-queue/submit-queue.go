@@ -76,6 +76,7 @@ var (
 	address           = flag.String("address", ":8080", "The address to listen on for HTTP Status")
 	dontRequireE2E    = flag.String("dont-require-e2e-label", "e2e-not-required", "If non-empty, a PR with this label will be merged automatically without looking at e2e results")
 	e2eStatusContext  = flag.String("e2e-status-context", "Jenkins GCE e2e", "The name of the github status context for the e2e PR Builder")
+	www               = flag.String("www", "", "Path to static web files to serve from the webserver")
 )
 
 const (
@@ -326,7 +327,11 @@ func main() {
 		Config:      config,
 	}
 	if len(*address) > 0 {
-		go http.ListenAndServe(*address, e2e)
+		if len(*www) > 0 {
+			http.Handle("/", http.FileServer(http.Dir(*www)))
+		}
+		http.Handle("/api", e2e)
+		go http.ListenAndServe(*address, nil)
 	}
 	for !*oneOff {
 		e2e.msg("Beginning PR scan...")
