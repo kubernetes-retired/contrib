@@ -5,10 +5,10 @@ metadata:
   namespace: default
   labels:
     app: submit-queue
-    version: "0.6"
+    version: "0.7"
 spec:
   containers:
-  - image: gcr.io/google_containers/submit-queue:0.6
+  - image: gcr.io/google_containers/submit-queue:0.7
     command:
     - ./submit-queue
     - --jenkins-host=http://jenkins-master:8080
@@ -16,6 +16,7 @@ spec:
     - --jenkins-jobs=kubernetes-e2e-gce,kubernetes-e2e-gke-ci,kubernetes-build,kubernetes-e2e-gce-parallel,kubernetes-e2e-gce-autoscaling,kubernetes-e2e-gce-reboot,kubernetes-e2e-gce-scalability
     - --alsologtostderr
     - --v=2
+    - --www=/www
     imagePullPolicy: IfNotPresent
     name: submit-queue
     volumeMounts:
