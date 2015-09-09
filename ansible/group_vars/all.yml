@@ -7,8 +7,8 @@
 # ghReleases - will download binaries from github releases
 source_type: localBuild
 
-# This version will be used only when installing kubernetes from github releases
-kubernetes_version: v1.0.4
+# This version will be used only when installing kubernetes from github releases. When unspecified will install latest stable version
+#kubernetes_version: v1.0.4
 
 # will be used as the Internal dns domain name if DNS is enabled. Services
 # will be discoverable under <service-name>.<namespace>.svc.<domainname>, e.g.

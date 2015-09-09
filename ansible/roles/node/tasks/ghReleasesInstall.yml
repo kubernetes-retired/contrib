@@ -1,4 +1,17 @@
 ---
+- name: grab latest version from github
+  shell: curl -sI https://github.com/kubernetes/kubernetes/releases/latest | grep Location | rev | cut -d "/" -f 1 | rev
+  register: kubernetes_version_cmd_result
+  when: kubernetes_version is undefined
+
+- name: set kubernetes_version fact
+  set_fact:
+    kubernetes_version: "{{ kubernetes_version_cmd_result.stdout }}"
+  when: kubernetes_version is undefined
+
+- name: make sure the kubernetes download directory exits
+  file: path="{{ kubernetes_download_dir }}" state=directory
+
 - name: download kubernetes from github
   get_url: url={{ kubernetes_download_url }} dest={{ kubernetes_download_dir }}/{{ kubernetes_download_filename }}
 
