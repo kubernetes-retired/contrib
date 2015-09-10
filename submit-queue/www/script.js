@@ -27,7 +27,7 @@ SubmitQueueApp.prototype.getBuilds = function() {
 		// green check mark
 		obj['state'] = '\u2713';
 		obj['color'] = 'green'
-	    } else if (value == 'Unstable') {
+	    } else if (value == 'Not Stable') {
 		// red X mark
 		obj['state'] = '\u2716';
 		obj['color'] = 'red';
