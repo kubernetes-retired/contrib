@@ -9,6 +9,7 @@ SubmitQueueApp.prototype.refresh = function() {
     this.http.get("/api")
     .success(function(data) {
 	    this.data = data;
+	    this.data.Message.reverse();
 	    this.builds = this.getBuilds();
 	    console.log(this.builds);
 	}.bind(this))
