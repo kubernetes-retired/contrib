@@ -215,28 +215,6 @@ func (config *GithubConfig) fetchAllIssuesWithLabels(labels []string) ([]github.
 	return result, nil
 }
 
-func (config *GithubConfig) fetchAllPRs() ([]github.PullRequest, error) {
-	page := 0
-	var result []github.PullRequest
-	for {
-		glog.V(4).Infof("Fetching page %d of PRs", page)
-		listOpts := &github.PullRequestListOptions{
-			Sort:        "desc",
-			ListOptions: github.ListOptions{PerPage: 100, Page: page},
-		}
-		prs, response, err := config.client.PullRequests.List(config.Org, config.Project, listOpts)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, prs...)
-		if response.LastPage == 0 || response.LastPage == page {
-			break
-		}
-		page++
-	}
-	return result, nil
-}
-
 type PRFunction func(*github.PullRequest, *github.Issue) error
 
 func (config *GithubConfig) LastModifiedTime(prNum int) (*time.Time, error) {
