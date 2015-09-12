@@ -168,7 +168,7 @@ func GetLabelsWithPrefix(labels []github.Label, prefix string) []string {
 
 func (config *GithubConfig) AddLabels(prNum int, labels []string) error {
 	if config.DryRun {
-		glog.Infof("Would have added labels %v to PR %d --dry-run is set", labels, prNum)
+		glog.Infof("Would have added labels %v to PR %d but --dry-run is set", labels, prNum)
 		return nil
 	}
 	if _, _, err := config.client.Issues.AddLabelsToIssue(config.Org, config.Project, prNum, labels); err != nil {
@@ -180,7 +180,7 @@ func (config *GithubConfig) AddLabels(prNum int, labels []string) error {
 
 func (config *GithubConfig) RemoveLabel(prNum int, label string) error {
 	if config.DryRun {
-		glog.Infof("Would have removed label %q to PR %d --dry-run is set", label, prNum)
+		glog.Infof("Would have removed label %q to PR %d but --dry-run is set", label, prNum)
 		return nil
 	}
 	if _, err := config.client.Issues.RemoveLabelForIssue(config.Org, config.Project, prNum, label); err != nil {
