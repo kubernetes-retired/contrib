@@ -17,9 +17,11 @@ limitations under the License.
 package github
 
 import (
-	"flag"
+	goflag "flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	"k8s.io/kubernetes/pkg/util"
@@ -27,15 +29,13 @@ import (
 	"github.com/golang/glog"
 	"github.com/google/go-github/github"
 	"github.com/gregjones/httpcache"
+	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 )
 
-var (
-	useMemoryCache = flag.Bool("use-http-cache", false, "If true, use a client side HTTP cache for API requests.")
-)
-
 const (
-	NeedsOKToMergeLabel = "needs-ok-to-merge"
+	// stolen from https://groups.google.com/forum/#!msg/golang-nuts/a9PitPAHSSU/ziQw1-QHw3EJ
+	maxInt = int(^uint(0) >> 1)
 )
 
 type RateLimitRoundTripper struct {
@@ -48,10 +48,55 @@ func (r *RateLimitRoundTripper) RoundTrip(req *http.Request) (resp *http.Respons
 	return r.delegate.RoundTrip(req)
 }
 
-func MakeClient(token string) *github.Client {
+type GithubConfig struct {
+	client  *github.Client
+	Org     string
+	Project string
+
+	Token     string
+	TokenFile string
+
+	MinPRNumber int
+	MaxPRNumber int
+
+	// If true, don't make any mutating API calls
+	DryRun bool
+
+	useMemoryCache bool
+}
+
+func (config *GithubConfig) AddRootFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringVar(&config.Token, "token", "", "The OAuth Token to use for requests.")
+	cmd.PersistentFlags().StringVar(&config.TokenFile, "token-file", "", "The file containing the OAuth Token to use for requests.")
+	cmd.PersistentFlags().IntVar(&config.MinPRNumber, "min-pr-number", 0, "The minimum PR to start with")
+	cmd.PersistentFlags().IntVar(&config.MaxPRNumber, "max-pr-number", maxInt, "The maximum PR to start with")
+	cmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", false, "If true, don't actually merge anything")
+	cmd.PersistentFlags().BoolVar(&config.useMemoryCache, "use-http-cache", false, "If true, use a client side HTTP cache for API requests.")
+	cmd.PersistentFlags().StringVar(&config.Org, "organization", "kubernetes", "The github organization to scan")
+	cmd.PersistentFlags().StringVar(&config.Project, "project", "kubernetes", "The github project to scan")
+	cmd.PersistentFlags().AddGoFlagSet(goflag.CommandLine)
+}
+
+func (config *GithubConfig) PreExecute() error {
+	if len(config.Org) == 0 {
+		glog.Fatalf("--organization is required.")
+	}
+	if len(config.Project) == 0 {
+		glog.Fatalf("--project is required.")
+	}
+
+	token := config.Token
+	if len(token) == 0 && len(config.TokenFile) != 0 {
+		data, err := ioutil.ReadFile(config.TokenFile)
+		if err != nil {
+			glog.Fatalf("error reading token file: %v", err)
+		}
+		token = string(data)
+	}
+
 	var client *http.Client
 	var transport http.RoundTripper
-	if *useMemoryCache {
+	if config.useMemoryCache {
 		transport = httpcache.NewMemoryCacheTransport()
 	} else {
 		transport = http.DefaultTransport
@@ -78,7 +123,13 @@ func MakeClient(token string) *github.Client {
 			Transport: rateLimitTransport,
 		}
 	}
-	return github.NewClient(client)
+	config.client = github.NewClient(client)
+	return nil
+}
+
+// SetClient should ONLY be used by testing. Normal commands should use PreExecute()
+func (config *GithubConfig) SetClient(client *github.Client) {
+	config.client = client
 }
 
 func HasLabel(labels []github.Label, name string) bool {
@@ -100,60 +151,53 @@ func HasLabels(labels []github.Label, names []string) bool {
 	return true
 }
 
-func fetchAllUsers(client *github.Client, team int) ([]github.User, error) {
-	page := 1
-	var result []github.User
-	for {
-		glog.V(4).Infof("Fetching page %d of all users", page)
-		listOpts := &github.OrganizationListTeamMembersOptions{
-			ListOptions: github.ListOptions{PerPage: 100, Page: page},
+func GetLabelsWithPrefix(labels []github.Label, prefix string) []string {
+	var ret []string
+	for _, label := range labels {
+		if label.Name != nil && strings.HasPrefix(*label.Name, prefix) {
+			ret = append(ret, *label.Name)
 		}
-		users, response, err := client.Organizations.ListTeamMembers(team, listOpts)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, users...)
-		if response.LastPage == 0 || response.LastPage == page {
-			break
-		}
-		page++
 	}
-	return result, nil
+	return ret
 }
 
-func fetchAllTeams(client *github.Client, org string) ([]github.Team, error) {
-	page := 1
-	var result []github.Team
-	for {
-		glog.V(4).Infof("Fetching page %d of all teams", page)
-		listOpts := &github.ListOptions{PerPage: 100, Page: page}
-		teams, response, err := client.Organizations.ListTeams(org, listOpts)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, teams...)
-		if response.LastPage == 0 || response.LastPage == page {
-			break
-		}
-		page++
+func (config *GithubConfig) AddLabels(prNum int, labels []string) error {
+	if config.DryRun {
+		glog.Infof("Would have added labels %v to PR %d --dry-run is set", labels, prNum)
+		return nil
 	}
-	return result, nil
+	if _, _, err := config.client.Issues.AddLabelsToIssue(config.Org, config.Project, prNum, labels); err != nil {
+		glog.Errorf("Failed to set labels %v for %d: %v", labels, prNum, err)
+		return err
+	}
+	return nil
 }
 
-// Get PRs (which are issues) via the issues api, so that we can filter by labels, greatly speeding up the queue.
-// Non-PR issues will be filtered out.
-func fetchAllPRsWithLabels(client *github.Client, user, project string, labels []string) ([]github.Issue, error) {
-	page := 1
+func (config *GithubConfig) RemoveLabel(prNum int, label string) error {
+	if config.DryRun {
+		glog.Infof("Would have removed label %q to PR %d --dry-run is set", label, prNum)
+		return nil
+	}
+	if _, err := config.client.Issues.RemoveLabelForIssue(config.Org, config.Project, prNum, label); err != nil {
+		glog.Errorf("Failed to remove %d from issue %d: %v", label, prNum, err)
+		return err
+	}
+	return nil
+}
+
+// Get all issues that have a given label.
+func (config *GithubConfig) fetchAllIssuesWithLabels(labels []string) ([]github.Issue, error) {
+	page := 0
 	var result []github.Issue
 	for {
-		glog.V(4).Infof("Fetching page %d", page)
+		glog.V(4).Infof("Fetching page %d of issues", page)
 		listOpts := &github.IssueListByRepoOptions{
 			Sort:        "created",
 			Labels:      labels,
 			State:       "open",
 			ListOptions: github.ListOptions{PerPage: 100, Page: page},
 		}
-		issues, response, err := client.Issues.ListByRepo(user, project, listOpts)
+		issues, response, err := config.client.Issues.ListByRepo(config.Org, config.Project, listOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -171,16 +215,16 @@ func fetchAllPRsWithLabels(client *github.Client, user, project string, labels [
 	return result, nil
 }
 
-func fetchAllPRs(client *github.Client, user, project string) ([]github.PullRequest, error) {
-	page := 1
+func (config *GithubConfig) fetchAllPRs() ([]github.PullRequest, error) {
+	page := 0
 	var result []github.PullRequest
 	for {
-		glog.V(4).Infof("Fetching page %d", page)
+		glog.V(4).Infof("Fetching page %d of PRs", page)
 		listOpts := &github.PullRequestListOptions{
 			Sort:        "desc",
 			ListOptions: github.ListOptions{PerPage: 100, Page: page},
 		}
-		prs, response, err := client.PullRequests.List(user, project, listOpts)
+		prs, response, err := config.client.PullRequests.List(config.Org, config.Project, listOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -193,33 +237,10 @@ func fetchAllPRs(client *github.Client, user, project string) ([]github.PullRequ
 	return result, nil
 }
 
-type PRFunction func(*github.Client, *github.PullRequest, *github.Issue) error
+type PRFunction func(*github.PullRequest, *github.Issue) error
 
-type FilterConfig struct {
-	MinPRNumber int
-
-	// non-committer users believed safe
-	AdditionalUserWhitelist []string
-
-	// Committers are static here in case they can't be gotten dynamically;
-	// they do not need to be whitelisted.
-	Committers []string
-
-	// The label needed to override absence from whitelist.
-	WhitelistOverride string
-
-	// If true, don't make any mutating API calls
-	DryRun                 bool
-	DontRequireE2ELabel    string
-	E2EStatusContext       string
-	RequiredStatusContexts []string
-
-	// Private, cached
-	userWhitelist util.StringSet
-}
-
-func lastModifiedTime(client *github.Client, user, project string, pr *github.PullRequest) (*time.Time, error) {
-	list, _, err := client.PullRequests.ListCommits(user, project, *pr.Number, &github.ListOptions{})
+func (config *GithubConfig) LastModifiedTime(prNum int) (*time.Time, error) {
+	list, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -233,11 +254,86 @@ func lastModifiedTime(client *github.Client, user, project string, pr *github.Pu
 	return lastModified, nil
 }
 
-func GetAllEventsForPR(client *github.Client, user, project string, prNumber int) ([]github.IssueEvent, error) {
-	events := []github.IssueEvent{}
-	page := 1
+func (config *GithubConfig) fetchAllUsers(team int) ([]github.User, error) {
+	page := 0
+	var result []github.User
 	for {
-		eventPage, response, err := client.Issues.ListIssueEvents(user, project, prNumber, &github.ListOptions{Page: page})
+		glog.V(4).Infof("Fetching page %d of all users", page)
+		listOpts := &github.OrganizationListTeamMembersOptions{
+			ListOptions: github.ListOptions{PerPage: 100, Page: page},
+		}
+		users, response, err := config.client.Organizations.ListTeamMembers(team, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, users...)
+		if response.LastPage == 0 || response.LastPage == page {
+			break
+		}
+		page++
+	}
+	return result, nil
+}
+
+func (config *GithubConfig) fetchAllTeams() ([]github.Team, error) {
+	page := 0
+	var result []github.Team
+	for {
+		glog.V(4).Infof("Fetching page %d of all teams", page)
+		listOpts := &github.ListOptions{PerPage: 100, Page: page}
+		teams, response, err := config.client.Organizations.ListTeams(config.Org, listOpts)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, teams...)
+		if response.LastPage == 0 || response.LastPage == page {
+			break
+		}
+		page++
+	}
+	return result, nil
+}
+
+func (config *GithubConfig) UsersWithCommit() ([]string, error) {
+	userSet := util.StringSet{}
+
+	teams, err := config.fetchAllTeams()
+	if err != nil {
+		glog.Errorf("%v", err)
+		return nil, err
+	}
+
+	teamIDs := []int{}
+	for _, team := range teams {
+		repo, _, err := config.client.Organizations.IsTeamRepo(*team.ID, config.Org, config.Project)
+		if repo == nil || err != nil {
+			continue
+		}
+		perms := *repo.Permissions
+		if perms["push"] {
+			teamIDs = append(teamIDs, *team.ID)
+		}
+	}
+
+	for _, team := range teamIDs {
+		users, err := config.fetchAllUsers(team)
+		if err != nil {
+			glog.Errorf("%v", err)
+			continue
+		}
+		for _, user := range users {
+			userSet.Insert(*user.Login)
+		}
+	}
+
+	return userSet.List(), nil
+}
+
+func (config *GithubConfig) GetAllEventsForPR(prNum int) ([]github.IssueEvent, error) {
+	events := []github.IssueEvent{}
+	page := 0
+	for {
+		eventPage, response, err := config.client.Issues.ListIssueEvents(config.Org, config.Project, prNum, &github.ListOptions{Page: page})
 		if err != nil {
 			glog.Errorf("Error getting events for issue: %v", err)
 			return nil, err
@@ -251,218 +347,15 @@ func GetAllEventsForPR(client *github.Client, user, project string, prNumber int
 	return events, nil
 }
 
-func validateLGTMAfterPush(client *github.Client, user, project string, pr *github.PullRequest, lastModifiedTime *time.Time) (bool, error) {
-	var lgtmTime *time.Time
-	events, err := GetAllEventsForPR(client, user, project, *pr.Number)
-	if err != nil {
-		return false, err
-	}
-	for ix := range events {
-		event := &events[ix]
-		if *event.Event == "labeled" && *event.Label.Name == "lgtm" {
-			if lgtmTime == nil || event.CreatedAt.After(*lgtmTime) {
-				lgtmTime = event.CreatedAt
-			}
-		}
-	}
-	if lgtmTime == nil {
-		return false, fmt.Errorf("Couldn't find time for LGTM label, this shouldn't happen, skipping PR: %d", *pr.Number)
-	}
-	return lastModifiedTime.Before(*lgtmTime), nil
-}
-
-func UsersWithCommit(client *github.Client, org, project string) ([]string, error) {
-	userSet := util.StringSet{}
-
-	teams, err := fetchAllTeams(client, org)
-	if err != nil {
-		glog.Errorf("%v", err)
-		return nil, err
-	}
-
-	teamIDs := []int{}
-	for _, team := range teams {
-		repo, _, err := client.Organizations.IsTeamRepo(*team.ID, org, project)
-		if repo == nil || err != nil {
-			continue
-		}
-		perms := *repo.Permissions
-		if perms["push"] {
-			teamIDs = append(teamIDs, *team.ID)
-		}
-	}
-
-	for _, team := range teamIDs {
-		users, err := fetchAllUsers(client, team)
-		if err != nil {
-			glog.Errorf("%v", err)
-			continue
-		}
-		for _, user := range users {
-			userSet.Insert(*user.Login)
-		}
-	}
-
-	return userSet.List(), nil
-}
-
-// RefreshWhitelist updates the whitelist, re-getting the list of committers.
-func (config *FilterConfig) RefreshWhitelist(client *github.Client, user, project string) util.StringSet {
-	userSet := util.StringSet{}
-	userSet.Insert(config.AdditionalUserWhitelist...)
-	if usersWithCommit, err := UsersWithCommit(client, user, project); err != nil {
-		glog.Info("Falling back to static committers list.")
-		// Use the static list if there was an error getting the list dynamically
-		userSet.Insert(config.Committers...)
-	} else {
-		userSet.Insert(usersWithCommit...)
-	}
-	config.userWhitelist = userSet
-	return userSet
-}
-
-// For each PR in the project that matches:
-//   * pr.Number > minPRNumber
-//   * is mergeable
-//   * has labels "cla: yes", "lgtm"
-//   * combinedStatus = 'success' (e.g. all hooks have finished success in github)
-// Run the specified function
-func ForEachCandidatePRDo(client *github.Client, user, project string, fn PRFunction, once bool, config *FilterConfig) error {
-	// Get all PRs that have lgtm and cla: yes labels
-	issues, err := fetchAllPRsWithLabels(client, user, project, []string{"lgtm", "cla: yes"})
-	if err != nil {
-		return err
-	}
-
-	if config.userWhitelist == nil {
-		config.RefreshWhitelist(client, user, project)
-	}
-
-	userSet := config.userWhitelist
-
-	for ix := range issues {
-		issue := &issues[ix]
-		if issue.User == nil || issue.User.Login == nil {
-			glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
-			continue
-		}
-		if *issue.Number < config.MinPRNumber {
-			glog.V(6).Infof("Dropping %d < %d", *issue.Number, config.MinPRNumber)
-			continue
-		}
-		glog.V(2).Infof("----==== %d ====----", *issue.Number)
-
-		glog.V(8).Infof("%v", issue.Labels)
-		if !HasLabels(issue.Labels, []string{"lgtm", "cla: yes"}) {
-			glog.V(2).Infof("Skipping %d - doesn't have requisite labels", *issue.Number)
-			continue
-		}
-
-		pr, _, err := client.PullRequests.Get(user, project, *issue.Number)
-		if err != nil {
-			glog.Errorf("Error getting pull request: %v", err)
-			continue
-		}
-
-		if !HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*pr.User.Login) {
-			glog.V(4).Infof("Dropping %d since %s isn't in whitelist and %s isn't present", *pr.Number, *pr.User.Login, config.WhitelistOverride)
-			if config.DryRun {
-				glog.Infof("PR %d: would have asked for ok-to-merge but DryRun is true", *pr.Number)
-				continue
-			}
-			if !HasLabel(issue.Labels, NeedsOKToMergeLabel) {
-				if _, _, err := client.Issues.AddLabelsToIssue(user, project, *pr.Number, []string{NeedsOKToMergeLabel}); err != nil {
-					glog.Errorf("Failed to set 'needs-ok-to-merge' for %d", *pr.Number)
-				}
-				body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
-				if _, _, err := client.Issues.CreateComment(user, project, *pr.Number, &github.IssueComment{Body: &body}); err != nil {
-					glog.Errorf("Failed to add a comment for %d", *pr.Number)
-				}
-			}
-			continue
-		}
-
-		// Tidy up the issue list.
-		if HasLabel(issue.Labels, NeedsOKToMergeLabel) && !config.DryRun {
-			if _, err := client.Issues.RemoveLabelForIssue(user, project, *pr.Number, NeedsOKToMergeLabel); err != nil {
-				glog.Warningf("Failed to remove 'needs-ok-to-merge' from issue %d, which doesn't need it", *pr.Number)
-			}
-		}
-
-		lastModifiedTime, err := lastModifiedTime(client, user, project, pr)
-		if err != nil {
-			glog.Errorf("Failed to get last modified time, skipping PR: %d", *pr.Number)
-			continue
-		}
-		if ok, err := validateLGTMAfterPush(client, user, project, pr, lastModifiedTime); err != nil {
-			glog.Errorf("Error validating LGTM: %v, Skipping: %d", err, *pr.Number)
-			continue
-		} else if !ok {
-			if config.DryRun {
-				glog.Info("PR was pushed after LGTM, would have removed LGTM, but DryRun is true")
-				continue
-			}
-			glog.Errorf("PR pushed after LGTM, attempting to remove LGTM and skipping")
-			staleLGTMBody := "LGTM was before last commit, removing LGTM"
-			if _, _, err := client.Issues.CreateComment(user, project, *pr.Number, &github.IssueComment{Body: &staleLGTMBody}); err != nil {
-				glog.Warningf("Failed to create remove label comment: %v", err)
-			}
-			if _, err := client.Issues.RemoveLabelForIssue(user, project, *pr.Number, "lgtm"); err != nil {
-				glog.Warningf("Failed to remove 'lgtm' label for stale lgtm on %d", *pr.Number)
-			}
-			continue
-		}
-
-		// This is annoying, github appears to only temporarily cache mergeability, if it is nil, wait
-		// for an async refresh and retry.
-		if pr.Mergeable == nil {
-			glog.Infof("Waiting for mergeability on %s %d", *pr.Title, *pr.Number)
-			// TODO: determine what a good empirical setting for this is.
-			time.Sleep(10 * time.Second)
-			pr, _, err = client.PullRequests.Get(user, project, *pr.Number)
-		}
-		if pr.Mergeable == nil {
-			glog.Errorf("No mergeability information for %s %d, Skipping.", *pr.Title, *pr.Number)
-			continue
-		}
-		if !*pr.Mergeable {
-			glog.V(2).Infof("Skipping %d - not mergable", *pr.Number)
-			continue
-		}
-
-		// Validate the status information for this PR
-		contexts := config.RequiredStatusContexts
-		if len(config.DontRequireE2ELabel) == 0 || !HasLabel(issue.Labels, config.DontRequireE2ELabel) {
-			contexts = append(contexts, config.E2EStatusContext)
-		}
-		ok, err := ValidateStatus(client, user, project, *pr.Number, contexts, false)
-		if err != nil {
-			glog.Errorf("Error validating PR status: %v", err)
-			continue
-		}
-		if !ok {
-			continue
-		}
-		if err := fn(client, pr, issue); err != nil {
-			glog.Errorf("Failed to run user function: %v", err)
-			break
-		}
-		if once {
-			break
-		}
-	}
-	return nil
-}
-
-func getCommitStatus(client *github.Client, user, project string, prNumber int) ([]*github.CombinedStatus, error) {
-	commits, _, err := client.PullRequests.ListCommits(user, project, prNumber, &github.ListOptions{})
+func (config *GithubConfig) getCommitStatus(prNum int) ([]*github.CombinedStatus, error) {
+	commits, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 	commitStatus := make([]*github.CombinedStatus, len(commits))
 	for ix := range commits {
 		commit := &commits[ix]
-		statusList, _, err := client.Repositories.GetCombinedStatus(user, project, *commit.SHA, &github.ListOptions{})
+		statusList, _, err := config.client.Repositories.GetCombinedStatus(config.Org, config.Project, *commit.SHA, &github.ListOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -478,8 +371,8 @@ func getCommitStatus(client *github.Client, user, project string, prNumber int) 
 //    * If any commit is 'error', the PR is in 'error'
 //    * If any commit is 'failure', the PR is 'failure'
 //    * Otherwise the PR is 'success'
-func GetStatus(client *github.Client, user, project string, prNumber int, requiredContexts []string) (string, error) {
-	statusList, err := getCommitStatus(client, user, project, prNumber)
+func (config *GithubConfig) GetStatus(prNum int, requiredContexts []string) (string, error) {
+	statusList, err := config.getCommitStatus(prNum)
 	if err != nil {
 		return "", err
 	}
@@ -491,8 +384,7 @@ func computeStatus(statusList []*github.CombinedStatus, requiredContexts []strin
 	providers := util.StringSet{}
 	for ix := range statusList {
 		status := statusList[ix]
-		glog.V(8).Infof("Checking commit: %s", *status.SHA)
-		glog.V(8).Infof("Checking commit: %v", status)
+		glog.V(8).Infof("Checking commit: %s status:%v", *status.SHA, status)
 		states.Insert(*status.State)
 
 		for _, subStatus := range status.Statuses {
@@ -502,7 +394,7 @@ func computeStatus(statusList []*github.CombinedStatus, requiredContexts []strin
 	}
 	for _, provider := range requiredContexts {
 		if !providers.Has(provider) {
-			glog.V(8).Infof("Failed to find %s in %v", provider, providers)
+			glog.V(8).Infof("Failed to find %q in %v", provider, providers)
 			return "incomplete"
 		}
 	}
@@ -521,10 +413,10 @@ func computeStatus(statusList []*github.CombinedStatus, requiredContexts []strin
 
 // Make sure that the combined status for all commits in a PR is 'success'
 // if 'waitForPending' is true, this function will wait until the PR is no longer pending (all checks have run)
-func ValidateStatus(client *github.Client, user, project string, prNumber int, requiredContexts []string, waitOnPending bool) (bool, error) {
+func (config *GithubConfig) ValidateStatus(prNum int, requiredContexts []string, waitOnPending bool) (bool, error) {
 	pending := true
 	for pending {
-		status, err := GetStatus(client, user, project, prNumber, requiredContexts)
+		status, err := config.GetStatus(prNum, requiredContexts)
 		if err != nil {
 			return false, err
 		}
@@ -543,7 +435,7 @@ func ValidateStatus(client *github.Client, user, project string, prNumber int, r
 		case "incomplete":
 			return false, nil
 		default:
-			return false, fmt.Errorf("unknown status: %s", status)
+			return false, fmt.Errorf("unknown status: %q", status)
 		}
 	}
 	return true, nil
@@ -552,9 +444,9 @@ func ValidateStatus(client *github.Client, user, project string, prNumber int, r
 // Wait for a PR to move into Pending.  This is useful because the request to test a PR again
 // is asynchronous with the PR actually moving into a pending state
 // TODO: add a timeout
-func WaitForPending(client *github.Client, user, project string, prNumber int) error {
+func (config *GithubConfig) WaitForPending(prNum int) error {
 	for {
-		status, err := GetStatus(client, user, project, prNumber, []string{})
+		status, err := config.GetStatus(prNum, []string{})
 		if err != nil {
 			return err
 		}
@@ -564,4 +456,210 @@ func WaitForPending(client *github.Client, user, project string, prNumber int) e
 		glog.V(4).Info("PR is not pending, waiting for 30 seconds")
 		time.Sleep(30 * time.Second)
 	}
+}
+
+func (config *GithubConfig) GetCommits(prNum int) ([]github.RepositoryCommit, error) {
+	//TODO: this should handle paging, I believe....
+	commits, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return commits, nil
+}
+
+func (config *GithubConfig) GetFilledCommits(prNum int) ([]github.RepositoryCommit, error) {
+	commits, err := config.GetCommits(prNum)
+	if err != nil {
+		return nil, err
+	}
+	filledCommits := []github.RepositoryCommit{}
+	for _, c := range commits {
+		commit, _, err := config.client.Repositories.GetCommit(config.Org, config.Project, *c.SHA)
+		if err != nil {
+			glog.Errorf("Can't load commit %s %s %s", config.Org, config.Project, *commit.SHA)
+			continue
+		}
+		filledCommits = append(filledCommits, *commit)
+	}
+	return filledCommits, nil
+}
+
+func (config *GithubConfig) GetPR(prNum int) (*github.PullRequest, error) {
+	pr, _, err := config.client.PullRequests.Get(config.Org, config.Project, prNum)
+	if err != nil {
+		glog.Errorf("Error getting PR# %d: %v", prNum, err)
+		return nil, err
+	}
+	return pr, nil
+}
+
+func (config *GithubConfig) AssignPR(prNum int, owner string) error {
+	assignee := &github.IssueRequest{Assignee: &owner}
+	if config.DryRun {
+		glog.Infof("Would have assigned PR# %d  to %v but --dry-run was set", prNum, owner)
+		return nil
+	}
+	if _, _, err := config.client.Issues.Edit(config.Org, config.Project, prNum, assignee); err != nil {
+		glog.Errorf("Error assigning issue# %d to %v: %v", prNum, owner, err)
+		return err
+	}
+	return nil
+}
+
+func (config *GithubConfig) ClosePR(pr *github.PullRequest) error {
+	if config.DryRun {
+		glog.Infof("Would have closed PR# %d but --dry-run was set", *pr.Number)
+		return nil
+	}
+	state := "closed"
+	pr.State = &state
+	if _, _, err := config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr); err != nil {
+		glog.Errorf("Failed to close pr %d: %v", *pr.Number, err)
+		return err
+	}
+	return nil
+}
+
+// OpenPR will attempt to open the given PR.
+func (config *GithubConfig) OpenPR(pr *github.PullRequest, numTries int) error {
+	if config.DryRun {
+		glog.Infof("Would have openned PR# %d but --dry-run was set", *pr.Number)
+		return nil
+	}
+	var err error
+	state := "open"
+	pr.State = &state
+	// Try pretty hard to re-open, since it's pretty bad if we accidentally leave a PR closed
+	for tries := 0; tries < numTries; tries++ {
+		if _, _, err = config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr); err == nil {
+			return nil
+		}
+		glog.Warningf("failed to re-open pr %d: %v", *pr.Number, err)
+		time.Sleep(5 * time.Second)
+	}
+	if err != nil {
+		glog.Errorf("failed to re-open pr %d after %d tries, giving up: %v", *pr.Number, numTries, err)
+	}
+	return err
+}
+
+func (config *GithubConfig) GetFileContents(file, sha string) (string, error) {
+	getOpts := &github.RepositoryContentGetOptions{Ref: sha}
+	output, _, _, err := config.client.Repositories.GetContents(config.Org, config.Project, file, getOpts)
+	if err != nil {
+		err = fmt.Errorf("Unable to get %q at commit %s", file, sha)
+		// I'm using .V(2) because .generated docs is still not in the repo...
+		glog.V(2).Infof("%v", err)
+		return "", err
+	}
+	if output == nil {
+		err = fmt.Errorf("Got empty contents for %q at commit %s", file, sha)
+		glog.Errorf("%v", err)
+		return "", err
+	}
+	b, err := output.Decode()
+	if err == nil {
+		glog.Errorf("Unable to decode file contents: %v", err)
+		return "", err
+	}
+	return string(b), nil
+}
+
+// MergePR will merge the given PR, duh
+// "who" is who is doing the merging, like "submit-queue"
+func (config *GithubConfig) MergePR(prNum int, who string) error {
+	if config.DryRun {
+		glog.Infof("Would have merged %d but --dry-run is set", prNum)
+		return nil
+	}
+	glog.Infof("Merging PR# %d", prNum)
+	mergeBody := "Automatic merge from " + who
+	config.WriteComment(prNum, mergeBody)
+	if _, _, err := config.client.PullRequests.Merge(config.Org, config.Project, prNum, "Auto commit by PR queue bot"); err != nil {
+		glog.Errorf("Failed to create merge comment: %v", err)
+		return err
+	}
+	return nil
+}
+
+// WriteComment will send the `msg` as a comment to the specified PR
+func (config *GithubConfig) WriteComment(prNum int, msg string) error {
+	if config.DryRun {
+		glog.Infof("Would have commented %q in %d but --dry-run is set", msg, prNum)
+		return nil
+	}
+	glog.Infof("Adding comment: %q to PR %d", msg, prNum)
+	if _, _, err := config.client.Issues.CreateComment(config.Org, config.Project, prNum, &github.IssueComment{Body: &msg}); err != nil {
+		glog.Errorf("%v", err)
+		return err
+	}
+	return nil
+}
+
+// IsPRMergeable will return if the PR is mergeable. It will pause and get the
+// PR again if github did not respond the first time. So the hopefully github
+// will have a response the second time. If we have no answer twice, we return
+// false
+func (config *GithubConfig) IsPRMergeable(pr *github.PullRequest) (bool, error) {
+	if pr.Mergeable == nil {
+		var err error
+		glog.Infof("Waiting for mergeability on %q %d", *pr.Title, *pr.Number)
+		// TODO: determine what a good empirical setting for this is.
+		time.Sleep(2 * time.Second)
+		pr, err = config.GetPR(*pr.Number)
+		if err != nil {
+			glog.Errorf("Unable to get PR# %d: %v", *pr.Number, err)
+			return false, err
+		}
+	}
+	if pr.Mergeable == nil {
+		err := fmt.Errorf("No mergeability information for %q %d, Skipping.", *pr.Title, *pr.Number)
+		glog.Errorf("%v", err)
+		return false, err
+	}
+	if !*pr.Mergeable {
+		return false, nil
+	}
+	return true, nil
+
+}
+
+// For each Issue in the project that matches:
+//   * pr.Number >= minPRNumber
+//   * pr.Number <= maxPRNumber
+//   * all labels are on the PR
+// Run the specified function
+func (config *GithubConfig) ForEachIssueDo(labels []string, fn PRFunction) error {
+	issues, err := config.fetchAllIssuesWithLabels(labels)
+	if err != nil {
+		return err
+	}
+
+	for ix := range issues {
+		issue := &issues[ix]
+		if issue.User == nil || issue.User.Login == nil {
+			glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
+			continue
+		}
+		if *issue.Number < config.MinPRNumber {
+			glog.V(6).Infof("Dropping %d < %d", *issue.Number, config.MinPRNumber)
+			continue
+		}
+		if *issue.Number > config.MaxPRNumber {
+			glog.V(6).Infof("Dropping %d > %d", *issue.Number, config.MaxPRNumber)
+			continue
+		}
+		glog.V(2).Infof("----==== %d ====----", *issue.Number)
+		glog.V(8).Infof("%v", issue.Labels)
+
+		pr, _, err := config.client.PullRequests.Get(config.Org, config.Project, *issue.Number)
+		if err != nil {
+			glog.Errorf("Error getting pull request: %v", err)
+			continue
+		}
+		if err := fn(pr, issue); err != nil {
+			return err
+		}
+	}
+	return nil
 }
