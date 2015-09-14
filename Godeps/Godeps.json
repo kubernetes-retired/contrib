@@ -20,6 +20,11 @@
 			"Rev": "4cceaf7283b76f27c4a732b20730dcdb61053bf5"
 		},
 		{
+			"ImportPath": "github.com/cpuguy83/go-md2man/md2man",
+			"Comment": "v1.0.4",
+			"Rev": "71acacd42f85e5e82f70a55327789582a5200a90"
+		},
+		{
 			"ImportPath": "github.com/davecgh/go-spew/spew",
 			"Rev": "3e6e67c4dcea3ac2f25fd4731abc0e1deaf36216"
 		},
@@ -57,10 +62,6 @@
 			"Rev": "588cb435e59ee8b6c2795482887755841ad67207"
 		},
 		{
-			"ImportPath": "github.com/gregjones/httpcache",
-			"Rev": "a2645c9fb8bb4ad1cbad1bef941af9f8a32287de"
-		},
-		{
 			"ImportPath": "github.com/golang/glog",
 			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
 		},
@@ -84,6 +85,10 @@
 		{
 			"ImportPath": "github.com/google/gofuzz",
 			"Rev": "bbcb9da2d746f8bdbd6a936686a0a6067ada0ec5"
+		},
+		{
+			"ImportPath": "github.com/gregjones/httpcache",
+			"Rev": "a2645c9fb8bb4ad1cbad1bef941af9f8a32287de"
 		},
 		{
 			"ImportPath": "github.com/imdario/mergo",
@@ -131,12 +136,22 @@
 			"Rev": "490cc6eb5fa45bf8a8b7b73c8bc82a8160e8531d"
 		},
 		{
+			"ImportPath": "github.com/russross/blackfriday",
+			"Comment": "v1.2-80-g8cec3a8",
+			"Rev": "8cec3a854e68dba10faabbe31c089abf4a3e57a6"
+		},
+		{
+			"ImportPath": "github.com/shurcooL/sanitized_anchor_name",
+			"Rev": "244f5ac324cb97e1987ef901a0081a77bfd8e845"
+		},
+		{
 			"ImportPath": "github.com/spf13/cobra",
-			"Rev": "385fc87e4343efec233811d3d933509e8975d11a"
+			"Rev": "6d7031177028ad8c5b4b428ac9a2288fbc1c0649"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
-			"Rev": "534019bcaea096fc0f0641afa2aed1e80cbb0ccc"
+			"Comment": "v0.0.1-101-gf735fdf",
+			"Rev": "f735fdff4ffb34299727eb2e3c9abab588742d41"
 		},
 		{
 			"ImportPath": "github.com/ugorji/go/codec",
