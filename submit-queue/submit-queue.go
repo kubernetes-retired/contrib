@@ -84,32 +84,36 @@ const (
 	project = "kubernetes"
 )
 
-type e2eTester struct {
-	sync.Mutex
+type ExternalState struct {
 	// exported so that the json marshaller will print them
 	CurrentPR   *github_api.PullRequest
 	Message     []string
 	Err         error
 	BuildStatus map[string]string
-	Config      *github.FilterConfig
 	Whitelist   []string
+}
+
+type e2eTester struct {
+	sync.Mutex
+	state       *ExternalState
+	BuildStatus map[string]string
+	Config      *github.FilterConfig
 }
 
 func (e *e2eTester) msg(msg string, args ...interface{}) {
 	e.Lock()
 	defer e.Unlock()
-	if len(e.Message) > 50 {
-		e.Message = e.Message[1:]
+	if len(e.state.Message) > 50 {
+		e.state.Message = e.state.Message[1:]
 	}
 	expanded := fmt.Sprintf(msg, args...)
-	e.Message = append(e.Message, fmt.Sprintf("%v: %v", time.Now().UTC(), expanded))
+	e.state.Message = append(e.state.Message, fmt.Sprintf("%v: %v", time.Now().UTC(), expanded))
 	glog.V(2).Info(expanded)
 }
-
 func (e *e2eTester) error(err error) {
 	e.Lock()
 	defer e.Unlock()
-	e.Err = err
+	e.state.Err = err
 }
 
 func (e *e2eTester) locked(f func()) {
@@ -154,8 +158,8 @@ func (e *e2eTester) waitForStableBuilds() {
 
 // This is called on a potentially mergeable PR
 func (e *e2eTester) runE2ETests(client *github_api.Client, pr *github_api.PullRequest, issue *github_api.Issue) error {
-	e.locked(func() { e.CurrentPR = pr })
-	defer e.locked(func() { e.CurrentPR = nil })
+	e.locked(func() { e.state.CurrentPR = pr })
+	defer e.locked(func() { e.state.CurrentPR = nil })
 	e.msg("Considering PR %d", *pr.Number)
 
 	e.waitForStableBuilds()
@@ -214,8 +218,13 @@ func (e *e2eTester) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		data []byte
 		err  error
 	)
-	e.locked(func() { data, err = json.MarshalIndent(e, "", "\t") })
-
+	e.locked(func() {
+		if e.state != nil {
+			data, err = json.MarshalIndent(e.state, "", "\t")
+		} else {
+			data = []byte("{}")
+		}
+	})
 	res.Header().Set("Content-type", "application/json")
 	if err != nil {
 		res.WriteHeader(http.StatusInternalServerError)
@@ -325,6 +334,7 @@ func main() {
 	e2e := &e2eTester{
 		BuildStatus: map[string]string{},
 		Config:      config,
+		state:       &ExternalState{},
 	}
 	if len(*address) > 0 {
 		if len(*www) > 0 {
@@ -336,7 +346,7 @@ func main() {
 	for !*oneOff {
 		e2e.msg("Beginning PR scan...")
 		wl := config.RefreshWhitelist(client, org, project)
-		e2e.locked(func() { e2e.Whitelist = wl.List() })
+		e2e.locked(func() { e2e.state.Whitelist = wl.List() })
 		if err := github.ForEachCandidatePRDo(client, org, project, e2e.runE2ETests, *oneOff, config); err != nil {
 			glog.Errorf("Error getting candidate PRs: %v", err)
 		}
