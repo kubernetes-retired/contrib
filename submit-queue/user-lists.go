@@ -74,6 +74,7 @@ func loadWhitelist(file string) ([]string, error) {
 
 func writeWhitelist(fileName, header string, items []string) error {
 	items = append([]string{header}, items...)
+	items = append(items, "")
 	return ioutil.WriteFile(fileName, []byte(strings.Join(items, "\n")), 0640)
 }
 
