@@ -23,6 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
 )
@@ -36,7 +37,7 @@ func storeEps(eps []*api.Endpoints) cache.Store {
 	for i := range eps {
 		found = append(found, eps[i])
 	}
-	if err := store.Replace(found); err != nil {
+	if err := store.Replace(found, "1"); err != nil {
 		glog.Fatalf("Unable to replace endpoints %v", err)
 	}
 	return store
@@ -49,7 +50,7 @@ func storeServices(svcs []*api.Service) cache.Store {
 	for i := range svcs {
 		found = append(found, svcs[i])
 	}
-	if err := store.Replace(found); err != nil {
+	if err := store.Replace(found, "1"); err != nil {
 		glog.Fatalf("Unable to replace services %v", err)
 	}
 	return store
@@ -110,12 +111,12 @@ func TestGetEndpoints(t *testing.T) {
 
 	for i := range ports {
 		eps := flb.getEndpoints(svc, &svc.Spec.Ports[i])
-		expectedEps := util.NewStringSet()
+		expectedEps := sets.NewString()
 		for _, address := range endpointAddresses {
 			expectedEps.Insert(fmt.Sprintf("%v:%v", address.IP, ports[i]))
 		}
 
-		receivedEps := util.NewStringSet()
+		receivedEps := sets.NewString()
 		for _, ep := range eps {
 			receivedEps.Insert(ep)
 		}
@@ -159,11 +160,11 @@ func TestGetServices(t *testing.T) {
 	}
 
 	// All pods of svc1 exposed under servicePort 20 are tcp
-	expectedTCPEps := util.NewStringSet()
+	expectedTCPEps := sets.NewString()
 	for _, address := range endpointAddresses {
 		expectedTCPEps.Insert(fmt.Sprintf("%v:%v", address.IP, 443))
 	}
-	receivedTCPEps := util.NewStringSet()
+	receivedTCPEps := sets.NewString()
 	for _, ep := range tcp[0].Ep {
 		receivedTCPEps.Insert(ep)
 	}
@@ -172,10 +173,10 @@ func TestGetServices(t *testing.T) {
 	}
 
 	// All pods of either service not mentioned in the tcpmap are multiplexed on port  :80 as http services.
-	expectedURLMapping := map[string]util.StringSet{
-		fmt.Sprintf("%v:%v", svc1.Name, 10): util.NewStringSet("1.2.3.4:80", "6.7.8.9:80"),
-		fmt.Sprintf("%v:%v", svc2.Name, 10): util.NewStringSet("1.2.3.4:80", "6.7.8.9:80"),
-		fmt.Sprintf("%v:%v", svc2.Name, 20): util.NewStringSet("1.2.3.4:443", "6.7.8.9:443"),
+	expectedURLMapping := map[string]sets.String{
+		fmt.Sprintf("%v:%v", svc1.Name, 10): sets.NewString("1.2.3.4:80", "6.7.8.9:80"),
+		fmt.Sprintf("%v:%v", svc2.Name, 10): sets.NewString("1.2.3.4:80", "6.7.8.9:80"),
+		fmt.Sprintf("%v:%v", svc2.Name, 20): sets.NewString("1.2.3.4:443", "6.7.8.9:443"),
 	}
 	for _, s := range http {
 		if s.FrontendPort != 80 {
@@ -185,7 +186,7 @@ func TestGetServices(t *testing.T) {
 		if !ok {
 			t.Fatalf("Expected url endpoint %v, found %+v", s.Name, expectedURLMapping)
 		}
-		receivedEp := util.NewStringSet()
+		receivedEp := sets.NewString()
 		for i := range s.Ep {
 			receivedEp.Insert(s.Ep[i])
 		}
