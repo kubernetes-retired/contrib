@@ -130,51 +130,76 @@ func TestHasLabels(t *testing.T) {
 	}
 }
 
-func TestFetchAllPRs(t *testing.T) {
+func TestFetchAllIssuessWithLabels(t *testing.T) {
+	prlinks := github.PullRequestLinks{}
 	tests := []struct {
-		PullRequests [][]github.PullRequest
-		Pages        []int
+		Issues   [][]github.Issue
+		Pages    []int
+		ValidPRs int
 	}{
 		{
-			PullRequests: [][]github.PullRequest{
+			Issues: [][]github.Issue{
 				{
-					{},
+					{
+						PullRequestLinks: &prlinks,
+					},
 				},
 			},
-			Pages: []int{0},
+			Pages:    []int{0},
+			ValidPRs: 1,
 		},
 		{
-			PullRequests: [][]github.PullRequest{
+			Issues: [][]github.Issue{
 				{
-					{},
+					{
+						PullRequestLinks: nil,
+					},
 				},
 				{
-					{},
+					{
+						PullRequestLinks: &prlinks,
+					},
 				},
 				{
-					{},
+					{
+						PullRequestLinks: &prlinks,
+					},
 				},
 				{
-					{},
+					{
+						PullRequestLinks: &prlinks,
+					},
 				},
 			},
-			Pages: []int{4, 4, 4, 0},
+			Pages:    []int{4, 4, 4, 0},
+			ValidPRs: 3,
 		},
 		{
-			PullRequests: [][]github.PullRequest{
+			Issues: [][]github.Issue{
 				{
-					{},
+					{
+						PullRequestLinks: &prlinks,
+					},
 				},
 				{
-					{},
+					{
+						PullRequestLinks: &prlinks,
+					},
 				},
 				{
-					{},
-					{},
-					{},
+					{
+						PullRequestLinks: &prlinks,
+					},
+					{
+						PullRequestLinks: &prlinks,
+					},
+					{
+						PullRequestLinks: &prlinks,
+					},
 				},
 			},
-			Pages: []int{3, 3, 0},
+			Pages:    []int{3, 3, 0},
+			ValidPRs: 5,
 		},
 	}
 
@@ -186,8 +211,7 @@ func TestFetchAllPRs(t *testing.T) {
 			Project: "bar",
 		}
 		count := 0
-		prCount := 0
-		mux.HandleFunc("/repos/foo/bar/pulls", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/repos/foo/bar/issues", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != "GET" {
 				t.Errorf("Unexpected method: %s", r.Method)
 			}
@@ -198,7 +222,7 @@ func TestFetchAllPRs(t *testing.T) {
 			if page != strconv.Itoa(count) {
 				t.Errorf("Unexpected page: %s", r.URL.Query().Get("page"))
 			}
-			if r.URL.Query().Get("sort") != "desc" {
+			if r.URL.Query().Get("sort") != "created" {
 				t.Errorf("Unexpected sort: %s", r.URL.Query().Get("sort"))
 			}
 			if r.URL.Query().Get("per_page") != "100" {
@@ -207,8 +231,7 @@ func TestFetchAllPRs(t *testing.T) {
 			w.Header().Add("Link",
 				fmt.Sprintf("<https://api.github.com/?page=%d>; rel=\"last\"", test.Pages[count]))
 			w.WriteHeader(http.StatusOK)
-			data, err := json.Marshal(test.PullRequests[count])
-			prCount += len(test.PullRequests[count])
+			data, err := json.Marshal(test.Issues[count])
 			if err != nil {
 				t.Errorf("Unexpected error: %v", err)
 			}
@@ -216,15 +239,15 @@ func TestFetchAllPRs(t *testing.T) {
 			w.Write(data)
 			count++
 		})
-		prs, err := config.fetchAllPRs()
+		prs, err := config.fetchAllIssuesWithLabels([]string{})
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
-		if len(prs) != prCount {
-			t.Errorf("unexpected output %d vs %d", len(prs), prCount)
+		if len(prs) != test.ValidPRs {
+			t.Errorf("unexpected output %d vs %d", len(prs), test.ValidPRs)
 		}
 
-		if count != len(test.PullRequests) {
+		if count != len(test.Issues) {
 			t.Errorf("unexpected number of fetches: %d", count)
 		}
 		server.Close()
