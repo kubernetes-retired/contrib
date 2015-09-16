@@ -1,4 +1,4 @@
-# remove dups with ./submit-queue -gen-committers
+# remove dups with ./submit-queue gen-committers
 deads2k
 ghodss
 jayunit100
