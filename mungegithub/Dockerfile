@@ -18,5 +18,3 @@ RUN apt-get update
 RUN apt-get install -y -qq ca-certificates
 ADD mungegithub /mungegithub
 ADD blunderbuss.yml /blunderbuss.yml
-ADD run.sh /run.sh
-RUN chmod a+x /run.sh
