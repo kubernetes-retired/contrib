@@ -130,6 +130,9 @@ func TestHasLabels(t *testing.T) {
 	}
 }
 
+// For getting an initializied int pointer.
+func intp(i int) *int { return &i }
+
 func TestFetchAllIssuessWithLabels(t *testing.T) {
 	prlinks := github.PullRequestLinks{}
 	tests := []struct {
@@ -142,6 +145,7 @@ func TestFetchAllIssuessWithLabels(t *testing.T) {
 				{
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(1),
 					},
 				},
 			},
@@ -158,16 +162,19 @@ func TestFetchAllIssuessWithLabels(t *testing.T) {
 				{
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(2),
 					},
 				},
 				{
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(3),
 					},
 				},
 				{
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(4),
 					},
 				},
 			},
@@ -179,22 +186,27 @@ func TestFetchAllIssuessWithLabels(t *testing.T) {
 				{
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(1),
 					},
 				},
 				{
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(2),
 					},
 				},
 				{
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(3),
 					},
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(4),
 					},
 					{
 						PullRequestLinks: &prlinks,
+						Number:           intp(5),
 					},
 				},
 			},
