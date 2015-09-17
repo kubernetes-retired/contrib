@@ -47,6 +47,16 @@ __kubectl_get_resource()
     __kubectl_parse_get "${nouns[${#nouns[@]} -1]}"
 }
 
+__kubectl_get_resource_pod()
+{
+    __kubectl_parse_get "pod"
+}
+
+__kubectl_get_resource_rc()
+{
+    __kubectl_parse_get "rc"
+}
+
 # $1 is the name of the pod we want to get the list of containers inside
 __kubectl_get_containers()
 {
@@ -79,13 +89,21 @@ __kubectl_require_pod_and_container()
 __custom_func() {
     case ${last_command} in
         kubectl_get | kubectl_describe | kubectl_delete | kubectl_label | kubectl_stop)
-	    __kubectl_get_resource
+            __kubectl_get_resource
             return
             ;;
-	kubectl_logs)
-	    __kubectl_require_pod_and_container
-	    return
-	    ;;
+        kubectl_logs)
+            __kubectl_require_pod_and_container
+            return
+            ;;
+        kubectl_exec)
+            __kubectl_get_resource_pod
+            return
+            ;;
+        kubectl_rolling-update)
+            __kubectl_get_resource_rc
+            return
+            ;;
         *)
             ;;
     esac
@@ -94,6 +112,7 @@ __custom_func() {
 	valid_resources = `Valid resource types include:
    * pods (aka 'po')
    * replicationcontrollers (aka 'rc')
+   * daemonsets (aka 'ds')
    * services (aka 'svc')
    * events (aka 'ev')
    * nodes (aka 'no')
@@ -130,6 +149,7 @@ Find more information at https://github.com/kubernetes/kubernetes.`,
 	cmds.AddCommand(NewCmdReplace(f, out))
 	cmds.AddCommand(NewCmdPatch(f, out))
 	cmds.AddCommand(NewCmdDelete(f, out))
+	cmds.AddCommand(NewCmdEdit(f, out))
 
 	cmds.AddCommand(NewCmdNamespace(out))
 	cmds.AddCommand(NewCmdLog(f, out))

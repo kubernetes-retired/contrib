@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
 	"github.com/google/go-github/github"
@@ -273,7 +274,7 @@ func (config *GithubConfig) fetchAllTeams() ([]github.Team, error) {
 }
 
 func (config *GithubConfig) UsersWithCommit() ([]string, error) {
-	userSet := util.StringSet{}
+	userSet := sets.String{}
 
 	teams, err := config.fetchAllTeams()
 	if err != nil {
@@ -358,8 +359,8 @@ func (config *GithubConfig) GetStatus(prNum int, requiredContexts []string) (str
 }
 
 func computeStatus(statusList []*github.CombinedStatus, requiredContexts []string) string {
-	states := util.StringSet{}
-	providers := util.StringSet{}
+	states := sets.String{}
+	providers := sets.String{}
 	for ix := range statusList {
 		status := statusList[ix]
 		glog.V(8).Infof("Checking commit: %s status:%v", *status.SHA, status)

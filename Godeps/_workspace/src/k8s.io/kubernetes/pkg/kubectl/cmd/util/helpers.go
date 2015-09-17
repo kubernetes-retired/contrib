@@ -32,8 +32,8 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/latest"
-	"k8s.io/kubernetes/pkg/client"
-	"k8s.io/kubernetes/pkg/client/clientcmd"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
@@ -62,13 +62,37 @@ func AddSourceToErr(verb string, source string, err error) error {
 	return err
 }
 
+var fatalErrHandler = fatal
+
+// BehaviorOnFatal allows you to override the default behavior when a fatal
+// error occurs, which is call os.Exit(1). You can pass 'panic' as a function
+// here if you prefer the panic() over os.Exit(1).
+func BehaviorOnFatal(f func(string)) {
+	fatalErrHandler = f
+}
+
+// fatal prints the message and then exits. If V(2) or greater, glog.Fatal
+// is invoked for extended information.
+func fatal(msg string) {
+	// add newline if needed
+	if !strings.HasSuffix(msg, "\n") {
+		msg += "\n"
+	}
+
+	if glog.V(2) {
+		glog.FatalDepth(2, msg)
+	}
+	fmt.Fprint(os.Stderr, msg)
+	os.Exit(1)
+}
+
 // CheckErr prints a user friendly error to STDERR and exits with a non-zero
 // exit code. Unrecognized errors will be printed with an "error: " prefix.
 //
 // This method is generic to the command in use and may be used by non-Kubectl
 // commands.
 func CheckErr(err error) {
-	checkErr(err, fatal)
+	checkErr(err, fatalErrHandler)
 }
 
 func checkErr(err error, handleErr func(string)) {
@@ -180,21 +204,6 @@ func messageForError(err error) string {
 	return msg
 }
 
-// fatal prints the message and then exits. If V(2) or greater, glog.Fatal
-// is invoked for extended information.
-func fatal(msg string) {
-	// add newline if needed
-	if !strings.HasSuffix(msg, "\n") {
-		msg += "\n"
-	}
-
-	if glog.V(2) {
-		glog.FatalDepth(2, msg)
-	}
-	fmt.Fprint(os.Stderr, msg)
-	os.Exit(1)
-}
-
 func UsageError(cmd *cobra.Command, format string, args ...interface{}) error {
 	msg := fmt.Sprintf(format, args...)
 	return fmt.Errorf("%s\nsee '%s -h' for help.", msg, cmd.CommandPath())
@@ -257,6 +266,11 @@ func GetFlagDuration(cmd *cobra.Command, flag string) time.Duration {
 		glog.Fatalf("err accessing flag %s for command %s: %v", flag, cmd.Name(), err)
 	}
 	return d
+}
+
+func AddValidateFlags(cmd *cobra.Command) {
+	cmd.Flags().Bool("validate", true, "If true, use a schema to validate the input before sending it")
+	cmd.Flags().String("schema-cache-dir", "/tmp/kubectl.schema", "If non-empty, load/store cached API schemas in this directory, default is '/tmp/kubectl.schema'")
 }
 
 func ReadConfigDataFromReader(reader io.Reader, source string) ([]byte, error) {
@@ -331,7 +345,7 @@ func Merge(dst runtime.Object, fragment, kind string) (runtime.Object, error) {
 	if !ok {
 		return nil, fmt.Errorf("apiVersion must be a string")
 	}
-	i, err := latest.InterfacesFor(versionString)
+	i, err := latest.GroupOrDie("").InterfacesFor(versionString)
 	if err != nil {
 		return nil, err
 	}
