@@ -28,7 +28,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	github "k8s.io/contrib/github"
 
@@ -67,7 +67,7 @@ type SubmitQueueConfig struct {
 	committerList []string
 	// userWhitelist is the combination of committers and additional which
 	// we actully use
-	userWhitelist util.StringSet
+	userWhitelist sets.String
 }
 
 func addSubmitFlags(cmd *cobra.Command, config *SubmitQueueConfig) {

@@ -33,8 +33,8 @@ import (
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client"
 	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -167,7 +167,7 @@ func (cfg *loadBalancerConfig) reload() error {
 type loadBalancerController struct {
 	cfg               *loadBalancerConfig
 	queue             *workqueue.Type
-	client            *client.Client
+	client            *unversioned.Client
 	epController      *framework.Controller
 	svcController     *framework.Controller
 	svcLister         cache.StoreToServiceLister
@@ -310,7 +310,7 @@ func (lbc *loadBalancerController) worker() {
 }
 
 // newLoadBalancerController creates a new controller from the given config.
-func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *client.Client, namespace string) *loadBalancerController {
+func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.Client, namespace string) *loadBalancerController {
 
 	lbc := loadBalancerController{
 		cfg:    cfg,
@@ -428,11 +428,11 @@ func main() {
 	}
 	go healthzServer()
 
-	var kubeClient *client.Client
+	var kubeClient *unversioned.Client
 	var err error
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	if *cluster {
-		if kubeClient, err = client.NewInCluster(); err != nil {
+		if kubeClient, err = unversioned.NewInCluster(); err != nil {
 			glog.Fatalf("Failed to create client: %v", err)
 		}
 	} else {
@@ -440,7 +440,7 @@ func main() {
 		if err != nil {
 			glog.Fatalf("error connecting to the client: %v", err)
 		}
-		kubeClient, err = client.New(config)
+		kubeClient, err = unversioned.New(config)
 	}
 	namespace, specified, err := clientConfig.Namespace()
 	if err != nil {

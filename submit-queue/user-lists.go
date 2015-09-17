@@ -27,7 +27,7 @@ import (
 	"os"
 	"strings"
 
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -38,8 +38,8 @@ var (
 )
 
 // RefreshWhitelist updates the whitelist, re-getting the list of committers.
-func (config *SubmitQueueConfig) RefreshWhitelist() util.StringSet {
-	userSet := util.StringSet{}
+func (config *SubmitQueueConfig) RefreshWhitelist() sets.String {
+	userSet := sets.String{}
 	userSet.Insert(config.additionalUserWhitelist...)
 	if usersWithCommit, err := config.UsersWithCommit(); err != nil {
 		glog.Info("Falling back to static committers list.")
@@ -92,7 +92,7 @@ func (config *SubmitQueueConfig) doGenCommitters() error {
 	if err != nil {
 		glog.Fatalf("error loading whitelist; it will not be updated: %v", err)
 	}
-	existing := util.NewStringSet(c...)
+	existing := sets.NewString(c...)
 	newUsers := []string{}
 	for _, u := range users {
 		if existing.Has(u) {

@@ -31,7 +31,7 @@ import (
 	"syscall"
 	"time"
 
-	kclient "k8s.io/kubernetes/pkg/client"
+	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/golang/glog"
