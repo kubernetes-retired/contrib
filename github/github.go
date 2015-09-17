@@ -49,10 +49,6 @@ func (r *RateLimitRoundTripper) RoundTrip(req *http.Request) (resp *http.Respons
 	return r.delegate.RoundTrip(req)
 }
 
-// IssueNumber is a github issue/PR number. Instead of making lists of things
-// that can go stale, pass lists of these around.
-type IssueNumber int
-
 type GithubConfig struct {
 	client  *github.Client
 	Org     string
@@ -190,37 +186,8 @@ func (config *GithubConfig) RemoveLabel(prNum int, label string) error {
 	return nil
 }
 
-// Get all issues that have a given label.
-func (config *GithubConfig) fetchAllIssuesWithLabels(labels []string) ([]IssueNumber, error) {
-	page := 0
-	var result []IssueNumber
-	for {
-		glog.V(4).Infof("Fetching page %d of issues", page)
-		listOpts := &github.IssueListByRepoOptions{
-			Sort:        "created",
-			Labels:      labels,
-			State:       "open",
-			ListOptions: github.ListOptions{PerPage: 100, Page: page},
-		}
-		issues, response, err := config.client.Issues.ListByRepo(config.Org, config.Project, listOpts)
-		if err != nil {
-			return nil, err
-		}
-		for i := range issues {
-			issue := &issues[i]
-			if issue.PullRequestLinks != nil && issue.Number != nil {
-				result = append(result, IssueNumber(*issue.Number))
-			}
-		}
-		if response.LastPage == 0 || response.LastPage == page {
-			break
-		}
-		page++
-	}
-	return result, nil
-}
-
 type PRFunction func(*github.PullRequest, *github.Issue) error
+type IssueFunction func(*github.Issue) error
 
 func (config *GithubConfig) LastModifiedTime(prNum int) (*time.Time, error) {
 	list, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
@@ -587,45 +554,81 @@ func (config *GithubConfig) IsPRMergeable(pr *github.PullRequest) (bool, error) 
 //   * pr.Number <= maxPRNumber
 //   * all labels are on the PR
 // Run the specified function
-func (config *GithubConfig) ForEachIssueDo(labels []string, fn PRFunction) error {
-	issues, err := config.fetchAllIssuesWithLabels(labels)
-	if err != nil {
-		return err
-	}
-
-	for _, number := range issues {
-		issue, _, err := config.client.Issues.Get(config.Org, config.Project, int(number))
+func (config *GithubConfig) forEachIssueDo(labels []string, fn IssueFunction) error {
+	page := 1
+	for {
+		glog.V(4).Infof("Fetching page %d of issues", page)
+		listOpts := &github.IssueListByRepoOptions{
+			Sort:        "created",
+			Labels:      labels,
+			State:       "open",
+			ListOptions: github.ListOptions{PerPage: 20, Page: page},
+		}
+		issues, response, err := config.client.Issues.ListByRepo(config.Org, config.Project, listOpts)
 		if err != nil {
-			glog.Errorf("Error getting issue %v: %v", number, err)
-			continue
-		}
-		if issue.User == nil || issue.User.Login == nil {
-			glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
-			continue
-		}
-		if *issue.Number < config.MinPRNumber {
-			glog.V(6).Infof("Dropping %d < %d", *issue.Number, config.MinPRNumber)
-			continue
-		}
-		if *issue.Number > config.MaxPRNumber {
-			glog.V(6).Infof("Dropping %d > %d", *issue.Number, config.MaxPRNumber)
-			continue
-		}
-		glog.V(2).Infof("----==== %d ====----", *issue.Number)
-		glog.V(8).Infof("%v", issue.Labels)
-
-		pr, _, err := config.client.PullRequests.Get(config.Org, config.Project, *issue.Number)
-		if err != nil {
-			glog.Errorf("Error getting pull request %v: %v", *issue.Number, err)
-			continue
-		}
-		if pr.Merged != nil && *pr.Merged {
-			glog.V(6).Infof("Dropping %d, as it is already merged", *issue.Number)
-			continue
-		}
-		if err := fn(pr, issue); err != nil {
 			return err
 		}
+		for i := range issues {
+			issue := &issues[i]
+			if issue.Number == nil {
+				glog.Infof("Skipping issue with no number, very strange")
+				continue
+			}
+			if issue.User == nil || issue.User.Login == nil {
+				glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
+				continue
+			}
+			if *issue.Number < config.MinPRNumber {
+				glog.V(6).Infof("Dropping %d < %d", *issue.Number, config.MinPRNumber)
+				continue
+			}
+			if *issue.Number > config.MaxPRNumber {
+				glog.V(6).Infof("Dropping %d > %d", *issue.Number, config.MaxPRNumber)
+				continue
+			}
+			glog.V(8).Infof("Issue %d labels: %v isPR: %v", *issue.Number, issue.Labels, issue.PullRequestLinks == nil)
+			glog.V(8).Infof("%v", issue.Labels)
+			if err := fn(issue); err != nil {
+				return err
+			}
+		}
+		if response.LastPage == 0 || response.LastPage == page {
+			break
+		}
+		page++
 	}
 	return nil
+}
+
+func (config *GithubConfig) ForEachIssueDo(labels []string, fn IssueFunction) error {
+	handleIssue := func(issue *github.Issue) error {
+		if issue.PullRequestLinks != nil {
+			return nil
+		}
+		glog.V(2).Infof("----==== %d ====----", *issue.Number)
+
+		return fn(issue)
+	}
+	return config.forEachIssueDo(labels, handleIssue)
+}
+
+func (config *GithubConfig) ForEachPRDo(labels []string, fn PRFunction) error {
+	handlePR := func(issue *github.Issue) error {
+		if issue.PullRequestLinks == nil {
+			return nil
+		}
+		pr, _, err := config.client.PullRequests.Get(config.Org, config.Project, *issue.Number)
+		if err != nil {
+			glog.Errorf("Error getting PR for Issue %d: %v", *issue.Number, err)
+			return err
+		}
+		if pr.Merged != nil && *pr.Merged {
+			glog.V(3).Infof("PR %d was merged, may want to set the PerPage so this happens less often", *issue.Number)
+			return nil
+		}
+		glog.V(2).Infof("----==== %d ====----", *issue.Number)
+
+		return fn(pr, issue)
+	}
+	return config.forEachIssueDo(labels, handlePR)
 }

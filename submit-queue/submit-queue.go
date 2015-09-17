@@ -184,7 +184,7 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 		nextRunStartTime := time.Now().Add(config.PollPeriod)
 		wl := config.RefreshWhitelist()
 		e2e.locked(func() { e2e.state.Whitelist = wl.List() })
-		err := config.ForEachIssueDo([]string{"lgtm", "cla: yes"}, func(pr *github_api.PullRequest, issue *github_api.Issue) error {
+		err := config.ForEachPRDo([]string{"lgtm", "cla: yes"}, func(pr *github_api.PullRequest, issue *github_api.Issue) error {
 			if pr == nil {
 				return nil
 			}
