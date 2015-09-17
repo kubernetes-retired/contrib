@@ -430,6 +430,12 @@ func main() {
 
 	var kubeClient *unversioned.Client
 	var err error
+
+	_, err = newSyslogServer("/var/run/haproxy.log.socket")
+	if err != nil {
+		glog.Fatalf("Failed to start syslog server: %v", err)
+	}
+
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	if *cluster {
 		if kubeClient, err = unversioned.NewInCluster(); err != nil {

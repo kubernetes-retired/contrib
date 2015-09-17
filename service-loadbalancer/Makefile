@@ -5,7 +5,7 @@ TAG = 0.0
 PREFIX = gcr.io/google_containers/servicelb
 
 server: service_loadbalancer.go
-	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' -o service_loadbalancer ./service_loadbalancer.go
+	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' -o service_loadbalancer ./service_loadbalancer.go ./loadbalancer_log.go
 
 container: server
 	docker build -t $(PREFIX):$(TAG) .
