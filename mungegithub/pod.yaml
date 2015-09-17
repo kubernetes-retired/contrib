@@ -9,7 +9,10 @@ metadata:
 spec:
   containers:
   - command:
-      - /run.sh
+    - ./mungegithub
+    - --pr-mungers=blunderbuss,needs-rebase,ok-to-test,ping-ci,size \
+    - --token-file=/etc/secret-volume/token
+    - --v=2
     image: gcr.io/google_containers/mungegithub:0.7
     imagePullPolicy: IfNotPresent
     name: mungegithub
