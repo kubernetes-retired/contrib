@@ -541,7 +541,7 @@ func (config *GithubConfig) GetFileContents(file, sha string) (string, error) {
 		return "", err
 	}
 	b, err := output.Decode()
-	if err == nil {
+	if err != nil {
 		glog.Errorf("Unable to decode file contents: %v", err)
 		return "", err
 	}
