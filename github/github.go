@@ -49,6 +49,10 @@ func (r *RateLimitRoundTripper) RoundTrip(req *http.Request) (resp *http.Respons
 	return r.delegate.RoundTrip(req)
 }
 
+// IssueNumber is a github issue/PR number. Instead of making lists of things
+// that can go stale, pass lists of these around.
+type IssueNumber int
+
 type GithubConfig struct {
 	client  *github.Client
 	Org     string
@@ -187,9 +191,9 @@ func (config *GithubConfig) RemoveLabel(prNum int, label string) error {
 }
 
 // Get all issues that have a given label.
-func (config *GithubConfig) fetchAllIssuesWithLabels(labels []string) ([]github.Issue, error) {
+func (config *GithubConfig) fetchAllIssuesWithLabels(labels []string) ([]IssueNumber, error) {
 	page := 0
-	var result []github.Issue
+	var result []IssueNumber
 	for {
 		glog.V(4).Infof("Fetching page %d of issues", page)
 		listOpts := &github.IssueListByRepoOptions{
@@ -204,8 +208,8 @@ func (config *GithubConfig) fetchAllIssuesWithLabels(labels []string) ([]github.
 		}
 		for i := range issues {
 			issue := &issues[i]
-			if issue.PullRequestLinks != nil {
-				result = append(result, *issue)
+			if issue.PullRequestLinks != nil && issue.Number != nil {
+				result = append(result, IssueNumber(*issue.Number))
 			}
 		}
 		if response.LastPage == 0 || response.LastPage == page {
@@ -614,8 +618,12 @@ func (config *GithubConfig) ForEachIssueDo(labels []string, fn PRFunction) error
 		return err
 	}
 
-	for ix := range issues {
-		issue := &issues[ix]
+	for _, number := range issues {
+		issue, _, err := config.client.Issues.Get(config.Org, config.Project, int(number))
+		if err != nil {
+			glog.Errorf("Error getting issue %v: %v", number, err)
+			continue
+		}
 		if issue.User == nil || issue.User.Login == nil {
 			glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
 			continue
@@ -633,7 +641,11 @@ func (config *GithubConfig) ForEachIssueDo(labels []string, fn PRFunction) error
 
 		pr, _, err := config.client.PullRequests.Get(config.Org, config.Project, *issue.Number)
 		if err != nil {
-			glog.Errorf("Error getting pull request: %v", err)
+			glog.Errorf("Error getting pull request %v: %v", *issue.Number, err)
+			continue
+		}
+		if pr.Merged != nil && *pr.Merged {
+			glog.V(6).Infof("Dropping %d, as it is already merged", *issue.Number)
 			continue
 		}
 		if err := fn(pr, issue); err != nil {
