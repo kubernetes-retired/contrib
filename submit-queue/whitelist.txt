@@ -1,8 +1,7 @@
 # remove dups with ./submit-queue gen-committers
 deads2k
-ghodss
 jayunit100
 marekbiskup
 mvdan
-yifan-gu
 sttts
+yifan-gu
