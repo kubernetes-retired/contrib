@@ -233,15 +233,13 @@ func (config *GithubConfig) LastModifiedTime(prNum int) (*time.Time, error) {
 	return lastModified, nil
 }
 
-func (config *GithubConfig) fetchAllUsers(team int) ([]github.User, error) {
+func (config *GithubConfig) fetchAllCollaborators() ([]github.User, error) {
 	page := 0
 	var result []github.User
 	for {
 		glog.V(4).Infof("Fetching page %d of all users", page)
-		listOpts := &github.OrganizationListTeamMembersOptions{
-			ListOptions: github.ListOptions{PerPage: 100, Page: page},
-		}
-		users, response, err := config.client.Organizations.ListTeamMembers(team, listOpts)
+		listOpts := &github.ListOptions{PerPage: 100, Page: page}
+		users, response, err := config.client.Repositories.ListCollaborators(config.Org, config.Project, listOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -254,58 +252,35 @@ func (config *GithubConfig) fetchAllUsers(team int) ([]github.User, error) {
 	return result, nil
 }
 
-func (config *GithubConfig) fetchAllTeams() ([]github.Team, error) {
-	page := 0
-	var result []github.Team
-	for {
-		glog.V(4).Infof("Fetching page %d of all teams", page)
-		listOpts := &github.ListOptions{PerPage: 100, Page: page}
-		teams, response, err := config.client.Organizations.ListTeams(config.Org, listOpts)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, teams...)
-		if response.LastPage == 0 || response.LastPage == page {
-			break
-		}
-		page++
-	}
-	return result, nil
-}
+// UsersWithAccess returns two sets of users. The first set are users with push
+// access. The second set is the specific set of user with pull access. If the
+// repo is public all users will have pull access, but some with have it
+// explicitly
+func (config *GithubConfig) UsersWithAccess() (pushUsers sets.String, pullUsers sets.String, err error) {
+	pushUsers = sets.String{}
+	pullUsers = sets.String{}
 
-func (config *GithubConfig) UsersWithCommit() ([]string, error) {
-	userSet := sets.String{}
-
-	teams, err := config.fetchAllTeams()
+	users, err := config.fetchAllCollaborators()
 	if err != nil {
 		glog.Errorf("%v", err)
-		return nil, err
+		return nil, nil, err
 	}
 
-	teamIDs := []int{}
-	for _, team := range teams {
-		repo, _, err := config.client.Organizations.IsTeamRepo(*team.ID, config.Org, config.Project)
-		if repo == nil || err != nil {
-			continue
-		}
-		perms := *repo.Permissions
-		if perms["push"] {
-			teamIDs = append(teamIDs, *team.ID)
-		}
-	}
-
-	for _, team := range teamIDs {
-		users, err := config.fetchAllUsers(team)
-		if err != nil {
+	for _, user := range users {
+		if user.Permissions == nil || user.Login == nil {
+			err := fmt.Errorf("Found a user with nil Permissions or Login")
 			glog.Errorf("%v", err)
-			continue
+			return nil, nil, err
 		}
-		for _, user := range users {
-			userSet.Insert(*user.Login)
+		login := *user.Login
+		perms := *user.Permissions
+		if perms["push"] {
+			pushUsers.Insert(login)
+		} else if perms["pull"] {
+			pullUsers.Insert(login)
 		}
 	}
-
-	return userSet.List(), nil
+	return pushUsers, pullUsers, nil
 }
 
 func (config *GithubConfig) GetAllEventsForPR(prNum int) ([]github.IssueEvent, error) {

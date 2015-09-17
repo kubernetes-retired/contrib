@@ -32,6 +32,7 @@ jlowdermilk
 jszczepkowski
 justinsb
 k8s-bot
+k8s-merge-robot
 k8s-slack
 karlkfi
 kelseyhightower
