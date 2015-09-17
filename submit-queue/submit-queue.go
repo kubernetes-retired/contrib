@@ -195,6 +195,7 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 	}
 	for {
 		glog.Infof("Beginning PR scan...")
+		nextRunStartTime := time.Now().Add(config.PollPeriod)
 		wl := config.RefreshWhitelist()
 		e2e.locked(func() { e2e.state.Whitelist = wl.List() })
 		err := config.ForEachIssueDo([]string{"lgtm", "cla: yes"}, func(pr *github_api.PullRequest, issue *github_api.Issue) error {
@@ -210,8 +211,13 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 		if config.Once {
 			break
 		}
-		glog.Infof("Sleeping for %v\n", config.PollPeriod)
-		time.Sleep(config.PollPeriod)
+		if nextRunStartTime.After(time.Now()) {
+			sleepDuration := nextRunStartTime.Sub(time.Now())
+			glog.Infof("Sleeping for %v\n", sleepDuration)
+			time.Sleep(sleepDuration)
+		} else {
+			glog.Infof("Not sleeping as we took more than %v to complete one loop\n", config.PollPeriod)
+		}
 	}
 	return nil
 }
