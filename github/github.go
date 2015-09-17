@@ -644,6 +644,10 @@ func (config *GithubConfig) ForEachIssueDo(labels []string, fn PRFunction) error
 			glog.Errorf("Error getting pull request %v: %v", *issue.Number, err)
 			continue
 		}
+		if pr.Merged != nil && *pr.Merged {
+			glog.V(6).Infof("Dropping %d, as it is already merged", *issue.Number)
+			continue
+		}
 		if err := fn(pr, issue); err != nil {
 			return err
 		}
