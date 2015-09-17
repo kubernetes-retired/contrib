@@ -30,9 +30,24 @@ import (
 	github_api "github.com/google/go-github/github"
 )
 
+// PRInfo explicitly collects the fields we wish to encode via JSON.
+type PRInfo struct {
+	Number *int    `json:"number"`
+	URL    *string `json:"html_url"`
+}
+
+func prInfo(pr *github_api.PullRequest) *PRInfo {
+	var out PRInfo
+	if pr != nil {
+		out.Number = pr.Number
+		out.URL = pr.HTMLURL
+	}
+	return &out
+}
+
 type ExternalState struct {
 	// exported so that the json marshaller will print them
-	CurrentPR   *github_api.PullRequest
+	CurrentPR   *PRInfo
 	Message     []string
 	Err         error
 	BuildStatus map[string]string
@@ -104,7 +119,7 @@ func (e *e2eTester) waitForStableBuilds() {
 
 // This is called on a potentially mergeable PR
 func (e *e2eTester) runE2ETests(pr *github_api.PullRequest, issue *github_api.Issue) error {
-	e.locked(func() { e.state.CurrentPR = pr })
+	e.locked(func() { e.state.CurrentPR = prInfo(pr) })
 	defer e.locked(func() { e.state.CurrentPR = nil })
 	e.msg("Considering PR %d", *pr.Number)
 
