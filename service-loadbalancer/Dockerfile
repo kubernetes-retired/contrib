@@ -13,22 +13,11 @@
 # limitations under the License.
 
 
-FROM ubuntu:14.04
+FROM alpine:3.2
 MAINTAINER Prashanth B <beeps@google.com>
 
-# so apt-get doesn't complain
-ENV DEBIAN_FRONTEND=noninteractive
-RUN sed -i 's/^exit 101/exit 0/' /usr/sbin/policy-rc.d
-
-# TODO: Move to using haproxy:1.5 image instead. Honestly,
-# that image isn't much smaller and the convenience of having
-# an ubuntu container for dev purposes trumps the tiny amounts
-# of disk and bandwidth we'd save in doing so.
-RUN \
-  apt-get update && \
-  apt-get install -y haproxy && \
-  sed -i 's/^ENABLED=.*/ENABLED=1/' /etc/default/haproxy && \
-  rm -rf /var/lib/apt/lists/*
+RUN apk add -U haproxy bash && \
+  rm -rf /var/cache/apk/*
 
 ADD haproxy.cfg /etc/haproxy/haproxy.cfg
 ADD service_loadbalancer service_loadbalancer
