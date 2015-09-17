@@ -166,11 +166,14 @@ func (e *e2eTester) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		}
 	})
 
-	res.Header().Set("Content-type", "application/json")
 	if err != nil {
+		glog.Errorf("Failed to encode status: %#v %v", e.state, err)
+		res.Header().Set("Content-type", "text/plain")
 		res.WriteHeader(http.StatusInternalServerError)
 		res.Write([]byte(err.Error()))
+		res.Write([]byte(fmt.Sprintf("%#v", e.state)))
 	} else {
+		res.Header().Set("Content-type", "application/json")
 		res.WriteHeader(http.StatusOK)
 		res.Write(data)
 	}

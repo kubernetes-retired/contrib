@@ -25,6 +25,12 @@ spec:
     ports:
     - name: status
       containerPort: 8080
+    livenessProbe:
+      httpGet:
+        path: /api
+        port: 8080
+      initialDelaySeconds: 10
+      timeoutSeconds: 1
   volumes:
     - name: secret-volume
       secret:
