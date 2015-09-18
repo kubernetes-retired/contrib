@@ -64,6 +64,57 @@ type GithubConfig struct {
 	DryRun bool
 
 	useMemoryCache bool
+
+	analytics analytics
+}
+
+type analytic int
+
+func (a *analytic) Call(config *GithubConfig) {
+	config.analytics.apiCount++
+	*a = *a + 1
+}
+
+type analytics struct {
+	lastAPIReset time.Time
+	apiCount     int // number of times we called a github API
+
+	AddLabels         analytic
+	RemoveLabels      analytic
+	ListCollaborators analytic
+	ListIssues        analytic
+	ListIssueEvents   analytic
+	ListCommits       analytic
+	GetCommit         analytic
+	GetCombinedStatus analytic
+	GetPR             analytic
+	AssignPR          analytic
+	ClosePR           analytic
+	OpenPR            analytic
+	GetContents       analytic
+	CreateComment     analytic
+	Merge             analytic
+}
+
+func (a analytics) Print() {
+	since := time.Since(a.lastAPIReset)
+	callsPerSec := float64(a.apiCount) / since.Seconds()
+	glog.Infof("Made %d API calls since the last Reset %f calls/sec", a.apiCount, callsPerSec)
+	glog.V(2).Infof("Made %d AddLabels calls", a.AddLabels)
+	glog.V(2).Infof("Made %d RemoveLabels calls", a.RemoveLabels)
+	glog.V(2).Infof("Made %d ListCollaborators calls", a.ListCollaborators)
+	glog.V(2).Infof("Made %d ListIssues calls", a.ListIssues)
+	glog.V(2).Infof("Made %d ListIssueEvents calls", a.ListIssueEvents)
+	glog.V(2).Infof("Made %d ListCommits calls", a.ListCommits)
+	glog.V(2).Infof("Made %d GetCommit calls", a.GetCommit)
+	glog.V(2).Infof("Made %d GetCombinedStatus calls", a.GetCombinedStatus)
+	glog.V(2).Infof("Made %d GetPR calls", a.GetPR)
+	glog.V(2).Infof("Made %d AssignPR calls", a.AssignPR)
+	glog.V(2).Infof("Made %d ClosePR calls", a.ClosePR)
+	glog.V(2).Infof("Made %d OpenPR calls", a.OpenPR)
+	glog.V(2).Infof("Made %d GetContents calls", a.GetContents)
+	glog.V(2).Infof("Made %d CreateComment calls", a.CreateComment)
+	glog.V(2).Infof("Made %d Merge calls", a.Merge)
 }
 
 func (config *GithubConfig) AddRootFlags(cmd *cobra.Command) {
@@ -125,7 +176,14 @@ func (config *GithubConfig) PreExecute() error {
 		}
 	}
 	config.client = github.NewClient(client)
+	config.analytics.lastAPIReset = time.Now()
 	return nil
+}
+
+func (config *GithubConfig) ResetAPICount() {
+	config.analytics.Print()
+	config.analytics = analytics{}
+	config.analytics.lastAPIReset = time.Now()
 }
 
 // SetClient should ONLY be used by testing. Normal commands should use PreExecute()
@@ -163,6 +221,7 @@ func GetLabelsWithPrefix(labels []github.Label, prefix string) []string {
 }
 
 func (config *GithubConfig) AddLabels(prNum int, labels []string) error {
+	config.analytics.AddLabels.Call(config)
 	if config.DryRun {
 		glog.Infof("Would have added labels %v to PR %d but --dry-run is set", labels, prNum)
 		return nil
@@ -175,6 +234,7 @@ func (config *GithubConfig) AddLabels(prNum int, labels []string) error {
 }
 
 func (config *GithubConfig) RemoveLabel(prNum int, label string) error {
+	config.analytics.RemoveLabels.Call(config)
 	if config.DryRun {
 		glog.Infof("Would have removed label %q to PR %d but --dry-run is set", label, prNum)
 		return nil
@@ -190,6 +250,7 @@ type PRFunction func(*github.PullRequest, *github.Issue) error
 type IssueFunction func(*github.Issue) error
 
 func (config *GithubConfig) LastModifiedTime(prNum int) (*time.Time, error) {
+	config.analytics.ListCommits.Call(config)
 	list, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -209,6 +270,7 @@ func (config *GithubConfig) fetchAllCollaborators() ([]github.User, error) {
 	var result []github.User
 	for {
 		glog.V(4).Infof("Fetching page %d of all users", page)
+		config.analytics.ListCollaborators.Call(config)
 		listOpts := &github.ListOptions{PerPage: 100, Page: page}
 		users, response, err := config.client.Repositories.ListCollaborators(config.Org, config.Project, listOpts)
 		if err != nil {
@@ -258,6 +320,7 @@ func (config *GithubConfig) GetAllEventsForPR(prNum int) ([]github.IssueEvent, e
 	events := []github.IssueEvent{}
 	page := 1
 	for {
+		config.analytics.ListIssueEvents.Call(config)
 		eventPage, response, err := config.client.Issues.ListIssueEvents(config.Org, config.Project, prNum, &github.ListOptions{Page: page})
 		if err != nil {
 			glog.Errorf("Error getting events for issue: %v", err)
@@ -273,6 +336,7 @@ func (config *GithubConfig) GetAllEventsForPR(prNum int) ([]github.IssueEvent, e
 }
 
 func (config *GithubConfig) getCommitStatus(prNum int) ([]*github.CombinedStatus, error) {
+	config.analytics.ListCommits.Call(config)
 	commits, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -280,6 +344,7 @@ func (config *GithubConfig) getCommitStatus(prNum int) ([]*github.CombinedStatus
 	commitStatus := make([]*github.CombinedStatus, len(commits))
 	for ix := range commits {
 		commit := &commits[ix]
+		config.analytics.GetCombinedStatus.Call(config)
 		statusList, _, err := config.client.Repositories.GetCombinedStatus(config.Org, config.Project, *commit.SHA, &github.ListOptions{})
 		if err != nil {
 			return nil, err
@@ -384,6 +449,7 @@ func (config *GithubConfig) WaitForPending(prNum int) error {
 }
 
 func (config *GithubConfig) GetCommits(prNum int) ([]github.RepositoryCommit, error) {
+	config.analytics.ListCommits.Call(config)
 	//TODO: this should handle paging, I believe....
 	commits, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
 	if err != nil {
@@ -399,6 +465,7 @@ func (config *GithubConfig) GetFilledCommits(prNum int) ([]github.RepositoryComm
 	}
 	filledCommits := []github.RepositoryCommit{}
 	for _, c := range commits {
+		config.analytics.GetCommit.Call(config)
 		commit, _, err := config.client.Repositories.GetCommit(config.Org, config.Project, *c.SHA)
 		if err != nil {
 			glog.Errorf("Can't load commit %s %s %s", config.Org, config.Project, *commit.SHA)
@@ -410,6 +477,7 @@ func (config *GithubConfig) GetFilledCommits(prNum int) ([]github.RepositoryComm
 }
 
 func (config *GithubConfig) GetPR(prNum int) (*github.PullRequest, error) {
+	config.analytics.GetPR.Call(config)
 	pr, _, err := config.client.PullRequests.Get(config.Org, config.Project, prNum)
 	if err != nil {
 		glog.Errorf("Error getting PR# %d: %v", prNum, err)
@@ -419,6 +487,7 @@ func (config *GithubConfig) GetPR(prNum int) (*github.PullRequest, error) {
 }
 
 func (config *GithubConfig) AssignPR(prNum int, owner string) error {
+	config.analytics.AssignPR.Call(config)
 	assignee := &github.IssueRequest{Assignee: &owner}
 	if config.DryRun {
 		glog.Infof("Would have assigned PR# %d  to %v but --dry-run was set", prNum, owner)
@@ -432,6 +501,7 @@ func (config *GithubConfig) AssignPR(prNum int, owner string) error {
 }
 
 func (config *GithubConfig) ClosePR(pr *github.PullRequest) error {
+	config.analytics.ClosePR.Call(config)
 	if config.DryRun {
 		glog.Infof("Would have closed PR# %d but --dry-run was set", *pr.Number)
 		return nil
@@ -447,6 +517,7 @@ func (config *GithubConfig) ClosePR(pr *github.PullRequest) error {
 
 // OpenPR will attempt to open the given PR.
 func (config *GithubConfig) OpenPR(pr *github.PullRequest, numTries int) error {
+	config.analytics.OpenPR.Call(config)
 	if config.DryRun {
 		glog.Infof("Would have openned PR# %d but --dry-run was set", *pr.Number)
 		return nil
@@ -456,7 +527,7 @@ func (config *GithubConfig) OpenPR(pr *github.PullRequest, numTries int) error {
 	pr.State = &state
 	// Try pretty hard to re-open, since it's pretty bad if we accidentally leave a PR closed
 	for tries := 0; tries < numTries; tries++ {
-		if _, _, err = config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr); err == nil {
+		if _, _, err = config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr); err != nil {
 			return nil
 		}
 		glog.Warningf("failed to re-open pr %d: %v", *pr.Number, err)
@@ -469,6 +540,7 @@ func (config *GithubConfig) OpenPR(pr *github.PullRequest, numTries int) error {
 }
 
 func (config *GithubConfig) GetFileContents(file, sha string) (string, error) {
+	config.analytics.GetContents.Call(config)
 	getOpts := &github.RepositoryContentGetOptions{Ref: sha}
 	output, _, _, err := config.client.Repositories.GetContents(config.Org, config.Project, file, getOpts)
 	if err != nil {
@@ -493,6 +565,7 @@ func (config *GithubConfig) GetFileContents(file, sha string) (string, error) {
 // MergePR will merge the given PR, duh
 // "who" is who is doing the merging, like "submit-queue"
 func (config *GithubConfig) MergePR(prNum int, who string) error {
+	config.analytics.Merge.Call(config)
 	if config.DryRun {
 		glog.Infof("Would have merged %d but --dry-run is set", prNum)
 		return nil
@@ -509,6 +582,7 @@ func (config *GithubConfig) MergePR(prNum int, who string) error {
 
 // WriteComment will send the `msg` as a comment to the specified PR
 func (config *GithubConfig) WriteComment(prNum int, msg string) error {
+	config.analytics.CreateComment.Call(config)
 	if config.DryRun {
 		glog.Infof("Would have commented %q in %d but --dry-run is set", msg, prNum)
 		return nil
@@ -558,6 +632,7 @@ func (config *GithubConfig) forEachIssueDo(labels []string, fn IssueFunction) er
 	page := 1
 	for {
 		glog.V(4).Infof("Fetching page %d of issues", page)
+		config.analytics.ListIssues.Call(config)
 		listOpts := &github.IssueListByRepoOptions{
 			Sort:        "created",
 			Labels:      labels,
@@ -617,9 +692,8 @@ func (config *GithubConfig) ForEachPRDo(labels []string, fn PRFunction) error {
 		if issue.PullRequestLinks == nil {
 			return nil
 		}
-		pr, _, err := config.client.PullRequests.Get(config.Org, config.Project, *issue.Number)
+		pr, err := config.GetPR(*issue.Number)
 		if err != nil {
-			glog.Errorf("Error getting PR for Issue %d: %v", *issue.Number, err)
 			return err
 		}
 		if pr.Merged != nil && *pr.Merged {
