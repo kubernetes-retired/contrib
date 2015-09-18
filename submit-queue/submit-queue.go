@@ -208,6 +208,7 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 		if err != nil {
 			glog.Errorf("Error getting candidate PRs: %v", err)
 		}
+		config.ResetAPICount()
 		if config.Once {
 			break
 		}
