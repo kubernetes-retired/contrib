@@ -6,7 +6,16 @@
         state: latest
   notify:
     - restart etcd
-  when: not is_atomic
+  when: not is_atomic and ansible_distribution != "Ubuntu"
+
+- name: Force etcd_source_type to github when packages are not available
+  set_fact:
+    etcd_source_type: "github-release"
+  when: ansible_distribution == "Ubuntu"
+
+- name: Install from github
+  include: github-release.yml
+  when: etcd_source_type == "github-release"
 
 - name: Write etcd config file
   template: src=etcd.conf.j2 dest=/etc/etcd/etcd.conf

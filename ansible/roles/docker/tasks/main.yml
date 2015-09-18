@@ -2,8 +2,11 @@
 - include: debian-install.yml
   when: ansible_distribution == "Debian"
 
+- include: apt-docker-install.yml
+  when: ansible_distribution == "Ubuntu"
+
 - include: generic-install.yml
-  when: ansible_distribution != "Debian"
+  when: ansible_distribution != "Debian" and ansible_distribution != "Ubuntu"
 
 - name: Verify docker config files exists
   file: path={{ docker_config_dir }}/{{ item }} state=touch
@@ -16,6 +19,7 @@
   lineinfile: dest={{ docker_config_dir }}/docker regexp=^OPTIONS= line=OPTIONS="--selinux-enabled --log-level=warn"
   notify:
     - restart docker
+  when: ansible_distribution != "Ubuntu"
 
 - name: Install http_proxy into docker-network
   lineinfile: dest={{ docker_config_dir }}/docker-network regexp=^HTTP_PROXY= line=HTTP_PROXY="{{ http_proxy }}"

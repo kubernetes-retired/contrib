@@ -66,5 +66,9 @@
   notify:
     - reload and restart kube-addons
 
+- name: Install kube-addons upstart configuration
+  template: src=kube-addons.upstart.j2 dest=/etc/init/kube-addons.conf
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15
+
 - name: Enable and start kube addons
-  service: name=kube-addons.service enabled=yes state=started
+  service: name=kube-addons enabled=yes state=started

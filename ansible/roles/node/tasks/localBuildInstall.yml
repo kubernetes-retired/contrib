@@ -3,7 +3,7 @@
   copy:
     src: ../../_output/local/go/bin/{{ item }}
     dest: /usr/bin/
-    mode: 755
+    mode: 0755
   with_items:
     - kubelet
     - kube-proxy
@@ -15,11 +15,21 @@
   copy:
     src: ../init/systemd/{{ item }}
     dest: /etc/systemd/system/
-    mode: 644
+    mode: 0644
   with_items:
     - kube-proxy.service
     - kubelet.service
   notify: reload systemd
+
+- name: Copy node upstart files
+  copy:
+    src: ../init/upstart/{{ item }}
+    dest: /etc/init
+    mode: 0644
+  with_items:
+    - kubelet.conf
+    - kube-proxy.conf
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15
 
 - name: Create the /var/lib/kubelet working directory
   file:
