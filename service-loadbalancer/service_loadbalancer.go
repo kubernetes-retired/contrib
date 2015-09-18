@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/openshift/origin/pkg/util/proc"
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -427,6 +428,8 @@ func main() {
 		glog.Infof("All tcp/https services will be ignored.")
 	}
 	go healthzServer()
+
+	proc.StartReaper()
 
 	var kubeClient *unversioned.Client
 	var err error
