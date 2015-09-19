@@ -61,13 +61,13 @@ type SubmitQueueConfig struct {
 	WWWRoot                string
 
 	// additionalUserWhitelist are non-committer users believed safe
-	additionalUserWhitelist []string
+	additionalUserWhitelist *sets.String
 	// CommitterList are static here in case they can't be gotten dynamically;
 	// they do not need to be whitelisted.
-	committerList []string
+	committerList *sets.String
 	// userWhitelist is the combination of committers and additional which
 	// we actully use
-	userWhitelist sets.String
+	userWhitelist *sets.String
 }
 
 func addSubmitFlags(cmd *cobra.Command, config *SubmitQueueConfig) {
@@ -104,9 +104,6 @@ func (config *SubmitQueueConfig) validateLGTMAfterPush(pr *github_api.PullReques
 }
 
 func (config *SubmitQueueConfig) handlePR(e2e *e2eTester, pr *github_api.PullRequest, issue *github_api.Issue) {
-	if config.userWhitelist == nil {
-		config.RefreshWhitelist()
-	}
 	userSet := config.userWhitelist
 
 	if !github.HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*pr.User.Login) {
@@ -168,18 +165,6 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 	if len(config.JenkinsHost) == 0 {
 		glog.Fatalf("--jenkins-host is required.")
 	}
-
-	users, err := loadWhitelist(config.Whitelist)
-	if err != nil {
-		glog.Fatalf("error loading user whitelist: %v", err)
-	}
-	config.additionalUserWhitelist = users
-
-	committerList, err := loadWhitelist(config.Committers)
-	if err != nil {
-		glog.Fatalf("error loading committers whitelist: %v", err)
-	}
-	config.committerList = committerList
 
 	e2e := &e2eTester{
 		BuildStatus: map[string]string{},
