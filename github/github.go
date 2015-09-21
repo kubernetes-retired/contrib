@@ -54,6 +54,9 @@ type GithubConfig struct {
 	Org     string
 	Project string
 
+	RateLimit      float32
+	RateLimitBurst int
+
 	Token     string
 	TokenFile string
 
@@ -126,6 +129,9 @@ func (config *GithubConfig) AddRootFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolVar(&config.useMemoryCache, "use-http-cache", false, "If true, use a client side HTTP cache for API requests.")
 	cmd.PersistentFlags().StringVar(&config.Org, "organization", "kubernetes", "The github organization to scan")
 	cmd.PersistentFlags().StringVar(&config.Project, "project", "kubernetes", "The github project to scan")
+	// Global limit is 5000 Q/Hour, try to only use 1800 to make room for other apps
+	cmd.PersistentFlags().Float32Var(&config.RateLimit, "rate-limit", 1800, "Requests per hour we should allow")
+	cmd.PersistentFlags().IntVar(&config.RateLimitBurst, "rate-limit-burst", 900, "Requests we allow to burst over the rate limit")
 	cmd.PersistentFlags().AddGoFlagSet(goflag.CommandLine)
 }
 
@@ -146,33 +152,35 @@ func (config *GithubConfig) PreExecute() error {
 		token = string(data)
 	}
 
-	var client *http.Client
-	var transport http.RoundTripper
+	transport := http.DefaultTransport
 	if config.useMemoryCache {
 		transport = httpcache.NewMemoryCacheTransport()
-	} else {
-		transport = http.DefaultTransport
+	}
+
+	// convert from queries per hour to queries per second
+	config.RateLimit = config.RateLimit / 3600
+	// ignore the configured rate limit if you don't have a token.
+	// only get 60 requests per hour!
+	if len(token) == 0 {
+		glog.Warningf("Ignoring --rate-limit because no token data available")
+		config.RateLimit = 0.01
+		config.RateLimitBurst = 10
+	}
+	rateLimitTransport := &RateLimitRoundTripper{
+		delegate: transport,
+		throttle: util.NewTokenBucketRateLimiter(config.RateLimit, config.RateLimitBurst),
+	}
+
+	client := &http.Client{
+		Transport: rateLimitTransport,
 	}
 	if len(token) > 0 {
-		rateLimitTransport := &RateLimitRoundTripper{
-			delegate: transport,
-			// Global limit is 5000 Q/Hour, try to only use 1800 to make room for other apps
-			throttle: util.NewTokenBucketRateLimiter(0.5, 10),
-		}
 		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 		client = &http.Client{
 			Transport: &oauth2.Transport{
 				Base:   rateLimitTransport,
 				Source: oauth2.ReuseTokenSource(nil, ts),
 			},
-		}
-	} else {
-		rateLimitTransport := &RateLimitRoundTripper{
-			delegate: transport,
-			throttle: util.NewTokenBucketRateLimiter(0.01, 10),
-		}
-		client = &http.Client{
-			Transport: rateLimitTransport,
 		}
 	}
 	config.client = github.NewClient(client)
