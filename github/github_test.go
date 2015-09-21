@@ -138,8 +138,10 @@ func boolp(b bool) *bool       { return &b }
 
 func PR(num int, merged bool) github.PullRequest {
 	pr := github.PullRequest{
-		Number: intp(num),
-		Merged: boolp(merged),
+		Title:     stringp("Test PR Title"),
+		Number:    intp(num),
+		Merged:    boolp(merged),
+		Mergeable: boolp(true),
 	}
 	return pr
 }

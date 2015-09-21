@@ -697,11 +697,22 @@ func (config *GithubConfig) ForEachPRDo(labels []string, fn PRFunction) error {
 			return err
 		}
 		if pr.Merged != nil && *pr.Merged {
-			glog.V(3).Infof("PR %d was merged, may want to set the PerPage so this happens less often", *issue.Number)
+			glog.V(3).Infof("PR %d was merged, may want to reduce the PerPage so this happens less often", *issue.Number)
 			return nil
 		}
 		glog.V(2).Infof("----==== %d ====----", *issue.Number)
 
+		if pr.Mergeable == nil {
+			glog.V(2).Infof("Waiting for mergeability on %q %d", *pr.Title, *pr.Number)
+			time.Sleep(2 * time.Second)
+			pr, err = config.GetPR(*pr.Number)
+			if err != nil {
+				return err
+			}
+			if pr.Mergeable == nil {
+				glog.Infof("No mergeability for PR %d after pause. Maybe increase pause time?", *pr.Number)
+			}
+		}
 		return fn(pr, issue)
 	}
 	return config.forEachIssueDo(labels, handlePR)
