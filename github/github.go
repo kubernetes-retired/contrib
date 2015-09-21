@@ -550,15 +550,18 @@ func (config *GithubConfig) OpenPR(pr *github.PullRequest, numTries int) error {
 func (config *GithubConfig) GetFileContents(file, sha string) (string, error) {
 	config.analytics.GetContents.Call(config)
 	getOpts := &github.RepositoryContentGetOptions{Ref: sha}
+	if len(sha) > 0 {
+		getOpts.Ref = sha
+	}
 	output, _, _, err := config.client.Repositories.GetContents(config.Org, config.Project, file, getOpts)
 	if err != nil {
-		err = fmt.Errorf("Unable to get %q at commit %s", file, sha)
+		err = fmt.Errorf("Unable to get %q at commit %q", file, sha)
 		// I'm using .V(2) because .generated docs is still not in the repo...
 		glog.V(2).Infof("%v", err)
 		return "", err
 	}
 	if output == nil {
-		err = fmt.Errorf("Got empty contents for %q at commit %s", file, sha)
+		err = fmt.Errorf("Got empty contents for %q at commit %q", file, sha)
 		glog.Errorf("%v", err)
 		return "", err
 	}
