@@ -343,60 +343,28 @@ func (config *GithubConfig) GetAllEventsForPR(prNum int) ([]github.IssueEvent, e
 	return events, nil
 }
 
-func (config *GithubConfig) getCommitStatus(prNum int) ([]*github.CombinedStatus, error) {
-	config.analytics.ListCommits.Call(config)
-	commits, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	commitStatus := make([]*github.CombinedStatus, len(commits))
-	for ix := range commits {
-		commit := &commits[ix]
-		config.analytics.GetCombinedStatus.Call(config)
-		statusList, _, err := config.client.Repositories.GetCombinedStatus(config.Org, config.Project, *commit.SHA, &github.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		commitStatus[ix] = statusList
-	}
-	return commitStatus, nil
-}
-
-// Gets the current status of a PR by introspecting the status of the commits in the PR.
-// The rules are:
-//    * If any member of the 'requiredContexts' list is missing, it is 'incomplete'
-//    * If any commit is 'pending', the PR is 'pending'
-//    * If any commit is 'error', the PR is in 'error'
-//    * If any commit is 'failure', the PR is 'failure'
-//    * Otherwise the PR is 'success'
-func (config *GithubConfig) GetStatus(prNum int, requiredContexts []string) (string, error) {
-	statusList, err := config.getCommitStatus(prNum)
-	if err != nil {
-		return "", err
-	}
-	return computeStatus(statusList, requiredContexts), nil
-}
-
-func computeStatus(statusList []*github.CombinedStatus, requiredContexts []string) string {
+func computeStatus(combinedStatus *github.CombinedStatus, requiredContexts []string) string {
 	states := sets.String{}
 	providers := sets.String{}
-	for ix := range statusList {
-		status := statusList[ix]
-		glog.V(8).Infof("Checking commit: %s status:%v", *status.SHA, status)
+
+	if len(requiredContexts) == 0 {
+		return *combinedStatus.State
+	}
+
+	requires := sets.NewString(requiredContexts...)
+	for _, status := range combinedStatus.Statuses {
+		if !requires.Has(*status.Context) {
+			continue
+		}
 		states.Insert(*status.State)
-
-		for _, subStatus := range status.Statuses {
-			glog.V(8).Infof("Found status from: %v", subStatus)
-			providers.Insert(*subStatus.Context)
-		}
-	}
-	for _, provider := range requiredContexts {
-		if !providers.Has(provider) {
-			glog.V(8).Infof("Failed to find %q in %v", provider, providers)
-			return "incomplete"
-		}
+		providers.Insert(*status.Context)
 	}
 
+	missing := requires.Difference(providers)
+	if missing.Len() != 0 {
+		glog.V(8).Infof("Failed to find %v in CombinedStatus for %s", missing.List(), combinedStatus.SHA)
+		return "incomplete"
+	}
 	switch {
 	case states.Has("pending"):
 		return "pending"
@@ -409,42 +377,43 @@ func computeStatus(statusList []*github.CombinedStatus, requiredContexts []strin
 	}
 }
 
-// Make sure that the combined status for all commits in a PR is 'success'
-// if 'waitForPending' is true, this function will wait until the PR is no longer pending (all checks have run)
-func (config *GithubConfig) ValidateStatus(prNum int, requiredContexts []string, waitOnPending bool) (bool, error) {
-	pending := true
-	for pending {
-		status, err := config.GetStatus(prNum, requiredContexts)
-		if err != nil {
-			return false, err
-		}
-		switch status {
-		case "error", "failure":
-			return false, nil
-		case "pending":
-			if !waitOnPending {
-				return false, nil
-			}
-			pending = true
-			glog.V(4).Info("PR is pending, waiting for 30 seconds")
-			time.Sleep(30 * time.Second)
-		case "success":
-			return true, nil
-		case "incomplete":
-			return false, nil
-		default:
-			return false, fmt.Errorf("unknown status: %q", status)
-		}
+// GetSTatusPR gets the current status of a PR.
+//    * If any member of the 'requiredContexts' list is missing, it is 'incomplete'
+//    * If any is 'pending', the PR is 'pending'
+//    * If any is 'error', the PR is in 'error'
+//    * If any is 'failure', the PR is 'failure'
+//    * Otherwise the PR is 'success'
+func (config *GithubConfig) GetStatus(pr *github.PullRequest, requiredContexts []string) (string, error) {
+	if pr.Head == nil {
+		glog.Errorf("pr.Head is nil in GetStatus for PR# %d", *pr.Number)
+		return "failure", nil
 	}
-	return true, nil
+	combinedStatus, _, err := config.client.Repositories.GetCombinedStatus(config.Org, config.Project, *pr.Head.SHA, &github.ListOptions{})
+	config.analytics.GetCombinedStatus.Call(config)
+	if err != nil {
+		return "failure", err
+	}
+	return computeStatus(combinedStatus, requiredContexts), nil
+}
+
+// Make sure that the combined status for all commits in a PR is 'success'
+func (config *GithubConfig) IsStatusSuccess(pr *github.PullRequest, requiredContexts []string) bool {
+	status, err := config.GetStatus(pr, requiredContexts)
+	if err != nil {
+		return false
+	}
+	if status == "success" {
+		return true
+	}
+	return false
 }
 
 // Wait for a PR to move into Pending.  This is useful because the request to test a PR again
 // is asynchronous with the PR actually moving into a pending state
 // TODO: add a timeout
-func (config *GithubConfig) WaitForPending(prNum int) error {
+func (config *GithubConfig) WaitForPending(pr *github.PullRequest) error {
 	for {
-		status, err := config.GetStatus(prNum, []string{})
+		status, err := config.GetStatus(pr, []string{})
 		if err != nil {
 			return err
 		}
@@ -452,6 +421,20 @@ func (config *GithubConfig) WaitForPending(prNum int) error {
 			return nil
 		}
 		glog.V(4).Info("PR is not pending, waiting for 30 seconds")
+		time.Sleep(30 * time.Second)
+	}
+}
+
+func (config *GithubConfig) WaitForNotPending(pr *github.PullRequest) error {
+	for {
+		status, err := config.GetStatus(pr, []string{})
+		if err != nil {
+			return err
+		}
+		if status != "pending" {
+			return nil
+		}
+		glog.V(4).Info("PR is pending, waiting for 30 seconds")
 		time.Sleep(30 * time.Second)
 	}
 }

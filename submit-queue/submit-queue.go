@@ -148,8 +148,8 @@ func (config *SubmitQueueConfig) handlePR(e2e *e2eTester, pr *github_api.PullReq
 	if len(config.DontRequireE2ELabel) == 0 || !github.HasLabel(issue.Labels, config.DontRequireE2ELabel) {
 		contexts = append(contexts, config.E2EStatusContext)
 	}
-	if ok, err := config.ValidateStatus(*pr.Number, contexts, false); !ok || err != nil {
-		glog.Errorf("Error validating PR status: %v", err)
+	if ok := config.IsStatusSuccess(pr, contexts); !ok {
+		glog.Errorf("PR# %d CI status is not success", *pr.Number)
 		return
 	}
 

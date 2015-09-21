@@ -327,146 +327,138 @@ func TestForEachPRDo(t *testing.T) {
 }
 
 func TestComputeStatus(t *testing.T) {
+	success := stringPtr("success")
+	failure := stringPtr("failure")
+	errorp := stringPtr("error")
+	pending := stringPtr("pending")
+	sha := stringPtr("abcdef")
+	contextS := []string{"context"}
+	context := stringPtr("context")
+
 	tests := []struct {
-		statusList       []*github.CombinedStatus
+		combinedStatus   *github.CombinedStatus
 		requiredContexts []string
 		expected         string
 	}{
+		// test no context specified
 		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
+			combinedStatus: &github.CombinedStatus{
+				State: success,
+				SHA:   sha,
 			},
 			expected: "success",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("error"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("pending"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
+			combinedStatus: &github.CombinedStatus{
+				State: pending,
+				SHA:   sha,
 			},
 			expected: "pending",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("pending"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-			},
-			expected: "pending",
-		},
-		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("failure"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
+			combinedStatus: &github.CombinedStatus{
+				State: failure,
+				SHA:   sha,
 			},
 			expected: "failure",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("failure"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("error"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
+			combinedStatus: &github.CombinedStatus{
+				State: errorp,
+				SHA:   sha,
 			},
 			expected: "error",
 		},
+		// test missing subcontext requested but missing
 		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
+			combinedStatus: &github.CombinedStatus{
+				State: success,
+				SHA:   sha,
 			},
-			requiredContexts: []string{"context"},
+			requiredContexts: contextS,
 			expected:         "incomplete",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("pending"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
+			combinedStatus: &github.CombinedStatus{
+				State: pending,
+				SHA:   sha,
 			},
-			requiredContexts: []string{"context"},
+			requiredContexts: contextS,
 			expected:         "incomplete",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("failure"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
+			combinedStatus: &github.CombinedStatus{
+				State: failure,
+				SHA:   sha,
 			},
-			requiredContexts: []string{"context"},
+			requiredContexts: contextS,
 			expected:         "incomplete",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{State: stringPtr("failure"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("error"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
+			combinedStatus: &github.CombinedStatus{
+				State: errorp,
+				SHA:   sha,
 			},
-			requiredContexts: []string{"context"},
+			requiredContexts: contextS,
 			expected:         "incomplete",
 		},
+		// test subcontext present and requested
 		{
-			statusList: []*github.CombinedStatus{
-				{
-					State: stringPtr("success"),
-					SHA:   stringPtr("abcdef"),
-					Statuses: []github.RepoStatus{
-						{Context: stringPtr("context")},
-					},
+			combinedStatus: &github.CombinedStatus{
+				State: success,
+				SHA:   sha,
+				Statuses: []github.RepoStatus{
+					{Context: context, State: success},
 				},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
 			},
-			requiredContexts: []string{"context"},
+			requiredContexts: contextS,
 			expected:         "success",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{
-					State: stringPtr("pending"),
-					SHA:   stringPtr("abcdef"),
-					Statuses: []github.RepoStatus{
-						{Context: stringPtr("context")},
-					},
+			combinedStatus: &github.CombinedStatus{
+				State: pending,
+				SHA:   sha,
+				Statuses: []github.RepoStatus{
+					{Context: context, State: pending},
 				},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
 			},
-			requiredContexts: []string{"context"},
+			requiredContexts: contextS,
 			expected:         "pending",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{
-					State: stringPtr("error"),
-					SHA:   stringPtr("abcdef"),
-					Statuses: []github.RepoStatus{
-						{Context: stringPtr("context")},
-					},
+			combinedStatus: &github.CombinedStatus{
+				State: errorp,
+				SHA:   sha,
+				Statuses: []github.RepoStatus{
+					{Context: context, State: errorp},
 				},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
 			},
-			requiredContexts: []string{"context"},
+			requiredContexts: contextS,
 			expected:         "error",
 		},
 		{
-			statusList: []*github.CombinedStatus{
-				{
-					State: stringPtr("failure"),
-					SHA:   stringPtr("abcdef"),
-					Statuses: []github.RepoStatus{
-						{Context: stringPtr("context")},
-					},
+			combinedStatus: &github.CombinedStatus{
+				State: failure,
+				SHA:   sha,
+				Statuses: []github.RepoStatus{
+					{Context: context, State: failure},
 				},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
-				{State: stringPtr("success"), SHA: stringPtr("abcdef")},
 			},
-			requiredContexts: []string{"context"},
+			requiredContexts: contextS,
 			expected:         "failure",
+		},
+		// test failed PR but the one we care about is passed
+		{
+			combinedStatus: &github.CombinedStatus{
+				State: failure,
+				SHA:   sha,
+				Statuses: []github.RepoStatus{
+					{Context: context, State: success},
+					{Context: stringPtr("other status"), State: failure},
+				},
+			},
+			requiredContexts: contextS,
+			expected:         "success",
 		},
 	}
 
@@ -475,9 +467,9 @@ func TestComputeStatus(t *testing.T) {
 		if test.requiredContexts == nil {
 			test.requiredContexts = []string{}
 		}
-		status := computeStatus(test.statusList, test.requiredContexts)
+		status := computeStatus(test.combinedStatus, test.requiredContexts)
 		if test.expected != status {
-			t.Errorf("expected: %s, saw %s", test.expected, status)
+			t.Errorf("expected: %s, saw %s for %v", test.expected, status, test.combinedStatus)
 		}
 	}
 }
