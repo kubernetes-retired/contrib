@@ -56,9 +56,8 @@ type ExternalState struct {
 
 type e2eTester struct {
 	sync.Mutex
-	state       *ExternalState
-	BuildStatus map[string]string
-	Config      *SubmitQueueConfig
+	state  *ExternalState
+	Config *SubmitQueueConfig
 }
 
 func (e *e2eTester) msg(msg string, args ...interface{}) {
@@ -85,7 +84,7 @@ func (e *e2eTester) locked(f func()) {
 }
 
 func (e *e2eTester) setBuildStatus(build, status string) {
-	e.locked(func() { e.BuildStatus[build] = status })
+	e.locked(func() { e.state.BuildStatus[build] = status })
 }
 
 func (e *e2eTester) checkBuilds() (allStable bool) {
