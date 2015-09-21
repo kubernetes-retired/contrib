@@ -205,7 +205,7 @@ func (config *GithubConfig) LastModifiedTime(prNum int) (*time.Time, error) {
 }
 
 func (config *GithubConfig) fetchAllCollaborators() ([]github.User, error) {
-	page := 0
+	page := 1
 	var result []github.User
 	for {
 		glog.V(4).Infof("Fetching page %d of all users", page)
@@ -256,7 +256,7 @@ func (config *GithubConfig) UsersWithAccess() (pushUsers sets.String, pullUsers 
 
 func (config *GithubConfig) GetAllEventsForPR(prNum int) ([]github.IssueEvent, error) {
 	events := []github.IssueEvent{}
-	page := 0
+	page := 1
 	for {
 		eventPage, response, err := config.client.Issues.ListIssueEvents(config.Org, config.Project, prNum, &github.ListOptions{Page: page})
 		if err != nil {
