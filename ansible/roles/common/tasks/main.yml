@@ -13,6 +13,15 @@
     is_atomic: true
   when: s.stat.exists
 
+- name: Set docker config file directory
+  set_fact:
+    docker_config_dir: "/etc/sysconfig"
+
+- name: Override docker config file directory for Debian
+  set_fact:
+    docker_config_dir: "/etc/default"
+  when: ansible_distribution == "Debian"
+
 - name: Determine if has rpm
   stat: path=/usr/bin/rpm
   register: s

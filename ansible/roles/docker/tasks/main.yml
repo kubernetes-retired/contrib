@@ -5,15 +5,6 @@
 - include: generic-install.yml
   when: ansible_distribution != "Debian"
 
-- name: Set docker config file directory
-  set_fact:
-    docker_config_dir: "/etc/sysconfig"
-
-- name: Override docker config file directory for Debian
-  set_fact:
-    docker_config_dir: "/etc/default"
-  when: ansible_distribution == "Debian"
-
 - name: Verify docker config files exists
   file: path={{ docker_config_dir }}/{{ item }} state=touch
   changed_when: false
@@ -51,4 +42,6 @@
     - restart docker
 
 - name: Enable Docker
-  service: name=docker enabled=yes state=started
+  service: name=docker enabled=yes
+  notify:
+    - start docker
