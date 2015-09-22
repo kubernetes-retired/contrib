@@ -106,6 +106,9 @@ var (
 	httpPort  = flags.Int("http-port", 80, `Port to expose http services.`)
 	statsPort = flags.Int("stats-port", 1936, `Port for loadbalancer stats,
 		Used in the loadbalancer liveness probe.`)
+
+	startSyslog = flags.Bool("syslog", false, `if set, it will start a syslog server
+		that will forward haproxy logs to stdout.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -431,9 +434,11 @@ func main() {
 	var kubeClient *unversioned.Client
 	var err error
 
-	_, err = newSyslogServer("/var/run/haproxy.log.socket")
-	if err != nil {
-		glog.Fatalf("Failed to start syslog server: %v", err)
+	if *startSyslog {
+		_, err = newSyslogServer("/var/run/haproxy.log.socket")
+		if err != nil {
+			glog.Fatalf("Failed to start syslog server: %v", err)
+		}
 	}
 
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
