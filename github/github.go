@@ -17,11 +17,13 @@ limitations under the License.
 package github
 
 import (
+	"bytes"
 	goflag "flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"k8s.io/kubernetes/pkg/util"
@@ -103,21 +105,27 @@ func (a analytics) Print() {
 	since := time.Since(a.lastAPIReset)
 	callsPerSec := float64(a.apiCount) / since.Seconds()
 	glog.Infof("Made %d API calls since the last Reset %f calls/sec", a.apiCount, callsPerSec)
-	glog.V(2).Infof("Made %d AddLabels calls", a.AddLabels)
-	glog.V(2).Infof("Made %d RemoveLabels calls", a.RemoveLabels)
-	glog.V(2).Infof("Made %d ListCollaborators calls", a.ListCollaborators)
-	glog.V(2).Infof("Made %d ListIssues calls", a.ListIssues)
-	glog.V(2).Infof("Made %d ListIssueEvents calls", a.ListIssueEvents)
-	glog.V(2).Infof("Made %d ListCommits calls", a.ListCommits)
-	glog.V(2).Infof("Made %d GetCommit calls", a.GetCommit)
-	glog.V(2).Infof("Made %d GetCombinedStatus calls", a.GetCombinedStatus)
-	glog.V(2).Infof("Made %d GetPR calls", a.GetPR)
-	glog.V(2).Infof("Made %d AssignPR calls", a.AssignPR)
-	glog.V(2).Infof("Made %d ClosePR calls", a.ClosePR)
-	glog.V(2).Infof("Made %d OpenPR calls", a.OpenPR)
-	glog.V(2).Infof("Made %d GetContents calls", a.GetContents)
-	glog.V(2).Infof("Made %d CreateComment calls", a.CreateComment)
-	glog.V(2).Infof("Made %d Merge calls", a.Merge)
+
+	buf := new(bytes.Buffer)
+	w := new(tabwriter.Writer)
+	w.Init(buf, 0, 0, 1, ' ', tabwriter.AlignRight)
+	fmt.Fprintf(w, "AddLabels\t%d\t\n", a.AddLabels)
+	fmt.Fprintf(w, "RemoveLabels\t%d\t\n", a.RemoveLabels)
+	fmt.Fprintf(w, "ListCollaborators\t%d\t\n", a.ListCollaborators)
+	fmt.Fprintf(w, "ListIssues\t%d\t\n", a.ListIssues)
+	fmt.Fprintf(w, "ListIssueEvents\t%d\t\n", a.ListIssueEvents)
+	fmt.Fprintf(w, "ListCommits\t%d\t\n", a.ListCommits)
+	fmt.Fprintf(w, "GetCommit\t%d\t\n", a.GetCommit)
+	fmt.Fprintf(w, "GetCombinedStatus\t%d\t\n", a.GetCombinedStatus)
+	fmt.Fprintf(w, "GetPR\t%d\t\n", a.GetPR)
+	fmt.Fprintf(w, "AssignPR\t%d\t\n", a.AssignPR)
+	fmt.Fprintf(w, "ClosePR\t%d\t\n", a.ClosePR)
+	fmt.Fprintf(w, "OpenPR\t%d\t\n", a.OpenPR)
+	fmt.Fprintf(w, "GetContents\t%d\t\n", a.GetContents)
+	fmt.Fprintf(w, "CreateComment\t%d\t\n", a.CreateComment)
+	fmt.Fprintf(w, "Merge\t%d\t\n", a.Merge)
+	w.Flush()
+	glog.V(2).Infof("\n%v", buf)
 }
 
 func (config *GithubConfig) AddRootFlags(cmd *cobra.Command) {
