@@ -24,7 +24,7 @@ import (
 	"strings"
 
 	// TODO: move this somewhere central
-	"k8s.io/contrib/submit-queue/jenkins"
+	"k8s.io/contrib/mungegithub/pulls/jenkins"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 

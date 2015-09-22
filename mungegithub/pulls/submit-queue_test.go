@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	github_test "k8s.io/contrib/github/testing"
+	github_test "k8s.io/contrib/mungegithub/github/testing"
 
 	"github.com/google/go-github/github"
 )

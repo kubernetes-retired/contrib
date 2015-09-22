@@ -30,7 +30,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/util/sets"
 
-	github "k8s.io/contrib/github"
+	github "k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
 	github_api "github.com/google/go-github/github"

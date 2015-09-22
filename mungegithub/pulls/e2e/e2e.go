@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	github_util "k8s.io/contrib/github"
+	github_util "k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/submit-queue/jenkins"
 
 	"github.com/golang/glog"
