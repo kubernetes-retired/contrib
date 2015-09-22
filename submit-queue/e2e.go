@@ -104,6 +104,7 @@ func (e *e2eTester) checkBuilds() (allStable bool) {
 			e.setBuildStatus(build, "Stable")
 		} else {
 			e.setBuildStatus(build, "Not Stable")
+			allStable = false
 		}
 	}
 	return allStable
