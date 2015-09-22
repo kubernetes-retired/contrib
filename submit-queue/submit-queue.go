@@ -182,9 +182,10 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 	config.committerList = committerList
 
 	e2e := &e2eTester{
-		BuildStatus: map[string]string{},
-		Config:      config,
-		state:       &ExternalState{},
+		Config: config,
+		state: &ExternalState{
+			BuildStatus: map[string]string{},
+		},
 	}
 	if len(config.Address) > 0 {
 		if len(config.WWWRoot) > 0 {
