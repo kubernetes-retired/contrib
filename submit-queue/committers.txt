@@ -21,6 +21,7 @@ eparis
 erictune
 fabioy
 fgrzadkowski
+ghodss
 gmarek
 goltermann
 googlebot
@@ -32,6 +33,7 @@ jlowdermilk
 jszczepkowski
 justinsb
 k8s-bot
+k8s-merge-robot
 k8s-slack
 karlkfi
 kelseyhightower

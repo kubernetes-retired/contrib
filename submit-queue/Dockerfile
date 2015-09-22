@@ -20,3 +20,6 @@ ADD submit-queue /submit-queue
 ADD whitelist.txt /whitelist.txt
 ADD committers.txt /committers.txt
 ADD www /www
+ADD run.sh /run.sh
+RUN chmod a+x /run.sh
+CMD /run.sh

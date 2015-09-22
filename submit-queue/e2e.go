@@ -137,15 +137,11 @@ func (e *e2eTester) runE2ETests(pr *github_api.PullRequest, issue *github_api.Is
 	}
 
 	// Wait for the build to start
-	err := e.Config.WaitForPending(*pr.Number)
+	_ = e.Config.WaitForPending(pr)
+	_ = e.Config.WaitForNotPending(pr)
 
 	// Wait for the status to go back to 'success'
-	ok, err := e.Config.ValidateStatus(*pr.Number, []string{}, true)
-	if err != nil {
-		e.error(err)
-		return err
-	}
-	if !ok {
+	if ok := e.Config.IsStatusSuccess(pr, []string{}); !ok {
 		e.msg("Status after build is not 'success', skipping PR %d", *pr.Number)
 		return nil
 	}

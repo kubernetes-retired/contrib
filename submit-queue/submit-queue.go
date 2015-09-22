@@ -61,13 +61,13 @@ type SubmitQueueConfig struct {
 	WWWRoot                string
 
 	// additionalUserWhitelist are non-committer users believed safe
-	additionalUserWhitelist []string
+	additionalUserWhitelist *sets.String
 	// CommitterList are static here in case they can't be gotten dynamically;
 	// they do not need to be whitelisted.
-	committerList []string
+	committerList *sets.String
 	// userWhitelist is the combination of committers and additional which
 	// we actully use
-	userWhitelist sets.String
+	userWhitelist *sets.String
 }
 
 func addSubmitFlags(cmd *cobra.Command, config *SubmitQueueConfig) {
@@ -104,9 +104,6 @@ func (config *SubmitQueueConfig) validateLGTMAfterPush(pr *github_api.PullReques
 }
 
 func (config *SubmitQueueConfig) handlePR(e2e *e2eTester, pr *github_api.PullRequest, issue *github_api.Issue) {
-	if config.userWhitelist == nil {
-		config.RefreshWhitelist()
-	}
 	userSet := config.userWhitelist
 
 	if !github.HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*pr.User.Login) {
@@ -151,8 +148,8 @@ func (config *SubmitQueueConfig) handlePR(e2e *e2eTester, pr *github_api.PullReq
 	if len(config.DontRequireE2ELabel) == 0 || !github.HasLabel(issue.Labels, config.DontRequireE2ELabel) {
 		contexts = append(contexts, config.E2EStatusContext)
 	}
-	if ok, err := config.ValidateStatus(*pr.Number, contexts, false); !ok || err != nil {
-		glog.Errorf("Error validating PR status: %v", err)
+	if ok := config.IsStatusSuccess(pr, contexts); !ok {
+		glog.Errorf("PR# %d CI status is not success", *pr.Number)
 		return
 	}
 
@@ -168,18 +165,6 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 	if len(config.JenkinsHost) == 0 {
 		glog.Fatalf("--jenkins-host is required.")
 	}
-
-	users, err := loadWhitelist(config.Whitelist)
-	if err != nil {
-		glog.Fatalf("error loading user whitelist: %v", err)
-	}
-	config.additionalUserWhitelist = users
-
-	committerList, err := loadWhitelist(config.Committers)
-	if err != nil {
-		glog.Fatalf("error loading committers whitelist: %v", err)
-	}
-	config.committerList = committerList
 
 	e2e := &e2eTester{
 		Config: config,
@@ -199,7 +184,7 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 		nextRunStartTime := time.Now().Add(config.PollPeriod)
 		wl := config.RefreshWhitelist()
 		e2e.locked(func() { e2e.state.Whitelist = wl.List() })
-		err := config.ForEachIssueDo([]string{"lgtm", "cla: yes"}, func(pr *github_api.PullRequest, issue *github_api.Issue) error {
+		err := config.ForEachPRDo([]string{"lgtm", "cla: yes"}, func(pr *github_api.PullRequest, issue *github_api.Issue) error {
 			if pr == nil {
 				return nil
 			}
@@ -209,6 +194,7 @@ func (config *SubmitQueueConfig) doSubmitQueue() error {
 		if err != nil {
 			glog.Errorf("Error getting candidate PRs: %v", err)
 		}
+		config.ResetAPICount()
 		if config.Once {
 			break
 		}

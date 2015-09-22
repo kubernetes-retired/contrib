@@ -1,4 +1,6 @@
-# Copyright 2015 Google Inc. All rights reserved.
+#!/bin/sh
+
+# Copyright 2015 The Kubernetes Authors All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM google/debian:wheezy
-MAINTAINER Brendan Burns <bburns@google.com>
-RUN apt-get update
-RUN apt-get install -y -qq ca-certificates
-ADD mungegithub /mungegithub
-ADD blunderbuss.yml /blunderbuss.yml
-ADD path-label.txt /path-label.txt
-ADD generated-files.txt /generated-files.txt
-ADD run.sh /run.sh
-RUN chmod a+x /run.sh
-CMD /run.sh
+/submit-queue \
+  --jenkins-host=http://jenkins-master:8080 \
+  --token-file=/etc/secret-volume/token \
+  --jenkins-jobs=kubernetes-e2e-gce,kubernetes-e2e-gke-ci,kubernetes-build,kubernetes-e2e-gce-parallel,kubernetes-e2e-gce-autoscaling,kubernetes-e2e-gce-reboot,kubernetes-e2e-gce-scalability \
+  --alsologtostderr \
+  --v=2 \
+  --www=/www \
