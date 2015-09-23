@@ -107,6 +107,9 @@ var (
 	httpPort  = flags.Int("http-port", 80, `Port to expose http services.`)
 	statsPort = flags.Int("stats-port", 1936, `Port for loadbalancer stats,
 		Used in the loadbalancer liveness probe.`)
+
+	startSyslog = flags.Bool("syslog", false, `if set, it will start a syslog server
+		that will forward haproxy logs to stdout.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -126,11 +129,12 @@ type service struct {
 // loadBalancerConfig represents loadbalancer specific configuration. Eventually
 // kubernetes will have an api for l7 loadbalancing.
 type loadBalancerConfig struct {
-	Name      string `json:"name" description:"Name of the load balancer, eg: haproxy."`
-	ReloadCmd string `json:"reloadCmd" description:"command used to reload the load balancer."`
-	Config    string `json:"config" description:"path to loadbalancers configuration file."`
-	Template  string `json:"template" description:"template for the load balancer config."`
-	Algorithm string `json:"algorithm" description:"loadbalancing algorithm."`
+	Name        string `json:"name" description:"Name of the load balancer, eg: haproxy."`
+	ReloadCmd   string `json:"reloadCmd" description:"command used to reload the load balancer."`
+	Config      string `json:"config" description:"path to loadbalancers configuration file."`
+	Template    string `json:"template" description:"template for the load balancer config."`
+	Algorithm   string `json:"algorithm" description:"loadbalancing algorithm."`
+	startSyslog bool   `description:"indicates if the load balancer uses syslog."`
 }
 
 // write writes the configuration file, will write to stdout if dryRun == true
@@ -149,7 +153,12 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 	if err != nil {
 		return
 	}
-	return t.Execute(w, services)
+
+	conf := make(map[string]interface{})
+	conf["startSyslog"] = strconv.FormatBool(cfg.startSyslog)
+	conf["services"] = services
+
+	return t.Execute(w, conf)
 }
 
 // reload reloads the loadbalancer using the reload cmd specified in the json manifest.
@@ -284,8 +293,8 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 	}
 	if err := lbc.cfg.write(
 		map[string][]service{
-			"httpServices": httpSvc,
-			"tcpServices":  tcpSvc,
+			"http": httpSvc,
+			"tcp":  tcpSvc,
 		}, dryRun); err != nil {
 		return err
 	}
@@ -433,6 +442,15 @@ func main() {
 
 	var kubeClient *unversioned.Client
 	var err error
+
+	if *startSyslog {
+		cfg.startSyslog = true
+		_, err = newSyslogServer("/var/run/haproxy.log.socket")
+		if err != nil {
+			glog.Fatalf("Failed to start syslog server: %v", err)
+		}
+	}
+
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	if *cluster {
 		if kubeClient, err = unversioned.NewInCluster(); err != nil {
@@ -460,6 +478,7 @@ func main() {
 	if *dry {
 		dryRun(lbc)
 	} else {
+		lbc.cfg.reload()
 		util.Until(lbc.worker, time.Second, util.NeverStop)
 	}
 }
