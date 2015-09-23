@@ -475,6 +475,7 @@ func main() {
 	if *dry {
 		dryRun(lbc)
 	} else {
+		lbc.cfg.reload()
 		util.Until(lbc.worker, time.Second, util.NeverStop)
 	}
 }
