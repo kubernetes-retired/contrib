@@ -38,13 +38,15 @@ import (
 )
 
 const (
-	NeedsOKToMergeLabel = "needs-ok-to-merge"
+	needsOKToMergeLabel = "needs-ok-to-merge"
 )
 
 var (
 	_ = fmt.Print
 )
 
+// SubmitQueueConfig has all of the configuration for the submit queue along with
+// and embedded github.GithubConfig
 type SubmitQueueConfig struct {
 	github.GithubConfig
 	Once                   bool
@@ -98,7 +100,7 @@ func (config *SubmitQueueConfig) validateLGTMAfterPush(pr *github_api.PullReques
 		}
 	}
 	if lgtmTime == nil {
-		return false, fmt.Errorf("Couldn't find time for LGTM label, this shouldn't happen, skipping PR: %d", *pr.Number)
+		return false, fmt.Errorf("couldn't find time for LGTM label, this shouldn't happen, skipping PR: %d", *pr.Number)
 	}
 	return lastModifiedTime.Before(*lgtmTime), nil
 }
@@ -108,8 +110,8 @@ func (config *SubmitQueueConfig) handlePR(e2e *e2eTester, pr *github_api.PullReq
 
 	if !github.HasLabel(issue.Labels, config.WhitelistOverride) && !userSet.Has(*pr.User.Login) {
 		glog.V(4).Infof("Dropping %d since %s isn't in whitelist and %s isn't present", *pr.Number, *pr.User.Login, config.WhitelistOverride)
-		if !github.HasLabel(issue.Labels, NeedsOKToMergeLabel) {
-			config.AddLabels(*pr.Number, []string{NeedsOKToMergeLabel})
+		if !github.HasLabel(issue.Labels, needsOKToMergeLabel) {
+			config.AddLabels(*pr.Number, []string{needsOKToMergeLabel})
 			body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
 			config.WriteComment(*pr.Number, body)
 		}
@@ -117,8 +119,8 @@ func (config *SubmitQueueConfig) handlePR(e2e *e2eTester, pr *github_api.PullReq
 	}
 
 	// Tidy up the issue list.
-	if github.HasLabel(issue.Labels, NeedsOKToMergeLabel) {
-		config.RemoveLabel(*pr.Number, NeedsOKToMergeLabel)
+	if github.HasLabel(issue.Labels, needsOKToMergeLabel) {
+		config.RemoveLabel(*pr.Number, needsOKToMergeLabel)
 	}
 
 	lastModifiedTime, err := config.LastModifiedTime(*pr.Number)

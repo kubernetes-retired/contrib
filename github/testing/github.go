@@ -24,6 +24,8 @@ import (
 	"github.com/google/go-github/github"
 )
 
+// InitTest will return a github.Client which will talk to the httptest.Server,
+// to retrieve information from the http.ServeMux
 func InitTest() (*github.Client, *httptest.Server, *http.ServeMux) {
 	// test server
 	mux := http.NewServeMux()

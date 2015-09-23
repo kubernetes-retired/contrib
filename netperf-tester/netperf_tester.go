@@ -175,7 +175,7 @@ func getPodName(serviceName string) (string, error) {
 	return strings.TrimRight(string(bytes), "\n"), nil
 }
 
-func getPodIp(serviceName string) (string, error) {
+func getPodIP(serviceName string) (string, error) {
 	template := `{{range .items}}{{.status.podIP}}
 {{end}}`
 	args := []string{"get", "pods", "-l", "run=" + serviceName, "-o=template", "--template=" + template}
@@ -210,7 +210,7 @@ func runTest(clientName, hostIP string, testNumber int) error {
 	return nil
 }
 
-var spacesRegex *regexp.Regexp = regexp.MustCompile("[ ]+")
+var spacesRegex = regexp.MustCompile("[ ]+")
 
 func resultsToCSV(rawResults []byte, testNumber int) string {
 	ret := ""
@@ -236,7 +236,7 @@ func runTests() error {
 		return err
 	}
 	// get ip of the host pod
-	hostIP, err := getPodIp("netperf-tester-host")
+	hostIP, err := getPodIP("netperf-tester-host")
 	if err != nil {
 		return err
 	}

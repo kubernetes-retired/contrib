@@ -56,7 +56,7 @@ var (
 	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
 
 	// Error used to indicate that a sync is deferred because the controller isn't ready yet
-	deferredSync = fmt.Errorf("Deferring sync till endpoints controller has synced.")
+	errDeferredSync = fmt.Errorf("deferring sync till endpoints controller has synced")
 
 	config = flags.String("cfg", "loadbalancer.json", `path to load balancer json config.
 		Note that this is *not* the path to the configuration file for the load balancer
@@ -166,7 +166,7 @@ func (cfg *loadBalancerConfig) reload() error {
 	output, err := exec.Command("sh", "-c", cfg.ReloadCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
 	if err != nil {
-		return fmt.Errorf("Error restarting %v: %v", msg, err)
+		return fmt.Errorf("error restarting %v: %v", msg, err)
 	}
 	glog.Infof(msg)
 	return nil
@@ -285,7 +285,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 func (lbc *loadBalancerController) sync(dryRun bool) error {
 	if !lbc.epController.HasSynced() || !lbc.svcController.HasSynced() {
 		time.Sleep(100 * time.Millisecond)
-		return deferredSync
+		return errDeferredSync
 	}
 	httpSvc, tcpSvc := lbc.getServices()
 	if len(httpSvc) == 0 && len(tcpSvc) == 0 {
@@ -423,7 +423,7 @@ func healthzServer() {
 
 func dryRun(lbc *loadBalancerController) {
 	var err error
-	for err = lbc.sync(true); err == deferredSync; err = lbc.sync(true) {
+	for err = lbc.sync(true); err == errDeferredSync; err = lbc.sync(true) {
 	}
 	if err != nil {
 		glog.Infof("ERROR: %+v", err)

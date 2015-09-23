@@ -35,11 +35,11 @@ var (
 	token   string
 )
 
-type ByMerged []*github.PullRequest
+type byMerged []*github.PullRequest
 
-func (a ByMerged) Len() int           { return len(a) }
-func (a ByMerged) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ByMerged) Less(i, j int) bool { return a[i].MergedAt.Before(*a[j].MergedAt) }
+func (a byMerged) Len() int           { return len(a) }
+func (a byMerged) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byMerged) Less(i, j int) bool { return a[i].MergedAt.Before(*a[j].MergedAt) }
 
 func init() {
 	flag.IntVar(&last, "last-release-pr", 0, "The PR number of the last versioned release.")
@@ -119,7 +119,7 @@ func main() {
 		fmt.Printf(" ... %d merged PRs, %d unmerged PRs.\n", merged, unmerged)
 	}
 	fmt.Printf("Compiling pretty-printed list of PRs...\n")
-	sort.Sort(ByMerged(prs))
+	sort.Sort(byMerged(prs))
 	for _, pr := range prs {
 		if lastVersionMerged.Before(*pr.MergedAt) && (pr.MergedAt.Before(*currentVersionMerged) || (*pr.Number == current)) {
 			fmt.Fprintf(buffer, "   * %s #%d (%s)\n", *pr.Title, *pr.Number, *pr.User.Login)

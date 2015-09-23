@@ -132,20 +132,20 @@ func getManifest(manifestName, manifestType, manifestFormat string, images ...st
 		}
 		portSlice := []goyaml.MapSlice{}
 		for p := range img.ContainerConfig.ExposedPorts {
-			port, err := strconv.Atoi(p.Port())
+			port, err := strconv.Atoi(p.port())
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse port %q: %v", p.Port(), err)
+				return nil, fmt.Errorf("failed to parse port %q: %v", p.port(), err)
 			}
 			portEntry := goyaml.MapSlice{{
 				Key:   "name",
-				Value: strings.Join([]string{p.Proto(), p.Port()}, "-"),
+				Value: strings.Join([]string{p.proto(), p.port()}, "-"),
 			}, {
 				Key:   "containerPort",
 				Value: port,
 			}}
 			portSlice = append(portSlice, portEntry)
-			if p.Proto() != "tcp" {
-				portEntry = append(portEntry, goyaml.MapItem{Key: "protocol", Value: strings.ToUpper(p.Proto())})
+			if p.proto() != "tcp" {
+				portEntry = append(portEntry, goyaml.MapItem{Key: "protocol", Value: strings.ToUpper(p.proto())})
 			}
 		}
 		if len(img.ContainerConfig.ExposedPorts) > 0 {
@@ -225,14 +225,14 @@ func splitDockerImageName(imageName string) (host, namespace, repo, tag string) 
 	return
 }
 
-type Port string
+type port string
 
-func (p Port) Port() string {
+func (p port) port() string {
 	parts := strings.Split(string(p), "/")
 	return parts[0]
 }
 
-func (p Port) Proto() string {
+func (p port) proto() string {
 	parts := strings.Split(string(p), "/")
 	if len(parts) == 1 {
 		return "tcp"
@@ -243,7 +243,7 @@ func (p Port) Proto() string {
 type imageMetadata struct {
 	ID              string `json:"id"`
 	ContainerConfig struct {
-		ExposedPorts map[Port]struct{}
+		ExposedPorts map[port]struct{}
 	} `json:"container_config"`
 }
 
