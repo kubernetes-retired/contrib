@@ -128,11 +128,12 @@ type service struct {
 // loadBalancerConfig represents loadbalancer specific configuration. Eventually
 // kubernetes will have an api for l7 loadbalancing.
 type loadBalancerConfig struct {
-	Name      string `json:"name" description:"Name of the load balancer, eg: haproxy."`
-	ReloadCmd string `json:"reloadCmd" description:"command used to reload the load balancer."`
-	Config    string `json:"config" description:"path to loadbalancers configuration file."`
-	Template  string `json:"template" description:"template for the load balancer config."`
-	Algorithm string `json:"algorithm" description:"loadbalancing algorithm."`
+	Name        string `json:"name" description:"Name of the load balancer, eg: haproxy."`
+	ReloadCmd   string `json:"reloadCmd" description:"command used to reload the load balancer."`
+	Config      string `json:"config" description:"path to loadbalancers configuration file."`
+	Template    string `json:"template" description:"template for the load balancer config."`
+	Algorithm   string `json:"algorithm" description:"loadbalancing algorithm."`
+	startSyslog bool
 }
 
 // write writes the configuration file, will write to stdout if dryRun == true
@@ -151,7 +152,12 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 	if err != nil {
 		return
 	}
-	return t.Execute(w, services)
+
+	conf := make(map[string]interface{})
+	conf["startSyslog"] = strconv.FormatBool(cfg.startSyslog)
+	conf["services"] = services
+
+	return t.Execute(w, conf)
 }
 
 // reload reloads the loadbalancer using the reload cmd specified in the json manifest.
@@ -286,8 +292,8 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 	}
 	if err := lbc.cfg.write(
 		map[string][]service{
-			"httpServices": httpSvc,
-			"tcpServices":  tcpSvc,
+			"http": httpSvc,
+			"tcp":  tcpSvc,
 		}, dryRun); err != nil {
 		return err
 	}
@@ -435,6 +441,7 @@ func main() {
 	var err error
 
 	if *startSyslog {
+		cfg.startSyslog = true
 		_, err = newSyslogServer("/var/run/haproxy.log.socket")
 		if err != nil {
 			glog.Fatalf("Failed to start syslog server: %v", err)
