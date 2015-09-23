@@ -447,7 +447,7 @@ func (config *GithubConfig) WaitForNotPending(pr *github.PullRequest) error {
 	}
 }
 
-func (config *GithubConfig) GetCommits(prNum int) ([]github.RepositoryCommit, error) {
+func (config *GithubConfig) getCommits(prNum int) ([]github.RepositoryCommit, error) {
 	config.analytics.ListCommits.Call(config)
 	//TODO: this should handle paging, I believe....
 	commits, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
@@ -458,7 +458,7 @@ func (config *GithubConfig) GetCommits(prNum int) ([]github.RepositoryCommit, er
 }
 
 func (config *GithubConfig) GetFilledCommits(prNum int) ([]github.RepositoryCommit, error) {
-	commits, err := config.GetCommits(prNum)
+	commits, err := config.getCommits(prNum)
 	if err != nil {
 		return nil, err
 	}
