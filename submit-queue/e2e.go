@@ -63,7 +63,7 @@ type e2eTester struct {
 func (e *e2eTester) msg(msg string, args ...interface{}) {
 	e.Lock()
 	defer e.Unlock()
-	if len(e.state.Message) > 50 {
+	if len(e.state.Message) >= 50 {
 		e.state.Message = e.state.Message[1:]
 	}
 	expanded := fmt.Sprintf(msg, args...)

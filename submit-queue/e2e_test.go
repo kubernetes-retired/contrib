@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 
 	"k8s.io/contrib/submit-queue/jenkins"
@@ -44,8 +46,9 @@ func marshalOrDie(obj interface{}, t *testing.T) []byte {
 
 func TestCheckBuilds(t *testing.T) {
 	tests := []struct {
-		paths        map[string][]byte
-		expectStable bool
+		paths          map[string][]byte
+		expectStable   bool
+		expectedStatus map[string]string
 	}{
 		{
 			paths: map[string][]byte{
@@ -56,7 +59,8 @@ func TestCheckBuilds(t *testing.T) {
 					Result: "SUCCESS",
 				}, t),
 			},
-			expectStable: true,
+			expectStable:   true,
+			expectedStatus: map[string]string{"foo": "Stable", "bar": "Stable"},
 		},
 		{
 			paths: map[string][]byte{
@@ -67,7 +71,8 @@ func TestCheckBuilds(t *testing.T) {
 					Result: "UNSTABLE",
 				}, t),
 			},
-			expectStable: false,
+			expectStable:   false,
+			expectedStatus: map[string]string{"foo": "Stable", "bar": "Not Stable"},
 		},
 		{
 			paths: map[string][]byte{
@@ -78,7 +83,20 @@ func TestCheckBuilds(t *testing.T) {
 					Result: "FAILURE",
 				}, t),
 			},
-			expectStable: false,
+			expectStable:   false,
+			expectedStatus: map[string]string{"foo": "Stable", "bar": "Not Stable"},
+		},
+		{
+			paths: map[string][]byte{
+				"/job/foo/lastCompletedBuild/api/json": marshalOrDie(jenkins.Job{
+					Result: "FAILURE",
+				}, t),
+				"/job/bar/lastCompletedBuild/api/json": marshalOrDie(jenkins.Job{
+					Result: "SUCCESS",
+				}, t),
+			},
+			expectStable:   false,
+			expectedStatus: map[string]string{"foo": "Not Stable", "bar": "Stable"},
 		},
 	}
 	for _, test := range tests {
@@ -110,5 +128,33 @@ func TestCheckBuilds(t *testing.T) {
 		if stable != test.expectStable {
 			t.Errorf("expected: %v, saw: %v", test.expectStable, stable)
 		}
+		if !reflect.DeepEqual(test.expectedStatus, e2e.state.BuildStatus) {
+			t.Errorf("expected: %v, saw: %v", test.expectedStatus, e2e.state.BuildStatus)
+		}
+	}
+}
+
+func TestMsg(t *testing.T) {
+	e2e := &e2eTester{state: &ExternalState{}}
+	for i := 1; i <= 50; i++ {
+		e2e.msg("FOO: %d", i)
+		if len(e2e.state.Message) != i {
+			t.Errorf("unexpected message list length. expected %d, saw %d.", i, len(e2e.state.Message))
+		}
+		expectedMsg := fmt.Sprintf("FOO: %d", i)
+		if !strings.Contains(e2e.state.Message[i-1], expectedMsg) {
+			t.Errorf("expected: %s, saw: %s", expectedMsg, e2e.state.Message[i-1])
+		}
+	}
+	// test clipping
+	e2e.msg("FOO: 51")
+	if len(e2e.state.Message) != 50 {
+		t.Errorf("expected to clip at 50, len is %d", len(e2e.state.Message))
+	}
+	if !strings.Contains(e2e.state.Message[49], "FOO: 51") {
+		t.Errorf("expected to find FOO: 51, found: %s", e2e.state.Message[49])
+	}
+	if !strings.Contains(e2e.state.Message[0], "FOO: 2") {
+		t.Errorf("expected to find FOO: 2, found: %s", e2e.state.Message[49])
 	}
 }
