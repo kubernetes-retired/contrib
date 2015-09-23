@@ -133,7 +133,7 @@ type loadBalancerConfig struct {
 	Config      string `json:"config" description:"path to loadbalancers configuration file."`
 	Template    string `json:"template" description:"template for the load balancer config."`
 	Algorithm   string `json:"algorithm" description:"loadbalancing algorithm."`
-	startSyslog bool
+	startSyslog bool   `description:"indicates if the load balancer uses syslog."`
 }
 
 // write writes the configuration file, will write to stdout if dryRun == true
