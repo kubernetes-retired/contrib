@@ -18,6 +18,7 @@ package jenkins
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -53,6 +54,9 @@ func (j *JenkinsClient) request(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %s %d", res.Status, res.StatusCode)
+	}
 	return ioutil.ReadAll(res.Body)
 }
 
