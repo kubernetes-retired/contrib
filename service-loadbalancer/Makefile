@@ -3,15 +3,23 @@ all: push
 # 0.0 shouldn't clobber any released builds
 TAG = 0.0
 PREFIX = gcr.io/google_containers/servicelb
+HAPROXY_IMAGE = contrib-haproxy
 
 server: service_loadbalancer.go
 	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o service_loadbalancer ./service_loadbalancer.go ./loadbalancer_log.go
 
-container: server
+container: server haproxy
 	docker build -t $(PREFIX):$(TAG) .
 
 push: container
 	gcloud docker push $(PREFIX):$(TAG)
 
+haproxy:
+	docker build -t $(HAPROXY_IMAGE):$(TAG) build
+	docker create --name $(HAPROXY_IMAGE) $(HAPROXY_IMAGE):$(TAG) true
+	docker cp $(HAPROXY_IMAGE):/work/x86_64/haproxy-1.6-r0.apk haproxy.apk
+	docker rm -f $(HAPROXY_IMAGE)
+
 clean:
-	rm -f service_loadbalancer
+	rm -f service_loadbalancer haproxy.apk
+	docker rmi $(HAPROXY_IMAGE):$(TAG)

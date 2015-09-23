@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Copyright 2015 The Kubernetes Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,15 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# A script to help with haproxy reloads. Needs sudo for :80. Running it for the
-# first time starts haproxy, each subsequent invocation will perform a
-# soft-reload.
-# -f config file
-# -p pid file
-# -D run as daemon
-# -s soft reload, wait for pids to finish handling requests
-# -f send pids a resume signal if reload of new config fails
+FROM alpine:3.2
 
-socat /tmp/haproxy - <<< "show servers state" > /var/state/haproxy/global
+RUN apk -U add alpine-sdk
+RUN mkdir -p /var/cache/distfiles && \
+	adduser -D packager && \
+    addgroup packager abuild && \
+    chgrp abuild /var/cache/distfiles && \
+    chmod g+w /var/cache/distfiles && \
+    echo "packager    ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-haproxy -f /etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid -D -sf $(cat /var/run/haproxy.pid)
+USER packager
+
+WORKDIR /work
+
+RUN abuild-keygen -a -i
+ADD src /work
+RUN sudo chown -R packager /work
+
+RUN abuild -c -r -P /work
