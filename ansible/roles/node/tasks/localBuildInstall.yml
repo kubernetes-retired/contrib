@@ -1,7 +1,7 @@
 ---
 - name: Copy node binaries
   copy:
-    src: ../../_output/local/go/bin/{{ item }}
+    src: ../../kubernetes/_output/local/go/bin/{{ item }}
     dest: /usr/bin/
     mode: 755
   with_items:
