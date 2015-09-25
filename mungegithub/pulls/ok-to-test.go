@@ -49,7 +49,7 @@ func (OkToTestMunger) MungePullRequest(config *github_util.Config, pr *github.Pu
 	if !github_util.HasLabel(issue.Labels, "lgtm") {
 		return
 	}
-	status, err := config.GetStatus(pr, []string{"Jenkins GCE e2e"})
+	status, err := config.GetStatus(pr, []string{"jenkins/google"})
 	if err != nil {
 		glog.Errorf("unexpected error getting status: %v", err)
 		return
