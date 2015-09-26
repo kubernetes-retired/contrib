@@ -106,15 +106,13 @@ func parseTimeCounts(times string, counts string) ([]timeCount, error) {
 	return tc, nil
 }
 
-type Scaler struct {
+type scaler struct {
 	timeCounts []timeCount
 	selector   labels.Selector
 	start      time.Time
 	pos        int
 	done       chan struct{}
 }
-
-var posError = errors.New("could not find position")
 
 func findPos(tc []timeCount, cur int, offset time.Duration) int {
 	first := true
@@ -127,7 +125,7 @@ func findPos(tc []timeCount, cur int, offset time.Duration) int {
 	return 0
 }
 
-func (s *Scaler) setCount(c int) {
+func (s *scaler) setCount(c int) {
 	glog.Infof("scaling to %d replicas", c)
 	rcList, err := client.ReplicationControllers(namespace).List(s.selector)
 	if err != nil {
@@ -142,15 +140,15 @@ func (s *Scaler) setCount(c int) {
 	}
 }
 
-func (s *Scaler) timeOffset() time.Duration {
+func (s *scaler) timeOffset() time.Duration {
 	return time.Since(s.start) % dayPeriod
 }
 
-func (s *Scaler) curpos(offset time.Duration) int {
+func (s *scaler) curpos(offset time.Duration) int {
 	return findPos(s.timeCounts, s.pos, offset)
 }
 
-func (s *Scaler) scale() {
+func (s *scaler) scale() {
 	for {
 		select {
 		case <-s.done:
@@ -168,7 +166,7 @@ func (s *Scaler) scale() {
 	}
 }
 
-func (s *Scaler) Start() error {
+func (s *scaler) Start() error {
 	now := time.Now().UTC()
 	s.start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	if *startNow {
@@ -196,7 +194,7 @@ func safeclose(c chan<- struct{}) (err error) {
 	return nil
 }
 
-func (s *Scaler) Stop() error {
+func (s *scaler) Stop() error {
 	if err := safeclose(s.done); err != nil {
 		return errors.New("already stopped scaling")
 	}
@@ -211,7 +209,7 @@ var (
 	local      = flag.Bool("local", false, "set to true if running on local machine not within cluster")
 	localPort  = flag.Int("localport", 8001, "port that kubectl proxy is running on (local must be true)")
 
-	namespace string = os.Getenv("POD_NAMESPACE")
+	namespace = os.Getenv("POD_NAMESPACE")
 
 	client *kclient.Client
 )
@@ -259,7 +257,7 @@ func main() {
 	if namespace == "" {
 		glog.Fatal("POD_NAMESPACE is not set. Set to the namespace of the replication controller if running locally.")
 	}
-	scaler := Scaler{timeCounts: tc, selector: selector}
+	scaler := scaler{timeCounts: tc, selector: selector}
 	if err != nil {
 		glog.Fatal(err)
 	}

@@ -39,27 +39,27 @@ import (
 	"time"
 )
 
-type Config struct {
+type config struct {
 	Cmd []string `json:"Cmd"`
 }
 
-type Image struct {
+type image struct {
 	ID            string    `json:"id"`
 	Created       time.Time `json:"created"`
 	DockerVersion string    `json:"docker_version"`
-	Config        Config    `json:"config"`
+	Config        config    `json:"config"`
 	Architecture  string    `json:"architecture"`
 	OS            string    `json:"os"`
 }
 
-var image = flag.String("image", "", "namespace/name for the repository, default to go2docker/$(basename)")
+var imageName = flag.String("image", "", "namespace/name for the repository, default to go2docker/$(basename)")
 
 const (
-	DockerVersion = "1.4.0"
-	Arch          = "amd64"
-	OS            = "linux"
-	Version       = "1.0"
-	Namespace     = "go2docker"
+	dockerVersion = "1.4.0"
+	arch          = "amd64"
+	goos          = "linux"
+	version       = "1.0"
+	namespace     = "go2docker"
 )
 
 func main() {
@@ -94,11 +94,11 @@ func main() {
 	ext := filepath.Ext(fpath)
 	basename := filepath.Base(fpath[:len(fpath)-len(ext)])
 
-	if *image == "" {
+	if *imageName == "" {
 		if err != nil {
 			log.Fatalf("failed to get absolute path: %v", err)
 		}
-		*image = path.Join(Namespace, basename)
+		*imageName = path.Join(namespace, basename)
 	}
 	tmpDir, err := ioutil.TempDir("", "")
 	if err != nil {
@@ -131,7 +131,7 @@ func main() {
 	}
 	imageID := hex.EncodeToString(imageIDBytes)
 	repo := map[string]map[string]string{
-		*image: {
+		*imageName: {
 			"latest": imageID,
 		},
 	}
@@ -151,22 +151,22 @@ func main() {
 	}
 	if err := tw.WriteHeader(&tar.Header{
 		Name: imageID + "/VERSION",
-		Size: int64(len(Version)),
+		Size: int64(len(version)),
 	}); err != nil {
 		log.Fatalf("failed to write /%s/VERSION header: %v", imageID, err)
 	}
-	if _, err := tw.Write([]byte(Version)); err != nil {
+	if _, err := tw.Write([]byte(version)); err != nil {
 		log.Fatalf(" failed to write /%s/VERSION body: %v", imageID, err)
 	}
-	imageJSON, err := json.Marshal(Image{
+	imageJSON, err := json.Marshal(image{
 		ID:            imageID,
 		Created:       time.Now().UTC(),
-		DockerVersion: Version,
-		Config: Config{
+		DockerVersion: version,
+		Config: config{
 			Cmd: []string{"/" + basename},
 		},
-		Architecture: Arch,
-		OS:           OS,
+		Architecture: arch,
+		OS:           goos,
 	})
 	if err := tw.WriteHeader(&tar.Header{
 		Name: imageID + "/json",

@@ -25,21 +25,25 @@ import (
 	"github.com/golang/glog"
 )
 
+// JenkinsClient is how we talk to the Jenkins instance
 type JenkinsClient struct {
 	Host string
 }
 
+// Queue has information about the last completed builg and the last stable build
 type Queue struct {
 	Builds             []Build `json:"builds"`
 	LastCompletedBuild Build   `json:"lastCompletedBuild"`
 	LastStableBuild    Build   `json:"lastStableBuild"`
 }
 
+// Build has information about a specific build
 type Build struct {
 	Number int    `json:"number"`
 	URL    string `json:"url"`
 }
 
+// Job containers information about a job
 type Job struct {
 	Result    string `json:"result"`
 	ID        string `json:"id"`
@@ -60,6 +64,7 @@ func (j *JenkinsClient) request(path string) ([]byte, error) {
 	return ioutil.ReadAll(res.Body)
 }
 
+// GetJob will get information about a single job
 func (j *JenkinsClient) GetJob(name string) (*Queue, error) {
 	data, err := j.request("/job/" + name + "/api/json")
 	if err != nil {
@@ -73,6 +78,7 @@ func (j *JenkinsClient) GetJob(name string) (*Queue, error) {
 	return q, nil
 }
 
+// GetLastCompletedBuild does just that
 func (j *JenkinsClient) GetLastCompletedBuild(name string) (*Job, error) {
 	data, err := j.request("/job/" + name + "/lastCompletedBuild/api/json")
 	if err != nil {
@@ -86,6 +92,8 @@ func (j *JenkinsClient) GetLastCompletedBuild(name string) (*Job, error) {
 	return job, nil
 }
 
+// IsBuildStable tells if the given job in the last completed build was
+// a success.
 func (j *JenkinsClient) IsBuildStable(name string) (bool, error) {
 	q, err := j.GetLastCompletedBuild(name)
 	if err != nil {

@@ -12,9 +12,9 @@ install:
   - mkdir -p $HOME/gopath/src/k8s.io
   - mv $TRAVIS_BUILD_DIR $HOME/gopath/src/k8s.io/contrib
   - go get github.com/tools/godep
+  - go get github.com/golang/lint/golint
   - export PATH=$GOPATH/bin:$PATH
   - godep go install ./...
-
 
 script:
   - hack/verify-all.sh

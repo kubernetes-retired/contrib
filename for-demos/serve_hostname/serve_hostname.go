@@ -27,16 +27,16 @@ import (
 )
 
 var (
-	doTcp  = flag.Bool("tcp", false, "Serve raw over TCP.")
-	doUdp  = flag.Bool("udp", false, "Serve raw over UDP.")
-	doHttp = flag.Bool("http", true, "Serve HTTP.")
+	doTCP  = flag.Bool("tcp", false, "Serve raw over TCP.")
+	doUDP  = flag.Bool("udp", false, "Serve raw over UDP.")
+	doHTTP = flag.Bool("http", true, "Serve HTTP.")
 	port   = flag.Int("port", 9376, "Port number.")
 )
 
 func main() {
 	flag.Parse()
 
-	if *doHttp && (*doTcp || *doUdp) {
+	if *doHTTP && (*doTCP || *doUDP) {
 		log.Fatalf("Can't server TCP/UDP mode and HTTP mode at the same time")
 	}
 
@@ -45,7 +45,7 @@ func main() {
 		log.Fatalf("Error from os.Hostname(): %s", err)
 	}
 
-	if *doTcp {
+	if *doTCP {
 		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 		if err != nil {
 			log.Fatalf("Error from net.Listen(): %s", err)
@@ -62,7 +62,7 @@ func main() {
 			}
 		}()
 	}
-	if *doUdp {
+	if *doUDP {
 		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", *port))
 		if err != nil {
 			log.Fatalf("Error from net.ResolveUDPAddr(): %s", err)
@@ -83,7 +83,7 @@ func main() {
 			}
 		}()
 	}
-	if *doHttp {
+	if *doHTTP {
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("HTTP request from %s", r.RemoteAddr)
 			fmt.Fprintf(w, "%s", hostname)

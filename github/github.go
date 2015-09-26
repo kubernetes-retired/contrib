@@ -41,16 +41,18 @@ const (
 	maxInt = int(^uint(0) >> 1)
 )
 
-type RateLimitRoundTripper struct {
+type rateLimitRoundTripper struct {
 	delegate http.RoundTripper
 	throttle util.RateLimiter
 }
 
-func (r *RateLimitRoundTripper) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+func (r *rateLimitRoundTripper) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	r.throttle.Accept()
 	return r.delegate.RoundTrip(req)
 }
 
+// GithubConfig is how we are configured to talk to github and provides access
+// methods for doing so.
 type GithubConfig struct {
 	client  *github.Client
 	Org     string
@@ -128,6 +130,7 @@ func (a analytics) Print() {
 	glog.V(2).Infof("\n%v", buf)
 }
 
+// AddRootFlags will add all of the flags needed for the github config to the cobra command
 func (config *GithubConfig) AddRootFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&config.Token, "token", "", "The OAuth Token to use for requests.")
 	cmd.PersistentFlags().StringVar(&config.TokenFile, "token-file", "", "The file containing the OAuth Token to use for requests.")
@@ -143,6 +146,8 @@ func (config *GithubConfig) AddRootFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().AddGoFlagSet(goflag.CommandLine)
 }
 
+// PreExecute will initialize the GithubConfig. It MUST be run before the config
+// may be used to get information from Github
 func (config *GithubConfig) PreExecute() error {
 	if len(config.Org) == 0 {
 		glog.Fatalf("--organization is required.")
@@ -174,7 +179,7 @@ func (config *GithubConfig) PreExecute() error {
 		config.RateLimit = 0.01
 		config.RateLimitBurst = 10
 	}
-	rateLimitTransport := &RateLimitRoundTripper{
+	rateLimitTransport := &rateLimitRoundTripper{
 		delegate: transport,
 		throttle: util.NewTokenBucketRateLimiter(config.RateLimit, config.RateLimitBurst),
 	}
@@ -196,6 +201,8 @@ func (config *GithubConfig) PreExecute() error {
 	return nil
 }
 
+// ResetAPICount will both reset the counters of how many api calls have been
+// made but will also print the information from the last run.
 func (config *GithubConfig) ResetAPICount() {
 	config.analytics.Print()
 	config.analytics = analytics{}
@@ -207,6 +214,7 @@ func (config *GithubConfig) SetClient(client *github.Client) {
 	config.client = client
 }
 
+// HasLabel returns if the label `name` is in the array of `labels`
 func HasLabel(labels []github.Label, name string) bool {
 	for i := range labels {
 		label := &labels[i]
@@ -217,6 +225,7 @@ func HasLabel(labels []github.Label, name string) bool {
 	return false
 }
 
+// HasLabels returns if all of the label `names` are in the array of `labels`
 func HasLabels(labels []github.Label, names []string) bool {
 	for i := range names {
 		if !HasLabel(labels, names[i]) {
@@ -226,6 +235,8 @@ func HasLabels(labels []github.Label, names []string) bool {
 	return true
 }
 
+// GetLabelsWithPrefix will return a slice of all label names in `labels` which
+// start with given prefix.
 func GetLabelsWithPrefix(labels []github.Label, prefix string) []string {
 	var ret []string
 	for _, label := range labels {
@@ -236,6 +247,7 @@ func GetLabelsWithPrefix(labels []github.Label, prefix string) []string {
 	return ret
 }
 
+// AddLabels will add all of the named `labels` to the PR
 func (config *GithubConfig) AddLabels(prNum int, labels []string) error {
 	config.analytics.AddLabels.Call(config)
 	if config.DryRun {
@@ -249,6 +261,7 @@ func (config *GithubConfig) AddLabels(prNum int, labels []string) error {
 	return nil
 }
 
+// RemoveLabel will remove the `label` from the PR
 func (config *GithubConfig) RemoveLabel(prNum int, label string) error {
 	config.analytics.RemoveLabels.Call(config)
 	if config.DryRun {
@@ -262,9 +275,14 @@ func (config *GithubConfig) RemoveLabel(prNum int, label string) error {
 	return nil
 }
 
+// PRFunction is the type that must be implemented and passed to ForEachPRDo
 type PRFunction func(*github.PullRequest, *github.Issue) error
+
+// IssueFunction is the type that must be implemented and passed to ForEachIssueDo
 type IssueFunction func(*github.Issue) error
 
+// LastModifiedTime returns the time the last commit was made
+// BUG: this should probably return the last time a git push happened or something like that.
 func (config *GithubConfig) LastModifiedTime(prNum int) (*time.Time, error) {
 	config.analytics.ListCommits.Call(config)
 	list, _, err := config.client.PullRequests.ListCommits(config.Org, config.Project, prNum, &github.ListOptions{})
@@ -317,7 +335,7 @@ func (config *GithubConfig) UsersWithAccess() (pushUsers sets.String, pullUsers 
 
 	for _, user := range users {
 		if user.Permissions == nil || user.Login == nil {
-			err := fmt.Errorf("Found a user with nil Permissions or Login")
+			err := fmt.Errorf("found a user with nil Permissions or Login")
 			glog.Errorf("%v", err)
 			return nil, nil, err
 		}
@@ -332,6 +350,7 @@ func (config *GithubConfig) UsersWithAccess() (pushUsers sets.String, pullUsers 
 	return pushUsers, pullUsers, nil
 }
 
+// GetAllEventsForPR returns a list of all events for a given pr.
 func (config *GithubConfig) GetAllEventsForPR(prNum int) ([]github.IssueEvent, error) {
 	events := []github.IssueEvent{}
 	page := 1
@@ -385,7 +404,7 @@ func computeStatus(combinedStatus *github.CombinedStatus, requiredContexts []str
 	}
 }
 
-// GetSTatusPR gets the current status of a PR.
+// GetStatus gets the current status of a PR.
 //    * If any member of the 'requiredContexts' list is missing, it is 'incomplete'
 //    * If any is 'pending', the PR is 'pending'
 //    * If any is 'error', the PR is in 'error'
@@ -404,7 +423,7 @@ func (config *GithubConfig) GetStatus(pr *github.PullRequest, requiredContexts [
 	return computeStatus(combinedStatus, requiredContexts), nil
 }
 
-// Make sure that the combined status for all commits in a PR is 'success'
+// IsStatusSuccess makes sure that the combined status for all commits in a PR is 'success'
 func (config *GithubConfig) IsStatusSuccess(pr *github.PullRequest, requiredContexts []string) bool {
 	status, err := config.GetStatus(pr, requiredContexts)
 	if err != nil {
@@ -416,8 +435,9 @@ func (config *GithubConfig) IsStatusSuccess(pr *github.PullRequest, requiredCont
 	return false
 }
 
-// Wait for a PR to move into Pending.  This is useful because the request to test a PR again
-// is asynchronous with the PR actually moving into a pending state
+// WaitForPending will wait for a PR to move into Pending.  This is useful
+// because the request to test a PR again is asynchronous with the PR actually
+// moving into a pending state
 // TODO: add a timeout
 func (config *GithubConfig) WaitForPending(pr *github.PullRequest) error {
 	for {
@@ -433,6 +453,8 @@ func (config *GithubConfig) WaitForPending(pr *github.PullRequest) error {
 	}
 }
 
+// WaitForNotPending will check if the github status is "pending" (CI still running)
+// if so it will sleep and try again until all status hooks have complete
 func (config *GithubConfig) WaitForNotPending(pr *github.PullRequest) error {
 	for {
 		status, err := config.GetStatus(pr, []string{})
@@ -457,6 +479,7 @@ func (config *GithubConfig) getCommits(prNum int) ([]github.RepositoryCommit, er
 	return commits, nil
 }
 
+// GetFilledCommits returns all of the commits for a given PR
 func (config *GithubConfig) GetFilledCommits(prNum int) ([]github.RepositoryCommit, error) {
 	commits, err := config.getCommits(prNum)
 	if err != nil {
@@ -475,6 +498,9 @@ func (config *GithubConfig) GetFilledCommits(prNum int) ([]github.RepositoryComm
 	return filledCommits, nil
 }
 
+// GetPR will return a pull request based on the provided number.
+// This may be useful if some of the information in the provided
+// PR was not filled out when it was retrieved.
 func (config *GithubConfig) GetPR(prNum int) (*github.PullRequest, error) {
 	config.analytics.GetPR.Call(config)
 	pr, _, err := config.client.PullRequests.Get(config.Org, config.Project, prNum)
@@ -485,6 +511,7 @@ func (config *GithubConfig) GetPR(prNum int) (*github.PullRequest, error) {
 	return pr, nil
 }
 
+// AssignPR will assign `prNum` to the `owner` where the `owner` is asignee's github login
 func (config *GithubConfig) AssignPR(prNum int, owner string) error {
 	config.analytics.AssignPR.Call(config)
 	assignee := &github.IssueRequest{Assignee: &owner}
@@ -499,6 +526,7 @@ func (config *GithubConfig) AssignPR(prNum int, owner string) error {
 	return nil
 }
 
+// ClosePR will close the Given PR
 func (config *GithubConfig) ClosePR(pr *github.PullRequest) error {
 	config.analytics.ClosePR.Call(config)
 	if config.DryRun {
@@ -515,6 +543,8 @@ func (config *GithubConfig) ClosePR(pr *github.PullRequest) error {
 }
 
 // OpenPR will attempt to open the given PR.
+// If will attempt to reopen the pr `numTries` before returning an error
+// and giving up.
 func (config *GithubConfig) OpenPR(pr *github.PullRequest, numTries int) error {
 	config.analytics.OpenPR.Call(config)
 	if config.DryRun {
@@ -538,6 +568,8 @@ func (config *GithubConfig) OpenPR(pr *github.PullRequest, numTries int) error {
 	return err
 }
 
+// GetFileContents will return the contents of the `file` in the repo at `sha`
+// as a string
 func (config *GithubConfig) GetFileContents(file, sha string) (string, error) {
 	config.analytics.GetContents.Call(config)
 	getOpts := &github.RepositoryContentGetOptions{Ref: sha}
@@ -546,13 +578,13 @@ func (config *GithubConfig) GetFileContents(file, sha string) (string, error) {
 	}
 	output, _, _, err := config.client.Repositories.GetContents(config.Org, config.Project, file, getOpts)
 	if err != nil {
-		err = fmt.Errorf("Unable to get %q at commit %q", file, sha)
+		err = fmt.Errorf("unable to get %q at commit %q", file, sha)
 		// I'm using .V(2) because .generated docs is still not in the repo...
 		glog.V(2).Infof("%v", err)
 		return "", err
 	}
 	if output == nil {
-		err = fmt.Errorf("Got empty contents for %q at commit %q", file, sha)
+		err = fmt.Errorf("got empty contents for %q at commit %q", file, sha)
 		glog.Errorf("%v", err)
 		return "", err
 	}
@@ -614,7 +646,7 @@ func (config *GithubConfig) IsPRMergeable(pr *github.PullRequest) (bool, error) 
 		}
 	}
 	if pr.Mergeable == nil {
-		err := fmt.Errorf("No mergeability information for %q %d, Skipping.", *pr.Title, *pr.Number)
+		err := fmt.Errorf("no mergeability information for %q %d, Skipping", *pr.Title, *pr.Number)
 		glog.Errorf("%v", err)
 		return false, err
 	}
@@ -677,6 +709,8 @@ func (config *GithubConfig) forEachIssueDo(labels []string, fn IssueFunction) er
 	return nil
 }
 
+// ForEachIssueDo will call the provided IssueFunction once for each issue
+// which has the labels provided in `labels`
 func (config *GithubConfig) ForEachIssueDo(labels []string, fn IssueFunction) error {
 	handleIssue := func(issue *github.Issue) error {
 		if issue.PullRequestLinks != nil {
@@ -689,6 +723,8 @@ func (config *GithubConfig) ForEachIssueDo(labels []string, fn IssueFunction) er
 	return config.forEachIssueDo(labels, handleIssue)
 }
 
+// ForEachPRDo will call the provided PRFunction once for each issue
+// which has the labels provided in `labels`
 func (config *GithubConfig) ForEachPRDo(labels []string, fn PRFunction) error {
 	handlePR := func(issue *github.Issue) error {
 		if issue.PullRequestLinks == nil {

@@ -45,6 +45,7 @@ func prInfo(pr *github_api.PullRequest) *PRInfo {
 	return &out
 }
 
+// ExternalState is the information used by the web frontend
 type ExternalState struct {
 	// exported so that the json marshaller will print them
 	CurrentPR   *PRInfo

@@ -34,7 +34,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type Config struct {
+type config struct {
 	etcdServers string
 	key         string
 	whoami      string
@@ -46,7 +46,7 @@ type Config struct {
 }
 
 // runs the election loop. never returns.
-func (c *Config) leaseAndUpdateLoop(etcdClient *etcd.Client) {
+func (c *config) leaseAndUpdateLoop(etcdClient *etcd.Client) {
 	for {
 		master, err := c.acquireOrRenewLease(etcdClient)
 		if err != nil {
@@ -69,7 +69,7 @@ func (c *Config) leaseAndUpdateLoop(etcdClient *etcd.Client) {
 // acquireOrRenewLease either races to acquire a new master lease, or update the existing master's lease
 // returns true if we have the lease, and an error if one occurs.
 // TODO: use the master election utility once it is merged in.
-func (c *Config) acquireOrRenewLease(etcdClient *etcd.Client) (bool, error) {
+func (c *config) acquireOrRenewLease(etcdClient *etcd.Client) (bool, error) {
 	result, err := etcdClient.Get(c.key, false, false)
 	if err != nil {
 		if etcdstorage.IsEtcdNotFound(err) {
@@ -101,7 +101,7 @@ func (c *Config) acquireOrRenewLease(etcdClient *etcd.Client) (bool, error) {
 
 // update enacts the policy, copying a file if we are the master, and it doesn't exist.
 // deleting a file if we aren't the master and it does.
-func (c *Config) update(master bool) error {
+func (c *config) update(master bool) error {
 	exists, err := exists(c.dest)
 	if err != nil {
 		return err
@@ -122,9 +122,8 @@ func exists(file string) (bool, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
-		} else {
-			return false, err
 		}
+		return false, err
 	}
 	return true, nil
 }
@@ -137,7 +136,7 @@ func copyFile(src, dest string) error {
 	return ioutil.WriteFile(dest, data, 0755)
 }
 
-func initFlags(c *Config) {
+func initFlags(c *config) {
 	pflag.StringVar(&c.etcdServers, "etcd-servers", "", "The comma-seprated list of etcd servers to use")
 	pflag.StringVar(&c.key, "key", "", "The key to use for the lock")
 	pflag.StringVar(&c.whoami, "whoami", "", "The name to use for the reservation.  If empty use os.Hostname")
@@ -147,7 +146,7 @@ func initFlags(c *Config) {
 	pflag.DurationVar(&c.sleep, "sleep", 5*time.Second, "The length of time to sleep between checking the lock.")
 }
 
-func validateFlags(c *Config) {
+func validateFlags(c *config) {
 	if len(c.etcdServers) == 0 {
 		glog.Fatalf("--etcd-servers=<server-list> is required")
 	}
@@ -171,7 +170,7 @@ func validateFlags(c *Config) {
 }
 
 func main() {
-	c := Config{}
+	c := config{}
 	initFlags(&c)
 	pflag.Parse()
 	validateFlags(&c)
