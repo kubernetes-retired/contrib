@@ -13,7 +13,7 @@ spec:
     - ./submit-queue
     - --jenkins-host=http://jenkins-master:8080
     - --token-file=/etc/secret-volume/token
-    - --jenkins-jobs=kubernetes-e2e-gce,kubernetes-e2e-gke-ci,kubernetes-build,kubernetes-e2e-gce-parallel,kubernetes-e2e-gce-autoscaling,kubernetes-e2e-gce-reboot,kubernetes-e2e-gce-scalability
+    - --jenkins-jobs=kubernetes-e2e-gce,kubernetes-e2e-gke-ci,kubernetes-build,kubernetes-e2e-gce-parallel,kubernetes-e2e-gce-reboot,kubernetes-e2e-gce-scalability
     - --alsologtostderr
     - --v=5
     - --www=/www
