@@ -124,6 +124,10 @@ type service struct {
 	// for this service. For http, it's always :80, for each tcp service it
 	// is the service port of any service matching a name in the tcpServices set.
 	FrontendPort int
+
+	// Host if not empty it will add a new haproxy acl to route traffic using the
+	// host header inside the http request. It only applies to http traffic.
+	Host string
 }
 
 // loadBalancerConfig represents loadbalancer specific configuration. Eventually
@@ -267,6 +271,9 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 			newSvc := service{
 				Name: getServiceNameForLBRule(&s, servicePort.Port),
 				Ep:   ep,
+			}
+			if val, ok := s.Labels["lbHost"]; ok {
+				newSvc.Host = val
 			}
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
 				newSvc.FrontendPort = servicePort.Port
