@@ -44,10 +44,11 @@ import (
 )
 
 const (
-	reloadQPS    = 10.0
-	resyncPeriod = 10 * time.Second
-	healthzPort  = 8081
-	lbHostKey    = "serviceloadbalancer/lb.host"
+	reloadQPS        = 10.0
+	resyncPeriod     = 10 * time.Second
+	lbApiPort        = 8081
+	lbHostKey        = "serviceloadbalancer/lb.host"
+	defaultErrorPage = "file:///etc/haproxy/errors/404.http"
 )
 
 var (
@@ -111,6 +112,10 @@ var (
 
 	startSyslog = flags.Bool("syslog", false, `if set, it will start a syslog server
 		that will forward haproxy logs to stdout.`)
+
+	errorPage = flags.String("error-page", "", `if set, it will try to load the content
+		as a web page and use the content as error page. Is required that the URL returns
+		200 as a status code`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -140,6 +145,50 @@ type loadBalancerConfig struct {
 	Template    string `json:"template" description:"template for the load balancer config."`
 	Algorithm   string `json:"algorithm" description:"loadbalancing algorithm."`
 	startSyslog bool   `description:"indicates if the load balancer uses syslog."`
+}
+
+type staticPageHandler struct {
+	pagePath     string
+	pageContents []byte
+	c            *http.Client
+}
+
+// Get serves the error page
+func (s *staticPageHandler) Getfunc(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(404)
+	w.Write(s.pageContents)
+}
+
+// newStaticPageHandler returns a staticPageHandles with the contents of pagePath loaded and ready to serve
+func newStaticPageHandler(errorPage string, defaultErrorPage string) *staticPageHandler {
+	t := &http.Transport{}
+	t.RegisterProtocol("file", http.NewFileTransport(http.Dir("/")))
+	c := &http.Client{Transport: t}
+	s := &staticPageHandler{c: c}
+	if err := s.loadUrl(errorPage); err != nil {
+		s.loadUrl(defaultErrorPage)
+	}
+
+	return s
+}
+
+func (s *staticPageHandler) loadUrl(url string) error {
+	res, err := s.c.Get(url)
+	if err != nil {
+		glog.Errorf("%v", err)
+		return err
+	}
+	defer res.Body.Close()
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		glog.Errorf("%v", err)
+		return err
+	}
+	glog.V(2).Infof("Error page:\n%v", string(body))
+	s.pagePath = url
+	s.pageContents = body
+
+	return nil
 }
 
 // write writes the configuration file, will write to stdout if dryRun == true
@@ -402,8 +451,8 @@ func parseCfg(configPath string) *loadBalancerConfig {
 	return &cfg
 }
 
-// healthzServer services liveness probes.
-func healthzServer() {
+// registerHandlers  services liveness probes.
+func registerHandlers(s *staticPageHandler) {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// Delegate a check to the haproxy stats service.
 		response, err := http.Get(fmt.Sprintf("http://localhost:%v", *statsPort))
@@ -426,7 +475,11 @@ func healthzServer() {
 			}
 		}
 	})
-	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", healthzPort), nil))
+
+	// handler for not matched traffic
+	http.HandleFunc("/", s.Getfunc)
+
+	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", lbApiPort), nil))
 }
 
 func dryRun(lbc *loadBalancerController) {
@@ -439,17 +492,24 @@ func dryRun(lbc *loadBalancerController) {
 }
 
 func main() {
+	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
 	cfg := parseCfg(*config)
 	if len(*tcpServices) == 0 {
 		glog.Infof("All tcp/https services will be ignored.")
 	}
-	go healthzServer()
-
-	proc.StartReaper()
 
 	var kubeClient *unversioned.Client
 	var err error
+
+	defErrorPage := newStaticPageHandler(*errorPage, defaultErrorPage)
+	if defErrorPage == nil {
+		glog.Fatalf("Failed to load the default error page")
+	}
+
+	go registerHandlers(defErrorPage)
+
+	proc.StartReaper()
 
 	if *startSyslog {
 		cfg.startSyslog = true
@@ -459,7 +519,6 @@ func main() {
 		}
 	}
 
-	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	if *cluster {
 		if kubeClient, err = unversioned.NewInCluster(); err != nil {
 			glog.Fatalf("Failed to create client: %v", err)

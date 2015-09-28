@@ -34,3 +34,4 @@ use-http-cache
 use-kubernetes-cluster-service
 user-whitelist
 whitelist-override-label
+error-page
