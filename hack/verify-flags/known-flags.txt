@@ -8,6 +8,9 @@ dont-require-e2e-label
 dry-run
 e2e-status-context
 etcd-servers
+etcd-ca
+etcd-cert
+etcd-key
 forward-services
 generated-files-config
 http-port
