@@ -47,6 +47,7 @@ const (
 	reloadQPS    = 10.0
 	resyncPeriod = 10 * time.Second
 	healthzPort  = 8081
+	lbHostKey    = "serviceloadbalancer/lb.host"
 )
 
 var (
@@ -272,7 +273,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				Name: getServiceNameForLBRule(&s, servicePort.Port),
 				Ep:   ep,
 			}
-			if val, ok := s.Labels["lbHost"]; ok {
+			if val, ok := s.Labels[lbHostKey]; ok {
 				newSvc.Host = val
 			}
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
