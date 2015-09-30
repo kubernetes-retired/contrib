@@ -47,6 +47,7 @@ const (
 	reloadQPS        = 10.0
 	resyncPeriod     = 10 * time.Second
 	lbApiPort        = 8081
+	lbAlgorithmKey   = "serviceloadbalancer/lb.algorithm"
 	lbHostKey        = "serviceloadbalancer/lb.host"
 	defaultErrorPage = "file:///etc/haproxy/errors/404.http"
 )
@@ -59,6 +60,14 @@ var (
 
 	// Error used to indicate that a sync is deferred because the controller isn't ready yet
 	errDeferredSync = fmt.Errorf("deferring sync till endpoints controller has synced")
+
+	// See https://cbonte.github.io/haproxy-dconv/configuration-1.5.html#4.2-balance
+	// In brief:
+	//  * roundrobin: backend with the highest weight (how is this set?) receives new connection
+	//  * leastconn: backend with least connections receives new connection
+	//  * first: first server sorted by server id, with an available slot receives connection
+	//  * source: connection given to backend based on hash of source ip
+	supportedAlgorithms = []string{"roundrobin", "leastconn", "first", "source"}
 
 	config = flags.String("cfg", "loadbalancer.json", `path to load balancer json config.
 		Note that this is *not* the path to the configuration file for the load balancer
@@ -116,6 +125,9 @@ var (
 	errorPage = flags.String("error-page", "", `if set, it will try to load the content
 		as a web page and use the content as error page. Is required that the URL returns
 		200 as a status code`)
+
+	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom 
+		default balance algorithm.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -134,23 +146,39 @@ type service struct {
 	// Host if not empty it will add a new haproxy acl to route traffic using the
 	// host header inside the http request. It only applies to http traffic.
 	Host string
+
+	// Algorithm
+	Algorithm string
 }
 
 // loadBalancerConfig represents loadbalancer specific configuration. Eventually
 // kubernetes will have an api for l7 loadbalancing.
 type loadBalancerConfig struct {
-	Name        string `json:"name" description:"Name of the load balancer, eg: haproxy."`
-	ReloadCmd   string `json:"reloadCmd" description:"command used to reload the load balancer."`
-	Config      string `json:"config" description:"path to loadbalancers configuration file."`
-	Template    string `json:"template" description:"template for the load balancer config."`
-	Algorithm   string `json:"algorithm" description:"loadbalancing algorithm."`
-	startSyslog bool   `description:"indicates if the load balancer uses syslog."`
+	Name           string `json:"name" description:"Name of the load balancer, eg: haproxy."`
+	ReloadCmd      string `json:"reloadCmd" description:"command used to reload the load balancer."`
+	Config         string `json:"config" description:"path to loadbalancers configuration file."`
+	Template       string `json:"template" description:"template for the load balancer config."`
+	Algorithm      string `json:"algorithm" description:"loadbalancing algorithm."`
+	startSyslog    bool   `description:"indicates if the load balancer uses syslog."`
+	lbDefAlgorithm string `description:"custom default load balancer algorithm".`
 }
 
 type staticPageHandler struct {
 	pagePath     string
 	pageContents []byte
 	c            *http.Client
+}
+
+type serviceAnnotations map[string]string
+
+func (s serviceAnnotations) getAlgorithm() (string, bool) {
+	val, ok := s[lbAlgorithmKey]
+	return val, ok
+}
+
+func (s serviceAnnotations) getHost() (string, bool) {
+	val, ok := s[lbHostKey]
+	return val, ok
 }
 
 // Get serves the error page
@@ -211,6 +239,12 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 	conf := make(map[string]interface{})
 	conf["startSyslog"] = strconv.FormatBool(cfg.startSyslog)
 	conf["services"] = services
+
+	// default load balancer algorithm is roundrobin
+	conf["defLbAlgorithm"] = lbDefAlgorithm
+	if cfg.lbDefAlgorithm != "" {
+		conf["defLbAlgorithm"] = cfg.lbDefAlgorithm
+	}
 
 	return t.Execute(w, conf)
 }
@@ -322,9 +356,20 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				Name: getServiceNameForLBRule(&s, servicePort.Port),
 				Ep:   ep,
 			}
-			if val, ok := s.Labels[lbHostKey]; ok {
+
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(); ok {
 				newSvc.Host = val
 			}
+
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getAlgorithm(); ok {
+				for _, current := range supportedAlgorithms {
+					if val == current {
+						newSvc.Algorithm = val
+						break
+					}
+				}
+			}
+
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
 				newSvc.FrontendPort = servicePort.Port
 				tcpSvc = append(tcpSvc, newSvc)
@@ -437,7 +482,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 
 // parseCfg parses the given configuration file.
 // cmd line params take precedence over config directives.
-func parseCfg(configPath string) *loadBalancerConfig {
+func parseCfg(configPath string, defLbAlgorithm string) *loadBalancerConfig {
 	jsonBlob, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		glog.Fatalf("Could not parse lb config: %v", err)
@@ -447,6 +492,8 @@ func parseCfg(configPath string) *loadBalancerConfig {
 	if err != nil {
 		glog.Fatalf("Unable to unmarshal json blob: %v", string(jsonBlob))
 	}
+
+	cfg.lbDefAlgorithm = defLbAlgorithm
 	glog.Infof("Creating new loadbalancer: %+v", cfg)
 	return &cfg
 }
@@ -494,7 +541,7 @@ func dryRun(lbc *loadBalancerController) {
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
-	cfg := parseCfg(*config)
+	cfg := parseCfg(*config, *lbDefAlgorithm)
 	if len(*tcpServices) == 0 {
 		glog.Infof("All tcp/https services will be ignored.")
 	}
