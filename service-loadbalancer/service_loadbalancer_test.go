@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -193,5 +194,34 @@ func TestGetServices(t *testing.T) {
 		if len(receivedEp) != len(expectedEps) && !receivedEp.IsSuperset(expectedEps) {
 			t.Fatalf("Expected %+v, got %+v", expectedEps, receivedEp)
 		}
+	}
+}
+
+func TestNewStaticPageHandler(t *testing.T) {
+	defPagePath, _ := filepath.Abs("haproxy.cfg")
+	defErrorPath, _ := filepath.Abs("template.cfg")
+	defErrURL := "http://www.k8s.io"
+
+	testDefPage := "file://" + defPagePath
+	testErrorPage := "file://" + defErrorPath
+
+	handler := newStaticPageHandler("", testDefPage)
+	if handler == nil {
+		t.Fatalf("Expected page handler")
+	}
+
+	handler = newStaticPageHandler(testErrorPage, testDefPage)
+	if handler.pagePath != testErrorPage {
+		t.Fatalf("Expected local file content but got default page")
+	}
+
+	handler = newStaticPageHandler(defErrURL, testDefPage)
+	if handler.pagePath != defErrURL {
+		t.Fatalf("Expected remote error page content but got default page")
+	}
+
+	handler = newStaticPageHandler(defErrURL+"s", testDefPage)
+	if handler.pagePath != testDefPage {
+		t.Fatalf("Expected local file content with not valid URL")
 	}
 }

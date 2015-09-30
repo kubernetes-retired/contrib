@@ -20,7 +20,7 @@ RUN apk add -U haproxy bash curl && \
   rm -rf /var/cache/apk/*
 
 RUN mkdir /etc/haproxy/errors 
-RUN for ERROR_CODE in 400 403 408 500 502 503 504;do curl -sSL -o /etc/haproxy/errors/$ERROR_CODE.http \
+RUN for ERROR_CODE in 400 403 404 408 500 502 503 504;do curl -sSL -o /etc/haproxy/errors/$ERROR_CODE.http \
 	https://raw.githubusercontent.com/haproxy/haproxy-1.5/master/examples/errorfiles/$ERROR_CODE.http;done
 
 ADD haproxy.cfg /etc/haproxy/haproxy.cfg
