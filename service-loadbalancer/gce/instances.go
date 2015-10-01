@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import (
 	"github.com/golang/glog"
 )
 
+// Instances implements InstancePool.
 type Instances struct {
 	cloud     InstanceGroups
 	defaultIg *compute.InstanceGroup
@@ -90,6 +91,7 @@ func (i *Instances) list() (sets.String, error) {
 	return nodeNames, nil
 }
 
+// Get returns the Instance Group by name.
 func (i *Instances) Get(name string) (*compute.InstanceGroup, error) {
 	ig, err := i.cloud.GetInstanceGroup(name)
 	if err != nil {
@@ -98,16 +100,19 @@ func (i *Instances) Get(name string) (*compute.InstanceGroup, error) {
 	return ig, nil
 }
 
+// Add adds the given instances to the Instance Group.
 func (i *Instances) Add(names []string) error {
 	glog.Infof("Adding nodes %v to %v", names, i.defaultIg.Name)
 	return i.cloud.AddInstancesToInstanceGroup(i.defaultIg.Name, names)
 }
 
+// Remove removes the given instances from the Instance Group.
 func (i *Instances) Remove(names []string) error {
 	glog.Infof("Removing nodes %v", names)
 	return i.cloud.RemoveInstancesFromInstanceGroup(i.defaultIg.Name, names)
 }
 
+// Sync syncs kubernetes instances with the instances in the instance group.
 func (i *Instances) Sync(nodes []string) error {
 	glog.Infof("Syncing nodes %v", nodes)
 	gceNodes, err := i.list()
@@ -139,7 +144,7 @@ func (i *Instances) Sync(nodes []string) error {
 	return nil
 }
 
-// Shutdown deletes the default instance group.
+// Shutdown deletes the default Instance Group.
 func (i *Instances) Shutdown() error {
 	return i.cloud.DeleteInstanceGroup(i.defaultIg.Name)
 }

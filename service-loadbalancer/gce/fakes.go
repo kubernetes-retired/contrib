@@ -1,3 +1,19 @@
+/*
+Copyright 2015 The Kubernetes Authors All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
@@ -10,14 +26,23 @@ import (
 )
 
 const (
+	// Add used to record additions in a sync pool.
 	Add = iota
+	// Remove used to record removals from a sync pool.
 	Remove
+	// Sync used to record syncs of a sync pool.
 	Sync
+	// Get used to record Get from a sync pool.
 	Get
+	// Create used to recrod creations in a sync pool.
 	Create
+	// Update used to record updates in a sync pool.
 	Update
+	// Delete used to record deltions from a sync pool.
 	Delete
+	// AddInstances used to record a call to AddInstances.
 	AddInstances
+	// RemoveInstances used to record a call to RemoveInstances.
 	RemoveInstances
 )
 
@@ -83,7 +108,7 @@ func (f *fakeLoadBalancers) String() string {
 
 // Forwarding Rule fakes
 func (f *fakeLoadBalancers) GetGlobalForwardingRule(name string) (*compute.ForwardingRule, error) {
-	for i, _ := range f.fw {
+	for i := range f.fw {
 		if f.fw[i].Name == name {
 			return f.fw[i], nil
 		}
@@ -106,7 +131,7 @@ func (f *fakeLoadBalancers) CreateGlobalForwardingRule(proxy *compute.TargetHttp
 }
 
 func (f *fakeLoadBalancers) SetProxyForGlobalForwardingRule(fw *compute.ForwardingRule, proxy *compute.TargetHttpProxy) error {
-	for i, _ := range f.fw {
+	for i := range f.fw {
 		if f.fw[i].Name == fw.Name {
 			f.fw[i].Target = proxy.SelfLink
 		}
@@ -116,7 +141,7 @@ func (f *fakeLoadBalancers) SetProxyForGlobalForwardingRule(fw *compute.Forwardi
 
 func (f *fakeLoadBalancers) DeleteGlobalForwardingRule(name string) error {
 	fw := []*compute.ForwardingRule{}
-	for i, _ := range f.fw {
+	for i := range f.fw {
 		if f.fw[i].Name != name {
 			fw = append(fw, f.fw[i])
 		}
@@ -127,7 +152,7 @@ func (f *fakeLoadBalancers) DeleteGlobalForwardingRule(name string) error {
 
 // UrlMaps fakes
 func (f *fakeLoadBalancers) GetUrlMap(name string) (*compute.UrlMap, error) {
-	for i, _ := range f.um {
+	for i := range f.um {
 		if f.um[i].Name == name {
 			return f.um[i], nil
 		}
@@ -146,7 +171,7 @@ func (f *fakeLoadBalancers) CreateUrlMap(backend *compute.BackendService, name s
 }
 
 func (f *fakeLoadBalancers) UpdateUrlMap(urlMap *compute.UrlMap) (*compute.UrlMap, error) {
-	for i, _ := range f.um {
+	for i := range f.um {
 		if f.um[i].Name == urlMap.Name {
 			f.um[i] = urlMap
 			return urlMap, nil
@@ -157,7 +182,7 @@ func (f *fakeLoadBalancers) UpdateUrlMap(urlMap *compute.UrlMap) (*compute.UrlMa
 
 func (f *fakeLoadBalancers) DeleteUrlMap(name string) error {
 	um := []*compute.UrlMap{}
-	for i, _ := range f.um {
+	for i := range f.um {
 		if f.um[i].Name != name {
 			um = append(um, f.um[i])
 		}
@@ -168,7 +193,7 @@ func (f *fakeLoadBalancers) DeleteUrlMap(name string) error {
 
 // TargetProxies fakes
 func (f *fakeLoadBalancers) GetTargetHttpProxy(name string) (*compute.TargetHttpProxy, error) {
-	for i, _ := range f.tp {
+	for i := range f.tp {
 		if f.tp[i].Name == name {
 			return f.tp[i], nil
 		}
@@ -188,7 +213,7 @@ func (f *fakeLoadBalancers) CreateTargetHttpProxy(urlMap *compute.UrlMap, name s
 
 func (f *fakeLoadBalancers) DeleteTargetHttpProxy(name string) error {
 	tp := []*compute.TargetHttpProxy{}
-	for i, _ := range f.tp {
+	for i := range f.tp {
 		if f.tp[i].Name != name {
 			tp = append(tp, f.tp[i])
 		}
@@ -197,7 +222,7 @@ func (f *fakeLoadBalancers) DeleteTargetHttpProxy(name string) error {
 	return nil
 }
 func (f *fakeLoadBalancers) SetUrlMapForTargetHttpProxy(proxy *compute.TargetHttpProxy, urlMap *compute.UrlMap) error {
-	for i, _ := range f.tp {
+	for i := range f.tp {
 		if f.tp[i].Name == proxy.Name {
 			f.tp[i].UrlMap = urlMap.SelfLink
 		}
@@ -310,7 +335,7 @@ type fakeBackendServices struct {
 
 func (f *fakeBackendServices) GetBackendService(name string) (*compute.BackendService, error) {
 	f.calls = append(f.calls, Get)
-	for i, _ := range f.backendServices {
+	for i := range f.backendServices {
 		if name == f.backendServices[i].Name {
 			return f.backendServices[i], nil
 		}
@@ -328,7 +353,7 @@ func (f *fakeBackendServices) CreateBackendService(be *compute.BackendService) e
 func (f *fakeBackendServices) DeleteBackendService(name string) error {
 	f.calls = append(f.calls, Delete)
 	newBackends := []*compute.BackendService{}
-	for i, _ := range f.backendServices {
+	for i := range f.backendServices {
 		if name != f.backendServices[i].Name {
 			newBackends = append(newBackends, f.backendServices[i])
 		}
@@ -340,7 +365,7 @@ func (f *fakeBackendServices) DeleteBackendService(name string) error {
 func (f *fakeBackendServices) UpdateBackendService(be *compute.BackendService) error {
 
 	f.calls = append(f.calls, Update)
-	for i, _ := range f.backendServices {
+	for i := range f.backendServices {
 		if f.backendServices[i].Name == be.Name {
 			f.backendServices[i] = be
 		}

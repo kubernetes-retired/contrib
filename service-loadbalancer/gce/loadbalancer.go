@@ -57,6 +57,7 @@ func (g gceUrlMap) getDefaultBackend() *compute.BackendService {
 	return d
 }
 
+// String implements the string interface for the gceUrlMap.
 func (g gceUrlMap) String() string {
 	msg := ""
 	for host, um := range g {
@@ -81,6 +82,7 @@ func (g gceUrlMap) putDefaultBackend(d *compute.BackendService) {
 	}
 }
 
+// L7s implements LoadBalancerPool.
 type L7s struct {
 	cloud          LoadBalancers
 	pool           *poolStore
@@ -111,6 +113,7 @@ func lbName(key string) string {
 	return strings.Replace(key, "/", "-", -1)
 }
 
+// Get returns the loadbalancer by name.
 func (l *L7s) Get(name string) (*L7, error) {
 	name = lbName(name)
 	lb, exists := l.pool.Get(name)
@@ -120,6 +123,8 @@ func (l *L7s) Get(name string) (*L7, error) {
 	return lb.(*L7), nil
 }
 
+// Add gets or creates a loadbalancer.
+// If the loadbalancer already exists, it checks that its edges are valid.
 func (l *L7s) Add(name string) (err error) {
 	name = lbName(name)
 	lb, _ := l.Get(name)
@@ -142,6 +147,7 @@ func (l *L7s) Add(name string) (err error) {
 	return nil
 }
 
+// Delete deletes a loadbalancer by name.
 func (l *L7s) Delete(name string) error {
 	name = lbName(name)
 	lb, err := l.Get(name)
@@ -180,7 +186,7 @@ func (l *L7s) GC(names []string) error {
 	pool := l.pool.snapshot()
 
 	// Delete unknown loadbalancers
-	for name, _ := range pool {
+	for name := range pool {
 		if knownLoadBalancers.Has(name) {
 			continue
 		}
@@ -428,11 +434,11 @@ func (l *L7) UpdateUrlMap(ingressRules gceUrlMap) error {
 				pathMatcher.PathRules, &compute.PathRule{[]string{expr}, be.SelfLink})
 		}
 	}
-	if um, err := l.cloud.UpdateUrlMap(l.um); err != nil {
+	um, err := l.cloud.UpdateUrlMap(l.um)
+	if err != nil {
 		return err
-	} else {
-		l.um = um
 	}
+	l.um = um
 	return nil
 }
 

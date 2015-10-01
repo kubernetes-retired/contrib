@@ -36,4 +36,7 @@ user-whitelist
 whitelist-override-label
 error-page
 balance-algorithm
-
+gce-cluster-name
+resync-period
+delete-all-on-quit
+health-check-path

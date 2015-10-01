@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: default-backend
+  labels:
+    app: default-backend
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    protocol: TCP
+    name: http
+    # Change this to some port available in your cluster
+    nodePort: 31500
+  selector:
+    app: default-backend
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: default-backend
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: default-backend
+    spec:
+      containers:
+      - name: default-backend
+        image: bprashanth/nginxtest:1.0
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: gcelb
+  labels:
+    app: gcelb
+    version: v1
+spec:
+  # There should never be more than 1 controller alive simultaneously.
+  replicas: 1
+  selector:
+    app: gcelb
+    version: v1
+  template:
+    metadata:
+      labels:
+        app: gcelb
+        version: v1
+    spec:
+      # It only needs this long if started with --delete-all-on-quit.
+      terminationGracePeriodSeconds: 600
+      containers:
+      - image: bprashanth/gcelb:0.0
+        imagePullPolicy: Always
+        name: gcelb
+        # TODO: Add a liveness probe
+        args:
+        # auto quit requires a high termination grace period.
+        - --delete-all-on-quit=true
+        - --default-backend-node-port=31500

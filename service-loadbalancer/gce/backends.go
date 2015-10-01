@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 )
 
+// Backends implements BackendPool.
 type Backends struct {
 	cloud          BackendServices
 	instanceGroups InstanceGroups
@@ -76,7 +77,7 @@ func NewBackendPool(
 	return backends, nil
 }
 
-// GetBackend returns a single backend
+// Get returns a single backend.
 func (b *Backends) Get(port int64) (*compute.BackendService, error) {
 	be, err := b.cloud.GetBackendService(beName(port))
 	if err != nil {
@@ -92,7 +93,7 @@ func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPor
 		Name:     name,
 		Protocol: "HTTP",
 		Backends: []*compute.Backend{
-			&compute.Backend{
+			{
 				Group: ig.SelfLink,
 			},
 		},
@@ -107,7 +108,7 @@ func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPor
 	return b.cloud.GetBackendService(name)
 }
 
-// Backend will return a backend for the given port.
+// Add will get or create a Backend for the given port.
 // If a backend already exists, it performs an edgehop.
 // If one doesn't already exist, it will create it.
 // If the port isn't one of the named ports in the instance group,
@@ -137,6 +138,7 @@ func (b *Backends) Add(port int64) error {
 	return err
 }
 
+// Delete deletes the Backend for the given port.
 func (b *Backends) Delete(port int64) error {
 	name := beName(port)
 	glog.Infof("Deleting backend %v", name)
@@ -157,7 +159,7 @@ func (b *Backends) edgeHop(be *compute.BackendService) error {
 	glog.Infof("Backend %v has a broken edge, adding link to %v",
 		be.Name, b.defaultIg.Name)
 	be.Backends = []*compute.Backend{
-		&compute.Backend{Group: b.defaultIg.SelfLink},
+		{Group: b.defaultIg.SelfLink},
 	}
 	if err := b.cloud.UpdateBackendService(be); err != nil {
 		return err
