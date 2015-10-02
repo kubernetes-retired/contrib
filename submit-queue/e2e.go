@@ -129,7 +129,7 @@ func (e *e2eTester) runE2ETests(pr *github_api.PullRequest, issue *github_api.Is
 	// if there is a 'e2e-not-required' label, just merge it.
 	if len(e.Config.DontRequireE2ELabel) > 0 && github_util.HasLabel(issue.Labels, e.Config.DontRequireE2ELabel) {
 		e.msg("Merging %d since %s is set", *pr.Number, e.Config.DontRequireE2ELabel)
-		return e.Config.MergePR(*pr.Number, "submit-queue")
+		return e.Config.MergePR(pr, "submit-queue")
 	}
 
 	body := "@k8s-bot test this [submit-queue is verifying that this PR is safe to merge]"
@@ -147,7 +147,7 @@ func (e *e2eTester) runE2ETests(pr *github_api.PullRequest, issue *github_api.Is
 		e.msg("Status after build is not 'success', skipping PR %d", *pr.Number)
 		return nil
 	}
-	return e.Config.MergePR(*pr.Number, "submit-queue")
+	return e.Config.MergePR(pr, "submit-queue")
 }
 
 func (e *e2eTester) ServeHTTP(res http.ResponseWriter, req *http.Request) {

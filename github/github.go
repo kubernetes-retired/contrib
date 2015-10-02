@@ -598,7 +598,8 @@ func (config *GithubConfig) GetFileContents(file, sha string) (string, error) {
 
 // MergePR will merge the given PR, duh
 // "who" is who is doing the merging, like "submit-queue"
-func (config *GithubConfig) MergePR(prNum int, who string) error {
+func (config *GithubConfig) MergePR(pr *github.PullRequest, who string) error {
+	prNum := *pr.Number
 	config.analytics.Merge.Call(config)
 	if config.DryRun {
 		glog.Infof("Would have merged %d but --dry-run is set", prNum)
@@ -607,8 +608,21 @@ func (config *GithubConfig) MergePR(prNum int, who string) error {
 	glog.Infof("Merging PR# %d", prNum)
 	mergeBody := "Automatic merge from " + who
 	config.WriteComment(prNum, mergeBody)
-	if _, _, err := config.client.PullRequests.Merge(config.Org, config.Project, prNum, "Auto commit by PR queue bot"); err != nil {
-		glog.Errorf("Failed to create merge comment: %v", err)
+	_, _, err := config.client.PullRequests.Merge(config.Org, config.Project, prNum, "Auto commit by PR queue bot")
+
+	// The github API https://developer.github.com/v3/pulls/#merge-a-pull-request-merge-button indicates
+	// we will only get the bellow error if we provided a particular sha to merge PUT. We aren't doing that
+	// so our best guess is that the API also provides this error message when it is recalulating
+	// "mergeable". So if we get this error, check "IsPRMergeable()" which should sleep just a bit until
+	// github is finished calculating. If my guess is correct, that also means we should be able to
+	// then merge this PR, so try again.
+	if err != nil && strings.Contains(err.Error(), "branch was modified. Review and try the merge again.") {
+		if mergeable, _ := config.IsPRMergeable(pr); mergeable {
+			_, _, err = config.client.PullRequests.Merge(config.Org, config.Project, prNum, "Auto commit by PR queue bot")
+		}
+	}
+	if err != nil {
+		glog.Errorf("Failed to merge PR: %d: %v", prNum, err)
 		return err
 	}
 	return nil
