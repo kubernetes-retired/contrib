@@ -17,6 +17,7 @@ limitations under the License.
 package validation
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -38,9 +39,9 @@ func TestValidateHorizontalPodAutoscaler(t *testing.T) {
 				ScaleRef: &experimental.SubresourceReference{
 					Subresource: "scale",
 				},
-				MinCount: 1,
-				MaxCount: 5,
-				Target:   experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("0.8")},
+				MinReplicas: 1,
+				MaxReplicas: 5,
+				Target:      experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("0.8")},
 			},
 		},
 	}
@@ -60,12 +61,12 @@ func TestValidateHorizontalPodAutoscaler(t *testing.T) {
 				ScaleRef: &experimental.SubresourceReference{
 					Subresource: "scale",
 				},
-				MinCount: -1,
-				MaxCount: 5,
-				Target:   experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("0.8")},
+				MinReplicas: -1,
+				MaxReplicas: 5,
+				Target:      experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("0.8")},
 			},
 		},
-		"must be bigger or equal to minCount": {
+		"must be bigger or equal to minReplicas": {
 			ObjectMeta: api.ObjectMeta{
 				Name:      "myautoscaler",
 				Namespace: api.NamespaceDefault,
@@ -74,9 +75,9 @@ func TestValidateHorizontalPodAutoscaler(t *testing.T) {
 				ScaleRef: &experimental.SubresourceReference{
 					Subresource: "scale",
 				},
-				MinCount: 7,
-				MaxCount: 5,
-				Target:   experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("0.8")},
+				MinReplicas: 7,
+				MaxReplicas: 5,
+				Target:      experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("0.8")},
 			},
 		},
 		"invalid value": {
@@ -88,9 +89,9 @@ func TestValidateHorizontalPodAutoscaler(t *testing.T) {
 				ScaleRef: &experimental.SubresourceReference{
 					Subresource: "scale",
 				},
-				MinCount: 1,
-				MaxCount: 5,
-				Target:   experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("-0.8")},
+				MinReplicas: 1,
+				MaxReplicas: 5,
+				Target:      experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("-0.8")},
 			},
 		},
 		"resource not supported": {
@@ -102,9 +103,9 @@ func TestValidateHorizontalPodAutoscaler(t *testing.T) {
 				ScaleRef: &experimental.SubresourceReference{
 					Subresource: "scale",
 				},
-				MinCount: 1,
-				MaxCount: 5,
-				Target:   experimental.ResourceConsumption{Resource: api.ResourceName("NotSupportedResource"), Quantity: resource.MustParse("0.8")},
+				MinReplicas: 1,
+				MaxReplicas: 5,
+				Target:      experimental.ResourceConsumption{Resource: api.ResourceName("NotSupportedResource"), Quantity: resource.MustParse("0.8")},
 			},
 		},
 		"required value": {
@@ -113,9 +114,9 @@ func TestValidateHorizontalPodAutoscaler(t *testing.T) {
 				Namespace: api.NamespaceDefault,
 			},
 			Spec: experimental.HorizontalPodAutoscalerSpec{
-				MinCount: 1,
-				MaxCount: 5,
-				Target:   experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("0.8")},
+				MinReplicas: 1,
+				MaxReplicas: 5,
+				Target:      experimental.ResourceConsumption{Resource: api.ResourceCPU, Quantity: resource.MustParse("0.8")},
 			},
 		},
 	}
@@ -128,6 +129,70 @@ func TestValidateHorizontalPodAutoscaler(t *testing.T) {
 			t.Errorf("unexpected error: %v, expected: %s", errs[0], k)
 		}
 	}
+}
+
+func TestValidateDaemonSetStatusUpdate(t *testing.T) {
+	type dsUpdateTest struct {
+		old    experimental.DaemonSet
+		update experimental.DaemonSet
+	}
+
+	successCases := []dsUpdateTest{
+		{
+			old: experimental.DaemonSet{
+				ObjectMeta: api.ObjectMeta{Name: "abc", Namespace: api.NamespaceDefault},
+				Status: experimental.DaemonSetStatus{
+					CurrentNumberScheduled: 1,
+					NumberMisscheduled:     2,
+					DesiredNumberScheduled: 3,
+				},
+			},
+			update: experimental.DaemonSet{
+				ObjectMeta: api.ObjectMeta{Name: "abc", Namespace: api.NamespaceDefault},
+				Status: experimental.DaemonSetStatus{
+					CurrentNumberScheduled: 1,
+					NumberMisscheduled:     1,
+					DesiredNumberScheduled: 3,
+				},
+			},
+		},
+	}
+
+	for _, successCase := range successCases {
+		successCase.old.ObjectMeta.ResourceVersion = "1"
+		successCase.update.ObjectMeta.ResourceVersion = "1"
+		if errs := ValidateDaemonSetStatusUpdate(&successCase.update, &successCase.old); len(errs) != 0 {
+			t.Errorf("expected success: %v", errs)
+		}
+	}
+
+	errorCases := map[string]dsUpdateTest{
+		"negative values": {
+			old: experimental.DaemonSet{
+				ObjectMeta: api.ObjectMeta{Name: "abc", Namespace: api.NamespaceDefault},
+				Status: experimental.DaemonSetStatus{
+					CurrentNumberScheduled: 1,
+					NumberMisscheduled:     2,
+					DesiredNumberScheduled: 3,
+				},
+			},
+			update: experimental.DaemonSet{
+				ObjectMeta: api.ObjectMeta{Name: "abc", Namespace: api.NamespaceDefault},
+				Status: experimental.DaemonSetStatus{
+					CurrentNumberScheduled: -1,
+					NumberMisscheduled:     -1,
+					DesiredNumberScheduled: -3,
+				},
+			},
+		},
+	}
+
+	for testName, errorCase := range errorCases {
+		if errs := ValidateDaemonSetStatusUpdate(&errorCase.old, &errorCase.update); len(errs) == 0 {
+			t.Errorf("expected failure: %s", testName)
+		}
+	}
+
 }
 
 func TestValidateDaemonSetUpdate(t *testing.T) {
@@ -773,6 +838,107 @@ func TestValidateJob(t *testing.T) {
 
 	for k, v := range errorCases {
 		errs := ValidateJob(&v)
+		if len(errs) == 0 {
+			t.Errorf("expected failure for %s", k)
+		} else {
+			s := strings.Split(k, ":")
+			err := errs[0].(*errors.ValidationError)
+			if err.Field != s[0] || !strings.Contains(err.Error(), s[1]) {
+				t.Errorf("unexpected error: %v, expected: %s", errs[0], k)
+			}
+		}
+	}
+}
+
+type ingressRules map[string]string
+
+func TestValidateIngress(t *testing.T) {
+	defaultBackend := experimental.IngressBackend{
+		ServiceName: "default-backend",
+		ServicePort: util.IntOrString{Kind: util.IntstrInt, IntVal: 80},
+	}
+
+	newValid := func() experimental.Ingress {
+		return experimental.Ingress{
+			ObjectMeta: api.ObjectMeta{
+				Name:      "foo",
+				Namespace: api.NamespaceDefault,
+			},
+			Spec: experimental.IngressSpec{
+				Backend: &experimental.IngressBackend{
+					ServiceName: "default-backend",
+					ServicePort: util.IntOrString{Kind: util.IntstrInt, IntVal: 80},
+				},
+				Rules: []experimental.IngressRule{
+					{
+						Host: "foo.bar.com",
+						IngressRuleValue: experimental.IngressRuleValue{
+							HTTP: &experimental.HTTPIngressRuleValue{
+								Paths: []experimental.HTTPIngressPath{
+									{
+										Path:    "/foo",
+										Backend: defaultBackend,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Status: experimental.IngressStatus{
+				LoadBalancer: api.LoadBalancerStatus{
+					Ingress: []api.LoadBalancerIngress{
+						{IP: "127.0.0.1"},
+					},
+				},
+			},
+		}
+	}
+	servicelessBackend := newValid()
+	servicelessBackend.Spec.Backend.ServiceName = ""
+	invalidNameBackend := newValid()
+	invalidNameBackend.Spec.Backend.ServiceName = "defaultBackend"
+	noPortBackend := newValid()
+	noPortBackend.Spec.Backend = &experimental.IngressBackend{ServiceName: defaultBackend.ServiceName}
+	noForwardSlashPath := newValid()
+	noForwardSlashPath.Spec.Rules[0].IngressRuleValue.HTTP.Paths = []experimental.HTTPIngressPath{
+		{
+			Path:    "invalid",
+			Backend: defaultBackend,
+		},
+	}
+	noPaths := newValid()
+	noPaths.Spec.Rules[0].IngressRuleValue.HTTP.Paths = []experimental.HTTPIngressPath{}
+	badHost := newValid()
+	badHost.Spec.Rules[0].Host = "foobar:80"
+	badRegexPath := newValid()
+	badPathExpr := "/invalid["
+	badRegexPath.Spec.Rules[0].IngressRuleValue.HTTP.Paths = []experimental.HTTPIngressPath{
+		{
+			Path:    badPathExpr,
+			Backend: defaultBackend,
+		},
+	}
+	badPathErr := fmt.Sprintf("spec.rules.ingressRule.http.path: invalid value '%v'",
+		badPathExpr)
+	hostIP := "127.0.0.1"
+	badHostIP := newValid()
+	badHostIP.Spec.Rules[0].Host = hostIP
+	badHostIPErr := fmt.Sprintf("spec.rules.host: invalid value '%v'", hostIP)
+
+	errorCases := map[string]experimental.Ingress{
+		"spec.backend.serviceName: required value":          servicelessBackend,
+		"spec.backend.serviceName: invalid value":           invalidNameBackend,
+		"spec.backend.servicePort: invalid value":           noPortBackend,
+		"spec.rules.host: invalid value":                    badHost,
+		"spec.rules.ingressRule.http.paths: required value": noPaths,
+		"spec.rules.ingressRule.http.path: invalid value":   noForwardSlashPath,
+	}
+	errorCases[badPathErr] = badRegexPath
+	errorCases[badHostIPErr] = badHostIP
+
+	for k, v := range errorCases {
+		errs := ValidateIngress(&v)
 		if len(errs) == 0 {
 			t.Errorf("expected failure for %s", k)
 		} else {

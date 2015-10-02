@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1
+package v1alpha1
 
 import (
 	"reflect"
@@ -189,8 +189,76 @@ func TestSetDefaultDeployment(t *testing.T) {
 	}
 }
 
+func TestSetDefaultJob(t *testing.T) {
+	expected := &Job{
+		Spec: JobSpec{
+			Selector:    map[string]string{"job": "selector"},
+			Completions: newInt(1),
+			Parallelism: newInt(1),
+		},
+	}
+	tests := []*Job{
+		// selector set explicitly, completions and parallelism - default
+		{
+			Spec: JobSpec{
+				Selector: map[string]string{"job": "selector"},
+			},
+		},
+		// selector from template labels, completions and parallelism - default
+		{
+			Spec: JobSpec{
+				Template: &v1.PodTemplateSpec{
+					ObjectMeta: v1.ObjectMeta{
+						Labels: map[string]string{"job": "selector"},
+					},
+				},
+			},
+		},
+		// selector from template labels, completions set explicitly, parallelism - default
+		{
+			Spec: JobSpec{
+				Completions: newInt(1),
+				Template: &v1.PodTemplateSpec{
+					ObjectMeta: v1.ObjectMeta{
+						Labels: map[string]string{"job": "selector"},
+					},
+				},
+			},
+		},
+		// selector from template labels, completions - default, parallelism set explicitly
+		{
+			Spec: JobSpec{
+				Parallelism: newInt(1),
+				Template: &v1.PodTemplateSpec{
+					ObjectMeta: v1.ObjectMeta{
+						Labels: map[string]string{"job": "selector"},
+					},
+				},
+			},
+		},
+	}
+
+	for _, original := range tests {
+		obj2 := roundTrip(t, runtime.Object(original))
+		got, ok := obj2.(*Job)
+		if !ok {
+			t.Errorf("unexpected object: %v", got)
+			t.FailNow()
+		}
+		if *got.Spec.Completions != *expected.Spec.Completions {
+			t.Errorf("got different completions than expected: %d %d", *got.Spec.Completions, *expected.Spec.Completions)
+		}
+		if *got.Spec.Parallelism != *expected.Spec.Parallelism {
+			t.Errorf("got different parallelism than expected: %d %d", *got.Spec.Parallelism, *expected.Spec.Parallelism)
+		}
+		if !reflect.DeepEqual(got.Spec.Selector, expected.Spec.Selector) {
+			t.Errorf("got different selectors %#v %#v", got.Spec.Selector, expected.Spec.Selector)
+		}
+	}
+}
+
 func roundTrip(t *testing.T, obj runtime.Object) runtime.Object {
-	data, err := v1.Codec.Encode(obj)
+	data, err := Codec.Encode(obj)
 	if err != nil {
 		t.Errorf("%v\n %#v", err, obj)
 		return nil

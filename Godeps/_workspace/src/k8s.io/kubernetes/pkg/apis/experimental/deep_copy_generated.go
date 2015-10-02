@@ -23,6 +23,7 @@ import (
 
 	api "k8s.io/kubernetes/pkg/api"
 	resource "k8s.io/kubernetes/pkg/api/resource"
+	unversioned "k8s.io/kubernetes/pkg/api/unversioned"
 	conversion "k8s.io/kubernetes/pkg/conversion"
 	util "k8s.io/kubernetes/pkg/util"
 	inf "speter.net/go/exp/math/dec/inf"
@@ -252,6 +253,26 @@ func deepCopy_api_ExecAction(in api.ExecAction, out *api.ExecAction, c *conversi
 	return nil
 }
 
+func deepCopy_api_FCVolumeSource(in api.FCVolumeSource, out *api.FCVolumeSource, c *conversion.Cloner) error {
+	if in.TargetWWNs != nil {
+		out.TargetWWNs = make([]string, len(in.TargetWWNs))
+		for i := range in.TargetWWNs {
+			out.TargetWWNs[i] = in.TargetWWNs[i]
+		}
+	} else {
+		out.TargetWWNs = nil
+	}
+	if in.Lun != nil {
+		out.Lun = new(int)
+		*out.Lun = *in.Lun
+	} else {
+		out.Lun = nil
+	}
+	out.FSType = in.FSType
+	out.ReadOnly = in.ReadOnly
+	return nil
+}
+
 func deepCopy_api_GCEPersistentDiskVolumeSource(in api.GCEPersistentDiskVolumeSource, out *api.GCEPersistentDiskVolumeSource, c *conversion.Cloner) error {
 	out.PDName = in.PDName
 	out.FSType = in.FSType
@@ -345,9 +366,23 @@ func deepCopy_api_Lifecycle(in api.Lifecycle, out *api.Lifecycle, c *conversion.
 	return nil
 }
 
-func deepCopy_api_ListMeta(in api.ListMeta, out *api.ListMeta, c *conversion.Cloner) error {
-	out.SelfLink = in.SelfLink
-	out.ResourceVersion = in.ResourceVersion
+func deepCopy_api_LoadBalancerIngress(in api.LoadBalancerIngress, out *api.LoadBalancerIngress, c *conversion.Cloner) error {
+	out.IP = in.IP
+	out.Hostname = in.Hostname
+	return nil
+}
+
+func deepCopy_api_LoadBalancerStatus(in api.LoadBalancerStatus, out *api.LoadBalancerStatus, c *conversion.Cloner) error {
+	if in.Ingress != nil {
+		out.Ingress = make([]api.LoadBalancerIngress, len(in.Ingress))
+		for i := range in.Ingress {
+			if err := deepCopy_api_LoadBalancerIngress(in.Ingress[i], &out.Ingress[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Ingress = nil
+	}
 	return nil
 }
 
@@ -377,12 +412,12 @@ func deepCopy_api_ObjectMeta(in api.ObjectMeta, out *api.ObjectMeta, c *conversi
 	out.UID = in.UID
 	out.ResourceVersion = in.ResourceVersion
 	out.Generation = in.Generation
-	if err := deepCopy_util_Time(in.CreationTimestamp, &out.CreationTimestamp, c); err != nil {
+	if err := deepCopy_unversioned_Time(in.CreationTimestamp, &out.CreationTimestamp, c); err != nil {
 		return err
 	}
 	if in.DeletionTimestamp != nil {
-		out.DeletionTimestamp = new(util.Time)
-		if err := deepCopy_util_Time(*in.DeletionTimestamp, out.DeletionTimestamp, c); err != nil {
+		out.DeletionTimestamp = new(unversioned.Time)
+		if err := deepCopy_unversioned_Time(*in.DeletionTimestamp, out.DeletionTimestamp, c); err != nil {
 			return err
 		}
 	} else {
@@ -466,6 +501,7 @@ func deepCopy_api_PodSpec(in api.PodSpec, out *api.PodSpec, c *conversion.Cloner
 	out.NodeName = in.NodeName
 	out.HostNetwork = in.HostNetwork
 	out.HostPID = in.HostPID
+	out.HostIPC = in.HostIPC
 	if in.ImagePullSecrets != nil {
 		out.ImagePullSecrets = make([]api.LocalObjectReference, len(in.ImagePullSecrets))
 		for i := range in.ImagePullSecrets {
@@ -605,12 +641,6 @@ func deepCopy_api_TCPSocketAction(in api.TCPSocketAction, out *api.TCPSocketActi
 	return nil
 }
 
-func deepCopy_api_TypeMeta(in api.TypeMeta, out *api.TypeMeta, c *conversion.Cloner) error {
-	out.Kind = in.Kind
-	out.APIVersion = in.APIVersion
-	return nil
-}
-
 func deepCopy_api_Volume(in api.Volume, out *api.Volume, c *conversion.Cloner) error {
 	out.Name = in.Name
 	if err := deepCopy_api_VolumeSource(in.VolumeSource, &out.VolumeSource, c); err != nil {
@@ -739,6 +769,14 @@ func deepCopy_api_VolumeSource(in api.VolumeSource, out *api.VolumeSource, c *co
 	} else {
 		out.DownwardAPI = nil
 	}
+	if in.FC != nil {
+		out.FC = new(api.FCVolumeSource)
+		if err := deepCopy_api_FCVolumeSource(*in.FC, out.FC, c); err != nil {
+			return err
+		}
+	} else {
+		out.FC = nil
+	}
 	return nil
 }
 
@@ -758,6 +796,27 @@ func deepCopy_resource_Quantity(in resource.Quantity, out *resource.Quantity, c 
 	return nil
 }
 
+func deepCopy_unversioned_ListMeta(in unversioned.ListMeta, out *unversioned.ListMeta, c *conversion.Cloner) error {
+	out.SelfLink = in.SelfLink
+	out.ResourceVersion = in.ResourceVersion
+	return nil
+}
+
+func deepCopy_unversioned_Time(in unversioned.Time, out *unversioned.Time, c *conversion.Cloner) error {
+	if newVal, err := c.DeepCopy(in.Time); err != nil {
+		return err
+	} else {
+		out.Time = newVal.(time.Time)
+	}
+	return nil
+}
+
+func deepCopy_unversioned_TypeMeta(in unversioned.TypeMeta, out *unversioned.TypeMeta, c *conversion.Cloner) error {
+	out.Kind = in.Kind
+	out.APIVersion = in.APIVersion
+	return nil
+}
+
 func deepCopy_experimental_APIVersion(in APIVersion, out *APIVersion, c *conversion.Cloner) error {
 	out.Name = in.Name
 	out.APIGroup = in.APIGroup
@@ -765,7 +824,7 @@ func deepCopy_experimental_APIVersion(in APIVersion, out *APIVersion, c *convers
 }
 
 func deepCopy_experimental_DaemonSet(in DaemonSet, out *DaemonSet, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
 	if err := deepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
@@ -781,10 +840,10 @@ func deepCopy_experimental_DaemonSet(in DaemonSet, out *DaemonSet, c *conversion
 }
 
 func deepCopy_experimental_DaemonSetList(in DaemonSetList, out *DaemonSetList, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
-	if err := deepCopy_api_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+	if err := deepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
 		return err
 	}
 	if in.Items != nil {
@@ -828,7 +887,7 @@ func deepCopy_experimental_DaemonSetStatus(in DaemonSetStatus, out *DaemonSetSta
 }
 
 func deepCopy_experimental_Deployment(in Deployment, out *Deployment, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
 	if err := deepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
@@ -844,10 +903,10 @@ func deepCopy_experimental_Deployment(in Deployment, out *Deployment, c *convers
 }
 
 func deepCopy_experimental_DeploymentList(in DeploymentList, out *DeploymentList, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
-	if err := deepCopy_api_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+	if err := deepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
 		return err
 	}
 	if in.Items != nil {
@@ -907,8 +966,30 @@ func deepCopy_experimental_DeploymentStrategy(in DeploymentStrategy, out *Deploy
 	return nil
 }
 
+func deepCopy_experimental_HTTPIngressPath(in HTTPIngressPath, out *HTTPIngressPath, c *conversion.Cloner) error {
+	out.Path = in.Path
+	if err := deepCopy_experimental_IngressBackend(in.Backend, &out.Backend, c); err != nil {
+		return err
+	}
+	return nil
+}
+
+func deepCopy_experimental_HTTPIngressRuleValue(in HTTPIngressRuleValue, out *HTTPIngressRuleValue, c *conversion.Cloner) error {
+	if in.Paths != nil {
+		out.Paths = make([]HTTPIngressPath, len(in.Paths))
+		for i := range in.Paths {
+			if err := deepCopy_experimental_HTTPIngressPath(in.Paths[i], &out.Paths[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Paths = nil
+	}
+	return nil
+}
+
 func deepCopy_experimental_HorizontalPodAutoscaler(in HorizontalPodAutoscaler, out *HorizontalPodAutoscaler, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
 	if err := deepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
@@ -917,22 +998,17 @@ func deepCopy_experimental_HorizontalPodAutoscaler(in HorizontalPodAutoscaler, o
 	if err := deepCopy_experimental_HorizontalPodAutoscalerSpec(in.Spec, &out.Spec, c); err != nil {
 		return err
 	}
-	if in.Status != nil {
-		out.Status = new(HorizontalPodAutoscalerStatus)
-		if err := deepCopy_experimental_HorizontalPodAutoscalerStatus(*in.Status, out.Status, c); err != nil {
-			return err
-		}
-	} else {
-		out.Status = nil
+	if err := deepCopy_experimental_HorizontalPodAutoscalerStatus(in.Status, &out.Status, c); err != nil {
+		return err
 	}
 	return nil
 }
 
 func deepCopy_experimental_HorizontalPodAutoscalerList(in HorizontalPodAutoscalerList, out *HorizontalPodAutoscalerList, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
-	if err := deepCopy_api_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+	if err := deepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
 		return err
 	}
 	if in.Items != nil {
@@ -957,8 +1033,8 @@ func deepCopy_experimental_HorizontalPodAutoscalerSpec(in HorizontalPodAutoscale
 	} else {
 		out.ScaleRef = nil
 	}
-	out.MinCount = in.MinCount
-	out.MaxCount = in.MaxCount
+	out.MinReplicas = in.MinReplicas
+	out.MaxReplicas = in.MaxReplicas
 	if err := deepCopy_experimental_ResourceConsumption(in.Target, &out.Target, c); err != nil {
 		return err
 	}
@@ -977,8 +1053,8 @@ func deepCopy_experimental_HorizontalPodAutoscalerStatus(in HorizontalPodAutosca
 		out.CurrentConsumption = nil
 	}
 	if in.LastScaleTimestamp != nil {
-		out.LastScaleTimestamp = new(util.Time)
-		if err := deepCopy_util_Time(*in.LastScaleTimestamp, out.LastScaleTimestamp, c); err != nil {
+		out.LastScaleTimestamp = new(unversioned.Time)
+		if err := deepCopy_unversioned_Time(*in.LastScaleTimestamp, out.LastScaleTimestamp, c); err != nil {
 			return err
 		}
 	} else {
@@ -987,8 +1063,101 @@ func deepCopy_experimental_HorizontalPodAutoscalerStatus(in HorizontalPodAutosca
 	return nil
 }
 
+func deepCopy_experimental_Ingress(in Ingress, out *Ingress, c *conversion.Cloner) error {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+		return err
+	}
+	if err := deepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
+		return err
+	}
+	if err := deepCopy_experimental_IngressSpec(in.Spec, &out.Spec, c); err != nil {
+		return err
+	}
+	if err := deepCopy_experimental_IngressStatus(in.Status, &out.Status, c); err != nil {
+		return err
+	}
+	return nil
+}
+
+func deepCopy_experimental_IngressBackend(in IngressBackend, out *IngressBackend, c *conversion.Cloner) error {
+	out.ServiceName = in.ServiceName
+	if err := deepCopy_util_IntOrString(in.ServicePort, &out.ServicePort, c); err != nil {
+		return err
+	}
+	return nil
+}
+
+func deepCopy_experimental_IngressList(in IngressList, out *IngressList, c *conversion.Cloner) error {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+		return err
+	}
+	if err := deepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+		return err
+	}
+	if in.Items != nil {
+		out.Items = make([]Ingress, len(in.Items))
+		for i := range in.Items {
+			if err := deepCopy_experimental_Ingress(in.Items[i], &out.Items[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
+	return nil
+}
+
+func deepCopy_experimental_IngressRule(in IngressRule, out *IngressRule, c *conversion.Cloner) error {
+	out.Host = in.Host
+	if err := deepCopy_experimental_IngressRuleValue(in.IngressRuleValue, &out.IngressRuleValue, c); err != nil {
+		return err
+	}
+	return nil
+}
+
+func deepCopy_experimental_IngressRuleValue(in IngressRuleValue, out *IngressRuleValue, c *conversion.Cloner) error {
+	if in.HTTP != nil {
+		out.HTTP = new(HTTPIngressRuleValue)
+		if err := deepCopy_experimental_HTTPIngressRuleValue(*in.HTTP, out.HTTP, c); err != nil {
+			return err
+		}
+	} else {
+		out.HTTP = nil
+	}
+	return nil
+}
+
+func deepCopy_experimental_IngressSpec(in IngressSpec, out *IngressSpec, c *conversion.Cloner) error {
+	if in.Backend != nil {
+		out.Backend = new(IngressBackend)
+		if err := deepCopy_experimental_IngressBackend(*in.Backend, out.Backend, c); err != nil {
+			return err
+		}
+	} else {
+		out.Backend = nil
+	}
+	if in.Rules != nil {
+		out.Rules = make([]IngressRule, len(in.Rules))
+		for i := range in.Rules {
+			if err := deepCopy_experimental_IngressRule(in.Rules[i], &out.Rules[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Rules = nil
+	}
+	return nil
+}
+
+func deepCopy_experimental_IngressStatus(in IngressStatus, out *IngressStatus, c *conversion.Cloner) error {
+	if err := deepCopy_api_LoadBalancerStatus(in.LoadBalancer, &out.LoadBalancer, c); err != nil {
+		return err
+	}
+	return nil
+}
+
 func deepCopy_experimental_Job(in Job, out *Job, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
 	if err := deepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
@@ -1006,10 +1175,10 @@ func deepCopy_experimental_Job(in Job, out *Job, c *conversion.Cloner) error {
 func deepCopy_experimental_JobCondition(in JobCondition, out *JobCondition, c *conversion.Cloner) error {
 	out.Type = in.Type
 	out.Status = in.Status
-	if err := deepCopy_util_Time(in.LastProbeTime, &out.LastProbeTime, c); err != nil {
+	if err := deepCopy_unversioned_Time(in.LastProbeTime, &out.LastProbeTime, c); err != nil {
 		return err
 	}
-	if err := deepCopy_util_Time(in.LastTransitionTime, &out.LastTransitionTime, c); err != nil {
+	if err := deepCopy_unversioned_Time(in.LastTransitionTime, &out.LastTransitionTime, c); err != nil {
 		return err
 	}
 	out.Reason = in.Reason
@@ -1018,10 +1187,10 @@ func deepCopy_experimental_JobCondition(in JobCondition, out *JobCondition, c *c
 }
 
 func deepCopy_experimental_JobList(in JobList, out *JobList, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
-	if err := deepCopy_api_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+	if err := deepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
 		return err
 	}
 	if in.Items != nil {
@@ -1081,16 +1250,16 @@ func deepCopy_experimental_JobStatus(in JobStatus, out *JobStatus, c *conversion
 		out.Conditions = nil
 	}
 	if in.StartTime != nil {
-		out.StartTime = new(util.Time)
-		if err := deepCopy_util_Time(*in.StartTime, out.StartTime, c); err != nil {
+		out.StartTime = new(unversioned.Time)
+		if err := deepCopy_unversioned_Time(*in.StartTime, out.StartTime, c); err != nil {
 			return err
 		}
 	} else {
 		out.StartTime = nil
 	}
 	if in.CompletionTime != nil {
-		out.CompletionTime = new(util.Time)
-		if err := deepCopy_util_Time(*in.CompletionTime, out.CompletionTime, c); err != nil {
+		out.CompletionTime = new(unversioned.Time)
+		if err := deepCopy_unversioned_Time(*in.CompletionTime, out.CompletionTime, c); err != nil {
 			return err
 		}
 	} else {
@@ -1103,7 +1272,7 @@ func deepCopy_experimental_JobStatus(in JobStatus, out *JobStatus, c *conversion
 }
 
 func deepCopy_experimental_ReplicationControllerDummy(in ReplicationControllerDummy, out *ReplicationControllerDummy, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
 	return nil
@@ -1129,7 +1298,7 @@ func deepCopy_experimental_RollingUpdateDeployment(in RollingUpdateDeployment, o
 }
 
 func deepCopy_experimental_Scale(in Scale, out *Scale, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
 	if err := deepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
@@ -1172,7 +1341,7 @@ func deepCopy_experimental_SubresourceReference(in SubresourceReference, out *Su
 }
 
 func deepCopy_experimental_ThirdPartyResource(in ThirdPartyResource, out *ThirdPartyResource, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
 	if err := deepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
@@ -1193,7 +1362,7 @@ func deepCopy_experimental_ThirdPartyResource(in ThirdPartyResource, out *ThirdP
 }
 
 func deepCopy_experimental_ThirdPartyResourceData(in ThirdPartyResourceData, out *ThirdPartyResourceData, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
 	if err := deepCopy_api_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
@@ -1211,10 +1380,10 @@ func deepCopy_experimental_ThirdPartyResourceData(in ThirdPartyResourceData, out
 }
 
 func deepCopy_experimental_ThirdPartyResourceDataList(in ThirdPartyResourceDataList, out *ThirdPartyResourceDataList, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
-	if err := deepCopy_api_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+	if err := deepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
 		return err
 	}
 	if in.Items != nil {
@@ -1231,10 +1400,10 @@ func deepCopy_experimental_ThirdPartyResourceDataList(in ThirdPartyResourceDataL
 }
 
 func deepCopy_experimental_ThirdPartyResourceList(in ThirdPartyResourceList, out *ThirdPartyResourceList, c *conversion.Cloner) error {
-	if err := deepCopy_api_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+	if err := deepCopy_unversioned_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
 	}
-	if err := deepCopy_api_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
+	if err := deepCopy_unversioned_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
 		return err
 	}
 	if in.Items != nil {
@@ -1257,15 +1426,6 @@ func deepCopy_util_IntOrString(in util.IntOrString, out *util.IntOrString, c *co
 	return nil
 }
 
-func deepCopy_util_Time(in util.Time, out *util.Time, c *conversion.Cloner) error {
-	if newVal, err := c.DeepCopy(in.Time); err != nil {
-		return err
-	} else {
-		out.Time = newVal.(time.Time)
-	}
-	return nil
-}
-
 func init() {
 	err := api.Scheme.AddGeneratedDeepCopyFuncs(
 		deepCopy_api_AWSElasticBlockStoreVolumeSource,
@@ -1280,6 +1440,7 @@ func init() {
 		deepCopy_api_EnvVar,
 		deepCopy_api_EnvVarSource,
 		deepCopy_api_ExecAction,
+		deepCopy_api_FCVolumeSource,
 		deepCopy_api_GCEPersistentDiskVolumeSource,
 		deepCopy_api_GitRepoVolumeSource,
 		deepCopy_api_GlusterfsVolumeSource,
@@ -1288,7 +1449,8 @@ func init() {
 		deepCopy_api_HostPathVolumeSource,
 		deepCopy_api_ISCSIVolumeSource,
 		deepCopy_api_Lifecycle,
-		deepCopy_api_ListMeta,
+		deepCopy_api_LoadBalancerIngress,
+		deepCopy_api_LoadBalancerStatus,
 		deepCopy_api_LocalObjectReference,
 		deepCopy_api_NFSVolumeSource,
 		deepCopy_api_ObjectFieldSelector,
@@ -1303,11 +1465,13 @@ func init() {
 		deepCopy_api_SecretVolumeSource,
 		deepCopy_api_SecurityContext,
 		deepCopy_api_TCPSocketAction,
-		deepCopy_api_TypeMeta,
 		deepCopy_api_Volume,
 		deepCopy_api_VolumeMount,
 		deepCopy_api_VolumeSource,
 		deepCopy_resource_Quantity,
+		deepCopy_unversioned_ListMeta,
+		deepCopy_unversioned_Time,
+		deepCopy_unversioned_TypeMeta,
 		deepCopy_experimental_APIVersion,
 		deepCopy_experimental_DaemonSet,
 		deepCopy_experimental_DaemonSetList,
@@ -1318,10 +1482,19 @@ func init() {
 		deepCopy_experimental_DeploymentSpec,
 		deepCopy_experimental_DeploymentStatus,
 		deepCopy_experimental_DeploymentStrategy,
+		deepCopy_experimental_HTTPIngressPath,
+		deepCopy_experimental_HTTPIngressRuleValue,
 		deepCopy_experimental_HorizontalPodAutoscaler,
 		deepCopy_experimental_HorizontalPodAutoscalerList,
 		deepCopy_experimental_HorizontalPodAutoscalerSpec,
 		deepCopy_experimental_HorizontalPodAutoscalerStatus,
+		deepCopy_experimental_Ingress,
+		deepCopy_experimental_IngressBackend,
+		deepCopy_experimental_IngressList,
+		deepCopy_experimental_IngressRule,
+		deepCopy_experimental_IngressRuleValue,
+		deepCopy_experimental_IngressSpec,
+		deepCopy_experimental_IngressStatus,
 		deepCopy_experimental_Job,
 		deepCopy_experimental_JobCondition,
 		deepCopy_experimental_JobList,
@@ -1339,7 +1512,6 @@ func init() {
 		deepCopy_experimental_ThirdPartyResourceDataList,
 		deepCopy_experimental_ThirdPartyResourceList,
 		deepCopy_util_IntOrString,
-		deepCopy_util_Time,
 	)
 	if err != nil {
 		// if one of the deep copy functions is malformed, detect it immediately.

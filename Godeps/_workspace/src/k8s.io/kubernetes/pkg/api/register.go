@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -36,7 +37,6 @@ func init() {
 		&Service{},
 		&NodeList{},
 		&Node{},
-		&Status{},
 		&Endpoints{},
 		&EndpointsList{},
 		&Binding{},
@@ -67,10 +67,10 @@ func init() {
 		&ComponentStatusList{},
 		&SerializedReference{},
 		&RangeAllocation{},
-		&ThirdPartyResource{},
-		&ThirdPartyResourceList{},
-		&ThirdPartyResourceData{},
 	)
+
+	// Register Unversioned types
+	Scheme.AddKnownTypes("", &unversioned.Status{})
 }
 
 func (*Pod) IsAnAPIObject()                       {}
@@ -87,7 +87,6 @@ func (*EndpointsList) IsAnAPIObject()             {}
 func (*Node) IsAnAPIObject()                      {}
 func (*NodeList) IsAnAPIObject()                  {}
 func (*Binding) IsAnAPIObject()                   {}
-func (*Status) IsAnAPIObject()                    {}
 func (*Event) IsAnAPIObject()                     {}
 func (*EventList) IsAnAPIObject()                 {}
 func (*List) IsAnAPIObject()                      {}
@@ -115,6 +114,3 @@ func (*ComponentStatus) IsAnAPIObject()           {}
 func (*ComponentStatusList) IsAnAPIObject()       {}
 func (*SerializedReference) IsAnAPIObject()       {}
 func (*RangeAllocation) IsAnAPIObject()           {}
-func (*ThirdPartyResource) IsAnAPIObject()        {}
-func (*ThirdPartyResourceList) IsAnAPIObject()    {}
-func (*ThirdPartyResourceData) IsAnAPIObject()    {}

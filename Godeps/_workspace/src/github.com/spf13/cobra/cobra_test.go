@@ -19,7 +19,7 @@ var _ = os.Stderr
 var tp, te, tt, t1, tr []string
 var rootPersPre, echoPre, echoPersPre, timesPersPre []string
 var flagb1, flagb2, flagb3, flagbr, flagbp bool
-var flags1, flags2a, flags2b, flags3, outs string
+var flags1, flags2a, flags2b, flags3 string
 var flagi1, flagi2, flagi3, flagir int
 var globalFlag1 bool
 var flagEcho, rootcalled bool
@@ -27,16 +27,6 @@ var versionUsed int
 
 const strtwoParentHelp = "help message for parent flag strtwo"
 const strtwoChildHelp = "help message for child flag strtwo"
-
-var cmdHidden = &Command{
-	Use:   "hide [secret string to print]",
-	Short: "Print anything to screen (if command is known)",
-	Long:  `an absolutely utterly useless command for testing.`,
-	Run: func(cmd *Command, args []string) {
-		outs = "hidden"
-	},
-	Hidden: true,
-}
 
 var cmdPrint = &Command{
 	Use:   "print [string to print]",
@@ -265,24 +255,16 @@ func logErr(t *testing.T, found, expected string) {
 	t.Errorf(out.String())
 }
 
-func checkStringContains(t *testing.T, found, expected string) {
-	if !strings.Contains(found, expected) {
-		logErr(t, found, expected)
-	}
-}
-
 func checkResultContains(t *testing.T, x resulter, check string) {
-	checkStringContains(t, x.Output, check)
-}
-
-func checkStringOmits(t *testing.T, found, expected string) {
-	if strings.Contains(found, expected) {
-		logErr(t, found, expected)
+	if !strings.Contains(x.Output, check) {
+		logErr(t, x.Output, check)
 	}
 }
 
 func checkResultOmits(t *testing.T, x resulter, check string) {
-	checkStringOmits(t, x.Output, check)
+	if strings.Contains(x.Output, check) {
+		logErr(t, x.Output, check)
+	}
 }
 
 func checkOutputContains(t *testing.T, c *Command, check string) {
@@ -632,10 +614,10 @@ func TestNonRunChildHelp(t *testing.T) {
 }
 
 func TestRunnableRootCommand(t *testing.T) {
-	x := fullSetupTest("")
+	fullSetupTest("")
 
 	if rootcalled != true {
-		t.Errorf("Root Function was not called\n out:%v", x.Error)
+		t.Errorf("Root Function was not called")
 	}
 }
 
@@ -650,10 +632,7 @@ func TestRunnableRootCommandNilInput(t *testing.T) {
 	c.AddCommand(cmdPrint, cmdEcho)
 	c.SetArgs(empty_arg)
 
-	err := c.Execute()
-	if err != nil {
-		t.Errorf("Execute() failed with %v", err)
-	}
+	c.Execute()
 
 	if rootcalled != true {
 		t.Errorf("Root Function was not called")
@@ -799,34 +778,6 @@ func TestRootUnknownCommand(t *testing.T) {
 	r = noRRSetupTest("--strtwo=a bogus")
 	if r.Output != s {
 		t.Errorf("Unexpected response.\nExpecting to be:\n %q\nGot:\n %q\n", s, r.Output)
-	}
-}
-
-func TestRootSuggestions(t *testing.T) {
-	outputWithSuggestions := "Error: unknown command \"%s\" for \"cobra-test\"\n\nDid you mean this?\n\t%s\n\nRun 'cobra-test --help' for usage.\n"
-	outputWithoutSuggestions := "Error: unknown command \"%s\" for \"cobra-test\"\nRun 'cobra-test --help' for usage.\n"
-
-	cmd := initializeWithRootCmd()
-	cmd.AddCommand(cmdTimes)
-
-	tests := map[string]string{
-		"time":  "times",
-		"tiems": "times",
-		"timeS": "times",
-		"rimes": "times",
-	}
-
-	for typo, suggestion := range tests {
-		cmd.DisableSuggestions = false
-		result := simpleTester(cmd, typo)
-		if expected := fmt.Sprintf(outputWithSuggestions, typo, suggestion); result.Output != expected {
-			t.Errorf("Unexpected response.\nExpecting to be:\n %q\nGot:\n %q\n", expected, result.Output)
-		}
-		cmd.DisableSuggestions = true
-		result = simpleTester(cmd, typo)
-		if expected := fmt.Sprintf(outputWithoutSuggestions, typo); result.Output != expected {
-			t.Errorf("Unexpected response.\nExpecting to be:\n %q\nGot:\n %q\n", expected, result.Output)
-		}
 	}
 }
 
@@ -1025,15 +976,15 @@ func TestFlagOnPflagCommandLine(t *testing.T) {
 func TestAddTemplateFunctions(t *testing.T) {
 	AddTemplateFunc("t", func() bool { return true })
 	AddTemplateFuncs(template.FuncMap{
-		"f": func() bool { return false },
-		"h": func() string { return "Hello," },
+		"f": func() bool { return false }, 
+		"h": func() string { return "Hello," }, 
 		"w": func() string { return "world." }})
 
 	const usage = "Hello, world."
-
+	
 	c := &Command{}
 	c.SetUsageTemplate(`{{if t}}{{h}}{{end}}{{if f}}{{h}}{{end}} {{w}}`)
-
+	
 	if us := c.UsageString(); us != usage {
 		t.Errorf("c.UsageString() != \"%s\", is \"%s\"", usage, us)
 	}
