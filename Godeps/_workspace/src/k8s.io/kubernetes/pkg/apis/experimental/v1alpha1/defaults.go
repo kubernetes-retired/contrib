@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1
+package v1alpha1
 
 import (
 	"k8s.io/kubernetes/pkg/api"
@@ -73,6 +73,28 @@ func addDefaultingFuncs() {
 			if obj.Spec.UniqueLabelKey == nil {
 				obj.Spec.UniqueLabelKey = new(string)
 				*obj.Spec.UniqueLabelKey = "deployment.kubernetes.io/podTemplateHash"
+			}
+		},
+		func(obj *Job) {
+			var labels map[string]string
+			if obj.Spec.Template != nil {
+				labels = obj.Spec.Template.Labels
+			}
+			// TODO: support templates defined elsewhere when we support them in the API
+			if labels != nil {
+				if len(obj.Spec.Selector) == 0 {
+					obj.Spec.Selector = labels
+				}
+				if len(obj.Labels) == 0 {
+					obj.Labels = labels
+				}
+			}
+			if obj.Spec.Completions == nil {
+				completions := 1
+				obj.Spec.Completions = &completions
+			}
+			if obj.Spec.Parallelism == nil {
+				obj.Spec.Parallelism = obj.Spec.Completions
 			}
 		},
 	)

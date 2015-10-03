@@ -9,7 +9,7 @@ all: push
 #   make TAG=1.2
 
 podmaster: podmaster.go
-	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' ./podmaster.go
+	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' ./podmaster.go
 
 container: podmaster
 	docker build -t gcr.io/google_containers/podmaster:$(TAG) .

@@ -220,6 +220,15 @@ func ValidatePositiveField(value int64, fieldName string) errs.ValidationErrorLi
 	return allErrs
 }
 
+// Validates that a Quantity is not negative
+func ValidatePositiveQuantity(value resource.Quantity, fieldName string) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	if value.Cmp(resource.Quantity{}) < 0 {
+		allErrs = append(allErrs, errs.NewFieldInvalid(fieldName, value.String(), isNegativeErrorMsg))
+	}
+	return allErrs
+}
+
 // ValidateObjectMeta validates an object's metadata on creation. It expects that name generation has already
 // been performed.
 func ValidateObjectMeta(meta *api.ObjectMeta, requiresNamespace bool, nameFn ValidateNameFunc) errs.ValidationErrorList {
@@ -390,6 +399,10 @@ func validateSource(source *api.VolumeSource) errs.ValidationErrorList {
 		numVolumes++
 		allErrs = append(allErrs, validateDownwardAPIVolumeSource(source.DownwardAPI).Prefix("downwardApi")...)
 	}
+	if source.FC != nil {
+		numVolumes++
+		allErrs = append(allErrs, validateFCVolumeSource(source.FC).Prefix("fc")...)
+	}
 	if numVolumes != 1 {
 		allErrs = append(allErrs, errs.NewFieldInvalid("", source, "exactly 1 volume type is required"))
 	}
@@ -426,6 +439,25 @@ func validateISCSIVolumeSource(iscsi *api.ISCSIVolumeSource) errs.ValidationErro
 	}
 	if iscsi.Lun < 0 || iscsi.Lun > 255 {
 		allErrs = append(allErrs, errs.NewFieldInvalid("lun", iscsi.Lun, ""))
+	}
+	return allErrs
+}
+
+func validateFCVolumeSource(fc *api.FCVolumeSource) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	if len(fc.TargetWWNs) < 1 {
+		allErrs = append(allErrs, errs.NewFieldRequired("targetWWNs"))
+	}
+	if fc.FSType == "" {
+		allErrs = append(allErrs, errs.NewFieldRequired("fsType"))
+	}
+
+	if fc.Lun == nil {
+		allErrs = append(allErrs, errs.NewFieldRequired("lun"))
+	} else {
+		if *fc.Lun < 0 || *fc.Lun > 255 {
+			allErrs = append(allErrs, errs.NewFieldInvalid("lun", fc.Lun, ""))
+		}
 	}
 	return allErrs
 }
@@ -623,6 +655,10 @@ func ValidatePersistentVolume(pv *api.PersistentVolume) errs.ValidationErrorList
 	if pv.Spec.Cinder != nil {
 		numVolumes++
 		allErrs = append(allErrs, validateCinderVolumeSource(pv.Spec.Cinder).Prefix("cinder")...)
+	}
+	if pv.Spec.FC != nil {
+		numVolumes++
+		allErrs = append(allErrs, validateFCVolumeSource(pv.Spec.FC).Prefix("fc")...)
 	}
 	if numVolumes != 1 {
 		allErrs = append(allErrs, errs.NewFieldInvalid("", pv.Spec.PersistentVolumeSource, "exactly 1 volume type is required"))
@@ -1412,7 +1448,7 @@ func ValidateNodeUpdate(oldNode *api.Node, node *api.Node) errs.ValidationErrorL
 }
 
 // Validate compute resource typename.
-// Refer to docs/resources.md for more details.
+// Refer to docs/design/resources.md for more details.
 func validateResourceName(value string, field string) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
 	if !validation.IsQualifiedName(value) {
@@ -1433,7 +1469,7 @@ func ValidateLimitRange(limitRange *api.LimitRange) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
 	allErrs = append(allErrs, ValidateObjectMeta(&limitRange.ObjectMeta, true, ValidateLimitRangeName).Prefix("metadata")...)
 
-	// ensure resource names are properly qualified per docs/resources.md
+	// ensure resource names are properly qualified per docs/design/resources.md
 	limitTypeSet := map[api.LimitType]bool{}
 	for i := range limitRange.Spec.Limits {
 		limit := limitRange.Spec.Limits[i]
@@ -1448,6 +1484,7 @@ func ValidateLimitRange(limitRange *api.LimitRange) errs.ValidationErrorList {
 		max := map[string]resource.Quantity{}
 		defaults := map[string]resource.Quantity{}
 		defaultRequests := map[string]resource.Quantity{}
+		maxLimitRequestRatios := map[string]resource.Quantity{}
 
 		for k, q := range limit.Max {
 			allErrs = append(allErrs, validateResourceName(string(k), fmt.Sprintf("spec.limits[%d].max[%s]", i, k))...)
@@ -1480,8 +1517,10 @@ func ValidateLimitRange(limitRange *api.LimitRange) errs.ValidationErrorList {
 			}
 		}
 
-		for k := range limit.MaxLimitRequestRatio {
+		for k, q := range limit.MaxLimitRequestRatio {
 			allErrs = append(allErrs, validateResourceName(string(k), fmt.Sprintf("spec.limits[%d].maxLimitRequestRatio[%s]", i, k))...)
+			keys.Insert(string(k))
+			maxLimitRequestRatios[string(k)] = q
 		}
 
 		for k := range keys {
@@ -1489,6 +1528,7 @@ func ValidateLimitRange(limitRange *api.LimitRange) errs.ValidationErrorList {
 			maxQuantity, maxQuantityFound := max[k]
 			defaultQuantity, defaultQuantityFound := defaults[k]
 			defaultRequestQuantity, defaultRequestQuantityFound := defaultRequests[k]
+			maxRatio, maxRatioFound := maxLimitRequestRatios[k]
 
 			if minQuantityFound && maxQuantityFound && minQuantity.Cmp(maxQuantity) > 0 {
 				allErrs = append(allErrs, errs.NewFieldInvalid(fmt.Sprintf("spec.limits[%d].min[%s]", i, k), minQuantity, fmt.Sprintf("min value %s is greater than max value %s", minQuantity.String(), maxQuantity.String())))
@@ -1512,6 +1552,23 @@ func ValidateLimitRange(limitRange *api.LimitRange) errs.ValidationErrorList {
 
 			if defaultQuantityFound && maxQuantityFound && defaultQuantity.Cmp(maxQuantity) > 0 {
 				allErrs = append(allErrs, errs.NewFieldInvalid(fmt.Sprintf("spec.limits[%d].default[%s]", i, k), maxQuantity, fmt.Sprintf("default value %s is greater than max value %s", defaultQuantity.String(), maxQuantity.String())))
+			}
+			if maxRatioFound && maxRatio.Cmp(*resource.NewQuantity(1, resource.DecimalSI)) < 0 {
+				allErrs = append(allErrs, errs.NewFieldInvalid(fmt.Sprintf("spec.limits[%d].maxLimitRequestRatio[%s]", i, k), maxRatio, fmt.Sprintf("maxLimitRequestRatio %s is less than 1", maxRatio.String())))
+			}
+			if maxRatioFound && minQuantityFound && maxQuantityFound {
+				maxRatioValue := float64(maxRatio.Value())
+				minQuantityValue := minQuantity.Value()
+				maxQuantityValue := maxQuantity.Value()
+				if maxRatio.Value() < resource.MaxMilliValue && minQuantityValue < resource.MaxMilliValue && maxQuantityValue < resource.MaxMilliValue {
+					maxRatioValue = float64(maxRatio.MilliValue()) / 1000
+					minQuantityValue = minQuantity.MilliValue()
+					maxQuantityValue = maxQuantity.MilliValue()
+				}
+				maxRatioLimit := float64(maxQuantityValue) / float64(minQuantityValue)
+				if maxRatioValue > maxRatioLimit {
+					allErrs = append(allErrs, errs.NewFieldInvalid(fmt.Sprintf("spec.limits[%d].maxLimitRequestRatio[%s]", i, k), maxRatio, fmt.Sprintf("maxLimitRequestRatio %s is greater than max/min = %f", maxRatio.String(), maxRatioLimit)))
+				}
 			}
 		}
 	}
@@ -1653,14 +1710,17 @@ func ValidateResourceQuota(resourceQuota *api.ResourceQuota) errs.ValidationErro
 	allErrs := errs.ValidationErrorList{}
 	allErrs = append(allErrs, ValidateObjectMeta(&resourceQuota.ObjectMeta, true, ValidateResourceQuotaName).Prefix("metadata")...)
 
-	for k := range resourceQuota.Spec.Hard {
+	for k, v := range resourceQuota.Spec.Hard {
 		allErrs = append(allErrs, validateResourceName(string(k), string(resourceQuota.TypeMeta.Kind))...)
+		allErrs = append(allErrs, ValidatePositiveQuantity(v, string(k))...)
 	}
-	for k := range resourceQuota.Status.Hard {
+	for k, v := range resourceQuota.Status.Hard {
 		allErrs = append(allErrs, validateResourceName(string(k), string(resourceQuota.TypeMeta.Kind))...)
+		allErrs = append(allErrs, ValidatePositiveQuantity(v, string(k))...)
 	}
-	for k := range resourceQuota.Status.Used {
+	for k, v := range resourceQuota.Status.Used {
 		allErrs = append(allErrs, validateResourceName(string(k), string(resourceQuota.TypeMeta.Kind))...)
+		allErrs = append(allErrs, ValidatePositiveQuantity(v, string(k))...)
 	}
 	return allErrs
 }
@@ -1777,8 +1837,8 @@ func validateEndpointSubsets(subsets []api.EndpointSubset) errs.ValidationErrorL
 
 		ssErrs := errs.ValidationErrorList{}
 
-		if len(ss.Addresses) == 0 {
-			ssErrs = append(ssErrs, errs.NewFieldRequired("addresses"))
+		if len(ss.Addresses) == 0 && len(ss.NotReadyAddresses) == 0 {
+			ssErrs = append(ssErrs, errs.NewFieldRequired("addresses or notReadyAddresses"))
 		}
 		if len(ss.Ports) == 0 {
 			ssErrs = append(ssErrs, errs.NewFieldRequired("ports"))
@@ -1876,29 +1936,22 @@ func ValidateSecurityContext(sc *api.SecurityContext) errs.ValidationErrorList {
 	return allErrs
 }
 
-func ValidateThirdPartyResourceUpdate(old, update *api.ThirdPartyResource) errs.ValidationErrorList {
-	return ValidateThirdPartyResource(update)
-}
-
-func ValidateThirdPartyResource(obj *api.ThirdPartyResource) errs.ValidationErrorList {
+func ValidatePodLogOptions(opts *api.PodLogOptions) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
-	if len(obj.Name) == 0 {
-		allErrs = append(allErrs, errs.NewFieldInvalid("name", obj.Name, "name must be non-empty"))
+	if opts.TailLines != nil && *opts.TailLines < 0 {
+		allErrs = append(allErrs, errs.NewFieldInvalid("tailLines", *opts.TailLines, "tailLines must be a non-negative integer or nil"))
 	}
-	versions := sets.String{}
-	for ix := range obj.Versions {
-		version := &obj.Versions[ix]
-		if len(version.Name) == 0 {
-			allErrs = append(allErrs, errs.NewFieldInvalid("name", version, "name can not be empty"))
+	if opts.LimitBytes != nil && *opts.LimitBytes < 1 {
+		allErrs = append(allErrs, errs.NewFieldInvalid("limitBytes", *opts.LimitBytes, "limitBytes must be a positive integer or nil"))
+	}
+	switch {
+	case opts.SinceSeconds != nil && opts.SinceTime != nil:
+		allErrs = append(allErrs, errs.NewFieldInvalid("sinceSeconds", *opts.SinceSeconds, "only one of sinceTime or sinceSeconds can be provided"))
+		allErrs = append(allErrs, errs.NewFieldInvalid("sinceTime", *opts.SinceTime, "only one of sinceTime or sinceSeconds can be provided"))
+	case opts.SinceSeconds != nil:
+		if *opts.SinceSeconds < 1 {
+			allErrs = append(allErrs, errs.NewFieldInvalid("sinceSeconds", *opts.SinceSeconds, "sinceSeconds must be a positive integer"))
 		}
-		if versions.Has(version.Name) {
-			allErrs = append(allErrs, errs.NewFieldDuplicate("version", version))
-		}
-		versions.Insert(version.Name)
 	}
 	return allErrs
-}
-
-func ValidateSchemaUpdate(oldResource, newResource *api.ThirdPartyResource) errs.ValidationErrorList {
-	return errs.ValidationErrorList{fmt.Errorf("Schema update is not supported.")}
 }

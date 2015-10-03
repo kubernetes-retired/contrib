@@ -24,45 +24,48 @@ func TestGenManDoc(t *testing.T) {
 
 	out := new(bytes.Buffer)
 
-	header := &GenManHeader{
-		Title:   "Project",
-		Section: "2",
-	}
 	// We generate on a subcommand so we have both subcommands and parents
-	cmdEcho.GenMan(header, out)
+	cmdEcho.GenMan("PROJECT", out)
 	found := out.String()
 
-	// Make sure parent has - in CommandPath() in SEE ALSO:
-	parentPath := cmdEcho.Parent().CommandPath()
-	dashParentPath := strings.Replace(parentPath, " ", "-", -1)
-	expected := translate(dashParentPath)
-	expected = expected + "(" + header.Section + ")"
-	checkStringContains(t, found, expected)
-
 	// Our description
-	expected = translate(cmdEcho.Name())
-	checkStringContains(t, found, expected)
+	expected := translate(cmdEcho.Name())
+	if !strings.Contains(found, expected) {
+		t.Errorf("Unexpected response.\nExpecting to contain: \n %q\nGot:\n %q\n", expected, found)
+	}
 
 	// Better have our example
 	expected = translate(cmdEcho.Name())
-	checkStringContains(t, found, expected)
+	if !strings.Contains(found, expected) {
+		t.Errorf("Unexpected response.\nExpecting to contain: \n %q\nGot:\n %q\n", expected, found)
+	}
 
 	// A local flag
 	expected = "boolone"
-	checkStringContains(t, found, expected)
+	if !strings.Contains(found, expected) {
+		t.Errorf("Unexpected response.\nExpecting to contain: \n %q\nGot:\n %q\n", expected, found)
+	}
 
 	// persistent flag on parent
 	expected = "rootflag"
-	checkStringContains(t, found, expected)
+	if !strings.Contains(found, expected) {
+		t.Errorf("Unexpected response.\nExpecting to contain: \n %q\nGot:\n %q\n", expected, found)
+	}
 
 	// We better output info about our parent
 	expected = translate(cmdRootWithRun.Name())
-	checkStringContains(t, found, expected)
+	if !strings.Contains(found, expected) {
+		t.Errorf("Unexpected response.\nExpecting to contain: \n %q\nGot:\n %q\n", expected, found)
+	}
 
 	// And about subcommands
 	expected = translate(cmdEchoSub.Name())
-	checkStringContains(t, found, expected)
+	if !strings.Contains(found, expected) {
+		t.Errorf("Unexpected response.\nExpecting to contain: \n %q\nGot:\n %q\n", expected, found)
+	}
 
 	unexpected := translate(cmdDeprecated.Name())
-	checkStringOmits(t, found, unexpected)
+	if strings.Contains(found, unexpected) {
+		t.Errorf("Unexpected response.\nFound: %v\nBut should not have!!\n", unexpected)
+	}
 }

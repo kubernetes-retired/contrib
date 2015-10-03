@@ -19,6 +19,7 @@ package v1
 import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/registered"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -54,7 +55,6 @@ func addKnownTypes() {
 		&Node{},
 		&NodeList{},
 		&Binding{},
-		&Status{},
 		&Event{},
 		&EventList{},
 		&List{},
@@ -82,10 +82,10 @@ func addKnownTypes() {
 		&ComponentStatusList{},
 		&SerializedReference{},
 		&RangeAllocation{},
-		&ThirdPartyResource{},
-		&ThirdPartyResourceList{},
-		&ThirdPartyResourceData{},
 	)
+
+	// Add common types
+	api.Scheme.AddKnownTypes("v1", &unversioned.Status{})
 }
 
 func (*Pod) IsAnAPIObject()                       {}
@@ -102,7 +102,6 @@ func (*EndpointsList) IsAnAPIObject()             {}
 func (*Node) IsAnAPIObject()                      {}
 func (*NodeList) IsAnAPIObject()                  {}
 func (*Binding) IsAnAPIObject()                   {}
-func (*Status) IsAnAPIObject()                    {}
 func (*Event) IsAnAPIObject()                     {}
 func (*EventList) IsAnAPIObject()                 {}
 func (*List) IsAnAPIObject()                      {}
@@ -130,6 +129,3 @@ func (*ComponentStatus) IsAnAPIObject()           {}
 func (*ComponentStatusList) IsAnAPIObject()       {}
 func (*SerializedReference) IsAnAPIObject()       {}
 func (*RangeAllocation) IsAnAPIObject()           {}
-func (*ThirdPartyResource) IsAnAPIObject()        {}
-func (*ThirdPartyResourceList) IsAnAPIObject()    {}
-func (*ThirdPartyResourceData) IsAnAPIObject()    {}
