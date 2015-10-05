@@ -35,14 +35,15 @@ import (
 )
 
 type config struct {
-	etcdServers string
-	key         string
-	whoami      string
-	ttl         uint64
-	src         string
-	dest        string
-	sleep       time.Duration
-	lastLease   time.Time
+	etcdServers    string
+	etcdConfigFile string
+	key            string
+	whoami         string
+	ttl            uint64
+	src            string
+	dest           string
+	sleep          time.Duration
+	lastLease      time.Time
 }
 
 // runs the election loop. never returns.
@@ -137,7 +138,8 @@ func copyFile(src, dest string) error {
 }
 
 func initFlags(c *config) {
-	pflag.StringVar(&c.etcdServers, "etcd-servers", "", "The comma-seprated list of etcd servers to use")
+	pflag.StringVar(&c.etcdServers, "etcd-servers", "", "List of etcd servers to watch (http://ip:port), comma separated. Mutually exclusive with -etcd-config")
+	pflag.StringVar(&c.etcdConfigFile, "etcd-config", "", "The config file for the etcd client. Mutually exclusive with -etcd-servers.")
 	pflag.StringVar(&c.key, "key", "", "The key to use for the lock")
 	pflag.StringVar(&c.whoami, "whoami", "", "The name to use for the reservation.  If empty use os.Hostname")
 	pflag.Uint64Var(&c.ttl, "ttl-secs", 30, "The time to live for the lock.")
@@ -147,8 +149,8 @@ func initFlags(c *config) {
 }
 
 func validateFlags(c *config) {
-	if len(c.etcdServers) == 0 {
-		glog.Fatalf("--etcd-servers=<server-list> is required")
+	if (c.etcdConfigFile != "" && len(c.etcdServers) != 0) || (c.etcdConfigFile == "" && len(c.etcdServers) == 0) {
+		glog.Fatalf("specify either --etcd-servers or --etcd-config")
 	}
 	if len(c.key) == 0 {
 		glog.Fatalf("--key=<some-key> is required")
@@ -169,14 +171,28 @@ func validateFlags(c *config) {
 	}
 }
 
+func newEtcdClient(etcdConfigFile string, etcdServerList []string) (client *etcd.Client, err error) {
+	if etcdConfigFile != "" {
+		client, err = etcd.NewClientFromFile(etcdConfigFile)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		client = etcd.NewClient(etcdServerList)
+	}
+	return client, err
+}
+
 func main() {
 	c := config{}
 	initFlags(&c)
 	pflag.Parse()
 	validateFlags(&c)
 
-	machines := strings.Split(c.etcdServers, ",")
-	etcdClient := etcd.NewClient(machines)
+	etcdClient, err := newEtcdClient(c.etcdConfigFile, strings.Split(c.etcdServers, ","))
+	if err != nil {
+		glog.Fatalf("Failed to create etcd client: %v", err)
+	}
 
 	c.leaseAndUpdateLoop(etcdClient)
 }
