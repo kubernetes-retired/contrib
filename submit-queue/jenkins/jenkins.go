@@ -19,6 +19,7 @@ package jenkins
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 
@@ -62,6 +63,21 @@ func (j *JenkinsClient) request(path string) ([]byte, error) {
 		return nil, fmt.Errorf("unexpected status: %s %d", res.Status, res.StatusCode)
 	}
 	return ioutil.ReadAll(res.Body)
+}
+
+// GetConsoleLog downloads the logs for a particular job and build number
+func (j *JenkinsClient) GetConsoleLog(name string, build int) (io.ReadCloser, error) {
+	url := fmt.Sprintf("%s/job/%s/%d/consoleText", j.Host, name, build)
+	glog.V(3).Infof("Hitting: %s", url)
+	res, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode != http.StatusOK {
+		res.Body.Close()
+		return nil, fmt.Errorf("unexpected status: %s %d", res.Status, res.StatusCode)
+	}
+	return res.Body, nil
 }
 
 // GetJob will get information about a single job
