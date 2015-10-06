@@ -311,7 +311,7 @@ func (config *GithubConfig) fetchAllCollaborators() ([]github.User, error) {
 			return nil, err
 		}
 		result = append(result, users...)
-		if response.LastPage == 0 || response.LastPage == page {
+		if response.LastPage == 0 || response.LastPage <= page {
 			break
 		}
 		page++
@@ -362,7 +362,7 @@ func (config *GithubConfig) GetAllEventsForPR(prNum int) ([]github.IssueEvent, e
 			return nil, err
 		}
 		events = append(events, eventPage...)
-		if response.LastPage == 0 || response.LastPage == page {
+		if response.LastPage == 0 || response.LastPage <= page {
 			break
 		}
 		page++
@@ -715,7 +715,7 @@ func (config *GithubConfig) forEachIssueDo(labels []string, fn IssueFunction) er
 				return err
 			}
 		}
-		if response.LastPage == 0 || response.LastPage == page {
+		if response.LastPage == 0 || response.LastPage <= page {
 			break
 		}
 		page++
