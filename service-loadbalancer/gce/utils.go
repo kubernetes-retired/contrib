@@ -22,7 +22,7 @@ import (
 
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/apis/experimental"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
@@ -33,7 +33,7 @@ import (
 
 // errorNodePortNotFound is an implementation of error.
 type errorNodePortNotFound struct {
-	backend experimental.IngressBackend
+	backend extensions.IngressBackend
 	origErr error
 }
 
@@ -136,7 +136,7 @@ type gceTranslator struct {
 }
 
 // toUrlMap converts an ingress to a map of subdomain: url-regex: gce backend.
-func (t *gceTranslator) toUrlMap(ing *experimental.Ingress) (gceUrlMap, error) {
+func (t *gceTranslator) toUrlMap(ing *extensions.Ingress) (gceUrlMap, error) {
 	hostPathBackend := gceUrlMap{}
 	for _, rule := range ing.Spec.Rules {
 		if rule.HTTP == nil {
@@ -174,7 +174,7 @@ func (t *gceTranslator) toUrlMap(ing *experimental.Ingress) (gceUrlMap, error) {
 	return hostPathBackend, nil
 }
 
-func (t *gceTranslator) toGCEBackend(be *experimental.IngressBackend, ns string) (*compute.BackendService, error) {
+func (t *gceTranslator) toGCEBackend(be *extensions.IngressBackend, ns string) (*compute.BackendService, error) {
 	if be == nil {
 		return nil, nil
 	}
@@ -192,7 +192,7 @@ func (t *gceTranslator) toGCEBackend(be *experimental.IngressBackend, ns string)
 
 // getServiceNodePort looks in the svc store for a matching service:port,
 // and returns the nodeport.
-func (t *gceTranslator) getServiceNodePort(be experimental.IngressBackend, namespace string) (int, error) {
+func (t *gceTranslator) getServiceNodePort(be extensions.IngressBackend, namespace string) (int, error) {
 	obj, exists, err := t.svcLister.Store.Get(
 		&api.Service{
 			ObjectMeta: api.ObjectMeta{
@@ -230,7 +230,7 @@ func (t *gceTranslator) getServiceNodePort(be experimental.IngressBackend, names
 }
 
 // toNodePorts converts a pathlist to a flat list of nodeports.
-func (t *gceTranslator) toNodePorts(ings *experimental.IngressList) []int64 {
+func (t *gceTranslator) toNodePorts(ings *extensions.IngressList) []int64 {
 	knownPorts := []int64{}
 	for _, ing := range ings.Items {
 		defaultBackend := ing.Spec.Backend
@@ -267,18 +267,18 @@ type StoreToIngressLister struct {
 }
 
 // List lists all Ingress' in the store.
-func (s *StoreToIngressLister) List() (ing experimental.IngressList, err error) {
+func (s *StoreToIngressLister) List() (ing extensions.IngressList, err error) {
 	for _, m := range s.Store.List() {
-		ing.Items = append(ing.Items, *(m.(*experimental.Ingress)))
+		ing.Items = append(ing.Items, *(m.(*extensions.Ingress)))
 	}
 	return ing, nil
 }
 
 // GetServiceIngress gets all the Ingress' that have rules pointing to a service.
 // Note that this ignores services without the right nodePorts.
-func (s *StoreToIngressLister) GetServiceIngress(svc *api.Service) (ings []experimental.Ingress, err error) {
+func (s *StoreToIngressLister) GetServiceIngress(svc *api.Service) (ings []extensions.Ingress, err error) {
 	for _, m := range s.Store.List() {
-		ing := *m.(*experimental.Ingress)
+		ing := *m.(*extensions.Ingress)
 		if ing.Namespace != svc.Namespace {
 			continue
 		}
@@ -301,7 +301,7 @@ func (s *StoreToIngressLister) GetServiceIngress(svc *api.Service) (ings []exper
 
 // updateLbIp updates the loadbalancer status ip if required.
 func updateLbIp(
-	ingClient client.IngressInterface, ing experimental.Ingress, ip string) error {
+	ingClient client.IngressInterface, ing extensions.Ingress, ip string) error {
 	lbIPs := ing.Status.LoadBalancer.Ingress
 	if len(lbIPs) > 0 && lbIPs[0].IP == ip {
 		glog.Infof("Ingress %v/%v: %v doesn't require status update",
@@ -315,7 +315,7 @@ func updateLbIp(
 	if err != nil {
 		return err
 	}
-	currIng.Status = experimental.IngressStatus{
+	currIng.Status = extensions.IngressStatus{
 		LoadBalancer: api.LoadBalancerStatus{
 			Ingress: []api.LoadBalancerIngress{
 				{IP: ip},

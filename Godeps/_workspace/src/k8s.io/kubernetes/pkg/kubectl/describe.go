@@ -28,7 +28,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
-	"k8s.io/kubernetes/pkg/apis/experimental"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fieldpath"
 	"k8s.io/kubernetes/pkg/fields"
@@ -113,7 +113,7 @@ func DescriberFor(group string, kind string, c *client.Client) (Describer, bool)
 	switch group {
 	case "":
 		f, ok = describerMap(c)[kind]
-	case "experimental":
+	case "extensions":
 		f, ok = expDescriberMap(c)[kind]
 	}
 
@@ -151,11 +151,11 @@ func (d *NamespaceDescriber) Describe(namespace, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	resourceQuotaList, err := d.ResourceQuotas(name).List(labels.Everything())
+	resourceQuotaList, err := d.ResourceQuotas(name).List(labels.Everything(), fields.Everything())
 	if err != nil {
 		return "", err
 	}
-	limitRangeList, err := d.LimitRanges(name).List(labels.Everything())
+	limitRangeList, err := d.LimitRanges(name).List(labels.Everything(), fields.Everything())
 	if err != nil {
 		return "", err
 	}
@@ -870,7 +870,7 @@ type JobDescriber struct {
 }
 
 func (d *JobDescriber) Describe(namespace, name string) (string, error) {
-	job, err := d.client.Experimental().Jobs(namespace).Get(name)
+	job, err := d.client.Extensions().Jobs(namespace).Get(name)
 	if err != nil {
 		return "", err
 	}
@@ -880,23 +880,17 @@ func (d *JobDescriber) Describe(namespace, name string) (string, error) {
 	return describeJob(job, events)
 }
 
-func describeJob(job *experimental.Job, events *api.EventList) (string, error) {
+func describeJob(job *extensions.Job, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
 		fmt.Fprintf(out, "Name:\t%s\n", job.Name)
 		fmt.Fprintf(out, "Namespace:\t%s\n", job.Namespace)
-		if job.Spec.Template != nil {
-			fmt.Fprintf(out, "Image(s):\t%s\n", makeImageList(&job.Spec.Template.Spec))
-		} else {
-			fmt.Fprintf(out, "Image(s):\t%s\n", "<no template>")
-		}
+		fmt.Fprintf(out, "Image(s):\t%s\n", makeImageList(&job.Spec.Template.Spec))
 		fmt.Fprintf(out, "Selector:\t%s\n", labels.FormatLabels(job.Spec.Selector))
 		fmt.Fprintf(out, "Parallelism:\t%d\n", *job.Spec.Parallelism)
 		fmt.Fprintf(out, "Completions:\t%d\n", *job.Spec.Completions)
 		fmt.Fprintf(out, "Labels:\t%s\n", labels.FormatLabels(job.Labels))
-		fmt.Fprintf(out, "Pods Statuses:\t%d Running / %d Succeeded / %d Failed\n", job.Status.Active, job.Status.Successful, job.Status.Unsuccessful)
-		if job.Spec.Template != nil {
-			describeVolumes(job.Spec.Template.Spec.Volumes, out)
-		}
+		fmt.Fprintf(out, "Pods Statuses:\t%d Running / %d Succeeded / %d Failed\n", job.Status.Active, job.Status.Succeeded, job.Status.Failed)
+		describeVolumes(job.Spec.Template.Spec.Volumes, out)
 		if events != nil {
 			DescribeEvents(events, out)
 		}
@@ -910,7 +904,7 @@ type DaemonSetDescriber struct {
 }
 
 func (d *DaemonSetDescriber) Describe(namespace, name string) (string, error) {
-	dc := d.Experimental().DaemonSets(namespace)
+	dc := d.Extensions().DaemonSets(namespace)
 	pc := d.Pods(namespace)
 
 	daemon, err := dc.Get(name)
@@ -928,7 +922,7 @@ func (d *DaemonSetDescriber) Describe(namespace, name string) (string, error) {
 	return describeDaemonSet(daemon, events, running, waiting, succeeded, failed)
 }
 
-func describeDaemonSet(daemon *experimental.DaemonSet, events *api.EventList, running, waiting, succeeded, failed int) (string, error) {
+func describeDaemonSet(daemon *extensions.DaemonSet, events *api.EventList, running, waiting, succeeded, failed int) (string, error) {
 	return tabbedString(func(out io.Writer) error {
 		fmt.Fprintf(out, "Name:\t%s\n", daemon.Name)
 		if daemon.Spec.Template != nil {
@@ -1241,7 +1235,7 @@ type HorizontalPodAutoscalerDescriber struct {
 }
 
 func (d *HorizontalPodAutoscalerDescriber) Describe(namespace, name string) (string, error) {
-	hpa, err := d.client.Experimental().HorizontalPodAutoscalers(namespace).Get(name)
+	hpa, err := d.client.Extensions().HorizontalPodAutoscalers(namespace).Get(name)
 	if err != nil {
 		return "", err
 	}
@@ -1407,7 +1401,7 @@ type DeploymentDescriber struct {
 }
 
 func (dd *DeploymentDescriber) Describe(namespace, name string) (string, error) {
-	d, err := dd.Experimental().Deployments(namespace).Get(name)
+	d, err := dd.Extensions().Deployments(namespace).Get(name)
 	if err != nil {
 		return "", err
 	}
@@ -1435,6 +1429,10 @@ func (dd *DeploymentDescriber) Describe(namespace, name string) (string, error) 
 			}
 			fmt.Fprintf(out, "NewReplicationController:\t%s\n", printReplicationControllersByLabels(newRCs))
 		}
+		events, err := dd.Events(namespace).Search(d)
+		if err == nil && events != nil {
+			DescribeEvents(events, out)
+		}
 		return nil
 	})
 }
@@ -1444,16 +1442,16 @@ func (dd *DeploymentDescriber) Describe(namespace, name string) (string, error) 
 // of getting all DS's and searching through them manually).
 // TODO: write an interface for controllers and fuse getReplicationControllersForLabels
 // and getDaemonSetsForLabels.
-func getDaemonSetsForLabels(c client.DaemonSetInterface, labelsToMatch labels.Labels) ([]experimental.DaemonSet, error) {
+func getDaemonSetsForLabels(c client.DaemonSetInterface, labelsToMatch labels.Labels) ([]extensions.DaemonSet, error) {
 	// Get all daemon sets
 	// TODO: this needs a namespace scope as argument
-	dss, err := c.List(labels.Everything())
+	dss, err := c.List(labels.Everything(), fields.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("error getting daemon set: %v", err)
 	}
 
 	// Find the ones that match labelsToMatch.
-	var matchingDaemonSets []experimental.DaemonSet
+	var matchingDaemonSets []extensions.DaemonSet
 	for _, ds := range dss.Items {
 		selector := labels.SelectorFromSet(ds.Spec.Selector)
 		if selector.Matches(labelsToMatch) {
@@ -1470,7 +1468,7 @@ func getDaemonSetsForLabels(c client.DaemonSetInterface, labelsToMatch labels.La
 func getReplicationControllersForLabels(c client.ReplicationControllerInterface, labelsToMatch labels.Labels) ([]api.ReplicationController, error) {
 	// Get all replication controllers.
 	// TODO this needs a namespace scope as argument
-	rcs, err := c.List(labels.Everything())
+	rcs, err := c.List(labels.Everything(), fields.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("error getting replication controllers: %v", err)
 	}

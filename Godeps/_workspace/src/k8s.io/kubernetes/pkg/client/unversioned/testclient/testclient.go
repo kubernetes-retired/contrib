@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/registered"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/version"
@@ -59,6 +60,8 @@ type Fake struct {
 	WatchReactionChain []WatchReactor
 	// ProxyReactionChain is the list of proxy reactors that will be attempted for every request in the order they are tried
 	ProxyReactionChain []ProxyReactor
+
+	Resources []unversioned.APIResourceList
 }
 
 // Reactor is an interface to allow the composition of reaction functions.
@@ -267,8 +270,22 @@ func (c *Fake) Namespaces() client.NamespaceInterface {
 	return &FakeNamespaces{Fake: c}
 }
 
-func (c *Fake) Experimental() client.ExperimentalInterface {
+func (c *Fake) Extensions() client.ExtensionsInterface {
 	return &FakeExperimental{c}
+}
+
+func (c *Fake) SupportedResourcesForGroupVersion(version string) (*unversioned.APIResourceList, error) {
+	action := ActionImpl{
+		Verb:     "get",
+		Resource: "resource",
+	}
+	c.Invokes(action, nil)
+	for _, resource := range c.Resources {
+		if resource.GroupVersion == version {
+			return &resource, nil
+		}
+	}
+	return nil, nil
 }
 
 func (c *Fake) ServerVersion() (*version.Info, error) {
@@ -281,13 +298,13 @@ func (c *Fake) ServerVersion() (*version.Info, error) {
 	return &versionInfo, nil
 }
 
-func (c *Fake) ServerAPIVersions() (*api.APIVersions, error) {
+func (c *Fake) ServerAPIVersions() (*unversioned.APIVersions, error) {
 	action := ActionImpl{}
 	action.Verb = "get"
 	action.Resource = "apiversions"
 
 	c.Invokes(action, nil)
-	return &api.APIVersions{Versions: registered.RegisteredVersions}, nil
+	return &unversioned.APIVersions{Versions: registered.RegisteredVersions}, nil
 }
 
 func (c *Fake) ComponentStatuses() client.ComponentStatusInterface {

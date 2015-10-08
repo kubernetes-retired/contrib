@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/apis/experimental"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
@@ -91,7 +91,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
 				glog.Infof("Ingress %v changed, syncing",
-					cur.(*experimental.Ingress).Name)
+					cur.(*extensions.Ingress).Name)
 			}
 			lbc.ingQueue.enqueue(cur)
 		},
@@ -101,7 +101,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 			ListFunc:  ingressListFunc(lbc.client),
 			WatchFunc: ingressWatchFunc(lbc.client),
 		},
-		&experimental.Ingress{}, resyncPeriod, pathHandlers)
+		&extensions.Ingress{}, resyncPeriod, pathHandlers)
 
 	// Service watch handlers
 	svcHandlers := framework.ResourceEventHandlerFuncs{
@@ -272,7 +272,7 @@ func (lbc *loadBalancerController) sync(key string) {
 		return
 	}
 
-	ing := *obj.(*experimental.Ingress)
+	ing := *obj.(*extensions.Ingress)
 	if urlMap, err := lbc.tr.toUrlMap(&ing); err != nil {
 		lbc.ingQueue.requeue(key, err)
 	} else if err := l7.UpdateUrlMap(urlMap); err != nil {

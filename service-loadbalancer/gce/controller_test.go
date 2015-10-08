@@ -26,7 +26,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
-	"k8s.io/kubernetes/pkg/apis/experimental"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util"
@@ -52,12 +52,12 @@ func newLoadBalancerController(t *testing.T, cm *fakeClusterManager, masterUrl s
 }
 
 // toHTTPIngressPaths converts the given pathMap to a list of HTTPIngressPaths.
-func toHTTPIngressPaths(pathMap map[string]string) []experimental.HTTPIngressPath {
-	httpPaths := []experimental.HTTPIngressPath{}
+func toHTTPIngressPaths(pathMap map[string]string) []extensions.HTTPIngressPath {
+	httpPaths := []extensions.HTTPIngressPath{}
 	for path, backend := range pathMap {
-		httpPaths = append(httpPaths, experimental.HTTPIngressPath{
+		httpPaths = append(httpPaths, extensions.HTTPIngressPath{
 			Path: path,
-			Backend: experimental.IngressBackend{
+			Backend: extensions.IngressBackend{
 				ServiceName: backend,
 				ServicePort: testBackendPort,
 			},
@@ -67,13 +67,13 @@ func toHTTPIngressPaths(pathMap map[string]string) []experimental.HTTPIngressPat
 }
 
 // toIngressRules converts the given ingressRule map to a list of IngressRules.
-func toIngressRules(hostRules map[string]fakeIngressRuleValueMap) []experimental.IngressRule {
-	rules := []experimental.IngressRule{}
+func toIngressRules(hostRules map[string]fakeIngressRuleValueMap) []extensions.IngressRule {
+	rules := []extensions.IngressRule{}
 	for host, pathMap := range hostRules {
-		rules = append(rules, experimental.IngressRule{
+		rules = append(rules, extensions.IngressRule{
 			Host: host,
-			IngressRuleValue: experimental.IngressRuleValue{
-				HTTP: &experimental.HTTPIngressRuleValue{
+			IngressRuleValue: extensions.IngressRuleValue{
+				HTTP: &extensions.HTTPIngressRuleValue{
 					Paths: toHTTPIngressPaths(pathMap),
 				},
 			},
@@ -83,20 +83,20 @@ func toIngressRules(hostRules map[string]fakeIngressRuleValueMap) []experimental
 }
 
 // newIngress returns a new Ingress with the given path map.
-func newIngress(hostRules map[string]fakeIngressRuleValueMap) *experimental.Ingress {
-	return &experimental.Ingress{
+func newIngress(hostRules map[string]fakeIngressRuleValueMap) *extensions.Ingress {
+	return &extensions.Ingress{
 		ObjectMeta: api.ObjectMeta{
 			Name:      fmt.Sprintf("%v", util.NewUUID()),
 			Namespace: api.NamespaceNone,
 		},
-		Spec: experimental.IngressSpec{
-			Backend: &experimental.IngressBackend{
+		Spec: extensions.IngressSpec{
+			Backend: &extensions.IngressBackend{
 				ServiceName: defaultBackendName(testClusterName),
 				ServicePort: testBackendPort,
 			},
 			Rules: toIngressRules(hostRules),
 		},
-		Status: experimental.IngressStatus{
+		Status: extensions.IngressStatus{
 			LoadBalancer: api.LoadBalancerStatus{
 				Ingress: []api.LoadBalancerIngress{
 					{IP: testIPManager.ip()},
@@ -107,14 +107,14 @@ func newIngress(hostRules map[string]fakeIngressRuleValueMap) *experimental.Ingr
 }
 
 // validIngress returns a valid Ingress.
-func validIngress() *experimental.Ingress {
+func validIngress() *extensions.Ingress {
 	return newIngress(map[string]fakeIngressRuleValueMap{
 		"foo.bar.com": testPathMap,
 	})
 }
 
 // getKey returns the key for an ingress.
-func getKey(ing *experimental.Ingress, t *testing.T) string {
+func getKey(ing *extensions.Ingress, t *testing.T) string {
 	key, err := keyFunc(ing)
 	if err != nil {
 		t.Fatalf("Unexpected error getting key for Ingress %v: %v", ing.Name, err)
@@ -160,7 +160,7 @@ func newPortManager(st, end int) *nodePortManager {
 // addIngress adds an ingress to the loadbalancer controllers ingress store. If
 // a nodePortManager is supplied, it also adds all backends to the service store
 // with a nodePort acquired through it.
-func addIngress(lbc *loadBalancerController, ing *experimental.Ingress, pm *nodePortManager) {
+func addIngress(lbc *loadBalancerController, ing *extensions.Ingress, pm *nodePortManager) {
 	lbc.ingLister.Store.Add(ing)
 	if pm == nil {
 		return
@@ -207,7 +207,7 @@ func TestLbCreateDelete(t *testing.T) {
 		},
 	}
 	pm := newPortManager(1, 65536)
-	ings := []*experimental.Ingress{}
+	ings := []*extensions.Ingress{}
 	for _, m := range []map[string]fakeIngressRuleValueMap{inputMap1, inputMap2} {
 		newIng := newIngress(m)
 		addIngress(lbc, newIng, pm)
@@ -375,7 +375,7 @@ func TestLbStatusUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	ing.Status = experimental.IngressStatus{
+	ing.Status = extensions.IngressStatus{
 		LoadBalancer: api.LoadBalancerStatus{
 			Ingress: []api.LoadBalancerIngress{
 				{IP: l7.GetIP()},

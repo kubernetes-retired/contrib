@@ -51,7 +51,8 @@ type Interface interface {
 	PersistentVolumeClaimsNamespacer
 	ComponentStatusesInterface
 	SwaggerSchemaInterface
-	Experimental() ExperimentalInterface
+	Extensions() ExtensionsInterface
+	ResourcesInterface
 }
 
 func (c *Client) ReplicationControllers(namespace string) ReplicationControllerInterface {
@@ -116,7 +117,12 @@ func (c *Client) ComponentStatuses() ComponentStatusInterface {
 // VersionInterface has a method to retrieve the server version.
 type VersionInterface interface {
 	ServerVersion() (*version.Info, error)
-	ServerAPIVersions() (*api.APIVersions, error)
+	ServerAPIVersions() (*unversioned.APIVersions, error)
+}
+
+// ResourcesInterface has methods for obtaining supported resources on the API server
+type ResourcesInterface interface {
+	SupportedResourcesForGroupVersion(groupVersion string) (*unversioned.APIResourceList, error)
 }
 
 // APIStatus is exposed by errors that can be converted to an api.Status object
@@ -128,7 +134,7 @@ type APIStatus interface {
 // Client is the implementation of a Kubernetes client.
 type Client struct {
 	*RESTClient
-	*ExperimentalClient
+	*ExtensionsClient
 }
 
 // ServerVersion retrieves and parses the server's version.
@@ -145,13 +151,49 @@ func (c *Client) ServerVersion() (*version.Info, error) {
 	return &info, nil
 }
 
+// SupportedResourcesForGroupVersion retrieves the list of resources supported by the API server for a group version.
+func (c *Client) SupportedResourcesForGroupVersion(groupVersion string) (*unversioned.APIResourceList, error) {
+	var prefix string
+	if groupVersion == "v1" {
+		prefix = "/api"
+	} else {
+		prefix = "/apis"
+	}
+	body, err := c.Get().AbsPath(prefix, groupVersion).Do().Raw()
+	if err != nil {
+		return nil, err
+	}
+	resources := unversioned.APIResourceList{}
+	if err := json.Unmarshal(body, &resources); err != nil {
+		return nil, err
+	}
+	return &resources, nil
+}
+
+// SupportedResources gets all supported resources for all group versions.  The key in the map is an API groupVersion.
+func SupportedResources(c Interface, cfg *Config) (map[string]*unversioned.APIResourceList, error) {
+	apis, err := ServerAPIVersions(cfg)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]*unversioned.APIResourceList{}
+	for _, groupVersion := range apis {
+		resources, err := c.SupportedResourcesForGroupVersion(groupVersion)
+		if err != nil {
+			return nil, err
+		}
+		result[groupVersion] = resources
+	}
+	return result, nil
+}
+
 // ServerAPIVersions retrieves and parses the list of API versions the server supports.
-func (c *Client) ServerAPIVersions() (*api.APIVersions, error) {
+func (c *Client) ServerAPIVersions() (*unversioned.APIVersions, error) {
 	body, err := c.Get().UnversionedPath("").Do().Raw()
 	if err != nil {
 		return nil, err
 	}
-	var v api.APIVersions
+	var v unversioned.APIVersions
 	err = json.Unmarshal(body, &v)
 	if err != nil {
 		return nil, fmt.Errorf("got '%s': %v", string(body), err)
@@ -243,6 +285,6 @@ func IsTimeout(err error) bool {
 	return false
 }
 
-func (c *Client) Experimental() ExperimentalInterface {
-	return c.ExperimentalClient
+func (c *Client) Extensions() ExtensionsInterface {
+	return c.ExtensionsClient
 }
