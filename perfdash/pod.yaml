@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: perfdash
+  namespace: default
+  labels:
+    app: perfdash
+    version: "0.1"
+spec:
+  containers:
+  - image: gcr.io/google_containers/perfdash:0.1
+    command:
+      - /perfdash
+      -   --jenkins-host=http://jenkins-master:8080
+      -   --www=true
+      -   --dir=/www
+      -   --address=0.0.0.0:8080
+    imagePullPolicy: Always
+    name: perfdash
+    ports:
+    - name: status
+      containerPort: 8080
+    livenessProbe:
+      httpGet:
+        path: /api
+        port: 8080
+      initialDelaySeconds: 10
+      timeoutSeconds: 1
+  restartPolicy: OnFailure

@@ -20,8 +20,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	// TODO: move this somewhere central
 	"k8s.io/contrib/mungegithub/pulls/jenkins"
@@ -43,23 +48,35 @@ type APICallLatency struct {
 // Histogram is a map from bucket to latency (e.g. "Perc90" -> 23.5)
 type Histogram map[string]float64
 
-type resourceToHistogram map[string][]APICallLatency
+// ResourceToHistogram is a map from resource names (e.g. "pods") to the relevant latency data
+type ResourceToHistogram map[string][]APICallLatency
 
-var buildLatency = map[int]resourceToHistogram{}
+// BuildLatencyData is a map from build number to latency data
+type BuildLatencyData map[string]ResourceToHistogram
 
-func main() {
-	job := "kubernetes-e2e-gce-scalability"
-	client := jenkins.JenkinsClient{
-		Host: "http://kubekins.dls.corp.google.com",
+func (buildLatency *BuildLatencyData) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	data, err := json.Marshal(buildLatency)
+	if err != nil {
+		res.Header().Set("Content-type", "text/html")
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write([]byte(fmt.Sprintf("<h3>Internal Error</h3><p>%v", err)))
+		return
 	}
+	res.Header().Set("Content-type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write(data)
+}
+
+func getLatencyData(client *jenkins.JenkinsClient, job string) (BuildLatencyData, sets.String, sets.String, error) {
+	buildLatency := BuildLatencyData{}
+	resources := sets.NewString()
+	methods := sets.NewString()
 
 	queue, err := client.GetJob(job)
 	if err != nil {
-		fmt.Printf("%v\n", err)
-		return
+		return buildLatency, resources, methods, err
 	}
-	resources := sets.NewString()
-	methods := sets.NewString()
+
 	for ix := range queue.Builds {
 		build := queue.Builds[ix]
 		reader, err := client.GetConsoleLog(job, build.Number)
@@ -72,7 +89,7 @@ func main() {
 		buff := &bytes.Buffer{}
 		inLatency := false
 
-		hist := resourceToHistogram{}
+		hist := ResourceToHistogram{}
 		found := false
 		testNameSeparator := "[It] [Skipped] [Performance suite]"
 		testName := ""
@@ -120,19 +137,26 @@ func main() {
 			continue
 		}
 
-		buildLatency[build.Number] = hist
+		buildLatency[fmt.Sprintf("%d", build.Number)] = hist
 	}
+	return buildLatency, resources, methods, nil
+}
 
+func generateCSV(buildLatency BuildLatencyData, resources, methods sets.String, out io.Writer) error {
 	header := []string{"build"}
 	for _, rsrc := range resources.List() {
 		header = append(header, fmt.Sprintf("%s_50", rsrc))
 		header = append(header, fmt.Sprintf("%s_90", rsrc))
 		header = append(header, fmt.Sprintf("%s_99", rsrc))
 	}
-	fmt.Println(strings.Join(header, ","))
+	if _, err := fmt.Fprintln(out, strings.Join(header, ",")); err != nil {
+		return err
+	}
 
 	for _, method := range methods.List() {
-		fmt.Println(method)
+		if _, err := fmt.Fprintln(out, method); err != nil {
+			return err
+		}
 		for build, data := range buildLatency {
 			line := []string{fmt.Sprintf("%d", build)}
 			for _, rsrc := range resources.List() {
@@ -141,9 +165,12 @@ func main() {
 				line = append(line, fmt.Sprintf("%g", findMethod(method, "Perc90", podData)))
 				line = append(line, fmt.Sprintf("%g", findMethod(method, "Perc99", podData)))
 			}
-			fmt.Println(strings.Join(line, ","))
+			if _, err := fmt.Fprintln(out, strings.Join(line, ",")); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 func findMethod(method, item string, data []APICallLatency) float64 {
@@ -153,4 +180,52 @@ func findMethod(method, item string, data []APICallLatency) float64 {
 		}
 	}
 	return -1
+}
+
+var (
+	www         = flag.Bool("www", false, "If true, start a web-server to server performance data")
+	addr        = flag.String("address", ":8080", "The address to serve web data on, only used if -www is true")
+	wwwDir      = flag.String("dir", "", "If non-empty, add a file server for this directory at the root of the web server")
+	jenkinsHost = flag.String("jenkins-host", "", "The URL for the jenkins server.")
+
+	pollDuration = 10 * time.Minute
+	errorDelay   = 10 * time.Second
+)
+
+func main() {
+	flag.Parse()
+	job := "kubernetes-e2e-gce-scalability"
+	client := &jenkins.JenkinsClient{
+		Host: *jenkinsHost,
+	}
+
+	if !*www {
+		buildLatency, resources, methods, err := getLatencyData(client, job)
+		if err != nil {
+			fmt.Printf("Failed to get data: %v\n", err)
+			os.Exit(1)
+		}
+		generateCSV(buildLatency, resources, methods, os.Stdout)
+		return
+	}
+
+	buildLatency := BuildLatencyData{}
+	resources := sets.String{}
+	methods := sets.String{}
+	var err error
+	go func() {
+		for {
+			buildLatency, resources, methods, err = getLatencyData(client, job)
+			if err != nil {
+				fmt.Printf("Error fetching data: %v\n", err)
+				time.Sleep(errorDelay)
+				continue
+			}
+			time.Sleep(pollDuration)
+		}
+	}()
+
+	http.Handle("/api", &buildLatency)
+	http.Handle("/", http.FileServer(http.Dir(*wwwDir)))
+	http.ListenAndServe(*addr, nil)
 }
