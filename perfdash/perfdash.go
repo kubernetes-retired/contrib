@@ -74,8 +74,13 @@ func main() {
 
 		hist := resourceToHistogram{}
 		found := false
+		testNameSeparator := "[It] [Skipped] [Performance suite]"
+		testName := ""
 		for scanner.Scan() {
 			line := scanner.Text()
+			if strings.Contains(line, testNameSeparator) {
+				testName = strings.Trim(strings.Split(line, testNameSeparator)[1], " ")
+			}
 			// TODO: This is brittle, we should emit a tail delimiter too
 			if strings.Contains(line, "INFO") || strings.Contains(line, "STEP") || strings.Contains(line, "Failure") {
 				if inLatency {
@@ -87,12 +92,14 @@ func main() {
 						continue
 					}
 
-					for _, call := range obj.APICalls {
-						list := hist[call.Resource]
-						list = append(list, call)
-						hist[call.Resource] = list
-						resources.Insert(call.Resource)
-						methods.Insert(call.Verb)
+					if testName == "should allow starting 30 pods per node" {
+						for _, call := range obj.APICalls {
+							list := hist[call.Resource]
+							list = append(list, call)
+							hist[call.Resource] = list
+							resources.Insert(call.Resource)
+							methods.Insert(call.Verb)
+						}
 					}
 
 					buff.Reset()
