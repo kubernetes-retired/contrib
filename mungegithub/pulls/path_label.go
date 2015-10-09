@@ -22,8 +22,7 @@ import (
 	"os"
 	"strings"
 
-	github_util "k8s.io/contrib/github"
-	"k8s.io/contrib/mungegithub/config"
+	github_util "k8s.io/contrib/mungegithub/github"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
@@ -49,12 +48,8 @@ func init() {
 // Name is the name usable in --pr-mungers
 func (p *PathLabelMunger) Name() string { return "path-label" }
 
-// AddFlags will add any request flags to the cobra `cmd`
-func (p *PathLabelMunger) AddFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&p.pathLabelFile, "path-label-config", "path-label.txt", "file containing the pathname to label mappings")
-}
-
-func (p *PathLabelMunger) loadPathMap() error {
+// Initialize will initialize the munger
+func (p *PathLabelMunger) Initialize(config *github_util.Config) error {
 	out := map[string]string{}
 	p.labelMap = &out
 	file := p.pathLabelFile
@@ -85,13 +80,16 @@ func (p *PathLabelMunger) loadPathMap() error {
 	return scanner.Err()
 }
 
+// EachLoop is called at the start of every munge loop
+func (p *PathLabelMunger) EachLoop(_ *github_util.Config) error { return nil }
+
+// AddFlags will add any request flags to the cobra `cmd`
+func (p *PathLabelMunger) AddFlags(cmd *cobra.Command, config *github_util.Config) {
+	cmd.Flags().StringVar(&p.pathLabelFile, "path-label-config", "path-label.txt", "file containing the pathname to label mappings")
+}
+
 // MungePullRequest is the workhorse the will actually make updates to the PR
-func (p *PathLabelMunger) MungePullRequest(config *config.MungeConfig, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
-	if p.labelMap == nil {
-		if err := p.loadPathMap(); err != nil {
-			return
-		}
-	}
+func (p *PathLabelMunger) MungePullRequest(config *github_util.Config, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
 	labelMap := *p.labelMap
 
 	needsLabels := sets.NewString()

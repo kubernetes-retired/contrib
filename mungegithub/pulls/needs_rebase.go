@@ -17,8 +17,7 @@ limitations under the License.
 package pulls
 
 import (
-	github_util "k8s.io/contrib/github"
-	"k8s.io/contrib/mungegithub/config"
+	github_util "k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
 	"github.com/google/go-github/github"
@@ -38,11 +37,17 @@ func init() {
 // Name is the name usable in --pr-mungers
 func (NeedsRebaseMunger) Name() string { return "needs-rebase" }
 
+// Initialize will initialize the munger
+func (NeedsRebaseMunger) Initialize(config *github_util.Config) error { return nil }
+
+// EachLoop is called at the start of every munge loop
+func (NeedsRebaseMunger) EachLoop(_ *github_util.Config) error { return nil }
+
 // AddFlags will add any request flags to the cobra `cmd`
-func (NeedsRebaseMunger) AddFlags(cmd *cobra.Command) {}
+func (NeedsRebaseMunger) AddFlags(cmd *cobra.Command, config *github_util.Config) {}
 
 // MungePullRequest is the workhorse the will actually make updates to the PR
-func (NeedsRebaseMunger) MungePullRequest(config *config.MungeConfig, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
+func (NeedsRebaseMunger) MungePullRequest(config *github_util.Config, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
 	mergeable, err := config.IsPRMergeable(pr)
 	if err != nil {
 		glog.V(2).Infof("Skipping %d - problem determining mergeable", *pr.Number)
