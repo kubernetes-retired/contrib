@@ -3,6 +3,5 @@
   yum:
     pkg=kubernetes-node
     state=latest
-    enablerepo=virt7-docker-common-candidate
   notify:
     - restart daemons
