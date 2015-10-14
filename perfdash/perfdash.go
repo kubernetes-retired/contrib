@@ -29,7 +29,7 @@ import (
 	"time"
 
 	// TODO: move this somewhere central
-	"k8s.io/contrib/mungegithub/pulls/jenkins"
+	"k8s.io/contrib/mungegithub/mungers/jenkins"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
