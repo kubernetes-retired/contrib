@@ -32,6 +32,7 @@ import (
 	"time"
 
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 
 	"github.com/golang/glog"
@@ -127,7 +128,7 @@ func findPos(tc []timeCount, cur int, offset time.Duration) int {
 
 func (s *scaler) setCount(c int) {
 	glog.Infof("scaling to %d replicas", c)
-	rcList, err := client.ReplicationControllers(namespace).List(s.selector)
+	rcList, err := client.ReplicationControllers(namespace).List(s.selector, fields.Everything())
 	if err != nil {
 		glog.Errorf("could not get replication controllers: %v", err)
 		return
