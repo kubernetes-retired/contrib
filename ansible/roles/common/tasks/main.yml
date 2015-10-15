@@ -20,7 +20,7 @@
 - name: Override docker config file directory for Debian
   set_fact:
     docker_config_dir: "/etc/default"
-  when: ansible_distribution == "Debian"
+  when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
 
 - name: Determine if has rpm
   stat: path=/usr/bin/rpm

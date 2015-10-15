@@ -25,6 +25,7 @@
 - name: docker graph driver 
   command: findmnt -no FSTYPE -T /var/lib/docker
   register: docker_driver
+  ignore_errors: True
   changed_when: false
 
   # TODO: fail if no --selinux-enabled in 'OPTIONS'
