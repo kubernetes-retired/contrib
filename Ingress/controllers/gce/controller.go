@@ -153,13 +153,13 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 
 func ingressListFunc(c *client.Client) func() (runtime.Object, error) {
 	return func() (runtime.Object, error) {
-		return c.Experimental().Ingress(api.NamespaceAll).List(labels.Everything(), fields.Everything())
+		return c.Extensions().Ingress(api.NamespaceAll).List(labels.Everything(), fields.Everything())
 	}
 }
 
 func ingressWatchFunc(c *client.Client) func(rv string) (watch.Interface, error) {
 	return func(rv string) (watch.Interface, error) {
-		return c.Experimental().Ingress(api.NamespaceAll).Watch(
+		return c.Extensions().Ingress(api.NamespaceAll).Watch(
 			labels.Everything(), fields.Everything(), rv)
 	}
 }
@@ -169,7 +169,7 @@ func (lbc *loadBalancerController) enqueueIngressForService(obj interface{}) {
 	svc := obj.(*api.Service)
 	ings, err := lbc.ingLister.GetServiceIngress(svc)
 	if err != nil {
-		glog.Infof("Ignoring service %v: %v", svc.Name, err)
+		glog.Infof("IGnoring service %v: %v", svc.Name, err)
 		return
 	}
 	for _, ing := range ings {
@@ -278,7 +278,7 @@ func (lbc *loadBalancerController) sync(key string) {
 	} else if err := l7.UpdateUrlMap(urlMap); err != nil {
 		lbc.ingQueue.requeue(key, err)
 	} else if updateLbIp(
-		lbc.client.Experimental().Ingress(ing.Namespace),
+		lbc.client.Extensions().Ingress(ing.Namespace),
 		ing,
 		l7.GetIP()); err != nil {
 		lbc.ingQueue.requeue(key, err)

@@ -455,20 +455,20 @@ type fakeClusterManager struct {
 	*ClusterManager
 	fakeLbs      *fakeLoadBalancers
 	fakeBackends *fakeBackendServices
-	fakeIgs      *fakeInstanceGroups
+	fakeIGs      *fakeInstanceGroups
 }
 
 // newFakeClusterManager creates a new fake ClusterManager.
 func newFakeClusterManager(clusterName string) (*fakeClusterManager, error) {
 	fakeLbs := newFakeLoadBalancers(clusterName)
 	fakeBackends := newFakeBackendServices()
-	fakeIgs := newFakeInstanceGroups(sets.NewString())
+	fakeIGs := newFakeInstanceGroups(sets.NewString())
 	fakeHcs := newFakeHealthChecks()
 
-	defaultIgName := defaultInstanceGroupName(clusterName)
+	defaultIGName := defaultInstanceGroupName(clusterName)
 	defaultBeName := beName(testDefaultBeNodePort)
 
-	nodePool, err := NewNodePool(fakeIgs, defaultIgName)
+	nodePool, err := NewNodePool(fakeIGs, defaultIGName)
 	if err != nil {
 		return nil, err
 	}
@@ -477,9 +477,9 @@ func newFakeClusterManager(clusterName string) (*fakeClusterManager, error) {
 		fakeBackends,
 		testDefaultBeNodePort,
 		&compute.InstanceGroup{
-			SelfLink: defaultIgName,
+			SelfLink: defaultIGName,
 		},
-		&compute.HttpHealthCheck{}, fakeIgs)
+		&compute.HttpHealthCheck{}, fakeIGs)
 	if err != nil {
 		return nil, err
 	}
@@ -500,7 +500,7 @@ func newFakeClusterManager(clusterName string) (*fakeClusterManager, error) {
 		l7Pool:        l7Pool,
 		healthChecker: healthChecks,
 	}
-	return &fakeClusterManager{cm, fakeLbs, fakeBackends, fakeIgs}, nil
+	return &fakeClusterManager{cm, fakeLbs, fakeBackends, fakeIGs}, nil
 }
 
 type testIP struct {

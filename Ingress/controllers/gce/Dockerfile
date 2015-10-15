@@ -30,5 +30,5 @@ RUN \
   apt-get install -y curl && \
   rm -rf /var/lib/apt/lists/*
 
-ADD gcelb gcelb
-ENTRYPOINT ["/gcelb"]
+ADD glbc glbc
+ENTRYPOINT ["/glbc"]

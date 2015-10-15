@@ -45,7 +45,9 @@ const (
 )
 
 var (
-	flags = flag.NewFlagSet("", flag.ContinueOnError)
+	flags = flag.NewFlagSet(
+		`gclb: gclb --runngin-in-cluster=false --default-backend-node-port=123`,
+		flag.ExitOnError)
 
 	proxyUrl = flags.String("proxy", "",
 		`If specified, the controller assumes a kubctl proxy server is running on the
@@ -56,12 +58,15 @@ var (
 	clusterName = flags.String("gce-cluster-name", "foo",
 		`Optional, used to tag cluster wide, shared loadbalancer resources such
 		 as instance groups. Use this flag if you'd like to continue using the
-		 same resources across a pod restart.`)
+		 same resources across a pod restart. Note that this does not need to
+		 match the name of you Kubernetes cluster, it's just an arbitrary name
+		 used to tag/lookup cloud resources.`)
 
-	cluster = flags.Bool("use-kubernetes-cluster-service", true,
-		`Optional, use the built in kubernetes cluster for creating the client`)
+	inCluster = flags.Bool("running-in-cluster", true,
+		`Optional, if this controller is running in a kubernetes cluster, use the
+		 pod secrets for creating a Kubernetes client.`)
 
-	resyncPeriod = flags.Duration("resync-period", 30*time.Second,
+	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
 		`Relist and confirm cloud resources this often.`)
 
 	deleteAllOnQuit = flags.Bool("delete-all-on-quit", false,
@@ -128,16 +133,9 @@ func main() {
 		// Create proxy kubeclient
 		kubeClient = client.NewOrDie(&client.Config{
 			Host: *proxyUrl, Version: "v1"})
-
-		// Create fake cluster manager
-		fcm, err := newFakeClusterManager(*clusterName)
-		if err != nil {
-			glog.Fatalf("%v", err)
-		}
-		clusterManager = fcm.ClusterManager
 	} else {
 		// Create kubeclient
-		if *cluster {
+		if *inCluster {
 			if kubeClient, err = client.NewInCluster(); err != nil {
 				glog.Fatalf("Failed to create client: %v.", err)
 			}
@@ -148,13 +146,21 @@ func main() {
 			}
 			kubeClient, err = client.New(config)
 		}
-
+	}
+	if *proxyUrl == "" && *inCluster {
 		// Create cluster manager
 		clusterManager, err = NewClusterManager(
 			*clusterName, *defaultBackendNodePort, *healthCheckPath)
 		if err != nil {
 			glog.Fatalf("%v", err)
 		}
+	} else {
+		// Create fake cluster manager
+		fcm, err := newFakeClusterManager(*clusterName)
+		if err != nil {
+			glog.Fatalf("%v", err)
+		}
+		clusterManager = fcm.ClusterManager
 	}
 
 	// Start loadbalancer controller

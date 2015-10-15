@@ -140,7 +140,7 @@ func (t *gceTranslator) toUrlMap(ing *extensions.Ingress) (gceUrlMap, error) {
 	hostPathBackend := gceUrlMap{}
 	for _, rule := range ing.Spec.Rules {
 		if rule.HTTP == nil {
-			glog.Errorf("Ignoring non http Ingress rule")
+			glog.Errorf("IGnoring non http Ingress rule")
 			continue
 		}
 		pathToBackend := map[string]*compute.BackendService{}
@@ -244,7 +244,7 @@ func (t *gceTranslator) toNodePorts(ings *extensions.IngressList) []int64 {
 		}
 		for _, rule := range ing.Spec.Rules {
 			if rule.HTTP == nil {
-				glog.Errorf("Ignoring non http Ingress rule.")
+				glog.Errorf("IGnoring non http Ingress rule.")
 				continue
 			}
 			for _, path := range rule.HTTP.Paths {
@@ -325,7 +325,7 @@ func updateLbIp(
 	// TODO: If this update fails it's probably resource version related,
 	// which means it's advantageous to retry right away vs requeuing,
 	// which will lead to a full sync.
-	if _, err := ingClient.Update(currIng); err != nil {
+	if _, err := ingClient.UpdateStatus(currIng); err != nil {
 		return err
 	}
 	return nil

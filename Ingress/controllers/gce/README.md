@@ -26,7 +26,7 @@ The controller (glbc) manages the lifecycle of each component in the graph. It u
 An Ingress in Kubernetes is a REST object, similar to a Service. A minimal Ingress might look like:
 
 ```yaml
-01. apiVersion: experimental/v1alpha1
+01. apiVersion: extensions/v1beta1
 02. kind: Ingress
 03. metadata:
 04.  name: hostlessendpoint
@@ -255,7 +255,7 @@ ENDPOINTS
 ```
 You can put the nodeip:port into your browser and play around with the endpoints so you're familiar with what to expect. We will test the `/hostname` and `/fs/files/nginx.html` endpoints. Modify/create your Ingress:
 ```yaml
-apiVersion: experimental/v1alpha1
+apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   name: nginxtest-ingress
@@ -278,7 +278,7 @@ nginx-tester-pod-name
 
 Note what just happened, the endpoint exposes /hostname, and the loadbalancer forwarded the entire matching url to the endpoint. This means if you had '/foo' in the Ingress and tried accessing /hostname, your endpoint would've received /foo/hostname and not known how to route it. Now update the Ingress to access static content via the /fs endpoint:
 ```
-apiVersion: experimental/v1alpha1
+apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   name: nginxtest-ingress

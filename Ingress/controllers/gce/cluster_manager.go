@@ -28,24 +28,23 @@ const (
 	defaultHealthCheckPath = "/"
 	defaultPortRange       = "80"
 	defaultPortName        = "default-port"
-	defaultHttpHealthCheck = "k8-default-health-check"
+	defaultHttpHealthCheck = "k8s-default-health-check"
 
 	// A single instance-group is created per cluster manager.
 	// Tagged with the name of the controller.
-	instanceGroupPrefix = "k8-ig"
+	instanceGroupPrefix = "k8s-ig"
 
 	// A backend is created per nodePort, tagged with the nodeport.
 	// This allows sharing of backends across loadbalancers.
-	backendPrefix = "k8-be"
+	backendPrefix = "k8s-be"
 
 	// A single target proxy/urlmap/forwarding rule is created per loadbalancer.
-	// Tagged with the name of the IngressPoint.
-	targetProxyPrefix    = "k8-tp"
-	forwardingRulePrefix = "k8-fw"
-	urlMapPrefix         = "k8-um"
+	// Tagged with the namespace/name of the Ingress.
+	targetProxyPrefix    = "k8s-tp"
+	forwardingRulePrefix = "k8s-fw"
+	urlMapPrefix         = "k8s-um"
 
 	// The gce api uses the name of a path rule to match a host rule.
-	// In the current implementation,
 	hostRulePrefix = "host"
 
 	// State string required by gce library to list all instances.
@@ -119,13 +118,13 @@ func NewClusterManager(name string, defaultBackendNodePort int64, defaultHealthC
 	// Default Health Check: The default backend used by an
 	// Ingress that doesn't specify it.
 
-	defaultIgName := defaultInstanceGroupName(name)
-	if cluster.instancePool, err = NewNodePool(cloud, defaultIgName); err != nil {
+	defaultIGName := defaultInstanceGroupName(name)
+	if cluster.instancePool, err = NewNodePool(cloud, defaultIGName); err != nil {
 		return nil, err
 	}
 
 	// TODO: We're roud tripping for a resource we just created.
-	defaultIg, err := cluster.instancePool.Get(defaultIgName)
+	defaultIG, err := cluster.instancePool.Get(defaultIGName)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +137,7 @@ func NewClusterManager(name string, defaultBackendNodePort int64, defaultHealthC
 		return nil, err
 	}
 	if cluster.backendPool, err = NewBackendPool(
-		cloud, defaultBackendNodePort, defaultIg, defaultHc, cloud); err != nil {
+		cloud, defaultBackendNodePort, defaultIG, defaultHc, cloud); err != nil {
 		return nil, err
 	}
 	cluster.defaultBackendNodePort = defaultBackendNodePort

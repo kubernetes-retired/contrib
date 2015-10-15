@@ -35,28 +35,28 @@ spec:
 apiVersion: v1
 kind: ReplicationController
 metadata:
-  name: gcelb
+  name: glbc
   labels:
-    app: gcelb
+    app: glbc
     version: v1
 spec:
   # There should never be more than 1 controller alive simultaneously.
   replicas: 1
   selector:
-    app: gcelb
+    app: glbc
     version: v1
   template:
     metadata:
       labels:
-        app: gcelb
+        app: glbc
         version: v1
     spec:
       # It only needs this long if started with --delete-all-on-quit.
       terminationGracePeriodSeconds: 600
       containers:
-      - image: bprashanth/gcelb:0.0
+      - image: bprashanth/glbc:0.0
         imagePullPolicy: Always
-        name: gcelb
+        name: glbc
         # TODO: Add a liveness probe
         args:
         # auto quit requires a high termination grace period.

@@ -72,7 +72,7 @@ spec:
 ---
 # This is the Ingress resource that creates a HTTP Loadbalancer configured
 # according to the Ingress rules.
-apiVersion: experimental/v1alpha1
+apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   name: echomap

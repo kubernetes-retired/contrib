@@ -32,11 +32,12 @@ token-file
 ttl-secs
 use-http-cache
 use-kubernetes-cluster-service
+running-in-cluster
 user-whitelist
 whitelist-override-label
 error-page
 balance-algorithm
 gce-cluster-name
-resync-period
+sync-period
 delete-all-on-quit
 health-check-path

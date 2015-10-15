@@ -44,7 +44,15 @@ import (
 //
 // To adequately test this, we need 1 set of interfaces from pools -> cloud,
 // and another from controller -> pools. All the cloud interfaces have a
-// corresponding implementation in fakes.go.
+// corresponding implementation in fakes.go. When the controller runs in
+// production (i.e --running-in-cluster=true) it passes a Kubernetes
+// cloudprovider object to each of the sync pools. During unittests or when run
+// with --running-in-cluster=false, each sync pool gets a fake cloud interface.
+
+// A note on naming convention: per golang style guide for Initialisms, Http
+// should be HTTP and Url should be URL, however because these interfaces
+// must match their siblings in the Kubernetes cloud provider, which are in turn
+// consistent with GCE compute API, there might be inconsistencies.
 
 // NodePool is an interface to manage a pool of kubernetes nodes synced with vm instances in the cloud
 // through the InstanceGroups interface.

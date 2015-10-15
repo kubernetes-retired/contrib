@@ -28,11 +28,11 @@ import (
 // Instances implements InstancePool.
 type Instances struct {
 	cloud     InstanceGroups
-	defaultIg *compute.InstanceGroup
+	defaultIG *compute.InstanceGroup
 
 	// Currently unused. The current state for instances is derived from a
 	// kubernetes nodeLister. All services as ports added to a single
-	// instance group, the defaultIg. When we support adding an instance
+	// instance group, the defaultIG. When we support adding an instance
 	// to multiple instance groups, we can move the createInstanceGroup
 	// method into the interface and use the poolStore.
 	pool *poolStore
@@ -56,29 +56,29 @@ func createInstanceGroup(cloud InstanceGroups, name string) (*compute.InstanceGr
 
 // NewNodePool creates a new node pool.
 // - cloud: implements InstanceGroups, used to sync Kubernetes nodes with
-//   members of the cloud InstanceGroup identified by defaultIgName.
-// - defaultIgName: Name of a GCE Instance Group with all nodes in your cluster.
+//   members of the cloud InstanceGroup identified by defaultIGName.
+// - defaultIGName: Name of a GCE Instance Group with all nodes in your cluster.
 //	 If this Instance Group doesn't exist, it will be created, if it does, it
 //   will be reused.
-func NewNodePool(cloud InstanceGroups, defaultIgName string) (NodePool, error) {
+func NewNodePool(cloud InstanceGroups, defaultIGName string) (NodePool, error) {
 	// Each node pool has to have at least one default instance group backing
 	// it in the cloud. We currently don't support pools of instance groups,
 	// which is why createInstanceGroup is a private method invoked in the
 	// constructor.
-	ig, err := createInstanceGroup(cloud, defaultIgName)
+	ig, err := createInstanceGroup(cloud, defaultIGName)
 	if err != nil {
 		return nil, err
 	}
 
 	instances := &Instances{cloud, ig, newPoolStore()}
-	instances.defaultIg = ig
+	instances.defaultIG = ig
 	return instances, nil
 }
 
 func (i *Instances) list() (sets.String, error) {
 	nodeNames := sets.NewString()
 	instances, err := i.cloud.ListInstancesInInstanceGroup(
-		i.defaultIg.Name, allInstances)
+		i.defaultIG.Name, allInstances)
 	if err != nil {
 		return nodeNames, err
 	}
@@ -102,14 +102,14 @@ func (i *Instances) Get(name string) (*compute.InstanceGroup, error) {
 
 // Add adds the given instances to the Instance Group.
 func (i *Instances) Add(names []string) error {
-	glog.Infof("Adding nodes %v to %v", names, i.defaultIg.Name)
-	return i.cloud.AddInstancesToInstanceGroup(i.defaultIg.Name, names)
+	glog.Infof("Adding nodes %v to %v", names, i.defaultIG.Name)
+	return i.cloud.AddInstancesToInstanceGroup(i.defaultIG.Name, names)
 }
 
 // Remove removes the given instances from the Instance Group.
 func (i *Instances) Remove(names []string) error {
 	glog.Infof("Removing nodes %v", names)
-	return i.cloud.RemoveInstancesFromInstanceGroup(i.defaultIg.Name, names)
+	return i.cloud.RemoveInstancesFromInstanceGroup(i.defaultIG.Name, names)
 }
 
 // Sync syncs kubernetes instances with the instances in the instance group.
@@ -146,5 +146,5 @@ func (i *Instances) Sync(nodes []string) error {
 
 // Shutdown deletes the default Instance Group.
 func (i *Instances) Shutdown() error {
-	return i.cloud.DeleteInstanceGroup(i.defaultIg.Name)
+	return i.cloud.DeleteInstanceGroup(i.defaultIG.Name)
 }

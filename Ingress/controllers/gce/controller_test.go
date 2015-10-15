@@ -351,7 +351,7 @@ func TestLbStatusUpdate(t *testing.T) {
 	ing.Namespace = api.NamespaceDefault
 
 	response := runtime.EncodeOrDie(
-		testapi.Experimental.Codec(), ing)
+		testapi.Extensions.Codec(), ing)
 
 	// The loadbalancer controller will do a get, to retrieve the most current
 	// version of the resource, followed by a PUT with the new ip. This handler
@@ -382,9 +382,9 @@ func TestLbStatusUpdate(t *testing.T) {
 			},
 		},
 	}
-	updatedIng := runtime.EncodeOrDie(testapi.Experimental.Codec(), ing)
+	updatedIng := runtime.EncodeOrDie(testapi.Extensions.Codec(), ing)
 	fakeHandler.ValidateRequest(
-		t, testapi.Experimental.ResourcePath(
-			"ingress", ing.Namespace, ing.Name),
+		t, testapi.Extensions.ResourcePath(
+			"ingress", ing.Namespace, ing.Name)+"/status",
 		"PUT", &updatedIng)
 }

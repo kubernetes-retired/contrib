@@ -23,8 +23,8 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
-func newNodePool(f InstanceGroups, defaultIgName string, t *testing.T) NodePool {
-	pool, err := NewNodePool(f, defaultIgName)
+func newNodePool(f InstanceGroups, defaultIGName string, t *testing.T) NodePool {
+	pool, err := NewNodePool(f, defaultIGName)
 	if err != nil || pool == nil {
 		t.Fatalf("%v", err)
 	}
@@ -33,14 +33,14 @@ func newNodePool(f InstanceGroups, defaultIgName string, t *testing.T) NodePool 
 
 func TestNewNodePoolCreate(t *testing.T) {
 	f := newFakeInstanceGroups(sets.NewString())
-	defaultIgName := defaultInstanceGroupName(testClusterName)
-	newNodePool(f, defaultIgName, t)
+	defaultIGName := defaultInstanceGroupName(testClusterName)
+	newNodePool(f, defaultIGName, t)
 
 	// Test that creating a node pool creates a default instance group
 	// after checking that it doesn't already exist.
-	if f.instanceGroup != defaultIgName {
+	if f.instanceGroup != defaultIGName {
 		t.Fatalf("Default instance group not created, got %v expected %v.",
-			f.instanceGroup, defaultIgName)
+			f.instanceGroup, defaultIGName)
 	}
 
 	if f.calls[0] != Get {
@@ -48,23 +48,23 @@ func TestNewNodePoolCreate(t *testing.T) {
 	}
 
 	f.getResult = &compute.InstanceGroup{}
-	pool := newNodePool(f, "newDefaultIgName", t)
+	pool := newNodePool(f, "newDefaultIGName", t)
 	for _, call := range f.calls {
 		if call == Create {
 			t.Fatalf("Tried to create instance group when one already exists.")
 		}
 	}
-	if pool.(*Instances).defaultIg != f.getResult {
+	if pool.(*Instances).defaultIG != f.getResult {
 		t.Fatalf("Default instance group not created, got %v expected %v.",
-			f.instanceGroup, defaultIgName)
+			f.instanceGroup, defaultIGName)
 	}
 }
 
 func TestNodePoolSync(t *testing.T) {
 	f := newFakeInstanceGroups(sets.NewString(
 		[]string{"n1", "n2"}...))
-	defaultIgName := defaultInstanceGroupName(testClusterName)
-	pool := newNodePool(f, defaultIgName, t)
+	defaultIGName := defaultInstanceGroupName(testClusterName)
+	pool := newNodePool(f, defaultIGName, t)
 
 	// KubeNodes: n1
 	// GCENodes: n1, n2
@@ -86,7 +86,7 @@ func TestNodePoolSync(t *testing.T) {
 	// Try to add n2 to the instance group.
 
 	f = newFakeInstanceGroups(sets.NewString([]string{"n1"}...))
-	pool = newNodePool(f, defaultIgName, t)
+	pool = newNodePool(f, defaultIGName, t)
 
 	f.calls = []int{}
 	kubeNodes = sets.NewString([]string{"n1", "n2"}...)
@@ -104,7 +104,7 @@ func TestNodePoolSync(t *testing.T) {
 	// Do nothing.
 
 	f = newFakeInstanceGroups(sets.NewString([]string{"n1", "n2"}...))
-	pool = newNodePool(f, defaultIgName, t)
+	pool = newNodePool(f, defaultIGName, t)
 
 	f.calls = []int{}
 	kubeNodes = sets.NewString([]string{"n1", "n2"}...)
@@ -118,14 +118,14 @@ func TestNodePoolSync(t *testing.T) {
 func TestNodePoolShutdown(t *testing.T) {
 	f := newFakeInstanceGroups(sets.NewString())
 	f.getResult = nil
-	defaultIgName := defaultInstanceGroupName(testClusterName)
-	pool := newNodePool(f, defaultIgName, t)
+	defaultIGName := defaultInstanceGroupName(testClusterName)
+	pool := newNodePool(f, defaultIGName, t)
 
 	// Make sure the default instance group is only deleted when the pool
 	// is empty.
 	f.listResult = getInstanceList(sets.NewString("foo"))
 	pool.Shutdown()
 	if f.instanceGroup != "" {
-		t.Fatalf("Did not expect an instance group, found %v", defaultIgName)
+		t.Fatalf("Did not expect an instance group, found %v", defaultIGName)
 	}
 }

@@ -31,7 +31,7 @@ type Backends struct {
 	cloud          BackendServices
 	instanceGroups InstanceGroups
 	pool           *poolStore
-	defaultIg      *compute.InstanceGroup
+	defaultIG      *compute.InstanceGroup
 	defaultBackend *compute.BackendService
 	defaultHc      *compute.HttpHealthCheck
 }
@@ -48,22 +48,22 @@ func beName(port int64) string {
 // - cloud: implements BackendServices and syncs backends with a cloud provider
 // - defaultBackendNodePort: is the node port of glbc's default backend. This is
 //	 the kubernetes Service that serves the 404 page if no urls match.
-// - defaultIg: is the GCE Instance Group that contains all the vms in your
+// - defaultIG: is the GCE Instance Group that contains all the vms in your
 //	 cluster. Each new backend opens a port on this Instance Group.
 // - defaultHc: is default GCE health check to use for all backends.
 // - instanceGroups: implements InstanceGroups, every new backend uses this
-//   interface to open a port for itself on the defaultIg.
+//   interface to open a port for itself on the defaultIG.
 func NewBackendPool(
 	cloud BackendServices,
 	defaultBackendNodePort int64,
-	defaultIg *compute.InstanceGroup,
+	defaultIG *compute.InstanceGroup,
 	defaultHc *compute.HttpHealthCheck,
 	instanceGroups InstanceGroups) (BackendPool, error) {
 	backends := &Backends{
 		cloud:          cloud,
 		instanceGroups: instanceGroups,
 		pool:           newPoolStore(),
-		defaultIg:      defaultIg,
+		defaultIG:      defaultIG,
 		defaultHc:      defaultHc,
 	}
 	err := backends.Add(defaultBackendNodePort)
@@ -116,15 +116,15 @@ func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPor
 // urlmap.
 func (b *Backends) Add(port int64) error {
 	namedPort, err := b.instanceGroups.AddPortToInstanceGroup(
-		b.defaultIg, port)
+		b.defaultIG, port)
 	if err != nil {
 		return err
 	}
 	be, _ := b.Get(port)
 	if be == nil {
 		glog.Infof("Creating backend for instance group %v port %v named port %v",
-			b.defaultIg.Name, port, namedPort)
-		_, err = b.create(b.defaultIg, namedPort, beName(port))
+			b.defaultIG.Name, port, namedPort)
+		_, err = b.create(b.defaultIG, namedPort, beName(port))
 		if err != nil {
 			return err
 		}
@@ -153,13 +153,13 @@ func (b *Backends) Delete(port int64) error {
 // It fixes broken links.
 func (b *Backends) edgeHop(be *compute.BackendService) error {
 	if len(be.Backends) == 1 &&
-		compareLinks(be.Backends[0].Group, b.defaultIg.SelfLink) {
+		compareLinks(be.Backends[0].Group, b.defaultIG.SelfLink) {
 		return nil
 	}
 	glog.Infof("Backend %v has a broken edge, adding link to %v",
-		be.Name, b.defaultIg.Name)
+		be.Name, b.defaultIG.Name)
 	be.Backends = []*compute.Backend{
-		{Group: b.defaultIg.SelfLink},
+		{Group: b.defaultIG.SelfLink},
 	}
 	if err := b.cloud.UpdateBackendService(be); err != nil {
 		return err
