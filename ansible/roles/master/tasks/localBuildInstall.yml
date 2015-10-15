@@ -1,7 +1,7 @@
 ---
 - name: Copy master binaries
   copy:
-    src: ../../kubernetes/_output/local/go/bin/{{ item }}
+    src: "{{ localBuildOutput }}/go/bin/{{ item }}"
     dest: /usr/bin/
     mode: 755
   with_items:
@@ -9,6 +9,7 @@
     - kube-scheduler
     - kube-controller-manager
     - kubectl
+    - kubelet
   notify: restart daemons
 
 - name: Copy master service files
@@ -20,6 +21,7 @@
     - kube-apiserver.service
     - kube-scheduler.service
     - kube-controller-manager.service
+    - kubelet.service
   notify: reload systemd
 
 - name: Copy systemd tmpfile for apiserver
@@ -28,3 +30,8 @@
     dest: /etc/tmpfiles.d/
     mode: 644
   notify: reload systemd
+
+- name: Create the /var/lib/kubelet working directory
+  file:
+    path: /var/lib/kubelet
+    state: directory

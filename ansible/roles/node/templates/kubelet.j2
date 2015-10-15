@@ -13,9 +13,13 @@ KUBELET_HOSTNAME="--hostname-override={{ inventory_hostname }}"
 # location of the api-server
 KUBELET_API_SERVER="--api-servers=https://{{ groups['masters'][0] }}:{{ kube_master_api_port }}"
 
-# Add your own!
-{% if dns_setup %}
-KUBELET_ARGS="--cluster-dns={{ dns_server }} --cluster-domain={{ dns_domain }} --kubeconfig={{ kube_config_dir}}/kubelet.kubeconfig --config={{ kube_manifest_dir }}"
-{% else %}
-KUBELET_ARGS="--kubeconfig={{ kube_config_dir }}/kubelet.kubeconfig --config={{ kube_manifest_dir }}"
-{% endif %}
+{% set kubelet_options = [] -%}
+{% if dns_setup -%}
+{{ kubelet_options.append('--cluster-dns=' + dns_server)|default('', true) -}}
+{{ kubelet_options.append('--cluster-domain=' + dns_domain)|default('', true) -}}
+{% endif -%}
+{% if networking == "opencontrail" -%}
+{{ kubelet_options.append('--network-plugin=opencontrail')|default('', true) -}}
+{% endif -%}
+
+KUBELET_ARGS="--kubeconfig={{ kube_config_dir }}/kubelet.kubeconfig --config={{ kube_manifest_dir }} {{ kubelet_options|join(' ') }}"

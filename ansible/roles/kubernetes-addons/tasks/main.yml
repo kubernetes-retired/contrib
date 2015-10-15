@@ -65,6 +65,7 @@
   template: src=kube-addons.service.j2 dest=/etc/systemd/system/kube-addons.service
   notify:
     - reload and restart kube-addons
+  when: not (ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15)
 
 - name: Enable and start kube addons
   service: name=kube-addons.service enabled=yes state=started

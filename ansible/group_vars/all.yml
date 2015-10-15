@@ -37,6 +37,18 @@ insecure_registrys:
 # addresses do not need to be routable and must just be an unused block of space.
 kube_service_addresses: 10.254.0.0/16
 
+# Network implementation (flannel|opencontrail)
+networking: flannel
+
+# External network
+# opencontrail_public_subnet: 10.1.4.0/24
+
+# Underlay network
+# opencontrail_private_subnet: 192.168.1.0/24
+
+# Data interface
+# opencontrail_interface: eth1
+
 # Flannel internal network (optional). When flannel is used, it will assign IP
 # addresses from this range to individual pods.
 # This network must be unused in your network infrastructure!
