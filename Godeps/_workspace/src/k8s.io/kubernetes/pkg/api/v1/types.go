@@ -250,6 +250,9 @@ type VolumeSource struct {
 	// CephFS represents a Ceph FS mount on the host that shares a pod's lifetime
 	CephFS *CephFSVolumeSource `json:"cephfs,omitempty"`
 
+	// Flocker represents a Flocker volume attached to a kubelet's host machine. This depends on the Flocker control service being running
+	Flocker *FlockerVolumeSource `json:"flocker,omitempty"`
+
 	// DownwardAPI represents downward API about the pod that should populate this volume
 	DownwardAPI *DownwardAPIVolumeSource `json:"downwardAPI,omitempty"`
 	// FC represents a Fibre Channel resource that is attached to a kubelet's host machine and then exposed to the pod.
@@ -306,6 +309,8 @@ type PersistentVolumeSource struct {
 	CephFS *CephFSVolumeSource `json:"cephfs,omitempty"`
 	// FC represents a Fibre Channel resource that is attached to a kubelet's host machine and then exposed to the pod.
 	FC *FCVolumeSource `json:"fc,omitempty"`
+	// Flocker represents a Flocker volume attached to a kubelet's host machine and exposed to the pod for its usage. This depends on the Flocker control service being running
+	Flocker *FlockerVolumeSource `json:"flocker,omitempty"`
 }
 
 // PersistentVolume (PV) is a storage resource provisioned by an administrator.
@@ -587,6 +592,12 @@ type CephFSVolumeSource struct {
 	// the ReadOnly setting in VolumeMounts.
 	// More info: http://releases.k8s.io/HEAD/examples/cephfs/README.md#how-to-use-it
 	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// FlockerVolumeSource represents a Flocker volume mounted by the Flocker agent.
+type FlockerVolumeSource struct {
+	// Required: the volume name. This is going to be store on metadata -> name on the payload for Flocker
+	DatasetName string `json:"datasetName"`
 }
 
 const (
@@ -1227,11 +1238,17 @@ type PodSpec struct {
 	// Use the host's ipc namespace.
 	// Optional: Default to false.
 	HostIPC bool `json:"hostIPC,omitempty"`
+	// SecurityContext holds pod-level security attributes and common container settings
+	SecurityContext *PodSecurityContext `json:"securityContext,omitempty"`
 	// ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images used by this PodSpec.
 	// If specified, these secrets will be passed to individual puller implementations for them to use. For example,
 	// in the case of docker, only DockerConfig type secrets are honored.
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/images.md#specifying-imagepullsecrets-on-a-pod
 	ImagePullSecrets []LocalObjectReference `json:"imagePullSecrets,omitempty" patchStrategy:"merge" patchMergeKey:"name"`
+}
+
+// PodSecurityContext holds pod-level security attributes and common container settings.
+type PodSecurityContext struct {
 }
 
 // PodStatus represents information about the status of a pod. Status may trail the actual

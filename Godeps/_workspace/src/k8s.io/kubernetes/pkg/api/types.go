@@ -204,6 +204,9 @@ type VolumeSource struct {
 	// CephFS represents a Cephfs mount on the host that shares a pod's lifetime
 	CephFS *CephFSVolumeSource `json:"cephfs,omitempty"`
 
+	// Flocker represents a Flocker volume attached to a kubelet's host machine. This depends on the Flocker control service being running
+	Flocker *FlockerVolumeSource `json:"flocker,omitempty"`
+
 	// DownwardAPI represents metadata about the pod that should populate this volume
 	DownwardAPI *DownwardAPIVolumeSource `json:"downwardAPI,omitempty"`
 	// FC represents a Fibre Channel resource that is attached to a kubelet's host machine and then exposed to the pod.
@@ -239,6 +242,8 @@ type PersistentVolumeSource struct {
 	CephFS *CephFSVolumeSource `json:"cephfs,omitempty"`
 	// FC represents a Fibre Channel resource that is attached to a kubelet's host machine and then exposed to the pod.
 	FC *FCVolumeSource `json:"fc,omitempty"`
+	// Flocker represents a Flocker volume attached to a kubelet's host machine. This depends on the Flocker control service being running
+	Flocker *FlockerVolumeSource `json:"flocker,omitempty"`
 }
 
 type PersistentVolumeClaimVolumeSource struct {
@@ -590,6 +595,12 @@ type CephFSVolumeSource struct {
 	// Optional: Defaults to false (read/write). ReadOnly here will force
 	// the ReadOnly setting in VolumeMounts.
 	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// FlockerVolumeSource represents a Flocker volume mounted by the Flocker agent.
+type FlockerVolumeSource struct {
+	// Required: the volume name. This is going to be store on metadata -> name on the payload for Flocker
+	DatasetName string `json:"datasetName"`
 }
 
 // DownwardAPIVolumeSource represents a volume containing downward API info
@@ -975,20 +986,27 @@ type PodSpec struct {
 	// the scheduler simply schedules this pod onto that node, assuming that it fits resource
 	// requirements.
 	NodeName string `json:"nodeName,omitempty"`
-	// Use the host's network namespace. If this option is set, the ports that will be
+	// SecurityContext holds pod-level security attributes and common container settings
+	SecurityContext *PodSecurityContext `json:"securityContext,omitempty"`
+	// ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images used by this PodSpec.
+	// If specified, these secrets will be passed to individual puller implementations for them to use.  For example,
+	// in the case of docker, only DockerConfig type secrets are honored.
+	ImagePullSecrets []LocalObjectReference `json:"imagePullSecrets,omitempty"`
+}
+
+// PodSecurityContext holds pod-level security attributes and common container settings.
+type PodSecurityContext struct {
+	// Use the host's network namespace.  If this option is set, the ports that will be
 	// used must be specified.
-	// Optional: Default to false.
+	// Optional: Default to false
 	HostNetwork bool `json:"hostNetwork,omitempty"`
+
 	// Use the host's pid namespace.
 	// Optional: Default to false.
 	HostPID bool `json:"hostPID,omitempty"`
 	// Use the host's ipc namespace.
 	// Optional: Default to false.
 	HostIPC bool `json:"hostIPC,omitempty"`
-	// ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images used by this PodSpec.
-	// If specified, these secrets will be passed to individual puller implementations for them to use.  For example,
-	// in the case of docker, only DockerConfig type secrets are honored.
-	ImagePullSecrets []LocalObjectReference `json:"imagePullSecrets,omitempty"`
 }
 
 // PodStatus represents information about the status of a pod. Status may trail the actual

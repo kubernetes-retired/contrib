@@ -38,6 +38,10 @@ import (
 	"github.com/golang/glog"
 )
 
+// TODO: delete this global variable when we enable the validation of common
+// fields by default.
+var RepairMalformedUpdates bool = true
+
 const cIdentifierErrorMsg string = `must be a C identifier (matching regex ` + validation.CIdentifierFmt + `): e.g. "my_name" or "MyName"`
 const isNegativeErrorMsg string = `must be non-negative`
 
@@ -231,6 +235,7 @@ func ValidatePositiveQuantity(value resource.Quantity, fieldName string) errs.Va
 
 // ValidateObjectMeta validates an object's metadata on creation. It expects that name generation has already
 // been performed.
+// TODO: Remove calls to this method scattered in validations of specific resources, e.g., ValidatePodUpdate.
 func ValidateObjectMeta(meta *api.ObjectMeta, requiresNamespace bool, nameFn ValidateNameFunc) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
 
@@ -273,23 +278,32 @@ func ValidateObjectMeta(meta *api.ObjectMeta, requiresNamespace bool, nameFn Val
 func ValidateObjectMetaUpdate(new, old *api.ObjectMeta) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
 
+	if !RepairMalformedUpdates && new.UID != old.UID {
+		allErrs = append(allErrs, errs.NewFieldInvalid("uid", new.UID, "field is immutable"))
+	}
 	// in the event it is left empty, set it, to allow clients more flexibility
-	if len(new.UID) == 0 {
-		new.UID = old.UID
+	// TODO: remove the following code that repairs the update request when we retire the clients that modify the immutable fields.
+	// Please do not copy this pattern elsewhere; validation functions should not be modifying the objects they are passed!
+	if RepairMalformedUpdates {
+		if len(new.UID) == 0 {
+			new.UID = old.UID
+		}
+		// ignore changes to timestamp
+		if old.CreationTimestamp.IsZero() {
+			old.CreationTimestamp = new.CreationTimestamp
+		} else {
+			new.CreationTimestamp = old.CreationTimestamp
+		}
+		// an object can never remove a deletion timestamp or clear/change grace period seconds
+		if !old.DeletionTimestamp.IsZero() {
+			new.DeletionTimestamp = old.DeletionTimestamp
+		}
+		if old.DeletionGracePeriodSeconds != nil && new.DeletionGracePeriodSeconds == nil {
+			new.DeletionGracePeriodSeconds = old.DeletionGracePeriodSeconds
+		}
 	}
-	// ignore changes to timestamp
-	if old.CreationTimestamp.IsZero() {
-		old.CreationTimestamp = new.CreationTimestamp
-	} else {
-		new.CreationTimestamp = old.CreationTimestamp
-	}
-	// an object can never remove a deletion timestamp or clear/change grace period seconds
-	if !old.DeletionTimestamp.IsZero() {
-		new.DeletionTimestamp = old.DeletionTimestamp
-	}
-	if old.DeletionGracePeriodSeconds != nil && new.DeletionGracePeriodSeconds == nil {
-		new.DeletionGracePeriodSeconds = old.DeletionGracePeriodSeconds
-	}
+
+	// TODO: needs to check if new==nil && old !=nil after the repair logic is removed.
 	if new.DeletionGracePeriodSeconds != nil && old.DeletionGracePeriodSeconds != nil && *new.DeletionGracePeriodSeconds != *old.DeletionGracePeriodSeconds {
 		allErrs = append(allErrs, errs.NewFieldInvalid("deletionGracePeriodSeconds", new.DeletionGracePeriodSeconds, "field is immutable; may only be changed via deletion"))
 	}
@@ -378,6 +392,10 @@ func validateSource(source *api.VolumeSource) errs.ValidationErrorList {
 	if source.Glusterfs != nil {
 		numVolumes++
 		allErrs = append(allErrs, validateGlusterfs(source.Glusterfs).Prefix("glusterfs")...)
+	}
+	if source.Flocker != nil {
+		numVolumes++
+		allErrs = append(allErrs, validateFlocker(source.Flocker).Prefix("flocker")...)
 	}
 	if source.PersistentVolumeClaim != nil {
 		numVolumes++
@@ -531,6 +549,17 @@ func validateGlusterfs(glusterfs *api.GlusterfsVolumeSource) errs.ValidationErro
 	return allErrs
 }
 
+func validateFlocker(flocker *api.FlockerVolumeSource) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	if flocker.DatasetName == "" {
+		allErrs = append(allErrs, errs.NewFieldRequired("datasetName"))
+	}
+	if strings.Contains(flocker.DatasetName, "/") {
+		allErrs = append(allErrs, errs.NewFieldInvalid("datasetName", flocker.DatasetName, "must not contain '/'"))
+	}
+	return allErrs
+}
+
 var validDownwardAPIFieldPathExpressions = sets.NewString("metadata.name", "metadata.namespace", "metadata.labels", "metadata.annotations")
 
 func validateDownwardAPIVolumeSource(downwardAPIVolume *api.DownwardAPIVolumeSource) errs.ValidationErrorList {
@@ -635,6 +664,10 @@ func ValidatePersistentVolume(pv *api.PersistentVolume) errs.ValidationErrorList
 	if pv.Spec.Glusterfs != nil {
 		numVolumes++
 		allErrs = append(allErrs, validateGlusterfs(pv.Spec.Glusterfs).Prefix("glusterfs")...)
+	}
+	if pv.Spec.Flocker != nil {
+		numVolumes++
+		allErrs = append(allErrs, validateFlocker(pv.Spec.Flocker).Prefix("flocker")...)
 	}
 	if pv.Spec.NFS != nil {
 		numVolumes++
@@ -1088,7 +1121,7 @@ func ValidatePodSpec(spec *api.PodSpec) errs.ValidationErrorList {
 	allErrs = append(allErrs, validateRestartPolicy(&spec.RestartPolicy).Prefix("restartPolicy")...)
 	allErrs = append(allErrs, validateDNSPolicy(&spec.DNSPolicy).Prefix("dnsPolicy")...)
 	allErrs = append(allErrs, ValidateLabels(spec.NodeSelector, "nodeSelector")...)
-	allErrs = append(allErrs, validateHostNetwork(spec.HostNetwork, spec.Containers).Prefix("hostNetwork")...)
+	allErrs = append(allErrs, ValidatePodSecurityContext(spec.SecurityContext, spec).Prefix("securityContext")...)
 	allErrs = append(allErrs, validateImagePullSecrets(spec.ImagePullSecrets).Prefix("imagePullSecrets")...)
 	if len(spec.ServiceAccountName) > 0 {
 		if ok, msg := ValidateServiceAccountName(spec.ServiceAccountName, false); !ok {
@@ -1101,6 +1134,17 @@ func ValidatePodSpec(spec *api.PodSpec) errs.ValidationErrorList {
 			allErrs = append(allErrs, errs.NewFieldInvalid("activeDeadlineSeconds", spec.ActiveDeadlineSeconds, "activeDeadlineSeconds must be a positive integer greater than 0"))
 		}
 	}
+	return allErrs
+}
+
+// ValidatePodSecurityContext test that the specified PodSecurityContext has valid data.
+func ValidatePodSecurityContext(securityContext *api.PodSecurityContext, spec *api.PodSpec) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+
+	if securityContext != nil {
+		allErrs = append(allErrs, validateHostNetwork(securityContext.HostNetwork, spec.Containers).Prefix("hostNetwork")...)
+	}
+
 	return allErrs
 }
 
@@ -1319,6 +1363,15 @@ func ValidateReplicationControllerUpdate(oldController, controller *api.Replicat
 	allErrs := errs.ValidationErrorList{}
 	allErrs = append(allErrs, ValidateObjectMetaUpdate(&controller.ObjectMeta, &oldController.ObjectMeta).Prefix("metadata")...)
 	allErrs = append(allErrs, ValidateReplicationControllerSpec(&controller.Spec).Prefix("spec")...)
+	return allErrs
+}
+
+// ValidateReplicationControllerStatusUpdate tests if required fields in the replication controller are set.
+func ValidateReplicationControllerStatusUpdate(oldController, controller *api.ReplicationController) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	allErrs = append(allErrs, ValidateObjectMetaUpdate(&controller.ObjectMeta, &oldController.ObjectMeta).Prefix("metadata")...)
+	allErrs = append(allErrs, ValidatePositiveField(int64(controller.Status.Replicas), "status.replicas")...)
+	allErrs = append(allErrs, ValidatePositiveField(int64(controller.Status.ObservedGeneration), "status.observedGeneration")...)
 	return allErrs
 }
 
@@ -1951,6 +2004,27 @@ func ValidatePodLogOptions(opts *api.PodLogOptions) errs.ValidationErrorList {
 	case opts.SinceSeconds != nil:
 		if *opts.SinceSeconds < 1 {
 			allErrs = append(allErrs, errs.NewFieldInvalid("sinceSeconds", *opts.SinceSeconds, "sinceSeconds must be a positive integer"))
+		}
+	}
+	return allErrs
+}
+
+// ValidateLoadBalancerStatus validates required fields on a LoadBalancerStatus
+func ValidateLoadBalancerStatus(status *api.LoadBalancerStatus) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	for _, ingress := range status.Ingress {
+		if len(ingress.IP) > 0 {
+			if isIP := (net.ParseIP(ingress.IP) != nil); !isIP {
+				allErrs = append(allErrs, errs.NewFieldInvalid("ingress.ip", ingress.IP, "must be an IP address"))
+			}
+		}
+		if len(ingress.Hostname) > 0 {
+			if valid, errMsg := NameIsDNSSubdomain(ingress.Hostname, false); !valid {
+				allErrs = append(allErrs, errs.NewFieldInvalid("ingress.hostname", ingress.Hostname, errMsg))
+			}
+			if isIP := (net.ParseIP(ingress.Hostname) != nil); isIP {
+				allErrs = append(allErrs, errs.NewFieldInvalid("ingress.hostname", ingress.Hostname, "must be a DNS name, not ip address"))
+			}
 		}
 	}
 	return allErrs

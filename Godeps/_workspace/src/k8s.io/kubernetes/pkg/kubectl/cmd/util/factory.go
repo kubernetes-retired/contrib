@@ -142,8 +142,8 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 			switch group {
 			case "":
 				return client.RESTClient, nil
-			case "experimental":
-				return client.ExperimentalClient.RESTClient, nil
+			case "extensions":
+				return client.ExtensionsClient.RESTClient, nil
 			}
 			return nil, fmt.Errorf("unable to get RESTClient for resource '%s'", mapping.Resource)
 		},
@@ -406,11 +406,11 @@ func (c *clientSwaggerSchema) ValidateBytes(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("could not find api group for %s: %v", kind, err)
 	}
-	if group == "experimental" {
-		if c.c.ExperimentalClient == nil {
+	if group == "extensions" {
+		if c.c.ExtensionsClient == nil {
 			return errors.New("unable to validate: no experimental client")
 		}
-		return getSchemaAndValidate(c.c.ExperimentalClient.RESTClient, data, "apis/", version, c.cacheDir)
+		return getSchemaAndValidate(c.c.ExtensionsClient.RESTClient, data, "apis/", version, c.cacheDir)
 	}
 	return getSchemaAndValidate(c.c.RESTClient, data, "api", version, c.cacheDir)
 }
@@ -530,5 +530,13 @@ func (f *Factory) PrinterForMapping(cmd *cobra.Command, mapping *meta.RESTMappin
 func (f *Factory) ClientMapperForCommand() resource.ClientMapper {
 	return resource.ClientMapperFunc(func(mapping *meta.RESTMapping) (resource.RESTClient, error) {
 		return f.RESTClient(mapping)
+	})
+}
+
+// NilClientMapperForCommand returns a ClientMapper which always returns nil.
+// When command is running locally and client isn't needed, this mapper can be parsed to NewBuilder.
+func (f *Factory) NilClientMapperForCommand() resource.ClientMapper {
+	return resource.ClientMapperFunc(func(mapping *meta.RESTMapping) (resource.RESTClient, error) {
+		return nil, nil
 	})
 }
