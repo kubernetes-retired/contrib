@@ -30,10 +30,10 @@ import (
 type Backends struct {
 	cloud          BackendServices
 	instanceGroups InstanceGroups
+	healthChecker  HealthChecker
 	pool           *poolStore
 	defaultIG      *compute.InstanceGroup
 	defaultBackend *compute.BackendService
-	defaultHc      *compute.HttpHealthCheck
 }
 
 func portKey(port int64) string {
@@ -50,21 +50,20 @@ func beName(port int64) string {
 //	 the kubernetes Service that serves the 404 page if no urls match.
 // - defaultIG: is the GCE Instance Group that contains all the vms in your
 //	 cluster. Each new backend opens a port on this Instance Group.
-// - defaultHc: is default GCE health check to use for all backends.
 // - instanceGroups: implements InstanceGroups, every new backend uses this
 //   interface to open a port for itself on the defaultIG.
 func NewBackendPool(
 	cloud BackendServices,
 	defaultBackendNodePort int64,
 	defaultIG *compute.InstanceGroup,
-	defaultHc *compute.HttpHealthCheck,
+	healthChecker HealthChecker,
 	instanceGroups InstanceGroups) (BackendPool, error) {
 	backends := &Backends{
 		cloud:          cloud,
 		instanceGroups: instanceGroups,
 		pool:           newPoolStore(),
 		defaultIG:      defaultIG,
-		defaultHc:      defaultHc,
+		healthChecker:  healthChecker,
 	}
 	err := backends.Add(defaultBackendNodePort)
 	if err != nil {
@@ -88,6 +87,14 @@ func (b *Backends) Get(port int64) (*compute.BackendService, error) {
 }
 
 func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPort, name string) (*compute.BackendService, error) {
+	// Create a new health check
+	if err := b.healthChecker.Add(namedPort.Port); err != nil {
+		return nil, err
+	}
+	hc, err := b.healthChecker.Get(namedPort.Port)
+	if err != nil {
+		return nil, err
+	}
 	// Create a new backend
 	backend := &compute.BackendService{
 		Name:     name,
@@ -98,7 +105,7 @@ func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPor
 			},
 		},
 		// Api expects one, means little to kubernetes.
-		HealthChecks: []string{b.defaultHc.SelfLink},
+		HealthChecks: []string{hc.SelfLink},
 		Port:         namedPort.Port,
 		PortName:     namedPort.Name,
 	}
@@ -146,6 +153,9 @@ func (b *Backends) Delete(port int64) error {
 		return err
 	}
 	b.pool.Delete(portKey(port))
+	if err := b.healthChecker.Delete(port); err != nil {
+		return err
+	}
 	return nil
 }
 

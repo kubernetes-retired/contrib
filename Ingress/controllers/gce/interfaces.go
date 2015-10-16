@@ -140,10 +140,9 @@ type SingleHealthCheck interface {
 	GetHttpHealthCheck(name string) (*compute.HttpHealthCheck, error)
 }
 
-// HealthChecker is an interface to manage the cloud resources associated with
-// health checking. Currently it's just a think wrapper around HealthCheck.
+// HealthChecker is an interface to manage cloud HTTPHealthChecks.
 type HealthChecker interface {
-	Add(name string) error
-	Delete(name string) error
-	Get(name string) (*compute.HttpHealthCheck, error)
+	Add(port int64) error
+	Delete(port int64) error
+	Get(port int64) (*compute.HttpHealthCheck, error)
 }

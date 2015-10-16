@@ -64,8 +64,6 @@ type ClusterManager struct {
 	instancePool           NodePool
 	backendPool            BackendPool
 	l7Pool                 LoadBalancerPool
-	// We currently only employ a single cluster wide health check
-	healthChecker HealthChecker
 }
 
 func (c *ClusterManager) shutdown() error {
@@ -75,10 +73,7 @@ func (c *ClusterManager) shutdown() error {
 	if err := c.backendPool.Shutdown(); err != nil {
 		return err
 	}
-	if err := c.instancePool.Shutdown(); err != nil {
-		return err
-	}
-	return c.healthChecker.Delete(defaultHttpHealthCheck)
+	return c.instancePool.Shutdown()
 }
 
 func defaultInstanceGroupName(clusterName string) string {
@@ -114,9 +109,6 @@ func NewClusterManager(name string, defaultBackendNodePort int64, defaultHealthC
 	// This is the backend that gets requests if no paths match.
 	// Note that this backend doesn't actually occupy a port
 	// on the instance group.
-	//
-	// Default Health Check: The default backend used by an
-	// Ingress that doesn't specify it.
 
 	defaultIGName := defaultInstanceGroupName(name)
 	if cluster.instancePool, err = NewNodePool(cloud, defaultIGName); err != nil {
@@ -128,16 +120,9 @@ func NewClusterManager(name string, defaultBackendNodePort int64, defaultHealthC
 	if err != nil {
 		return nil, err
 	}
-	if cluster.healthChecker, err = NewHealthChecker(
-		cloud, defaultHttpHealthCheck, defaultHealthCheckPath); err != nil {
-		return nil, err
-	}
-	defaultHc, err := cluster.healthChecker.Get(defaultHttpHealthCheck)
-	if err != nil {
-		return nil, err
-	}
+	healthChecker := NewHealthChecker(cloud, defaultHealthCheckPath)
 	if cluster.backendPool, err = NewBackendPool(
-		cloud, defaultBackendNodePort, defaultIG, defaultHc, cloud); err != nil {
+		cloud, defaultBackendNodePort, defaultIG, healthChecker, cloud); err != nil {
 		return nil, err
 	}
 	cluster.defaultBackendNodePort = defaultBackendNodePort

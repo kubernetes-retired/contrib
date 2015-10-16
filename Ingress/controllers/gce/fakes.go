@@ -463,7 +463,7 @@ func newFakeClusterManager(clusterName string) (*fakeClusterManager, error) {
 	fakeLbs := newFakeLoadBalancers(clusterName)
 	fakeBackends := newFakeBackendServices()
 	fakeIGs := newFakeInstanceGroups(sets.NewString())
-	fakeHcs := newFakeHealthChecks()
+	fakeHCs := newFakeHealthChecks()
 
 	defaultIGName := defaultInstanceGroupName(clusterName)
 	defaultBeName := beName(testDefaultBeNodePort)
@@ -473,13 +473,15 @@ func newFakeClusterManager(clusterName string) (*fakeClusterManager, error) {
 		return nil, err
 	}
 
+	healthChecker := NewHealthChecker(fakeHCs, "/")
+
 	backendPool, err := NewBackendPool(
 		fakeBackends,
 		testDefaultBeNodePort,
 		&compute.InstanceGroup{
 			SelfLink: defaultIGName,
 		},
-		&compute.HttpHealthCheck{}, fakeIGs)
+		healthChecker, fakeIGs)
 	if err != nil {
 		return nil, err
 	}
@@ -489,16 +491,11 @@ func newFakeClusterManager(clusterName string) (*fakeClusterManager, error) {
 			SelfLink: defaultBeName,
 		},
 	)
-	healthChecks, err := NewHealthChecker(fakeHcs, defaultHttpHealthCheck, "/")
-	if err != nil {
-		return nil, err
-	}
 	cm := &ClusterManager{
-		ClusterName:   clusterName,
-		instancePool:  nodePool,
-		backendPool:   backendPool,
-		l7Pool:        l7Pool,
-		healthChecker: healthChecks,
+		ClusterName:  clusterName,
+		instancePool: nodePool,
+		backendPool:  backendPool,
+		l7Pool:       l7Pool,
 	}
 	return &fakeClusterManager{cm, fakeLbs, fakeBackends, fakeIGs}, nil
 }
