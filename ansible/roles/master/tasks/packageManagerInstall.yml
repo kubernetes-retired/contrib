@@ -1,4 +1,8 @@
 ---
+- name: Init the did_install fact
+  set_fact:
+    did_install: false
+
 - name: Set fact for Atomic Host package install
   set_fact:
     did_install: true
