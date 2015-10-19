@@ -3,6 +3,7 @@
   stat: path=/run/ostree-booted
   register: s
   changed_when: false
+  always_run: yes
 
 - name: Init the is_atomic fact
   set_fact:
@@ -26,6 +27,7 @@
   stat: path=/usr/bin/rpm
   register: s
   changed_when: false
+  always_run: yes
 
 - name: Init the has_rpm fact
   set_fact:
