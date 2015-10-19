@@ -74,9 +74,11 @@
   template: src=kubelet.j2 dest={{ kube_config_dir }}/kubelet
   notify:
     - restart kubelet
+  when: kube_master_run_kubelet
 
 - name: Enable kubelet
   service: name=kubelet enabled=yes state=started
+  when: kube_master_run_kubelet
 
 - include: firewalld.yml
   when: has_firewalld
