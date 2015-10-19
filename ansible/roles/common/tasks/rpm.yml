@@ -4,6 +4,7 @@
   register: s
   changed_when: false
   failed_when: false
+  always_run: yes
 
 - name: Set the has_firewalld fact
   set_fact:
@@ -15,6 +16,7 @@
   register: s
   changed_when: false
   failed_when: false
+  always_run: yes
 
 - name: Set the has_iptables fact
   set_fact:
