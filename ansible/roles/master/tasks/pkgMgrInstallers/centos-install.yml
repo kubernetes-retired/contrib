@@ -1,7 +1,0 @@
----
-- name: CentOS | Install kubernetes master
-  yum:
-    pkg=kubernetes-master
-    state=latest
-  notify:
-    - restart daemons

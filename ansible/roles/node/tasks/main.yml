@@ -3,11 +3,6 @@
   selinux: state=permissive policy={{ ansible_selinux.type }}
   when: ansible_selinux is defined and ansible_selinux.status == "enabled"
 
-- include: packageManagerInstall.yml
-  when: source_type == "packageManager"
-  tags:
-    - binary-update
-
 - include: localBuildInstall.yml
   when: source_type == "localBuild"
   tags:

@@ -21,3 +21,10 @@
 - include: secrets.yml
   tags:
     secrets
+
+# For pkg deployments, we always install both master/node packages
+# so that kubelet is available even on master for static pods.
+- include: packageManagerInstall.yml
+  when: source_type == "packageManager"
+  tags:
+    - binary-update

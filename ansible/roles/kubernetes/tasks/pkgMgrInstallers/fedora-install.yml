@@ -1,8 +1,11 @@
 - name: Fedora | Install kubernetes master
   action: "{{ ansible_pkg_mgr }}"
   args:
-    name: kubernetes-master
+    name: "{{ item }}"
     state: latest
     enablerepo: "updates-testing"
+  with_items:
+    - kubernetes-master
+    - kubernetes-node
   notify:
     - restart daemons

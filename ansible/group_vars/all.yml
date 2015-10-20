@@ -4,7 +4,7 @@
 #
 # localBuild - requires make release to have been run to build local binaries
 # packageManager - will install packages from your distribution using yum/dnf/apt
-source_type: localBuild
+source_type: packageManager
 
 # will be used as the Internal dns domain name if DNS is enabled. Services
 # will be discoverable under <service-name>.<namespace>.svc.<domainname>, e.g.
@@ -65,10 +65,10 @@ flannel_prefix: 12
 flannel_host_prefix: 24
 
 # Set to false to disable logging with elasticsearch
-cluster_logging: true
+cluster_logging: false
 
 # Turn to false to disable cluster monitoring with heapster and influxdb
-cluster_monitoring: true
+cluster_monitoring: false
 
 # Turn to false to disable the kube-ui addon for this cluster
 kube-ui: false
