@@ -120,6 +120,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     n.vm.hostname = name
     set_provider(n)
 
+    config.vm.provision "shell", inline: "true"
     if ansible_tags.nil?
       # This set up the vagrant hosts before we run the main playbook
       # Today this just creates /etc/hosts so machines can talk via their
