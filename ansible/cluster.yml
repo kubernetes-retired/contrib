@@ -44,6 +44,8 @@
     - master
   tags:
     - masters
+  vars:
+    kube_master_run_kubelet: networking == 'opencontrail'
 
 # launch addons, like dns
 - hosts: masters
