@@ -16,8 +16,8 @@
 		},
 		{
 			"ImportPath": "github.com/coreos/go-etcd/etcd",
-			"Comment": "v2.0.0-13-g4cceaf7",
-			"Rev": "4cceaf7283b76f27c4a732b20730dcdb61053bf5"
+			"Comment": "v2.0.0-34-gde3514f",
+			"Rev": "de3514f25635bbfb024fdaf2a8d5f67378492675"
 		},
 		{
 			"ImportPath": "github.com/cpuguy83/go-md2man/md2man",
@@ -121,24 +121,22 @@
 			"Rev": "ca53cad383cad2479bbba7f7a1a05797ec1386e4"
 		},
 		{
-			"ImportPath": "github.com/prometheus/client_golang/model",
-			"Comment": "0.4.0-1-g692492e",
-			"Rev": "692492e54b553a81013254cc1fba4b6dd76fad30"
-		},
-		{
 			"ImportPath": "github.com/prometheus/client_golang/prometheus",
-			"Comment": "0.4.0-1-g692492e",
-			"Rev": "692492e54b553a81013254cc1fba4b6dd76fad30"
-		},
-		{
-			"ImportPath": "github.com/prometheus/client_golang/text",
-			"Comment": "0.4.0-1-g692492e",
-			"Rev": "692492e54b553a81013254cc1fba4b6dd76fad30"
+			"Comment": "0.7.0-39-g3b78d7a",
+			"Rev": "3b78d7a77f51ccbc364d4bc170920153022cfd08"
 		},
 		{
 			"ImportPath": "github.com/prometheus/client_model/go",
 			"Comment": "model-0.0.2-12-gfa8ad6f",
 			"Rev": "fa8ad6fec33561be4280a8f0514318c79d7f6cb6"
+		},
+		{
+			"ImportPath": "github.com/prometheus/common/expfmt",
+			"Rev": "ef7a9a5fb138aa5d3a19988537606226869a0390"
+		},
+		{
+			"ImportPath": "github.com/prometheus/common/model",
+			"Rev": "ef7a9a5fb138aa5d3a19988537606226869a0390"
 		},
 		{
 			"ImportPath": "github.com/prometheus/procfs",
@@ -159,15 +157,16 @@
 		},
 		{
 			"ImportPath": "github.com/spf13/cobra",
-			"Rev": "68f5a81a722d56241bd70faf6860ceb05eb27d64"
+			"Rev": "d732ab3a34e6e9e6b5bdac80707c2b6bad852936"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
-			"Rev": "8e7dc108ab3a1ab6ce6d922bbaff5657b88e8e49"
+			"Comment": "v0.0.1-105-gb084184",
+			"Rev": "b084184666e02084b8ccb9b704bf0d79c466eb1d"
 		},
 		{
 			"ImportPath": "github.com/ugorji/go/codec",
-			"Rev": "821cda7e48749cacf7cad2c6ed01e96457ca7e9d"
+			"Rev": "2f4b94206aae781e63846a9bf02ad83c387d5296"
 		},
 		{
 			"ImportPath": "github.com/ziutek/syslog",
