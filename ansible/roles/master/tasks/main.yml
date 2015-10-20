@@ -70,13 +70,17 @@
 - name: write the kubecfg (auth) file for kubectl
   template: src=kubectl.kubeconfig.j2 dest={{ kube_config_dir }}/kubectl.kubeconfig
 
+# Enable kubelet on master only when OpenContrail is in use; see
+# https://github.com/kubernetes/contrib/pull/183
 - name: write the config files for kubelet
   template: src=kubelet.j2 dest={{ kube_config_dir }}/kubelet
   notify:
     - restart kubelet
+  when: networking == 'opencontrail'
 
 - name: Enable kubelet
   service: name=kubelet enabled=yes state=started
+  when: networking == 'opencontrail'
 
 - include: firewalld.yml
   when: has_firewalld

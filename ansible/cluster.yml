@@ -33,7 +33,7 @@
 - hosts: all
   sudo: yes
   roles:
-    - { role: opencontrail, when networking == 'opencontrail'}
+    - { role: opencontrail, when: networking == 'opencontrail'}
   tags:
     - opencontrail
 
