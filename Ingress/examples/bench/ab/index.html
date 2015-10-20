@@ -1,0 +1,66 @@
+<pre>
+INTRODUCTION
+============
+This is an nginx webserver for simple loadbalancer testing. It works well
+for me but it might not have some of the features you want. If you would
+like, please extend the code and send me the patch. The servers runs
+nginx compiled with ngx_lua; its configration lies at
+/usr/local/nginx/conf/nginx.conf. Ways to start it:
+* kubectl create -f kube-contrib/nginx-app.yaml
+* docker run -it -p 8082:80 bprashanth/nginxtest:1.0
+
+ENDPOINTS
+=========
+ <a href="hostname">hostname</a>: An endpoint to query the hostname.
+ <a href="stress">stress</a>: An endpoint to stress the host.
+ <a href="fs/index.html">fs</a>: A file system for static content.
+
+PROFILING
+=========
+You can stress this container via apache bench:
+<b>docker run jordi/ab ab -kc 10000 -n 10000 http://foo/images/nginx.jpg</b>
+
+This should produce results:
+Concurrency Level:      1000
+Time taken for tests:   30.131674 seconds
+Complete requests:      10000
+Failed requests:        0
+Write errors:           0
+Requests per second:    331.88 [#/sec] (mean)
+Time per request:       3013.167 [ms] (mean)
+Time per request:       3.013 [ms] (mean, across all concurrent requests)
+
+One would typically replace foo/images/nginx.jpg with the stress endpoint
+to simulate noisy neighbors. Eg:
+<b>docker run jordi/ab ab -kc 10000 -n 10000 http://foo/stress?cpu=1&w=3&bytes=100M&timeout=2</b>
+
+This will stress a single core with 3 workers each spinning on malloc
+free of 100M for 2s. You should be able to observe this in the profile.
+
+Note that the "size" arg may be suffixed with B,K,M,G (bytes), and you
+almost always want to, because a stress test in bytes isn't much of a
+stress test. However the timeout parameter is always in seconds. Do
+not specify 1s, the trailing "s" will flip the profiling tool into
+strictly secure mode.
+
+FILESYSTEM
+==========
+Nginx will serve static content places anywhere under the /siteroot/fs
+heirarchy. A cron job runs every minute generating index.html files for
+subdirectories, so you can just place files and have them served via
+http endpoints. This feature has only been lightly tested and is meant
+to be used in conjunction with the profiling utilities to measure qps.
+
+HOSTNAME
+========
+Writes the results of `hostname` into the http response. Obviously in
+the case of a container/pod this will be a cryptic hash, not the node's
+hostname. Meant for use in testing loadbalancing algorithms.
+
+LIMITATIONS
+===========
+There's some fishy business going on with the TERM env var that sometimes
+prevents top from working properly, so the profiling during a stress run
+might not always work.
+
+</pre>

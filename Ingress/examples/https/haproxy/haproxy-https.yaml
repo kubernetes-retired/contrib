@@ -1,0 +1,86 @@
+# This app is made up of a single frontend/backend. The backend has a Service
+# and a ReplicationController. The frontend doesn't need a Service since it's
+# using hostPort 8082. All pods/services/rcs in this manifest have the label
+# app=haproxyhttps in addition to the labels needed by the appropriate selector.
+
+# Frontend terminates ssl on :8082
+# Even traffic through :80 should get redirected to https.
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: haproxyhttps
+  labels:
+    app: haproxyhttps
+spec:
+  replicas: 1
+  selector:
+    name: frontend
+  template:
+    metadata:
+      labels:
+        app: haproxyhttps
+        name: frontend
+    spec:
+      volumes:
+      - name: secret-volume
+        secret:
+          secretName: haproxyhttps
+      containers:
+      - image: bprashanth/haproxyhttps:0.0
+        imagePullPolicy: Always
+        name: haproxy
+        ports:
+        # Note: you need to open firewall rules for these ports, if any.
+        - containerPort: 443
+          hostPort: 443
+        - containerPort: 80
+          hostPort: 80
+        # Note that the mount point is /ssl. We need this because haproxy
+        # chokes if it finds multiple non-pem keys in the ssl dir, and
+        # current secrets infrastructure is geared toward .key and .crt,
+        # not .pem. So the daemonizer converts .key, .crt to .pem in the
+        # directory mentioned in haproxy.cfg.
+        volumeMounts:
+        - mountPath: /ssl
+          name: secret-volume
+---
+# backend1 is pure http
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx1
+  labels:
+    app: haproxyhttps
+spec:
+  # This request for clusterIP must match what's in haproxy.cfg.
+  # This is just for illustration. If this IP is not available
+  # the request to create the service will fail.
+  clusterIP: 10.0.1.175
+  ports:
+  - port: 80
+    protocol: TCP
+  selector:
+    name: nginx1
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+    name: nginx1
+    labels:
+      app: haproxyhttps
+spec:
+  replicas: 1
+  selector:
+    name: nginx1
+  template:
+    metadata:
+      labels:
+        name: nginx1
+        app: haproxyhttps
+    spec:
+      containers:
+      - name: nginx
+        image: bprashanth/nginxtest:1.0
+        ports:
+        - containerPort: 80
+

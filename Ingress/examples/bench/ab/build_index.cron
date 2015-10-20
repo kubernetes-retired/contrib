@@ -1,0 +1,1 @@
+* * * * * /build_index.sh /siteroot/fs >> /var/log/cron.log 2>&1
