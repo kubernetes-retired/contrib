@@ -126,7 +126,7 @@ var (
 		as a web page and use the content as error page. Is required that the URL returns
 		200 as a status code`)
 
-	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom 
+	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
 		default balance algorithm.`)
 )
 
@@ -415,9 +415,8 @@ func (lbc *loadBalancerController) worker() {
 		if err := lbc.sync(false); err != nil {
 			glog.Infof("Requeuing %v because of error: %v", key, err)
 			lbc.queue.Add(key)
-		} else {
-			lbc.queue.Done(key)
 		}
+		lbc.queue.Done(key)
 	}
 }
 
