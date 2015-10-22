@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"net/http"
 	"strings"
 
 	compute "google.golang.org/api/compute/v1"
@@ -113,9 +114,22 @@ func (i *Instances) Remove(names []string) error {
 }
 
 // Sync syncs kubernetes instances with the instances in the instance group.
-func (i *Instances) Sync(nodes []string) error {
+func (i *Instances) Sync(nodes []string) (err error) {
 	glog.Infof("Syncing nodes %v", nodes)
-	gceNodes, err := i.list()
+	defer func() {
+		// If the default Instance group doesn't exist because someone
+		// messed with the UI, recreate it.
+		if err != nil && isHTTPErrorCode(err, http.StatusNotFound) {
+			var ig *compute.InstanceGroup
+			ig, err = createInstanceGroup(i.cloud, i.defaultIG.Name)
+			if err == nil {
+				i.defaultIG = ig
+			}
+		}
+	}()
+
+	gceNodes := sets.NewString()
+	gceNodes, err = i.list()
 	if err != nil {
 		return err
 	}
@@ -129,14 +143,14 @@ func (i *Instances) Sync(nodes []string) error {
 	addNodes := kubeNodes.Difference(gceNodes).List()
 
 	if len(removeNodes) != 0 {
-		if err := i.Remove(
+		if err = i.Remove(
 			gceNodes.Difference(kubeNodes).List()); err != nil {
 			return err
 		}
 	}
 
 	if len(addNodes) != 0 {
-		if err := i.Add(
+		if err = i.Add(
 			kubeNodes.Difference(gceNodes).List()); err != nil {
 			return err
 		}

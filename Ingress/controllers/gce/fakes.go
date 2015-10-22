@@ -300,31 +300,42 @@ func newFakeLoadBalancers(name string) *fakeLoadBalancers {
 }
 
 type fakeHealthChecks struct {
-	hc *compute.HttpHealthCheck
+	hc []*compute.HttpHealthCheck
 }
 
 func (f *fakeHealthChecks) CreateHttpHealthCheck(hc *compute.HttpHealthCheck) error {
-	f.hc = hc
+	f.hc = append(f.hc, hc)
 	return nil
 }
 
 func (f *fakeHealthChecks) GetHttpHealthCheck(name string) (*compute.HttpHealthCheck, error) {
-	if f.hc == nil || f.hc.Name != name {
-		return nil, fmt.Errorf("Health check %v not found.", name)
+	for _, h := range f.hc {
+		if h.Name == name {
+			return h, nil
+		}
 	}
-	return f.hc, nil
+	return nil, fmt.Errorf("Health check %v not found.", name)
 }
 
 func (f *fakeHealthChecks) DeleteHttpHealthCheck(name string) error {
-	if f.hc == nil || f.hc.Name != name {
-		return fmt.Errorf("Health check %v not found.", name)
+	healthChecks := []*compute.HttpHealthCheck{}
+	exists := false
+	for _, h := range f.hc {
+		if h.Name == name {
+			exists = true
+			continue
+		}
+		healthChecks = append(healthChecks, h)
 	}
-	f.hc = nil
+	if !exists {
+		return fmt.Errorf("Failed to find health check %v", name)
+	}
+	f.hc = healthChecks
 	return nil
 }
 
 func newFakeHealthChecks() *fakeHealthChecks {
-	return &fakeHealthChecks{hc: nil}
+	return &fakeHealthChecks{hc: []*compute.HttpHealthCheck{}}
 }
 
 // BackendServices fakes
@@ -371,6 +382,22 @@ func (f *fakeBackendServices) UpdateBackendService(be *compute.BackendService) e
 		}
 	}
 	return nil
+}
+
+func (f *fakeBackendServices) GetHealth(name, instanceGroupLink string) (*compute.BackendServiceGroupHealth, error) {
+	be, err := f.GetBackendService(name)
+	if err != nil {
+		return nil, err
+	}
+	states := []*compute.HealthStatus{
+		&compute.HealthStatus{
+			HealthState: "HEALTHY",
+			IpAddress:   "",
+			Port:        be.Port,
+		},
+	}
+	return &compute.BackendServiceGroupHealth{
+		HealthStatus: states}, nil
 }
 
 func newFakeBackendServices() *fakeBackendServices {

@@ -87,6 +87,7 @@ type BackendPool interface {
 	Sync(ports []int64) error
 	GC(ports []int64) error
 	Shutdown() error
+	Status(name string) string
 }
 
 // BackendServices is an interface for managing gce backend services.
@@ -95,6 +96,7 @@ type BackendServices interface {
 	UpdateBackendService(bg *compute.BackendService) error
 	CreateBackendService(bg *compute.BackendService) error
 	DeleteBackendService(name string) error
+	GetHealth(name, instanceGroupLink string) (*compute.BackendServiceGroupHealth, error)
 }
 
 // LoadBalancers is an interface for managing all the gce resources needed by L7

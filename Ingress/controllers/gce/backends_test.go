@@ -30,7 +30,7 @@ func newBackendPool(f BackendServices, fakeIGs InstanceGroups, defaultBeNodePort
 		&compute.InstanceGroup{
 			SelfLink: "foo",
 		},
-		&compute.HttpHealthCheck{}, fakeIGs)
+		NewHealthChecker(newFakeHealthChecks(), "/"), fakeIGs)
 	if err != nil || pool == nil {
 		t.Fatalf("%v", err)
 	}

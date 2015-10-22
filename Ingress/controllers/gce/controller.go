@@ -37,8 +37,9 @@ import (
 )
 
 var (
-	keyFunc          = framework.DeletionHandlingMetaNamespaceKeyFunc
-	lbControllerName = "lbcontroller"
+	keyFunc             = framework.DeletionHandlingMetaNamespaceKeyFunc
+	lbControllerName    = "lbcontroller"
+	k8sAnnotationPrefix = "ingress.kubernetes.io"
 )
 
 // loadBalancerController watches the kubernetes api and adds/removes services
@@ -278,13 +279,56 @@ func (lbc *loadBalancerController) sync(key string) {
 		lbc.ingQueue.requeue(key, err)
 	} else if err := l7.UpdateUrlMap(urlMap); err != nil {
 		lbc.ingQueue.requeue(key, err)
-	} else if updateLbIp(
-		lbc.client.Extensions().Ingress(ing.Namespace),
-		ing,
-		l7.GetIP()); err != nil {
+	} else if lbc.updateIngressStatus(l7, ing); err != nil {
 		lbc.ingQueue.requeue(key, err)
 	}
 	return
+}
+
+// updateIngressStatus updates the IP and annotations of a loadbalancer.
+// The annotations are parsed by kubectl describe.
+func (lbc *loadBalancerController) updateIngressStatus(l7 *L7, ing extensions.Ingress) error {
+	ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
+	ip := l7.GetIP()
+
+	glog.Infof("Updating Ingress %v/%v with ip %v",
+		ing.Namespace, ing.Name, ip)
+
+	currIng, err := ingClient.Get(ing.Name)
+	if err != nil {
+		return err
+	}
+	currIng.Status = extensions.IngressStatus{
+		LoadBalancer: api.LoadBalancerStatus{
+			Ingress: []api.LoadBalancerIngress{
+				{IP: ip},
+			},
+		},
+	}
+	lbIPs := ing.Status.LoadBalancer.Ingress
+	if len(lbIPs) == 0 && ip != "" || lbIPs[0].IP != ip {
+		// TODO: If this update fails it's probably resource version related,
+		// which means it's advantageous to retry right away vs requeuing,
+		// which will lead to a full sync.
+		glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, ip)
+		if _, err := ingClient.UpdateStatus(currIng); err != nil {
+			return err
+		}
+	}
+	currIng, err = ingClient.Get(ing.Name)
+	if err != nil {
+		return err
+	}
+	currIng.Annotations = getAnnotations(l7, currIng.Annotations, lbc.clusterManager.backendPool)
+	if reflect.DeepEqual(ing.Annotations, currIng.Annotations) {
+		return nil
+	}
+	glog.Infof("Updating annotations of %v/%v", ing.Namespace, ing.Name)
+	if _, err := ingClient.Update(currIng); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // syncNodes manages the syncing of kubernetes nodes to gce instance groups.

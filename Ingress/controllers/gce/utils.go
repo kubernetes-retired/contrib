@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -24,11 +25,11 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 
 	"github.com/golang/glog"
+	"google.golang.org/api/googleapi"
 )
 
 // errorNodePortNotFound is an implementation of error.
@@ -299,34 +300,29 @@ func (s *StoreToIngressLister) GetServiceIngress(svc *api.Service) (ings []exten
 	return
 }
 
-// updateLbIp updates the loadbalancer status ip if required.
-func updateLbIp(
-	ingClient client.IngressInterface, ing extensions.Ingress, ip string) error {
-	lbIPs := ing.Status.LoadBalancer.Ingress
-	if len(lbIPs) > 0 && lbIPs[0].IP == ip {
-		glog.Infof("Ingress %v/%v: %v doesn't require status update",
-			ing.Namespace, ing.Name, lbIPs)
-		return nil
+// getAnnotations returns the annotations of an l7. This includes it's current status.
+func getAnnotations(l7 *L7, existing map[string]string, backendPool BackendPool) map[string]string {
+	backends := l7.getBackendNames()
+	backendState := map[string]string{}
+	for _, beName := range backends {
+		backendState[beName] = backendPool.Status(beName)
 	}
-	glog.Infof("Updating Ingress %v/%v with ip %v",
-		ing.Namespace, ing.Name, ip)
+	jsonBackendState := "Unknown"
+	b, err := json.Marshal(backendState)
+	if err == nil {
+		jsonBackendState = string(b)
+	}
+	existing[fmt.Sprintf("%v/url-map", k8sAnnotationPrefix)] = l7.um.Name
+	existing[fmt.Sprintf("%v/forwarding-rule", k8sAnnotationPrefix)] = l7.fw.Name
+	existing[fmt.Sprintf("%v/target-proxy", k8sAnnotationPrefix)] = l7.tp.Name
+	// TODO: Better comparison, we really want to know when a backend changed state.
+	existing[fmt.Sprintf("%v/backends", k8sAnnotationPrefix)] = jsonBackendState
+	return existing
+}
 
-	currIng, err := ingClient.Get(ing.Name)
-	if err != nil {
-		return err
-	}
-	currIng.Status = extensions.IngressStatus{
-		LoadBalancer: api.LoadBalancerStatus{
-			Ingress: []api.LoadBalancerIngress{
-				{IP: ip},
-			},
-		},
-	}
-	// TODO: If this update fails it's probably resource version related,
-	// which means it's advantageous to retry right away vs requeuing,
-	// which will lead to a full sync.
-	if _, err := ingClient.UpdateStatus(currIng); err != nil {
-		return err
-	}
-	return nil
+// isHTTPErrorCode checks if the given error matches the given HTTP Error code.
+// For this to work the error must be a googleapi Error.
+func isHTTPErrorCode(err error, code int) bool {
+	apiErr, ok := err.(*googleapi.Error)
+	return ok && apiErr.Code == code
 }

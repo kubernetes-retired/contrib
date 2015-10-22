@@ -168,8 +168,9 @@ func (b *Backends) edgeHop(be *compute.BackendService) error {
 	}
 	glog.Infof("Backend %v has a broken edge, adding link to %v",
 		be.Name, b.defaultIG.Name)
+	instanceGroupLink := b.defaultIG.SelfLink
 	be.Backends = []*compute.Backend{
-		{Group: b.defaultIG.SelfLink},
+		{Group: instanceGroupLink},
 	}
 	if err := b.cloud.UpdateBackendService(be); err != nil {
 		return err
@@ -193,8 +194,6 @@ func (b *Backends) Sync(svcNodePorts []int64) error {
 
 // GC garbage collects services corresponding to ports in the given list.
 func (b *Backends) GC(svcNodePorts []int64) error {
-	glog.Infof("GC: Existing backends %v", svcNodePorts)
-
 	knownPorts := sets.NewString()
 	for _, port := range svcNodePorts {
 		knownPorts.Insert(portKey(port))
@@ -212,6 +211,7 @@ func (b *Backends) GC(svcNodePorts []int64) error {
 				b.defaultBackend.SelfLink) {
 			continue
 		}
+		glog.Infof("GCing backend for port %v", p)
 		if err := b.Delete(int64(p)); err != nil {
 			return err
 		}
@@ -229,4 +229,15 @@ func (b *Backends) Shutdown() error {
 		return err
 	}
 	return nil
+}
+
+// Status returns the status of the given backend by name.
+func (b *Backends) Status(name string) string {
+	// TODO: Include port and ip
+	hs, err := b.cloud.GetHealth(name, b.defaultIG.SelfLink)
+	if err != nil || len(hs.HealthStatus) == 0 || hs.HealthStatus[0] == nil {
+		return "Unknown"
+	}
+	// TODO: State transition are important, not just the latest.
+	return hs.HealthStatus[0].HealthState
 }

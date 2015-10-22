@@ -177,8 +177,6 @@ func (l *L7s) Sync(names []string) error {
 
 // GC garbage collects loadbalancers not in the input list.
 func (l *L7s) GC(names []string) error {
-	glog.Infof("GCing loadbalancers %+v", names)
-
 	knownLoadBalancers := sets.NewString()
 	for _, n := range names {
 		knownLoadBalancers.Insert(lbName(n))
@@ -190,6 +188,7 @@ func (l *L7s) GC(names []string) error {
 		if knownLoadBalancers.Has(name) {
 			continue
 		}
+		glog.Infof("GCing loadbalancer %v", name)
 		if err := l.Delete(name); err != nil {
 			return err
 		}
@@ -468,4 +467,23 @@ func (l *L7) Cleanup() error {
 		l.um = nil
 	}
 	return nil
+}
+
+// getBackendNames returns the names of backends in this L7 urlmap.
+func (l *L7) getBackendNames() []string {
+	if l.um == nil {
+		return []string{}
+	}
+	beNames := sets.NewString()
+	for _, pathMatcher := range l.um.PathMatchers {
+		for _, pathRule := range pathMatcher.PathRules {
+			// This is gross, but the urlmap only has links to backend services.
+			parts := strings.Split(pathRule.Service, "/")
+			name := parts[len(parts)-1]
+			if name != "" {
+				beNames.Insert(name)
+			}
+		}
+	}
+	return beNames.List()
 }
