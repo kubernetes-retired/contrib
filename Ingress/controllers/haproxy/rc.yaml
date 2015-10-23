@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ReplicationController
 metadata:
   name: hlbc
+  namespace: kube-system
   labels:
     app: hlbc
     version: v1
@@ -48,6 +49,11 @@ spec:
           protocol: TCP
         resources: {}
         args:
+        # Ignore services without Ingress
         - --use-ingress=true
+        # Watch all resources, not recommended if use-ingress=false
+        - --watch-all-namespaces=true
+        # Static list of tcp services
         - --tcp-services=mysql:3306,nginxsvc:443
+        # Log backend information to syslog
         - --syslog=true
