@@ -1,25 +1,25 @@
 apiVersion: v1
 kind: ReplicationController
 metadata:
-  name: service-loadbalancer
+  name: hlbc
   labels:
-    app: service-loadbalancer
+    app: hlbc
     version: v1
 spec:
   replicas: 1
   selector:
-    app: service-loadbalancer
+    app: hlbc
     version: v1
   template:
     metadata:
       labels:
-        app: service-loadbalancer
+        app: hlbc
         version: v1
     spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: gcr.io/google_containers/servicelb:0.1
+      - image: bprashanth/hlbc-test:0.0
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -48,4 +48,6 @@ spec:
           protocol: TCP
         resources: {}
         args:
+        - --use-ingress=true
         - --tcp-services=mysql:3306,nginxsvc:443
+        - --syslog=true

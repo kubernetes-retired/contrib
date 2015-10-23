@@ -219,7 +219,7 @@ spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: gcr.io/google_containers/servicelb:0.1
+      - image: gcr.io/google_containers/hlbc:0.1
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -286,7 +286,7 @@ Europe
   5. run the service_loadbalancer with --dry
 - Check http://<node_ip>:1936 for the stats page. It requires the password used in the template file.
 - Try talking to haproxy on the stats socket directly on the container using kubectl exec, eg: echo “show info” | socat unix-connect:/tmp/haproxy stdio
-- Run the service_loadbalancer with the flag --syslog to append the haproxy log as part of the pod stdout. Use kubectl logs to check the 
+- Run the service_loadbalancer with the flag --syslog to append the haproxy log as part of the pod stdout. Use kubectl logs to check the
 status of the services or stats about the traffic
 
 ### Wishlist:

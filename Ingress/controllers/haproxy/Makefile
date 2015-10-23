@@ -2,11 +2,11 @@ all: push
 
 # 0.0 shouldn't clobber any released builds
 TAG = 0.0
-PREFIX = gcr.io/google_containers/servicelb
+PREFIX = gcr.io/google_containers/hlbc
 HAPROXY_IMAGE = contrib-haproxy
 
-server: service_loadbalancer.go
-	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o service_loadbalancer ./service_loadbalancer.go ./loadbalancer_log.go
+server: hlbc.go
+	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o hlbc ./hlbc.go ./loadbalancer_log.go
 
 container: server haproxy
 	docker build -t $(PREFIX):$(TAG) .
@@ -23,7 +23,7 @@ haproxy:
 	mv haproxy-1.6-r0.apk haproxy.apk
 
 clean:
-	rm -f service_loadbalancer haproxy.apk
-	# remove servicelb and contrib-haproxy images
+	rm -f hlbc haproxy.apk
+	# remove hlbc and contrib-haproxy images
 	docker rmi -f $(HAPROXY_IMAGE):$(TAG) || true
 	docker rmi -f $(PREFIX):$(TAG) || true
