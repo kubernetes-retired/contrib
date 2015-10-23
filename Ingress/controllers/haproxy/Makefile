@@ -2,7 +2,7 @@ all: push
 
 # 0.0 shouldn't clobber any released builds
 TAG = 0.0
-PREFIX = gcr.io/google_containers/hlbc
+PREFIX = bprashanth/hlbc-test
 HAPROXY_IMAGE = contrib-haproxy
 
 server: hlbc.go
@@ -12,7 +12,7 @@ container: server haproxy
 	docker build -t $(PREFIX):$(TAG) .
 
 push: container
-	gcloud docker push $(PREFIX):$(TAG)
+	docker push $(PREFIX):$(TAG)
 
 haproxy:
 	docker build -t $(HAPROXY_IMAGE):$(TAG) build
