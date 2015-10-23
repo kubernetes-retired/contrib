@@ -136,6 +136,10 @@ var (
 
 	useIngress = flags.Bool("use-ingress", false, `if set, the Ingress resource is consulted
     	to get route information for a Service (eg: host, path).`)
+
+	watchAll = flags.Bool("watch-all-namespaces", false, `if set, the controller watches all
+		namespaces. Otherwise it only watches the namespace specifiec via -namespace, and
+		default if none is specified.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -672,14 +676,31 @@ func main() {
 		}
 		kubeClient, err = client.New(config)
 	}
-	namespace, specified, err := clientConfig.Namespace()
-	if err != nil {
-		glog.Fatalf("unexpected error: %v", err)
+	var namespace string
+	if *watchAll {
+		namespace = api.NamespaceAll
+		// One can't watch servcies in all namespaces because of collisions.
+		// i.e an Ingress specifically configures a loadbalancer behind a
+		// given IP with some path rules. This has nothing to do with
+		// namespaces. However, if 2 services with the same name show up in
+		// different namespaces, which one gets the service name path? This
+		// is a case of explicit (Ingress) vs implicit (service name), where
+		// we simply don't handle the implicit case.
+		if !*useIngress {
+			glog.Fatalf(
+				"Invalid configuration: --use-ingress=false, --watch-all-namespaces=true.")
+		}
+	} else {
+		var specified bool
+		var err error
+		namespace, specified, err = clientConfig.Namespace()
+		if err != nil {
+			glog.Fatalf("unexpected error: %v", err)
+		}
+		if !specified {
+			namespace = "default"
+		}
 	}
-	if !specified {
-		namespace = "default"
-	}
-
 	// TODO: Handle multiple namespaces
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace)
 	go lbc.epController.Run(util.NeverStop)
