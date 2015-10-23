@@ -224,7 +224,7 @@ func TestForEachIssueDo(t *testing.T) {
 			objects = append(objects, obj)
 			return nil
 		}
-		err := config.ForEachIssueDo(handle)
+		err := config.ForEachIssueDo("open", nil, handle)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
