@@ -154,8 +154,7 @@ func main() {
 		glog.Fatalf("Default backend should take the form namespace/name: %v",
 			*defaultSvc)
 	}
-	defaultBackendNodePort, err := waitForService(
-		kubeClient, parts[0], parts[1])
+	defaultBackendNodePort, err := getNodePort(kubeClient, parts[0], parts[1])
 	if err != nil {
 		glog.Fatalf("Could not configure default backend %v: %v",
 			*defaultSvc, err)
@@ -182,7 +181,7 @@ func main() {
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}
-	glog.Infof("Created lbc %+v", lbc)
+	glog.Infof("Created lbc %+v", clusterManager.ClusterName)
 	go registerHandlers(lbc)
 	if *deleteAllOnQuit {
 		go handleSigterm(lbc)

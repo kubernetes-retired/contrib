@@ -320,7 +320,7 @@ func getAnnotations(l7 *L7, existing map[string]string, backendPool BackendPool)
 	existing[fmt.Sprintf("%v/url-map", k8sAnnotationPrefix)] = l7.um.Name
 	existing[fmt.Sprintf("%v/forwarding-rule", k8sAnnotationPrefix)] = l7.fw.Name
 	existing[fmt.Sprintf("%v/target-proxy", k8sAnnotationPrefix)] = l7.tp.Name
-	// TODO: Better comparison, we really want to know when a backend changed state.
+	// TODO: We really want to know when a backend flipped states.
 	existing[fmt.Sprintf("%v/backends", k8sAnnotationPrefix)] = jsonBackendState
 	return existing
 }
@@ -332,11 +332,11 @@ func isHTTPErrorCode(err error, code int) bool {
 	return ok && apiErr.Code == code
 }
 
-// waitForService waits for the Service, and returns it's first node port.
-func waitForService(
-	client *client.Client, ns, name string) (nodePort int64, err error) {
+// getNodePort waits for the Service, and returns it's first node port.
+func getNodePort(client *client.Client, ns, name string) (nodePort int64, err error) {
 	var svc *api.Service
-	wait.Poll(5*time.Second, 5*time.Minute, func() (bool, error) {
+	glog.Infof("Waiting for %v/%v", ns, name)
+	wait.Poll(100*time.Microsecond, 5*time.Minute, func() (bool, error) {
 		svc, err = client.Services(ns).Get(name)
 		if err != nil {
 			return false, nil
@@ -344,6 +344,7 @@ func waitForService(
 		for _, p := range svc.Spec.Ports {
 			if p.NodePort != 0 {
 				nodePort = int64(p.NodePort)
+				glog.Infof("Node port %v", nodePort)
 				break
 			}
 		}

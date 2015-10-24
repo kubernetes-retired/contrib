@@ -27,8 +27,6 @@ const (
 	defaultPort            = 80
 	defaultHealthCheckPath = "/"
 	defaultPortRange       = "80"
-	defaultPortName        = "default-port"
-	defaultHttpHealthCheck = "k8s-default-health-check"
 
 	// A single instance-group is created per cluster manager.
 	// Tagged with the name of the controller.
@@ -70,10 +68,8 @@ func (c *ClusterManager) shutdown() error {
 	if err := c.l7Pool.Shutdown(); err != nil {
 		return err
 	}
-	if err := c.backendPool.Shutdown(); err != nil {
-		return err
-	}
-	return c.instancePool.Shutdown()
+	// The backend pool will also delete instance groups.
+	return c.backendPool.Shutdown()
 }
 
 func defaultInstanceGroupName(clusterName string) string {
@@ -97,32 +93,12 @@ func NewClusterManager(name string, defaultBackendNodePort int64, defaultHealthC
 	}
 	cloud := cloudInterface.(*gce.GCECloud)
 	cluster := ClusterManager{ClusterName: name}
-
-	// Why do we need so many defaults?
-	// Default IG: We add all instances to a single ig, and
-	// every service that requires loadbalancing opens up
-	// a nodePort on the cluster, which translates to a node
-	// on this default ig.
-	//
-	// Default Backend: We need a default backend to create
-	// every urlmap, even if the user doesn't specify one.
-	// This is the backend that gets requests if no paths match.
-	// Note that this backend doesn't actually occupy a port
-	// on the instance group.
-
-	defaultIGName := defaultInstanceGroupName(name)
-	if cluster.instancePool, err = NewNodePool(cloud, defaultIGName); err != nil {
-		return nil, err
-	}
-
-	// TODO: We're roud tripping for a resource we just created.
-	defaultIG, err := cluster.instancePool.Get(defaultIGName)
-	if err != nil {
+	if cluster.instancePool, err = NewNodePool(cloud); err != nil {
 		return nil, err
 	}
 	healthChecker := NewHealthChecker(cloud, defaultHealthCheckPath)
 	if cluster.backendPool, err = NewBackendPool(
-		cloud, defaultBackendNodePort, defaultIG, healthChecker, cloud); err != nil {
+		cloud, defaultBackendNodePort, healthChecker, cluster.instancePool); err != nil {
 		return nil, err
 	}
 	cluster.defaultBackendNodePort = defaultBackendNodePort

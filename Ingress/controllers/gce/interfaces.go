@@ -42,13 +42,14 @@ import (
 //  also responsible for periodically checking the edge links between various
 //	cloud resources.
 //
-// To adequately test this, we need 1 set of interfaces from pools -> cloud,
-// and another from controller -> pools. All the cloud interfaces have a
-// corresponding implementation in fakes.go. When the controller runs in
-// production (i.e --running-in-cluster=true) it passes a Kubernetes
-// cloudprovider object to each of the sync pools. During unittests or when run
-// with --running-in-cluster=false, each sync pool gets a fake cloud interface.
-
+// A note on sync pools: this package has 3 sync pools: for node, instances and
+// loadbalancer resources. A sync pool is meant to record all creates/deletes
+// performed by a controller and periodically verify that links are not broken.
+// For example, the controller might create a backend via backendPool.Add(),
+// the backend pool remembers this and continuously verifies that the backend
+// is connected to the right instance group, and that the instance group has
+// the right ports open.
+//
 // A note on naming convention: per golang style guide for Initialisms, Http
 // should be HTTP and Url should be URL, however because these interfaces
 // must match their siblings in the Kubernetes cloud provider, which are in turn
@@ -57,12 +58,14 @@ import (
 // NodePool is an interface to manage a pool of kubernetes nodes synced with vm instances in the cloud
 // through the InstanceGroups interface.
 type NodePool interface {
-	Add(nodeNames []string) error
-	Remove(nodeNames []string) error
+	AddInstanceGroup(name string, port int64) (*compute.InstanceGroup, *compute.NamedPort, error)
+	DeleteInstanceGroup(name string) error
+
+	// TODO: Refactor for modularity
+	Add(groupName string, nodeNames []string) error
+	Remove(groupName string, nodeNames []string) error
 	Sync(nodeNames []string) error
-	// TODO: Leaks the cloud abstraction.
 	Get(name string) (*compute.InstanceGroup, error)
-	Shutdown() error
 }
 
 // InstanceGroups is an interface for managing gce instances groups, and the instances therein.

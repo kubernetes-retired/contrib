@@ -117,7 +117,6 @@ func (f *fakeLoadBalancers) GetGlobalForwardingRule(name string) (*compute.Forwa
 }
 
 func (f *fakeLoadBalancers) CreateGlobalForwardingRule(proxy *compute.TargetHttpProxy, name string, portRange string) (*compute.ForwardingRule, error) {
-
 	rule := &compute.ForwardingRule{
 		Name:       name,
 		Target:     proxy.SelfLink,
@@ -426,26 +425,45 @@ func getInstanceList(nodeNames sets.String) *compute.InstanceGroupsListInstances
 
 // InstanceGroup fakes
 type fakeInstanceGroups struct {
-	instances     sets.String
-	instanceGroup string
-	ports         []int64
-	getResult     *compute.InstanceGroup
-	listResult    *compute.InstanceGroupsListInstances
-	calls         []int
+	instances      sets.String
+	instanceGroups []*compute.InstanceGroup
+	ports          []int64
+	getResult      *compute.InstanceGroup
+	listResult     *compute.InstanceGroupsListInstances
+	calls          []int
 }
 
 func (f *fakeInstanceGroups) GetInstanceGroup(name string) (*compute.InstanceGroup, error) {
 	f.calls = append(f.calls, Get)
-	return f.getResult, nil
+	for _, ig := range f.instanceGroups {
+		if ig.Name == name {
+			return ig, nil
+		}
+	}
+	// TODO: Return googleapi 404 error
+	return nil, fmt.Errorf("Instance group %v not found", name)
 }
 
 func (f *fakeInstanceGroups) CreateInstanceGroup(name string) (*compute.InstanceGroup, error) {
-	f.instanceGroup = name
-	return &compute.InstanceGroup{}, nil
+	newGroup := &compute.InstanceGroup{Name: name, SelfLink: name}
+	f.instanceGroups = append(f.instanceGroups, newGroup)
+	return newGroup, nil
 }
 
 func (f *fakeInstanceGroups) DeleteInstanceGroup(name string) error {
-	f.instanceGroup = ""
+	newGroups := []*compute.InstanceGroup{}
+	found := false
+	for _, ig := range f.instanceGroups {
+		if ig.Name == name {
+			found = true
+			continue
+		}
+		newGroups = append(newGroups, ig)
+	}
+	if !found {
+		return fmt.Errorf("Instance Group %v not found", name)
+	}
+	f.instanceGroups = newGroups
 	return nil
 }
 
@@ -492,23 +510,14 @@ func newFakeClusterManager(clusterName string) (*fakeClusterManager, error) {
 	fakeIGs := newFakeInstanceGroups(sets.NewString())
 	fakeHCs := newFakeHealthChecks()
 
-	defaultIGName := defaultInstanceGroupName(clusterName)
 	defaultBeName := beName(testDefaultBeNodePort)
 
-	nodePool, err := NewNodePool(fakeIGs, defaultIGName)
-	if err != nil {
-		return nil, err
-	}
-
+	nodePool, _ := NewNodePool(fakeIGs)
 	healthChecker := NewHealthChecker(fakeHCs, "/")
-
 	backendPool, err := NewBackendPool(
 		fakeBackends,
 		testDefaultBeNodePort,
-		&compute.InstanceGroup{
-			SelfLink: defaultIGName,
-		},
-		healthChecker, fakeIGs)
+		healthChecker, nodePool)
 	if err != nil {
 		return nil, err
 	}

@@ -19,18 +19,15 @@ package main
 import (
 	"testing"
 
-	compute "google.golang.org/api/compute/v1"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 func newBackendPool(f BackendServices, fakeIGs InstanceGroups, defaultBeNodePort int64, t *testing.T) BackendPool {
+	nodePool, _ := NewNodePool(fakeIGs)
 	pool, err := NewBackendPool(
 		f,
 		defaultBeNodePort,
-		&compute.InstanceGroup{
-			SelfLink: "foo",
-		},
-		NewHealthChecker(newFakeHealthChecks(), "/"), fakeIGs)
+		NewHealthChecker(newFakeHealthChecks(), "/"), nodePool)
 	if err != nil || pool == nil {
 		t.Fatalf("%v", err)
 	}
@@ -107,12 +104,13 @@ func TestBackendPoolAdd(t *testing.T) {
 			t.Fatalf("Unexpected create for existing backend service")
 		}
 	}
-	got, _ := f.GetBackendService(defaultBeName)
-	if got.Backends[0].Group != pool.(*Backends).defaultIG.SelfLink {
+	gotBackend, _ := f.GetBackendService(defaultBeName)
+	gotGroup, _ := fakeIGs.GetInstanceGroup(defaultBeName)
+	if gotBackend.Backends[0].Group != gotGroup.SelfLink {
 		t.Fatalf(
 			"Broken instance group link: %v %v",
-			got.Backends[0].Group,
-			pool.(*Backends).defaultIG.SelfLink)
+			gotBackend.Backends[0].Group,
+			gotGroup.SelfLink)
 	}
 }
 

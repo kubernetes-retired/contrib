@@ -224,6 +224,11 @@ func (lbc *loadBalancerController) sync(key string) {
 	}
 	nodePorts := lbc.tr.toNodePorts(&paths)
 	lbNames := lbc.ingLister.Store.ListKeys()
+	nodeNames, err := lbc.getReadyNodeNames()
+	if err != nil {
+		lbc.ingQueue.requeue(key, err)
+		return
+	}
 
 	// On GC:
 	// * Loadbalancers need to get deleted before backends.
@@ -247,14 +252,16 @@ func (lbc *loadBalancerController) sync(key string) {
 
 	// Create cluster-wide shared resources.
 	// TODO: If this turns into a bottleneck, split them out
-	// into independent sync pools.
-	if err := lbc.clusterManager.l7Pool.Sync(
-		lbNames); err != nil {
+	// into asynchronous sync pools.
+	if err := lbc.clusterManager.l7Pool.Sync(lbNames); err != nil {
 		lbc.ingQueue.requeue(key, err)
 		return
 	}
-	if err := lbc.clusterManager.backendPool.Sync(
-		nodePorts); err != nil {
+	if err := lbc.clusterManager.backendPool.Sync(nodePorts); err != nil {
+		lbc.ingQueue.requeue(key, err)
+		return
+	}
+	if err := lbc.clusterManager.instancePool.Sync(nodeNames); err != nil {
 		lbc.ingQueue.requeue(key, err)
 		return
 	}
@@ -289,12 +296,26 @@ func (lbc *loadBalancerController) sync(key string) {
 // The annotations are parsed by kubectl describe.
 func (lbc *loadBalancerController) updateIngressStatus(l7 *L7, ing extensions.Ingress) error {
 	ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
-	ip := l7.GetIP()
 
-	glog.Infof("Updating Ingress %v/%v with ip %v",
-		ing.Namespace, ing.Name, ip)
-
+	// Update annotations through /update endpoint
+	// We do this before the IP update because the forwarding rule is always
+	// the authoritative source of IP, even if the client were to change it.
 	currIng, err := ingClient.Get(ing.Name)
+	if err != nil {
+		return err
+	}
+	currIng.Annotations = getAnnotations(l7, currIng.Annotations, lbc.clusterManager.backendPool)
+	if reflect.DeepEqual(ing.Annotations, currIng.Annotations) {
+		return nil
+	}
+	glog.Infof("Updating annotations of %v/%v", ing.Namespace, ing.Name)
+	if _, err := ingClient.Update(currIng); err != nil {
+		return err
+	}
+
+	// Update IP through update/status endpoint
+	ip := l7.GetIP()
+	currIng, err = ingClient.Get(ing.Name)
 	if err != nil {
 		return err
 	}
@@ -308,44 +329,41 @@ func (lbc *loadBalancerController) updateIngressStatus(l7 *L7, ing extensions.In
 	lbIPs := ing.Status.LoadBalancer.Ingress
 	if len(lbIPs) == 0 && ip != "" || lbIPs[0].IP != ip {
 		// TODO: If this update fails it's probably resource version related,
-		// which means it's advantageous to retry right away vs requeuing,
-		// which will lead to a full sync.
+		// which means it's advantageous to retry right away vs requeuing.
 		glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, ip)
 		if _, err := ingClient.UpdateStatus(currIng); err != nil {
 			return err
 		}
 	}
-	currIng, err = ingClient.Get(ing.Name)
-	if err != nil {
-		return err
-	}
-	currIng.Annotations = getAnnotations(l7, currIng.Annotations, lbc.clusterManager.backendPool)
-	if reflect.DeepEqual(ing.Annotations, currIng.Annotations) {
-		return nil
-	}
-	glog.Infof("Updating annotations of %v/%v", ing.Namespace, ing.Name)
-	if _, err := ingClient.Update(currIng); err != nil {
-		return err
-	}
-
 	return nil
 }
 
 // syncNodes manages the syncing of kubernetes nodes to gce instance groups.
 // The instancegroups are referenced by loadbalancer backends.
 func (lbc *loadBalancerController) syncNodes(key string) {
-	kubeNodes, err := lbc.nodeLister.List()
+	nodeNames, err := lbc.getReadyNodeNames()
 	if err != nil {
 		lbc.nodeQueue.requeue(key, err)
 		return
-	}
-	nodeNames := []string{}
-	// TODO: delete unhealthy kubernetes nodes from cluster?
-	for _, n := range kubeNodes.Items {
-		nodeNames = append(nodeNames, n.Name)
 	}
 	if err := lbc.clusterManager.instancePool.Sync(nodeNames); err != nil {
 		lbc.nodeQueue.requeue(key, err)
 	}
 	return
+}
+
+// getReadyNodeNames returns names of schedulable, ready nodes from the node lister.
+func (lbc *loadBalancerController) getReadyNodeNames() ([]string, error) {
+	nodeNames := []string{}
+	nodes, err := lbc.nodeLister.NodeCondition(api.NodeReady, api.ConditionTrue).List()
+	if err != nil {
+		return nodeNames, err
+	}
+	for _, n := range nodes.Items {
+		if n.Spec.Unschedulable {
+			continue
+		}
+		nodeNames = append(nodeNames, n.Name)
+	}
+	return nodeNames, nil
 }
