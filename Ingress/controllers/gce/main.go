@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -75,10 +76,10 @@ var (
 		testing. In normal environments the controller should only delete
 		a loadbalancer if the associated Ingress is deleted.`)
 
-	defaultBackendNodePort = flags.Int64("default-backend-node-port", 0,
-		`Node port of a default backend to use if none is specified in the
-		Ingress. The controller assumes you have created a service with this
-		node port. This service should serve a default 404 page.`)
+	defaultSvc = flags.String("default-backend", "kube-system/glbc-default-backend",
+		`Service used to serve a 404 page for the default backend. Takes the form
+		namespace/name. The controller uses the first node port of this Service for
+		the default backend.`)
 
 	healthCheckPath = flags.String("health-check-path", "/",
 		`Path used to health-check a backend service. All Services must serve
@@ -125,8 +126,8 @@ func main() {
 	flags.Parse(os.Args)
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
-	if *defaultBackendNodePort == 0 {
-		glog.Fatalf("Please specify --default-backend-node-port")
+	if *defaultSvc == "" {
+		glog.Fatalf("Please specify --default-backend")
 	}
 
 	if *proxyUrl != "" {
@@ -147,10 +148,23 @@ func main() {
 			kubeClient, err = client.New(config)
 		}
 	}
+	// Wait for the default backend Service. There's no pretty way to do this.
+	parts := strings.Split(*defaultSvc, "/")
+	if len(parts) != 2 {
+		glog.Fatalf("Default backend should take the form namespace/name: %v",
+			*defaultSvc)
+	}
+	defaultBackendNodePort, err := waitForService(
+		kubeClient, parts[0], parts[1])
+	if err != nil {
+		glog.Fatalf("Could not configure default backend %v: %v",
+			*defaultSvc, err)
+	}
+
 	if *proxyUrl == "" && *inCluster {
 		// Create cluster manager
 		clusterManager, err = NewClusterManager(
-			*clusterName, *defaultBackendNodePort, *healthCheckPath)
+			*clusterName, defaultBackendNodePort, *healthCheckPath)
 		if err != nil {
 			glog.Fatalf("%v", err)
 		}

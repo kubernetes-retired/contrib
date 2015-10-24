@@ -382,7 +382,7 @@ func TestLbStatusUpdate(t *testing.T) {
 			},
 		},
 	}
-	updateAnnotations(l7, ing, lbc.clusterManager.backendPool)
+	ing.Annotations = getAnnotations(l7, map[string]string{}, lbc.clusterManager.backendPool)
 	updatedIng := runtime.EncodeOrDie(testapi.Extensions.Codec(), ing)
 	fakeHandler.ValidateRequest(
 		t, testapi.Extensions.ResourcePath(

@@ -25,7 +25,9 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 
 	"github.com/golang/glog"
@@ -302,6 +304,9 @@ func (s *StoreToIngressLister) GetServiceIngress(svc *api.Service) (ings []exten
 
 // getAnnotations returns the annotations of an l7. This includes it's current status.
 func getAnnotations(l7 *L7, existing map[string]string, backendPool BackendPool) map[string]string {
+	if existing == nil {
+		existing = map[string]string{}
+	}
 	backends := l7.getBackendNames()
 	backendState := map[string]string{}
 	for _, beName := range backends {
@@ -325,4 +330,24 @@ func getAnnotations(l7 *L7, existing map[string]string, backendPool BackendPool)
 func isHTTPErrorCode(err error, code int) bool {
 	apiErr, ok := err.(*googleapi.Error)
 	return ok && apiErr.Code == code
+}
+
+// waitForService waits for the Service, and returns it's first node port.
+func waitForService(
+	client *client.Client, ns, name string) (nodePort int64, err error) {
+	var svc *api.Service
+	wait.Poll(5*time.Second, 5*time.Minute, func() (bool, error) {
+		svc, err = client.Services(ns).Get(name)
+		if err != nil {
+			return false, nil
+		}
+		for _, p := range svc.Spec.Ports {
+			if p.NodePort != 0 {
+				nodePort = int64(p.NodePort)
+				break
+			}
+		}
+		return true, nil
+	})
+	return
 }

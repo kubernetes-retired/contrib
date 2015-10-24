@@ -20,6 +20,7 @@ import (
 	compute "google.golang.org/api/compute/v1"
 
 	"github.com/golang/glog"
+	"net/http"
 )
 
 // HealthChecks manages health checks.
@@ -69,7 +70,12 @@ func (h *HealthChecks) Add(port int64) error {
 func (h *HealthChecks) Delete(port int64) error {
 	name := beName(port)
 	glog.Infof("Deleting health check %v", name)
-	return h.cloud.DeleteHttpHealthCheck(beName(port))
+	if err := h.cloud.DeleteHttpHealthCheck(beName(port)); err != nil {
+		if !isHTTPErrorCode(err, http.StatusNotFound) {
+			return err
+		}
+	}
+	return nil
 }
 
 // Get returns the given health check.

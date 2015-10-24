@@ -171,7 +171,7 @@ func (lbc *loadBalancerController) enqueueIngressForService(obj interface{}) {
 	svc := obj.(*api.Service)
 	ings, err := lbc.ingLister.GetServiceIngress(svc)
 	if err != nil {
-		glog.Infof("IGnoring service %v: %v", svc.Name, err)
+		glog.Infof("ignoring service %v: %v", svc.Name, err)
 		return
 	}
 	for _, ing := range ings {

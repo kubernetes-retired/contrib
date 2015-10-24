@@ -20,6 +20,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"strings"
 
 	compute "google.golang.org/api/compute/v1"
@@ -448,21 +449,27 @@ func (l *L7) Cleanup() error {
 	if l.fw != nil {
 		glog.Infof("Deleting global forwarding rule %v", l.fw.Name)
 		if err := l.cloud.DeleteGlobalForwardingRule(l.fw.Name); err != nil {
-			return err
+			if !isHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
 		}
 		l.fw = nil
 	}
 	if l.tp != nil {
 		glog.Infof("Deleting target proxy %v", l.tp.Name)
 		if err := l.cloud.DeleteTargetHttpProxy(l.tp.Name); err != nil {
-			return err
+			if !isHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
 		}
 		l.tp = nil
 	}
 	if l.um != nil {
 		glog.Infof("Deleting url map %v", l.um.Name)
 		if err := l.cloud.DeleteUrlMap(l.um.Name); err != nil {
-			return err
+			if !isHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
 		}
 		l.um = nil
 	}
