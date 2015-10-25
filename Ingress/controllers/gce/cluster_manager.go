@@ -83,13 +83,13 @@ func (c *ClusterManager) shutdown() error {
 // If in performing the checkpoint the cluster manager runs out of quota, a
 // googleapi 403 is returned.
 func (c *ClusterManager) Checkpoint(lbNames, nodeNames []string, nodePorts []int64) error {
-	if err := c.l7Pool.Sync(lbNames); err != nil {
-		return err
-	}
 	if err := c.backendPool.Sync(nodePorts); err != nil {
 		return err
 	}
 	if err := c.instancePool.Sync(nodeNames); err != nil {
+		return err
+	}
+	if err := c.l7Pool.Sync(lbNames); err != nil {
 		return err
 	}
 	return nil

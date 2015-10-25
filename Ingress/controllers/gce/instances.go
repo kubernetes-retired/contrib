@@ -52,17 +52,18 @@ func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.Instance
 	} else {
 		glog.Infof("Instance group already exists %v", name)
 	}
+	defer i.pool.Add(name, ig)
 	namedPort, err := i.cloud.AddPortToInstanceGroup(ig, port)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	i.pool.Add(name, ig)
 	return ig, namedPort, nil
 }
 
 // DeleteInstanceGroup deletes the given IG by name.
 func (i *Instances) DeleteInstanceGroup(name string) error {
+	defer i.pool.Delete(name)
 	return i.cloud.DeleteInstanceGroup(name)
 }
 

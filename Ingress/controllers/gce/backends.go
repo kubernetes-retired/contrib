@@ -122,11 +122,19 @@ func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPor
 // Add will get or create a Backend for the given port.
 func (b *Backends) Add(port int64) error {
 	name := beName(port)
+
+	// Preemptive addition of a backend to the pool is only to force instance
+	// cleanup if user runs out of quota mid-way through this function, and
+	// decides to delete Ingress. A better solutions is to have the node pool
+	// cleaup after itself.
+	be := &compute.BackendService{}
+	defer func() { b.pool.Add(portKey(port), be) }()
+
 	ig, namedPort, err := b.nodePool.AddInstanceGroup(name, port)
 	if err != nil {
 		return err
 	}
-	be, _ := b.Get(port)
+	be, _ = b.Get(port)
 	if be == nil {
 		glog.Infof("Creating backend for instance group %v port %v named port %v",
 			ig.Name, port, namedPort)
@@ -139,8 +147,6 @@ func (b *Backends) Add(port int64) error {
 	if err := b.edgeHop(be, ig); err != nil {
 		return err
 	}
-
-	b.pool.Add(portKey(port), be)
 	return err
 }
 
@@ -152,18 +158,25 @@ func (b *Backends) Delete(port int64) (err error) {
 		if isHTTPErrorCode(err, http.StatusNotFound) {
 			err = nil
 		}
+		if err == nil {
+			b.pool.Delete(portKey(port))
+		}
 	}()
-	if err = b.cloud.DeleteBackendService(name); err != nil {
+	// Try deleting health checks and instance groups, even if a backend is
+	// not found. This guards against the case where we create one of the
+	// other 2 and run out of quota creating the backend.
+	if err = b.cloud.DeleteBackendService(name); err != nil &&
+		!isHTTPErrorCode(err, http.StatusNotFound) {
 		return err
 	}
-	if err = b.healthChecker.Delete(port); err != nil {
+	if err = b.healthChecker.Delete(port); err != nil &&
+		!isHTTPErrorCode(err, http.StatusNotFound) {
 		return err
 	}
 	glog.Infof("Deleting instance group %v", name)
 	if err = b.nodePool.DeleteInstanceGroup(name); err != nil {
 		return err
 	}
-	b.pool.Delete(portKey(port))
 	return nil
 }
 
@@ -209,18 +222,18 @@ func (b *Backends) GC(svcNodePorts []int64) error {
 		knownPorts.Insert(portKey(port))
 	}
 	pool := b.pool.snapshot()
-	for port, be := range pool {
+	for port := range pool {
 		p, err := strconv.Atoi(port)
 		if err != nil {
 			return err
 		}
-		if knownPorts.Has(portKey(int64(p))) ||
-			compareLinks(be.(*compute.BackendService).SelfLink,
-				b.defaultBackend.SelfLink) {
+		nodePort := int64(p)
+		if knownPorts.Has(portKey(nodePort)) ||
+			nodePort == b.defaultBackendNodePort {
 			continue
 		}
 		glog.Infof("GCing backend for port %v", p)
-		if err := b.Delete(int64(p)); err != nil {
+		if err := b.Delete(nodePort); err != nil {
 			return err
 		}
 	}

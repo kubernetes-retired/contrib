@@ -128,6 +128,7 @@ func (l *L7s) Get(name string) (*L7, error) {
 // If the loadbalancer already exists, it checks that its edges are valid.
 func (l *L7s) Add(name string) (err error) {
 	name = lbName(name)
+
 	lb, _ := l.Get(name)
 	if lb == nil {
 		glog.Infof("Creating l7 %v", name)
@@ -136,6 +137,11 @@ func (l *L7s) Add(name string) (err error) {
 			return err
 		}
 	}
+	// Add the lb to the pool, in case we create an UrlMap but run out
+	// of quota in creating the ForwardingRule we still need to cleanup
+	// the UrlMap during GC.
+	defer l.pool.Add(name, lb)
+
 	// Why edge hop for the create?
 	// The loadbalancer is a fictitious resource, it doesn't exist in gce. To
 	// make it exist we need to create a collection of gce resources, done
@@ -144,7 +150,6 @@ func (l *L7s) Add(name string) (err error) {
 		return err
 	}
 
-	l.pool.Add(name, lb)
 	return nil
 }
 
