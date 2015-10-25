@@ -86,7 +86,11 @@ func defaultBackendName(clusterName string) string {
 // - defaultBackendNodePort: is the node port of glbc's default backend. This is
 //	 the kubernetes Service that serves the 404 page if no urls match.
 // - defaultHealthCheckPath: is the default path used for L7 health checks, eg: "/healthz"
-func NewClusterManager(name string, defaultBackendNodePort int64, defaultHealthCheckPath string) (*ClusterManager, error) {
+func NewClusterManager(
+	name string,
+	defaultBackendNodePort int64,
+	defaultHealthCheckPath string) (*ClusterManager, error) {
+
 	cloudInterface, err := cloudprovider.GetCloudProvider("gce", nil)
 	if err != nil {
 		return nil, err
@@ -98,7 +102,10 @@ func NewClusterManager(name string, defaultBackendNodePort int64, defaultHealthC
 	}
 	healthChecker := NewHealthChecker(cloud, defaultHealthCheckPath)
 	if cluster.backendPool, err = NewBackendPool(
-		cloud, defaultBackendNodePort, healthChecker, cluster.instancePool); err != nil {
+		cloud,
+		defaultBackendNodePort,
+		healthChecker,
+		cluster.instancePool); err != nil {
 		return nil, err
 	}
 	cluster.defaultBackendNodePort = defaultBackendNodePort

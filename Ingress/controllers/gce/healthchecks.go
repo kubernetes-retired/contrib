@@ -37,16 +37,19 @@ func NewHealthChecker(cloud SingleHealthCheck, defaultHealthCheckPath string) He
 }
 
 // Add adds a healthcheck if one for the same port doesn't already exist.
-func (h *HealthChecks) Add(port int64) error {
+func (h *HealthChecks) Add(port int64, path string) error {
 	hc, _ := h.Get(port)
 	name := beName(port)
+	if path == "" {
+		path = h.defaultPath
+	}
 	if hc == nil {
 		glog.Infof("Creating health check %v", name)
 		if err := h.cloud.CreateHttpHealthCheck(
 			&compute.HttpHealthCheck{
 				Name:        name,
 				Port:        port,
-				RequestPath: h.defaultPath,
+				RequestPath: path,
 				Description: "Default kubernetes L7 Loadbalancing health check.",
 				// How often to health check.
 				CheckIntervalSec: 1,

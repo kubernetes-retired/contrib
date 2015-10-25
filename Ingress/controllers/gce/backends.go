@@ -62,6 +62,13 @@ func NewBackendPool(
 		healthChecker:          healthChecker,
 		defaultBackendNodePort: defaultBackendNodePort,
 	}
+	// TODO: When we figure out a way to expose health checks, this will not
+	// be necessary. The default backend must serve a 404 page on "/", which
+	// is the most common 200 path for every other backend.
+	if err := backends.healthChecker.Add(
+		defaultBackendNodePort, "/healthz"); err != nil {
+		return nil, err
+	}
 	err := backends.Add(defaultBackendNodePort)
 	if err != nil {
 		return nil, err
@@ -85,7 +92,7 @@ func (b *Backends) Get(port int64) (*compute.BackendService, error) {
 
 func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPort, name string) (*compute.BackendService, error) {
 	// Create a new health check
-	if err := b.healthChecker.Add(namedPort.Port); err != nil {
+	if err := b.healthChecker.Add(namedPort.Port, ""); err != nil {
 		return nil, err
 	}
 	hc, err := b.healthChecker.Get(namedPort.Port)
@@ -226,7 +233,7 @@ func (b *Backends) Shutdown() error {
 	if err := b.GC([]int64{}); err != nil {
 		return err
 	}
-	if err := b.cloud.DeleteBackendService(b.defaultBackend.Name); err != nil {
+	if err := b.Delete(b.defaultBackendNodePort); err != nil {
 		return err
 	}
 	return nil
