@@ -72,6 +72,59 @@ func (c *ClusterManager) shutdown() error {
 	return c.backendPool.Shutdown()
 }
 
+// Checkpoint performs a checkpoint with the cloud.
+// - lbNames are the names of L7 loadbalancers we wish to exist. If they already
+//   exist, they should not have any broken links between say, a UrlMap and
+//   TargetHttpProxy.
+// - nodeNames are the names of nodes we wish to add to all loadbalancer
+//   instance groups.
+// - nodePorts are the ports for which we require BackendServices. Each of
+//   these ports must also be opened on the corresponding Instance Group.
+// If in performing the checkpoint the cluster manager runs out of quota, a
+// googleapi 403 is returned.
+func (c *ClusterManager) Checkpoint(lbNames, nodeNames []string, nodePorts []int64) error {
+	if err := c.l7Pool.Sync(lbNames); err != nil {
+		return err
+	}
+	if err := c.backendPool.Sync(nodePorts); err != nil {
+		return err
+	}
+	if err := c.instancePool.Sync(nodeNames); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GC garbage collects unused resources.
+// - lbNames are the names of L7 loadbalancers we wish to exist. Those not in
+//   this list are removed from the cloud.
+// - nodePorts are the ports for which we want BackendServies. BackendServices
+//   for ports not in this list are deleted.
+// This method ignores googleapi 404 errors (StatusNotFound).
+func (c *ClusterManager) GC(lbNames []string, nodePorts []int64) error {
+
+	// On GC:
+	// * Loadbalancers need to get deleted before backends.
+	// * Backends are refcounted in a shared pool.
+	// * We always want to GC backends even if there was an error in GCing
+	//   loadbalancers, because the next Sync could rely on the GC for quota.
+	// * There are at least 2 cases for backend GC:
+	//   1. The loadbalancer has been deleted.
+	//   2. An update to the url map drops the refcount of a backend. This can
+	//      happen when an Ingress is updated, if we don't GC after the update
+	//      we'll leak the backend.
+
+	lbErr := c.l7Pool.GC(lbNames)
+	beErr := c.backendPool.GC(nodePorts)
+	if lbErr != nil {
+		return lbErr
+	}
+	if beErr != nil {
+		return beErr
+	}
+	return nil
+}
+
 func defaultInstanceGroupName(clusterName string) string {
 	return fmt.Sprintf("%v-%v", instanceGroupPrefix, clusterName)
 }

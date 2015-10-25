@@ -17,7 +17,7 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
+	"net/http"
 	"reflect"
 	"sync"
 	"time"
@@ -213,7 +213,7 @@ func (lbc *loadBalancerController) Stop() error {
 	return lbc.clusterManager.shutdown()
 }
 
-// sync manages the syncing of backends and pathmaps.
+// sync manages Ingress create/updates/deletes.
 func (lbc *loadBalancerController) sync(key string) {
 	glog.Infof("Syncing %v", key)
 
@@ -229,52 +229,42 @@ func (lbc *loadBalancerController) sync(key string) {
 		lbc.ingQueue.requeue(key, err)
 		return
 	}
-
-	// On GC:
-	// * Loadbalancers need to get deleted before backends.
-	// * Backends are refcounted in a shared pool.
-	// * We always want to GC backends even if there was an error in GCing
-	//   loadbalancers, because the next Sync could rely on the GC for quota.
-	// * There are at least 2 cases for backend GC:
-	//   1. The loadbalancer has been deleted.
-	//   2. An update to the url map drops the refcount of a backend. This can
-	//      happen when an Ingress is updated, if we don't GC after the update
-	//      we'll leak the backend.
-	defer func() {
-		lbErr := lbc.clusterManager.l7Pool.GC(lbNames)
-		beErr := lbc.clusterManager.backendPool.GC(nodePorts)
-		if lbErr != nil || beErr != nil {
-			lbc.ingQueue.requeue(key, fmt.Errorf(
-				"Lb GC error: %v, Backend GC error: %v", lbErr, beErr))
-		}
-		glog.Infof("Finished syncing %v", key)
-	}()
-
-	// Create cluster-wide shared resources.
-	// TODO: If this turns into a bottleneck, split them out
-	// into asynchronous sync pools.
-	if err := lbc.clusterManager.l7Pool.Sync(lbNames); err != nil {
-		lbc.ingQueue.requeue(key, err)
-		return
-	}
-	if err := lbc.clusterManager.backendPool.Sync(nodePorts); err != nil {
-		lbc.ingQueue.requeue(key, err)
-		return
-	}
-	if err := lbc.clusterManager.instancePool.Sync(nodeNames); err != nil {
-		lbc.ingQueue.requeue(key, err)
-		return
-	}
-
-	// Deal with the single loadbalancer that came through the watch
 	obj, ingExists, err := lbc.ingLister.Store.GetByKey(key)
 	if err != nil {
 		lbc.ingQueue.requeue(key, err)
 		return
 	}
+
+	// This performs a 2 phase checkpoint with the cloud:
+	// * Phase 1 creates/verifies resources are as expected. At the end of a
+	//   successful checkpoint we know that existing L7s are WAI, and the L7
+	//   for the Ingress associated with "key" is ready for a UrlMap update.
+	//   If this encounters an error, eg for quota reasons, we want to invoke
+	//   Phase 2 right away and retry checkpointing.
+	// * Phase 2 performs GC by refcounting shared resources. This needs to
+	//   happen periodically whether or not stage 1 fails. At the end of a
+	//   successful GC we know that there are no dangling cloud resources that
+	//   don't have an associated Kubernetes Ingress/Service/Endpoint.
+
+	defer func() {
+		if err := lbc.clusterManager.GC(lbNames, nodePorts); err != nil {
+			lbc.ingQueue.requeue(key, err)
+		}
+		glog.Infof("Finished syncing %v", key)
+	}()
+
+	if err := lbc.clusterManager.Checkpoint(lbNames, nodeNames, nodePorts); err != nil {
+		if isHTTPErrorCode(err, http.StatusForbidden) && ingExists {
+			lbc.recorder.Eventf(obj.(*extensions.Ingress), "Forbidden", "Error: %v", err)
+		}
+		lbc.ingQueue.requeue(key, err)
+		return
+	}
+
 	if !ingExists {
 		return
 	}
+	// Update the UrlMap of the single loadbalancer that came through the watch.
 	l7, err := lbc.clusterManager.l7Pool.Get(key)
 	if err != nil {
 		lbc.ingQueue.requeue(key, err)
@@ -335,6 +325,7 @@ func (lbc *loadBalancerController) updateIngressStatus(l7 *L7, ing extensions.In
 			return err
 		}
 	}
+	lbc.recorder.Eventf(currIng, "Success", "Created loadbalancer %v", ip)
 	return nil
 }
 
