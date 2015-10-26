@@ -179,7 +179,7 @@ func fakeRunGithubE2ESuccess(ciStatus *github.CombinedStatus, shouldPass bool) {
 	ciStatus.State = stringPtr("pending")
 	for id := range ciStatus.Statuses {
 		status := &ciStatus.Statuses[id]
-		if *status.Context == gceE2EContext {
+		if *status.Context == defaultJenkinsE2EContext {
 			status.State = stringPtr("pending")
 			break
 		}
@@ -190,7 +190,7 @@ func fakeRunGithubE2ESuccess(ciStatus *github.CombinedStatus, shouldPass bool) {
 	found := false
 	for id := range ciStatus.Statuses {
 		status := &ciStatus.Statuses[id]
-		if *status.Context == gceE2EContext {
+		if *status.Context == defaultJenkinsE2EContext {
 			if shouldPass {
 				status.State = stringPtr("success")
 			} else {
@@ -202,7 +202,7 @@ func fakeRunGithubE2ESuccess(ciStatus *github.CombinedStatus, shouldPass bool) {
 	}
 	if !found {
 		e2eStatus := github.RepoStatus{
-			Context: stringPtr(gceE2EContext),
+			Context: stringPtr(defaultJenkinsE2EContext),
 			State:   stringPtr("success"),
 		}
 		ciStatus.Statuses = append(ciStatus.Statuses, e2eStatus)
@@ -392,7 +392,7 @@ func claStatus(status github.CombinedStatus) github.CombinedStatus {
 
 func successGithubStatus(status github.CombinedStatus) github.CombinedStatus {
 	s := github.RepoStatus{
-		Context: stringPtr(gceE2EContext),
+		Context: stringPtr(defaultJenkinsE2EContext),
 		State:   stringPtr("success"),
 	}
 	status.Statuses = append(status.Statuses, s)
@@ -401,7 +401,7 @@ func successGithubStatus(status github.CombinedStatus) github.CombinedStatus {
 
 func failGithubStatus(status github.CombinedStatus) github.CombinedStatus {
 	s := github.RepoStatus{
-		Context: stringPtr(gceE2EContext),
+		Context: stringPtr(defaultJenkinsE2EContext),
 		State:   stringPtr("failure"),
 	}
 	status.Statuses = append(status.Statuses, s)
@@ -680,6 +680,7 @@ func TestMungePullRequest(t *testing.T) {
 		sq.EachLoop(config)
 		sq.userWhitelist.Insert("k8s-merge-robot")
 		sq.DontRequireE2ELabel = "e2e-not-required"
+		sq.E2EStatusContext = defaultJenkinsE2EContext
 
 		sq.MungePullRequest(config, test.pr, test.issue, test.commits, test.events)
 		if test.shouldWaitForE2E {

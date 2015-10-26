@@ -36,8 +36,8 @@ import (
 )
 
 const (
-	needsOKToMergeLabel = "needs-ok-to-merge"
-	gceE2EContext       = "Jenkins GCE e2e"
+	needsOKToMergeLabel      = "needs-ok-to-merge"
+	defaultJenkinsE2EContext = "jenkins/google"
 )
 
 var (
@@ -169,7 +169,7 @@ func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github_util.Config) 
 	cmd.Flags().StringSliceVar(&sq.RequiredStatusContexts, "required-contexts", []string{"cla/google", "Shippable", "continuous-integration/travis-ci/pr"}, "Comma separate list of status contexts required for a PR to be considered ok to merge")
 	cmd.Flags().StringVar(&sq.Address, "address", ":8080", "The address to listen on for HTTP Status")
 	cmd.Flags().StringVar(&sq.DontRequireE2ELabel, "dont-require-e2e-label", "e2e-not-required", "If non-empty, a PR with this label will be merged automatically without looking at e2e results")
-	cmd.Flags().StringVar(&sq.E2EStatusContext, "e2e-status-context", "Jenkins GCE e2e", "The name of the github status context for the e2e PR Builder")
+	cmd.Flags().StringVar(&sq.E2EStatusContext, "e2e-status-context", defaultJenkinsE2EContext, "The name of the github status context for the e2e PR Builder")
 	cmd.Flags().StringVar(&sq.WWWRoot, "www", "www", "Path to static web files to serve from the webserver")
 	sq.addWhitelistCommand(cmd, config)
 }
@@ -477,8 +477,8 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(pr *github_api.PullRequest) {
 	}
 
 	// Check if the thing we care about is success
-	if ok := sq.githubConfig.IsStatusSuccess(pr, []string{gceE2EContext}); !ok {
-		glog.Infof("Status after build is not 'success', skipping PR %d", *pr.Number)
+	if ok := sq.githubConfig.IsStatusSuccess(pr, []string{sq.E2EStatusContext}); !ok {
+		glog.Infof("Status after build for %q is not 'success', skipping PR %d", sq.E2EStatusContext, *pr.Number)
 		sq.SetPRStatus(pr, ghE2EFailed)
 		return
 	}
