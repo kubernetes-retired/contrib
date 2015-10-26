@@ -24,6 +24,7 @@ import (
 	"github.com/emicklei/go-restful/swagger"
 
 	"k8s.io/kubernetes/pkg/api/meta"
+	apiutil "k8s.io/kubernetes/pkg/api/util"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
@@ -49,7 +50,7 @@ func SplitAndParseResourceRequest(inResource string, mapper meta.RESTMapper) (st
 // PrintModelDescription prints the description of a specific model or dot path
 func PrintModelDescription(inModel string, fieldsPath []string, w io.Writer, swaggerSchema *swagger.ApiDeclaration, r bool) error {
 	recursive = r // this is global for convenience
-	apiVer := swaggerSchema.ApiVersion + "."
+	apiVer := apiutil.GetVersion(swaggerSchema.ApiVersion) + "."
 
 	var pointedModel *swagger.NamedModel
 	for i := range swaggerSchema.Models.List {
@@ -61,7 +62,7 @@ func PrintModelDescription(inModel string, fieldsPath []string, w io.Writer, swa
 		}
 	}
 	if pointedModel == nil {
-		return fmt.Errorf("Requested resourse: %s doesn't exit", inModel)
+		return fmt.Errorf("Requested resource: %s doesn't exist", inModel)
 	}
 
 	if len(fieldsPath) == 0 {
