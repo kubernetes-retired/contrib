@@ -390,11 +390,13 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 						break
 					}
 				}
+			} else {
+				newSvc.Algorithm = lbc.cfg.lbDefAlgorithm
 			}
 
 			// By default sticky session is disabled
 			newSvc.SessionAffinity = false
-			if s.Spec.SessionAffinity != api.ServiceAffinityNone {
+			if s.Spec.SessionAffinity != "" {
 				newSvc.SessionAffinity = true
 			}
 
