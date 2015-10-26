@@ -1,0 +1,41 @@
+# Copyright 2015 The Kubernetes Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+pkgname=haproxy
+pkgver=1.6
+pkgrel=0
+pkgdesc="HAProxy is a free, very fast and reliable solution offering high availability, load balancing"
+url="http://www.haproxy.org/"
+arch="x86_64"
+license="ASL 2.0"
+makedepends="pcre-dev openssl-dev linux-headers readline lua5.3-dev"
+install="haproxy.pre-install haproxy.pre-upgrade"
+pkgfullname=$pkgname-$pkgver.$pkgrel
+source="http://www.haproxy.org/download/1.6/src/$pkgfullname.tar.gz"
+
+build() {
+	cd "$srcdir/$pkgfullname"
+	make TARGET=linux2628 USE_PCRE=1 USE_PCRE_JIT=1 USE_OPENSSL=1 USE_LUA=1 LUA_LIB=/usr/lib/lua5.3/ LUA_INC=/usr/include/lua5.3 CFLAGS="$CFLAGS" || return 1
+}
+
+package() {
+	cd "$srcdir/$pkgfullname"
+	make DESTDIR="$pkgdir" PREFIX=/usr DOCDIR=/usr/share/doc/haproxy \
+		LUA_LIB=/usr/lib/lua5.3/ LUA_INC=/usr/include/lua5.3 install-bin install-man || return 1
+	install -d "$pkgdir"/var/lib/haproxy
+}
+
+md5sums="2361c7dd0a709a1b235215225875f34c  haproxy-1.6.0.tar.gz"
+sha256sums="e83a272b7d3638cf1d37bba58d3e75f497c1862315ee5bb7f5efc1d98d26e25b  haproxy-1.6.0.tar.gz"
+sha512sums="44bfcd040c87e0c3e7d925bb671009e8ed568a7a32ae32ac5d58921417aaa458b772a1368876fee8bf9252106fb315c1c3d29b7f03739a239567b86fb3c25e8e  haproxy-1.6.0.tar.gz"
