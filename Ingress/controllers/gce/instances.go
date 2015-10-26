@@ -123,7 +123,7 @@ func (i *Instances) Sync(nodes []string) (err error) {
 	}()
 
 	pool := i.pool.snapshot()
-	for name, _ := range pool {
+	for name := range pool {
 		gceNodes := sets.NewString()
 		gceNodes, err = i.list(name)
 		if err != nil {

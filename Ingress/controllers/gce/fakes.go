@@ -389,7 +389,7 @@ func (f *fakeBackendServices) GetHealth(name, instanceGroupLink string) (*comput
 		return nil, err
 	}
 	states := []*compute.HealthStatus{
-		&compute.HealthStatus{
+		{
 			HealthState: "HEALTHY",
 			IpAddress:   "",
 			Port:        be.Port,

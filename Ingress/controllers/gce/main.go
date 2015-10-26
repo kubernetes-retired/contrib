@@ -76,7 +76,7 @@ var (
 		testing. In normal environments the controller should only delete
 		a loadbalancer if the associated Ingress is deleted.`)
 
-	defaultSvc = flags.String("default-backend", "kube-system/glbc-default-backend",
+	defaultSvc = flags.String("default-backend-service", "kube-system/glbc-default-backend",
 		`Service used to serve a 404 page for the default backend. Takes the form
 		namespace/name. The controller uses the first node port of this Service for
 		the default backend.`)
