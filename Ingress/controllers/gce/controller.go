@@ -159,8 +159,9 @@ func ingressListFunc(c *client.Client) func() (runtime.Object, error) {
 
 func ingressWatchFunc(c *client.Client) func(rv string) (watch.Interface, error) {
 	return func(rv string) (watch.Interface, error) {
+		options := api.ListOptions{ResourceVersion: rv}
 		return c.Extensions().Ingress(api.NamespaceAll).Watch(
-			labels.Everything(), fields.Everything(), rv)
+			labels.Everything(), fields.Everything(), options)
 	}
 }
 

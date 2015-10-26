@@ -385,6 +385,6 @@ func TestLbStatusUpdate(t *testing.T) {
 	updatedIng := runtime.EncodeOrDie(testapi.Extensions.Codec(), ing)
 	fakeHandler.ValidateRequest(
 		t, testapi.Extensions.ResourcePath(
-			"ingress", ing.Namespace, ing.Name)+"/status",
+			"ingresses", ing.Namespace, ing.Name)+"/status",
 		"PUT", &updatedIng)
 }
