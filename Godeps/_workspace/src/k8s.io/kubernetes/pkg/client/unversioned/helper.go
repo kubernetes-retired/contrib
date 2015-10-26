@@ -146,15 +146,22 @@ func New(c *Config) (*Client, error) {
 		return nil, err
 	}
 
+	discoveryConfig := *c
+	discoveryClient, err := NewDiscoveryClient(&discoveryConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	if _, err := latest.Group("extensions"); err != nil {
-		return &Client{RESTClient: client, ExtensionsClient: nil}, nil
+		return &Client{RESTClient: client, ExtensionsClient: nil, DiscoveryClient: discoveryClient}, nil
 	}
 	experimentalConfig := *c
 	experimentalClient, err := NewExtensions(&experimentalConfig)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{RESTClient: client, ExtensionsClient: experimentalClient}, nil
+
+	return &Client{RESTClient: client, ExtensionsClient: experimentalClient, DiscoveryClient: discoveryClient}, nil
 }
 
 // MatchesServerVersion queries the server to compares the build version
@@ -180,7 +187,7 @@ func MatchesServerVersion(client *Client, c *Config) error {
 	return nil
 }
 
-func extractGroupVersions(l *unversioned.APIGroupList) []string {
+func ExtractGroupVersions(l *unversioned.APIGroupList) []string {
 	var groupVersions []string
 	for _, g := range l.Groups {
 		for _, gv := range g.Versions {
@@ -234,7 +241,7 @@ func ServerAPIVersions(c *Config) (groupVersions []string, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error: %v", err)
 	}
-	groupVersions = append(groupVersions, extractGroupVersions(&apiGroupList)...)
+	groupVersions = append(groupVersions, ExtractGroupVersions(&apiGroupList)...)
 
 	return groupVersions, nil
 }
@@ -262,7 +269,9 @@ func NegotiateVersion(client *Client, c *Config, version string, clientRegistere
 	}
 	apiVersions, err := client.ServerAPIVersions()
 	if err != nil {
-		return "", fmt.Errorf("couldn't read version from server: %v", err)
+		// This is almost always a connection error, and higher level code should treat this as a generic error,
+		// not a negotiation specific error.
+		return "", err
 	}
 	serverVersions := sets.String{}
 	for _, v := range apiVersions.Versions {
@@ -276,7 +285,7 @@ func NegotiateVersion(client *Client, c *Config, version string, clientRegistere
 	// If server does not support warn, but try to negotiate a lower version.
 	if len(version) != 0 {
 		if !clientVersions.Has(version) {
-			return "", fmt.Errorf("Client does not support API version '%s'. Client supported API versions: %v", version, clientVersions)
+			return "", fmt.Errorf("client does not support API version %q; client supported API versions: %v", version, clientVersions)
 
 		}
 		if serverVersions.Has(version) {
@@ -284,7 +293,7 @@ func NegotiateVersion(client *Client, c *Config, version string, clientRegistere
 		}
 		// If we are using an explicit config version the server does not support, fail.
 		if version == c.Version {
-			return "", fmt.Errorf("Server does not support API version '%s'.", version)
+			return "", fmt.Errorf("server does not support API version %q", version)
 		}
 	}
 
@@ -300,7 +309,7 @@ func NegotiateVersion(client *Client, c *Config, version string, clientRegistere
 			return clientVersion, nil
 		}
 	}
-	return "", fmt.Errorf("Failed to negotiate an api version. Server supports: %v. Client supports: %v.",
+	return "", fmt.Errorf("failed to negotiate an api version; server supports: %v, client supports: %v",
 		serverVersions, clientRegisteredVersions)
 }
 
@@ -623,4 +632,13 @@ func DefaultKubernetesUserAgent() string {
 	seg := strings.SplitN(version, "-", 2)
 	version = seg[0]
 	return fmt.Sprintf("%s/%s (%s/%s) kubernetes/%s", path.Base(os.Args[0]), version, gruntime.GOOS, gruntime.GOARCH, commit)
+}
+
+// TimeoutFromListOptions returns timeout to be set via TimeoutSeconds() method
+// based on given options.
+func TimeoutFromListOptions(options api.ListOptions) time.Duration {
+	if options.TimeoutSeconds != nil {
+		return time.Duration(*options.TimeoutSeconds) * time.Second
+	}
+	return 0
 }

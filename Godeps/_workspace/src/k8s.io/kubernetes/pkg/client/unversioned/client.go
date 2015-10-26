@@ -26,7 +26,6 @@ import (
 	"github.com/emicklei/go-restful/swagger"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/latest"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/version"
 )
@@ -52,7 +51,7 @@ type Interface interface {
 	ComponentStatusesInterface
 	SwaggerSchemaInterface
 	Extensions() ExtensionsInterface
-	ResourcesInterface
+	Discovery() DiscoveryInterface
 }
 
 func (c *Client) ReplicationControllers(namespace string) ReplicationControllerInterface {
@@ -120,11 +119,6 @@ type VersionInterface interface {
 	ServerAPIVersions() (*unversioned.APIVersions, error)
 }
 
-// ResourcesInterface has methods for obtaining supported resources on the API server
-type ResourcesInterface interface {
-	SupportedResourcesForGroupVersion(groupVersion string) (*unversioned.APIResourceList, error)
-}
-
 // APIStatus is exposed by errors that can be converted to an api.Status object
 // for finer grained details.
 type APIStatus interface {
@@ -135,6 +129,8 @@ type APIStatus interface {
 type Client struct {
 	*RESTClient
 	*ExtensionsClient
+	// TODO: remove this when we re-structure pkg/client.
+	*DiscoveryClient
 }
 
 // ServerVersion retrieves and parses the server's version.
@@ -149,42 +145,6 @@ func (c *Client) ServerVersion() (*version.Info, error) {
 		return nil, fmt.Errorf("got '%s': %v", string(body), err)
 	}
 	return &info, nil
-}
-
-// SupportedResourcesForGroupVersion retrieves the list of resources supported by the API server for a group version.
-func (c *Client) SupportedResourcesForGroupVersion(groupVersion string) (*unversioned.APIResourceList, error) {
-	var prefix string
-	if groupVersion == "v1" {
-		prefix = "/api"
-	} else {
-		prefix = "/apis"
-	}
-	body, err := c.Get().AbsPath(prefix, groupVersion).Do().Raw()
-	if err != nil {
-		return nil, err
-	}
-	resources := unversioned.APIResourceList{}
-	if err := json.Unmarshal(body, &resources); err != nil {
-		return nil, err
-	}
-	return &resources, nil
-}
-
-// SupportedResources gets all supported resources for all group versions.  The key in the map is an API groupVersion.
-func SupportedResources(c Interface, cfg *Config) (map[string]*unversioned.APIResourceList, error) {
-	apis, err := ServerAPIVersions(cfg)
-	if err != nil {
-		return nil, err
-	}
-	result := map[string]*unversioned.APIResourceList{}
-	for _, groupVersion := range apis {
-		resources, err := c.SupportedResourcesForGroupVersion(groupVersion)
-		if err != nil {
-			return nil, err
-		}
-		result[groupVersion] = resources
-	}
-	return result, nil
 }
 
 // ServerAPIVersions retrieves and parses the list of API versions the server supports.
@@ -223,26 +183,32 @@ func (c *Client) ValidateComponents() (*api.ComponentStatusList, error) {
 // SwaggerSchemaInterface has a method to retrieve the swagger schema. Used in
 // client.Interface
 type SwaggerSchemaInterface interface {
-	SwaggerSchema(version string) (*swagger.ApiDeclaration, error)
+	SwaggerSchema(groupVersion string) (*swagger.ApiDeclaration, error)
 }
 
 // SwaggerSchema retrieves and parses the swagger API schema the server supports.
-func (c *Client) SwaggerSchema(version string) (*swagger.ApiDeclaration, error) {
-	if version == "" {
-		version = latest.GroupOrDie("").Version
+func (c *Client) SwaggerSchema(groupVersion string) (*swagger.ApiDeclaration, error) {
+	if groupVersion == "" {
+		return nil, fmt.Errorf("groupVersion cannot be empty")
 	}
 
-	vers, err := c.ServerAPIVersions()
+	groupList, err := c.Discovery().ServerGroups()
 	if err != nil {
 		return nil, err
 	}
-
+	groupVersions := ExtractGroupVersions(groupList)
 	// This check also takes care the case that kubectl is newer than the running endpoint
-	if stringDoesntExistIn(version, vers.Versions) {
-		return nil, fmt.Errorf("API version: %s is not supported by the server. Use one of: %v", version, vers.Versions)
+	if stringDoesntExistIn(groupVersion, groupVersions) {
+		return nil, fmt.Errorf("API version: %s is not supported by the server. Use one of: %v", groupVersion, groupVersions)
+	}
+	var path string
+	if groupVersion == "v1" {
+		path = "/swaggerapi/api/" + groupVersion
+	} else {
+		path = "/swaggerapi/apis/" + groupVersion
 	}
 
-	body, err := c.Get().AbsPath("/swaggerapi/api/" + version).Do().Raw()
+	body, err := c.Get().AbsPath(path).Do().Raw()
 	if err != nil {
 		return nil, err
 	}
@@ -287,4 +253,8 @@ func IsTimeout(err error) bool {
 
 func (c *Client) Extensions() ExtensionsInterface {
 	return c.ExtensionsClient
+}
+
+func (c *Client) Discovery() DiscoveryInterface {
+	return c.DiscoveryClient
 }

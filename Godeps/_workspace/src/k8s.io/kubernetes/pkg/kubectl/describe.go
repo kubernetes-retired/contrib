@@ -35,7 +35,7 @@ import (
 	qosutil "k8s.io/kubernetes/pkg/kubelet/qos/util"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/types"
-	deploymentUtil "k8s.io/kubernetes/pkg/util/deployment"
+	deploymentutil "k8s.io/kubernetes/pkg/util/deployment"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -73,7 +73,6 @@ func describerMap(c *client.Client) map[string]Describer {
 		"Secret":                &SecretDescriber{c},
 		"Service":               &ServiceDescriber{c},
 		"ServiceAccount":        &ServiceAccountDescriber{c},
-		"Minion":                &NodeDescriber{c},
 		"Node":                  &NodeDescriber{c},
 		"LimitRange":            &LimitRangeDescriber{c},
 		"ResourceQuota":         &ResourceQuotaDescriber{c},
@@ -725,6 +724,19 @@ func describeContainers(pod *api.Pod, out io.Writer) {
 		fmt.Fprintf(out, "    Image:\t%s\n", container.Image)
 		fmt.Fprintf(out, "    Image ID:\t%s\n", status.ImageID)
 
+		if len(container.Command) > 0 {
+			fmt.Fprintf(out, "    Command:\n")
+			for _, c := range container.Command {
+				fmt.Fprintf(out, "      %s\n", c)
+			}
+		}
+		if len(container.Args) > 0 {
+			fmt.Fprintf(out, "    Args:\n")
+			for _, arg := range container.Args {
+				fmt.Fprintf(out, "      %s\n", arg)
+			}
+		}
+
 		resourceToQoS := qosutil.GetQoS(&container)
 		if len(resourceToQoS) > 0 {
 			fmt.Fprintf(out, "    QoS Tier:\n")
@@ -885,7 +897,8 @@ func describeJob(job *extensions.Job, events *api.EventList) (string, error) {
 		fmt.Fprintf(out, "Name:\t%s\n", job.Name)
 		fmt.Fprintf(out, "Namespace:\t%s\n", job.Namespace)
 		fmt.Fprintf(out, "Image(s):\t%s\n", makeImageList(&job.Spec.Template.Spec))
-		fmt.Fprintf(out, "Selector:\t%s\n", labels.FormatLabels(job.Spec.Selector))
+		selector, _ := extensions.PodSelectorAsSelector(job.Spec.Selector)
+		fmt.Fprintf(out, "Selector:\t%s\n", selector)
 		fmt.Fprintf(out, "Parallelism:\t%d\n", *job.Spec.Parallelism)
 		fmt.Fprintf(out, "Completions:\t%d\n", *job.Spec.Completions)
 		fmt.Fprintf(out, "Labels:\t%s\n", labels.FormatLabels(job.Labels))
@@ -1249,20 +1262,21 @@ func (d *HorizontalPodAutoscalerDescriber) Describe(namespace, name string) (str
 			hpa.Spec.ScaleRef.Namespace,
 			hpa.Spec.ScaleRef.Name,
 			hpa.Spec.ScaleRef.Subresource)
-		fmt.Fprintf(out, "Target resource consumption:\t%s %s\n",
-			hpa.Spec.Target.Quantity.String(),
-			hpa.Spec.Target.Resource)
-		fmt.Fprintf(out, "Current resource consumption:\t")
-
-		if hpa.Status.CurrentConsumption != nil {
-			fmt.Fprintf(out, "%s %s\n",
-				hpa.Status.CurrentConsumption.Quantity.String(),
-				hpa.Status.CurrentConsumption.Resource)
-		} else {
-			fmt.Fprintf(out, "<not available>\n")
+		if hpa.Spec.CPUUtilization != nil {
+			fmt.Fprintf(out, "Target CPU utilization:\t%d%%\n", hpa.Spec.CPUUtilization.TargetPercentage)
+			fmt.Fprintf(out, "Current CPU utilization:\t")
+			if hpa.Status.CurrentCPUUtilizationPercentage != nil {
+				fmt.Fprintf(out, "%d%%\n", *hpa.Status.CurrentCPUUtilizationPercentage)
+			} else {
+				fmt.Fprintf(out, "<not available>\n")
+			}
 		}
-		fmt.Fprintf(out, "Min pods:\t%d\n", hpa.Spec.MinReplicas)
-		fmt.Fprintf(out, "Max pods:\t%d\n", hpa.Spec.MaxReplicas)
+		minReplicas := "<unset>"
+		if hpa.Spec.MinReplicas != nil {
+			minReplicas = fmt.Sprintf("%d", *hpa.Spec.MinReplicas)
+		}
+		fmt.Fprintf(out, "Min replicas:\t%s\n", minReplicas)
+		fmt.Fprintf(out, "Max replicas:\t%d\n", hpa.Spec.MaxReplicas)
 
 		// TODO: switch to scale subresource once the required code is submitted.
 		if strings.ToLower(hpa.Spec.ScaleRef.Kind) == "replicationcontroller" {
@@ -1417,11 +1431,11 @@ func (dd *DeploymentDescriber) Describe(namespace, name string) (string, error) 
 			ru := d.Spec.Strategy.RollingUpdate
 			fmt.Fprintf(out, "RollingUpdateStrategy:\t%s max unavailable, %s max surge, %d min ready seconds\n", ru.MaxUnavailable.String(), ru.MaxSurge.String(), ru.MinReadySeconds)
 		}
-		oldRCs, err := deploymentUtil.GetOldRCs(*d, dd)
+		oldRCs, err := deploymentutil.GetOldRCs(*d, dd)
 		if err == nil {
 			fmt.Fprintf(out, "OldReplicationControllers:\t%s\n", printReplicationControllersByLabels(oldRCs))
 		}
-		newRC, err := deploymentUtil.GetNewRC(*d, dd)
+		newRC, err := deploymentutil.GetNewRC(*d, dd)
 		if err == nil {
 			var newRCs []*api.ReplicationController
 			if newRC != nil {

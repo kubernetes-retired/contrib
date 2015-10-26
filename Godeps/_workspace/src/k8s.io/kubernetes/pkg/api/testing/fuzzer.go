@@ -101,8 +101,10 @@ func FuzzerFor(t *testing.T, version string, src rand.Source) *fuzz.Fuzzer {
 			}
 			s.TerminationGracePeriodSeconds = &ttl
 
+			c.Fuzz(s.SecurityContext)
+
 			if s.SecurityContext == nil {
-				s.SecurityContext = &api.PodSecurityContext{}
+				s.SecurityContext = new(api.PodSecurityContext)
 			}
 		},
 		func(j *api.PodPhase, c fuzz.Continue) {
@@ -297,14 +299,19 @@ func FuzzerFor(t *testing.T, version string, src rand.Source) *fuzz.Fuzzer {
 		},
 		func(sc *api.SecurityContext, c fuzz.Continue) {
 			c.FuzzNoCustom(sc) // fuzz self without calling this function again
-			priv := c.RandBool()
-			sc.Privileged = &priv
-			sc.Capabilities = &api.Capabilities{
-				Add:  make([]api.Capability, 0),
-				Drop: make([]api.Capability, 0),
+			if c.RandBool() {
+				priv := c.RandBool()
+				sc.Privileged = &priv
 			}
-			c.Fuzz(&sc.Capabilities.Add)
-			c.Fuzz(&sc.Capabilities.Drop)
+
+			if c.RandBool() {
+				sc.Capabilities = &api.Capabilities{
+					Add:  make([]api.Capability, 0),
+					Drop: make([]api.Capability, 0),
+				}
+				c.Fuzz(&sc.Capabilities.Add)
+				c.Fuzz(&sc.Capabilities.Drop)
+			}
 		},
 		func(e *api.Event, c fuzz.Continue) {
 			c.FuzzNoCustom(e) // fuzz self without calling this function again
@@ -367,6 +374,12 @@ func FuzzerFor(t *testing.T, version string, src rand.Source) *fuzz.Fuzzer {
 			// We can't use c.RandString() here because it may generate empty
 			// string, which will cause tests failure.
 			s.APIGroup = "something"
+		},
+		func(s *extensions.HorizontalPodAutoscalerSpec, c fuzz.Continue) {
+			c.FuzzNoCustom(s) // fuzz self without calling this function again
+			minReplicas := c.Rand.Int()
+			s.MinReplicas = &minReplicas
+			s.CPUUtilization = &extensions.CPUTargetUtilization{TargetPercentage: int(c.RandUint64())}
 		},
 	)
 	return f

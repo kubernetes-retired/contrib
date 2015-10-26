@@ -42,10 +42,12 @@ import (
 // fields by default.
 var RepairMalformedUpdates bool = true
 
-const cIdentifierErrorMsg string = `must be a C identifier (matching regex ` + validation.CIdentifierFmt + `): e.g. "my_name" or "MyName"`
 const isNegativeErrorMsg string = `must be non-negative`
+const fieldImmutableErrorMsg string = `field is immutable`
+const cIdentifierErrorMsg string = `must be a C identifier (matching regex ` + validation.CIdentifierFmt + `): e.g. "my_name" or "MyName"`
+const isNotIntegerErrorMsg string = `must be an integer`
 
-func intervalErrorMsg(lo, hi int) string {
+func IntervalErrorMsg(lo, hi int) string {
 	return fmt.Sprintf(`must be greater than %d and less than %d`, lo, hi)
 }
 
@@ -54,11 +56,11 @@ var qualifiedNameErrorMsg string = fmt.Sprintf(`must be a qualified name (at mos
 var DNSSubdomainErrorMsg string = fmt.Sprintf(`must be a DNS subdomain (at most %d characters, matching regex %s): e.g. "example.com"`, validation.DNS1123SubdomainMaxLength, validation.DNS1123SubdomainFmt)
 var DNS1123LabelErrorMsg string = fmt.Sprintf(`must be a DNS label (at most %d characters, matching regex %s): e.g. "my-name"`, validation.DNS1123LabelMaxLength, validation.DNS1123LabelFmt)
 var DNS952LabelErrorMsg string = fmt.Sprintf(`must be a DNS 952 label (at most %d characters, matching regex %s): e.g. "my-name"`, validation.DNS952LabelMaxLength, validation.DNS952LabelFmt)
-var pdPartitionErrorMsg string = intervalErrorMsg(0, 255)
-var portRangeErrorMsg string = intervalErrorMsg(0, 65536)
-var portNameErrorMsg string = fmt.Sprintf(`must be an IANA_SVC_NAME (at most 15 characters, matching regex %s, it must contain at least one letter [a-z], and hyphens cannot be adjacent to other hyphens): e.g. "http"`, validation.IdentifierNoHyphensBeginEndFmt)
+var pdPartitionErrorMsg string = IntervalErrorMsg(0, 255)
+var PortRangeErrorMsg string = IntervalErrorMsg(0, 65536)
+var PortNameErrorMsg string = fmt.Sprintf(`must be an IANA_SVC_NAME (at most 15 characters, matching regex %s, it must contain at least one letter [a-z], and hyphens cannot be adjacent to other hyphens): e.g. "http"`, validation.IdentifierNoHyphensBeginEndFmt)
 
-const totalAnnotationSizeLimitB int = 64 * (1 << 10) // 64 kB
+const totalAnnotationSizeLimitB int = 256 * (1 << 10) // 256 kB
 
 func ValidateLabelName(labelName, fieldName string) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
@@ -233,6 +235,14 @@ func ValidatePositiveQuantity(value resource.Quantity, fieldName string) errs.Va
 	return allErrs
 }
 
+func ValidateImmutableField(old, new interface{}, fieldName string) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	if !api.Semantic.DeepEqual(old, new) {
+		allErrs = append(allErrs, errs.NewFieldInvalid(fieldName, new, fieldImmutableErrorMsg))
+	}
+	return allErrs
+}
+
 // ValidateObjectMeta validates an object's metadata on creation. It expects that name generation has already
 // been performed.
 // TODO: Remove calls to this method scattered in validations of specific resources, e.g., ValidatePodUpdate.
@@ -313,18 +323,10 @@ func ValidateObjectMetaUpdate(new, old *api.ObjectMeta) errs.ValidationErrorList
 		allErrs = append(allErrs, errs.NewFieldInvalid("resourceVersion", new.ResourceVersion, "resourceVersion must be specified for an update"))
 	}
 
-	if old.Name != new.Name {
-		allErrs = append(allErrs, errs.NewFieldInvalid("name", new.Name, "field is immutable"))
-	}
-	if old.Namespace != new.Namespace {
-		allErrs = append(allErrs, errs.NewFieldInvalid("namespace", new.Namespace, "field is immutable"))
-	}
-	if old.UID != new.UID {
-		allErrs = append(allErrs, errs.NewFieldInvalid("uid", new.UID, "field is immutable"))
-	}
-	if old.CreationTimestamp != new.CreationTimestamp {
-		allErrs = append(allErrs, errs.NewFieldInvalid("creationTimestamp", new.CreationTimestamp, "field is immutable"))
-	}
+	allErrs = append(allErrs, ValidateImmutableField(old.Name, new.Name, "name")...)
+	allErrs = append(allErrs, ValidateImmutableField(old.Namespace, new.Namespace, "namespace")...)
+	allErrs = append(allErrs, ValidateImmutableField(old.UID, new.UID, "uid")...)
+	allErrs = append(allErrs, ValidateImmutableField(old.CreationTimestamp, new.CreationTimestamp, "creationTimestamp")...)
 
 	allErrs = append(allErrs, ValidateLabels(new.Labels, "labels")...)
 	allErrs = append(allErrs, ValidateAnnotations(new.Annotations, "annotations")...)
@@ -769,7 +771,7 @@ func validatePorts(ports []api.ContainerPort) errs.ValidationErrorList {
 		pErrs := errs.ValidationErrorList{}
 		if len(port.Name) > 0 {
 			if !validation.IsValidPortName(port.Name) {
-				pErrs = append(pErrs, errs.NewFieldInvalid("name", port.Name, portNameErrorMsg))
+				pErrs = append(pErrs, errs.NewFieldInvalid("name", port.Name, PortNameErrorMsg))
 			} else if allNames.Has(port.Name) {
 				pErrs = append(pErrs, errs.NewFieldDuplicate("name", port.Name))
 			} else {
@@ -777,12 +779,12 @@ func validatePorts(ports []api.ContainerPort) errs.ValidationErrorList {
 			}
 		}
 		if port.ContainerPort == 0 {
-			pErrs = append(pErrs, errs.NewFieldInvalid("containerPort", port.ContainerPort, portRangeErrorMsg))
+			pErrs = append(pErrs, errs.NewFieldInvalid("containerPort", port.ContainerPort, PortRangeErrorMsg))
 		} else if !validation.IsValidPortNum(port.ContainerPort) {
-			pErrs = append(pErrs, errs.NewFieldInvalid("containerPort", port.ContainerPort, portRangeErrorMsg))
+			pErrs = append(pErrs, errs.NewFieldInvalid("containerPort", port.ContainerPort, PortRangeErrorMsg))
 		}
 		if port.HostPort != 0 && !validation.IsValidPortNum(port.HostPort) {
-			pErrs = append(pErrs, errs.NewFieldInvalid("hostPort", port.HostPort, portRangeErrorMsg))
+			pErrs = append(pErrs, errs.NewFieldInvalid("hostPort", port.HostPort, PortRangeErrorMsg))
 		}
 		if len(port.Protocol) == 0 {
 			pErrs = append(pErrs, errs.NewFieldRequired("protocol"))
@@ -932,9 +934,9 @@ func validateHTTPGetAction(http *api.HTTPGetAction) errs.ValidationErrorList {
 		allErrors = append(allErrors, errs.NewFieldRequired("path"))
 	}
 	if http.Port.Kind == util.IntstrInt && !validation.IsValidPortNum(http.Port.IntVal) {
-		allErrors = append(allErrors, errs.NewFieldInvalid("port", http.Port, portRangeErrorMsg))
+		allErrors = append(allErrors, errs.NewFieldInvalid("port", http.Port, PortRangeErrorMsg))
 	} else if http.Port.Kind == util.IntstrString && !validation.IsValidPortName(http.Port.StrVal) {
-		allErrors = append(allErrors, errs.NewFieldInvalid("port", http.Port.StrVal, portNameErrorMsg))
+		allErrors = append(allErrors, errs.NewFieldInvalid("port", http.Port.StrVal, PortNameErrorMsg))
 	}
 	supportedSchemes := sets.NewString(string(api.URISchemeHTTP), string(api.URISchemeHTTPS))
 	if !supportedSchemes.Has(string(http.Scheme)) {
@@ -946,9 +948,9 @@ func validateHTTPGetAction(http *api.HTTPGetAction) errs.ValidationErrorList {
 func validateTCPSocketAction(tcp *api.TCPSocketAction) errs.ValidationErrorList {
 	allErrors := errs.ValidationErrorList{}
 	if tcp.Port.Kind == util.IntstrInt && !validation.IsValidPortNum(tcp.Port.IntVal) {
-		allErrors = append(allErrors, errs.NewFieldInvalid("port", tcp.Port, portRangeErrorMsg))
+		allErrors = append(allErrors, errs.NewFieldInvalid("port", tcp.Port, PortRangeErrorMsg))
 	} else if tcp.Port.Kind == util.IntstrString && !validation.IsValidPortName(tcp.Port.StrVal) {
-		allErrors = append(allErrors, errs.NewFieldInvalid("port", tcp.Port.StrVal, portNameErrorMsg))
+		allErrors = append(allErrors, errs.NewFieldInvalid("port", tcp.Port.StrVal, PortNameErrorMsg))
 	}
 	return allErrors
 }
@@ -1318,7 +1320,7 @@ func validateServicePort(sp *api.ServicePort, requireName bool, allNames *sets.S
 	}
 
 	if !validation.IsValidPortNum(sp.Port) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("port", sp.Port, portRangeErrorMsg))
+		allErrs = append(allErrs, errs.NewFieldInvalid("port", sp.Port, PortRangeErrorMsg))
 	}
 
 	if len(sp.Protocol) == 0 {
@@ -1328,10 +1330,10 @@ func validateServicePort(sp *api.ServicePort, requireName bool, allNames *sets.S
 	}
 
 	if sp.TargetPort.Kind == util.IntstrInt && !validation.IsValidPortNum(sp.TargetPort.IntVal) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("targetPort", sp.TargetPort, portRangeErrorMsg))
+		allErrs = append(allErrs, errs.NewFieldInvalid("targetPort", sp.TargetPort, PortRangeErrorMsg))
 	}
 	if sp.TargetPort.Kind == util.IntstrString && !validation.IsValidPortName(sp.TargetPort.StrVal) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("targetPort", sp.TargetPort, portNameErrorMsg))
+		allErrs = append(allErrs, errs.NewFieldInvalid("targetPort", sp.TargetPort, PortNameErrorMsg))
 	}
 
 	return allErrs
@@ -1342,8 +1344,8 @@ func ValidateServiceUpdate(oldService, service *api.Service) errs.ValidationErro
 	allErrs := errs.ValidationErrorList{}
 	allErrs = append(allErrs, ValidateObjectMetaUpdate(&service.ObjectMeta, &oldService.ObjectMeta).Prefix("metadata")...)
 
-	if api.IsServiceIPSet(oldService) && service.Spec.ClusterIP != oldService.Spec.ClusterIP {
-		allErrs = append(allErrs, errs.NewFieldInvalid("spec.clusterIP", service.Spec.ClusterIP, "field is immutable"))
+	if api.IsServiceIPSet(oldService) {
+		allErrs = append(allErrs, ValidateImmutableField(oldService.Spec.ClusterIP, service.Spec.ClusterIP, "spec.clusterIP")...)
 	}
 
 	allErrs = append(allErrs, ValidateService(service)...)
@@ -1708,9 +1710,8 @@ func ValidateSecretUpdate(oldSecret, newSecret *api.Secret) errs.ValidationError
 	if len(newSecret.Type) == 0 {
 		newSecret.Type = oldSecret.Type
 	}
-	if newSecret.Type != oldSecret.Type {
-		allErrs = append(allErrs, errs.NewFieldInvalid("type", newSecret.Type, "field is immutable"))
-	}
+
+	allErrs = append(allErrs, ValidateImmutableField(oldSecret.Type, newSecret.Type, "type")...)
 
 	allErrs = append(allErrs, ValidateSecret(newSecret)...)
 	return allErrs
@@ -1765,15 +1766,27 @@ func ValidateResourceQuota(resourceQuota *api.ResourceQuota) errs.ValidationErro
 
 	for k, v := range resourceQuota.Spec.Hard {
 		allErrs = append(allErrs, validateResourceName(string(k), string(resourceQuota.TypeMeta.Kind))...)
-		allErrs = append(allErrs, ValidatePositiveQuantity(v, string(k))...)
+		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v)...)
 	}
 	for k, v := range resourceQuota.Status.Hard {
 		allErrs = append(allErrs, validateResourceName(string(k), string(resourceQuota.TypeMeta.Kind))...)
-		allErrs = append(allErrs, ValidatePositiveQuantity(v, string(k))...)
+		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v)...)
 	}
 	for k, v := range resourceQuota.Status.Used {
 		allErrs = append(allErrs, validateResourceName(string(k), string(resourceQuota.TypeMeta.Kind))...)
-		allErrs = append(allErrs, ValidatePositiveQuantity(v, string(k))...)
+		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v)...)
+	}
+	return allErrs
+}
+
+// validateResourceQuantityValue enforces that specified quantity is valid for specified resource
+func validateResourceQuantityValue(resource string, value resource.Quantity) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	allErrs = append(allErrs, ValidatePositiveQuantity(value, resource)...)
+	if api.IsIntegerResourceName(resource) {
+		if value.MilliValue()%int64(1000) != int64(0) {
+			allErrs = append(allErrs, errs.NewFieldInvalid(resource, value, isNotIntegerErrorMsg))
+		}
 	}
 	return allErrs
 }
@@ -1783,8 +1796,9 @@ func ValidateResourceQuota(resourceQuota *api.ResourceQuota) errs.ValidationErro
 func ValidateResourceQuotaUpdate(newResourceQuota, oldResourceQuota *api.ResourceQuota) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
 	allErrs = append(allErrs, ValidateObjectMetaUpdate(&newResourceQuota.ObjectMeta, &oldResourceQuota.ObjectMeta).Prefix("metadata")...)
-	for k := range newResourceQuota.Spec.Hard {
+	for k, v := range newResourceQuota.Spec.Hard {
 		allErrs = append(allErrs, validateResourceName(string(k), string(newResourceQuota.TypeMeta.Kind))...)
+		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v)...)
 	}
 	newResourceQuota.Status = oldResourceQuota.Status
 	return allErrs
@@ -1798,11 +1812,13 @@ func ValidateResourceQuotaStatusUpdate(newResourceQuota, oldResourceQuota *api.R
 	if newResourceQuota.ResourceVersion == "" {
 		allErrs = append(allErrs, errs.NewFieldRequired("resourceVersion"))
 	}
-	for k := range newResourceQuota.Status.Hard {
+	for k, v := range newResourceQuota.Status.Hard {
 		allErrs = append(allErrs, validateResourceName(string(k), string(newResourceQuota.TypeMeta.Kind))...)
+		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v)...)
 	}
-	for k := range newResourceQuota.Status.Used {
+	for k, v := range newResourceQuota.Status.Used {
 		allErrs = append(allErrs, validateResourceName(string(k), string(newResourceQuota.TypeMeta.Kind))...)
+		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v)...)
 	}
 	newResourceQuota.Spec = oldResourceQuota.Spec
 	return allErrs
@@ -1949,7 +1965,7 @@ func validateEndpointPort(port *api.EndpointPort, requireName bool) errs.Validat
 		}
 	}
 	if !validation.IsValidPortNum(port.Port) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("port", port.Port, portRangeErrorMsg))
+		allErrs = append(allErrs, errs.NewFieldInvalid("port", port.Port, PortRangeErrorMsg))
 	}
 	if len(port.Protocol) == 0 {
 		allErrs = append(allErrs, errs.NewFieldRequired("protocol"))
@@ -2023,7 +2039,7 @@ func ValidateLoadBalancerStatus(status *api.LoadBalancerStatus) errs.ValidationE
 				allErrs = append(allErrs, errs.NewFieldInvalid("ingress.hostname", ingress.Hostname, errMsg))
 			}
 			if isIP := (net.ParseIP(ingress.Hostname) != nil); isIP {
-				allErrs = append(allErrs, errs.NewFieldInvalid("ingress.hostname", ingress.Hostname, "must be a DNS name, not ip address"))
+				allErrs = append(allErrs, errs.NewFieldInvalid("ingress.hostname", ingress.Hostname, "must be a DNS name, not an IP address"))
 			}
 		}
 	}

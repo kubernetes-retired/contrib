@@ -34,16 +34,6 @@ import (
 	utilvalidation "k8s.io/kubernetes/pkg/util/validation"
 )
 
-const isNegativeErrorMsg string = `must be non-negative`
-
-// TODO: Expose from apivalidation instead of duplicating.
-func intervalErrorMsg(lo, hi int) string {
-	return fmt.Sprintf(`must be greater than %d and less than %d`, lo, hi)
-}
-
-var portRangeErrorMsg string = intervalErrorMsg(0, 65536)
-var portNameErrorMsg string = fmt.Sprintf(`must be an IANA_SVC_NAME (at most 15 characters, matching regex %s, it must contain at least one letter [a-z], and hyphens cannot be adjacent to other hyphens): e.g. "http"`, validation.IdentifierNoHyphensBeginEndFmt)
-
 // ValidateHorizontalPodAutoscaler can be used to check whether the given autoscaler name is valid.
 // Prefix indicates this name will be used as part of generation, in which case trailing dashes are allowed.
 func ValidateHorizontalPodAutoscalerName(name string, prefix bool) (bool, string) {
@@ -51,37 +41,19 @@ func ValidateHorizontalPodAutoscalerName(name string, prefix bool) (bool, string
 	return apivalidation.ValidateReplicationControllerName(name, prefix)
 }
 
-func validateResourceConsumption(consumption *extensions.ResourceConsumption, fieldName string) errs.ValidationErrorList {
-	allErrs := errs.ValidationErrorList{}
-	resource := consumption.Resource.String()
-	if resource != string(api.ResourceMemory) && resource != string(api.ResourceCPU) {
-		allErrs = append(allErrs, errs.NewFieldInvalid(fieldName+".resource", resource, "resource not supported by autoscaler"))
-	}
-	quantity := consumption.Quantity.Value()
-	if quantity < 0 {
-		allErrs = append(allErrs, errs.NewFieldInvalid(fieldName+".quantity", quantity, "must be non-negative"))
-	}
-	return allErrs
-}
-
 func validateHorizontalPodAutoscalerSpec(autoscaler extensions.HorizontalPodAutoscalerSpec) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
-	if autoscaler.MinReplicas < 0 {
-		allErrs = append(allErrs, errs.NewFieldInvalid("minReplicas", autoscaler.MinReplicas, isNegativeErrorMsg))
+	if autoscaler.MinReplicas != nil && *autoscaler.MinReplicas < 1 {
+		allErrs = append(allErrs, errs.NewFieldInvalid("minReplicas", autoscaler.MinReplicas, `must be bigger or equal to 1`))
 	}
-	if autoscaler.MaxReplicas < autoscaler.MinReplicas {
+	if autoscaler.MaxReplicas < 1 {
+		allErrs = append(allErrs, errs.NewFieldInvalid("maxReplicas", autoscaler.MaxReplicas, `must be bigger or equal to 1`))
+	}
+	if autoscaler.MinReplicas != nil && autoscaler.MaxReplicas < *autoscaler.MinReplicas {
 		allErrs = append(allErrs, errs.NewFieldInvalid("maxReplicas", autoscaler.MaxReplicas, `must be bigger or equal to minReplicas`))
 	}
-	if autoscaler.ScaleRef == nil {
-		allErrs = append(allErrs, errs.NewFieldRequired("scaleRef"))
-	}
-	resource := autoscaler.Target.Resource.String()
-	if resource != string(api.ResourceMemory) && resource != string(api.ResourceCPU) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("target.resource", resource, "resource not supported by autoscaler"))
-	}
-	quantity := autoscaler.Target.Quantity.Value()
-	if quantity < 0 {
-		allErrs = append(allErrs, errs.NewFieldInvalid("target.quantity", quantity, isNegativeErrorMsg))
+	if autoscaler.CPUUtilization != nil && autoscaler.CPUUtilization.TargetPercentage < 1 {
+		allErrs = append(allErrs, errs.NewFieldInvalid("cpuUtilization.targetPercentage", autoscaler.CPUUtilization.TargetPercentage, `must be bigger or equal to 1`))
 	}
 	return allErrs
 }
@@ -107,9 +79,6 @@ func ValidateHorizontalPodAutoscalerStatusUpdate(controller, oldController *exte
 	status := controller.Status
 	allErrs = append(allErrs, apivalidation.ValidatePositiveField(int64(status.CurrentReplicas), "currentReplicas")...)
 	allErrs = append(allErrs, apivalidation.ValidatePositiveField(int64(status.DesiredReplicas), "desiredReplicas")...)
-	if status.CurrentConsumption != nil {
-		allErrs = append(allErrs, validateResourceConsumption(status.CurrentConsumption, "currentConsumption")...)
-	}
 	return allErrs
 }
 
@@ -139,7 +108,7 @@ func ValidateThirdPartyResource(obj *extensions.ThirdPartyResource) errs.Validat
 // ValidateDaemonSet tests if required fields in the DaemonSet are set.
 func ValidateDaemonSet(controller *extensions.DaemonSet) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
-	allErrs = append(allErrs, apivalidation.ValidateObjectMeta(&controller.ObjectMeta, true, apivalidation.ValidateReplicationControllerName).Prefix("metadata")...)
+	allErrs = append(allErrs, apivalidation.ValidateObjectMeta(&controller.ObjectMeta, true, ValidateDaemonSetName).Prefix("metadata")...)
 	allErrs = append(allErrs, ValidateDaemonSetSpec(&controller.Spec).Prefix("spec")...)
 	return allErrs
 }
@@ -339,22 +308,25 @@ func ValidateJob(job *extensions.Job) errs.ValidationErrorList {
 func ValidateJobSpec(spec *extensions.JobSpec) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
 
-	if spec.Parallelism != nil && *spec.Parallelism < 0 {
-		allErrs = append(allErrs, errs.NewFieldInvalid("parallelism", spec.Parallelism, isNegativeErrorMsg))
+	if spec.Parallelism != nil {
+		allErrs = append(allErrs, apivalidation.ValidatePositiveField(int64(*spec.Parallelism), "parallelism")...)
 	}
-	if spec.Completions != nil && *spec.Completions < 0 {
-		allErrs = append(allErrs, errs.NewFieldInvalid("completions", spec.Completions, isNegativeErrorMsg))
+	if spec.Completions != nil {
+		allErrs = append(allErrs, apivalidation.ValidatePositiveField(int64(*spec.Completions), "completions")...)
 	}
-
-	selector := labels.Set(spec.Selector).AsSelector()
-	if selector.Empty() {
+	if spec.Selector == nil {
 		allErrs = append(allErrs, errs.NewFieldRequired("selector"))
+	} else {
+		allErrs = append(allErrs, ValidatePodSelector(spec.Selector).Prefix("selector")...)
 	}
 
-	labels := labels.Set(spec.Template.Labels)
-	if !selector.Matches(labels) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("template.labels", spec.Template.Labels, "selector does not match template"))
+	if selector, err := extensions.PodSelectorAsSelector(spec.Selector); err == nil {
+		labels := labels.Set(spec.Template.Labels)
+		if !selector.Matches(labels) {
+			allErrs = append(allErrs, errs.NewFieldInvalid("template.metadata.labels", spec.Template.Labels, "selector does not match template"))
+		}
 	}
+
 	allErrs = append(allErrs, apivalidation.ValidatePodTemplateSpec(&spec.Template).Prefix("template")...)
 	if spec.Template.Spec.RestartPolicy != api.RestartPolicyOnFailure &&
 		spec.Template.Spec.RestartPolicy != api.RestartPolicyNever {
@@ -389,15 +361,9 @@ func ValidateJobUpdateStatus(oldJob, job *extensions.Job) errs.ValidationErrorLi
 func ValidateJobSpecUpdate(oldSpec, spec extensions.JobSpec) errs.ValidationErrorList {
 	allErrs := errs.ValidationErrorList{}
 	allErrs = append(allErrs, ValidateJobSpec(&spec)...)
-	if !api.Semantic.DeepEqual(oldSpec.Completions, spec.Completions) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("completions", spec.Completions, "field is immutable"))
-	}
-	if !api.Semantic.DeepEqual(oldSpec.Selector, spec.Selector) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("selector", spec.Selector, "field is immutable"))
-	}
-	if !api.Semantic.DeepEqual(oldSpec.Template, spec.Template) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("template", "[omitted]", "field is immutable"))
-	}
+	allErrs = append(allErrs, apivalidation.ValidateImmutableField(oldSpec.Completions, spec.Completions, "completions")...)
+	allErrs = append(allErrs, apivalidation.ValidateImmutableField(oldSpec.Selector, spec.Selector, "selector")...)
+	allErrs = append(allErrs, apivalidation.ValidateImmutableField(oldSpec.Template, spec.Template, "template")...)
 	return allErrs
 }
 
@@ -524,10 +490,10 @@ func validateIngressBackend(backend *extensions.IngressBackend) errs.ValidationE
 			allErrs = append(allErrs, errs.NewFieldInvalid("servicePort", backend.ServicePort.StrVal, apivalidation.DNS1123LabelErrorMsg))
 		}
 		if !utilvalidation.IsValidPortName(backend.ServicePort.StrVal) {
-			allErrs = append(allErrs, errs.NewFieldInvalid("servicePort", backend.ServicePort.StrVal, portNameErrorMsg))
+			allErrs = append(allErrs, errs.NewFieldInvalid("servicePort", backend.ServicePort.StrVal, apivalidation.PortNameErrorMsg))
 		}
 	} else if !utilvalidation.IsValidPortNum(backend.ServicePort.IntVal) {
-		allErrs = append(allErrs, errs.NewFieldInvalid("servicePort", backend.ServicePort, portRangeErrorMsg))
+		allErrs = append(allErrs, errs.NewFieldInvalid("servicePort", backend.ServicePort, apivalidation.PortRangeErrorMsg))
 	}
 	return allErrs
 }
@@ -566,5 +532,35 @@ func ValidateClusterAutoscaler(autoscaler *extensions.ClusterAutoscaler) errs.Va
 		allErrs = append(allErrs, errs.NewFieldInvalid("namespace", autoscaler.Namespace, `namespace must be default`))
 	}
 	allErrs = append(allErrs, validateClusterAutoscalerSpec(autoscaler.Spec)...)
+	return allErrs
+}
+
+func ValidatePodSelector(ps *extensions.PodSelector) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	if ps == nil {
+		return allErrs
+	}
+	allErrs = append(allErrs, apivalidation.ValidateLabels(ps.MatchLabels, "matchLabels")...)
+	for i, expr := range ps.MatchExpressions {
+		allErrs = append(allErrs, ValidatePodSelectorRequirement(expr).Prefix(fmt.Sprintf("matchExpressions.[%v]", i))...)
+	}
+	return allErrs
+}
+
+func ValidatePodSelectorRequirement(sr extensions.PodSelectorRequirement) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	switch sr.Operator {
+	case extensions.PodSelectorOpIn, extensions.PodSelectorOpNotIn:
+		if len(sr.Values) == 0 {
+			allErrs = append(allErrs, errs.NewFieldInvalid("values", sr.Values, "must be non-empty when operator is In or NotIn"))
+		}
+	case extensions.PodSelectorOpExists, extensions.PodSelectorOpDoesNotExist:
+		if len(sr.Values) > 0 {
+			allErrs = append(allErrs, errs.NewFieldInvalid("values", sr.Values, "must be empty when operator is Exists or DoesNotExist"))
+		}
+	default:
+		allErrs = append(allErrs, errs.NewFieldInvalid("operator", sr.Operator, "not a valid pod selector operator"))
+	}
+	allErrs = append(allErrs, apivalidation.ValidateLabelName(sr.Key, "key")...)
 	return allErrs
 }
