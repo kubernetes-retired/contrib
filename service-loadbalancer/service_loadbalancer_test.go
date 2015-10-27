@@ -22,10 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"testing"
-	"time"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -268,7 +265,7 @@ func buildTestLoadBalancer(lbDefAlgorithm string) *loadBalancerController {
 	}
 
 	flb.cfg = parseCfg(cfg, lbDefAlgorithm)
-	cfgFile, _ := filepath.Abs("test-"+strconv.FormatInt(time.Now().UnixNano(),10))
+	cfgFile, _ := filepath.Abs("test-" + string(util.NewUUID()))
 	flb.cfg.Config = cfgFile
 	flb.tcpServices = map[string]int{
 		svc1.Name: 20,
@@ -293,22 +290,9 @@ func compareCfgFiles(t *testing.T, orig, template string) {
 	}
 }
 
-type serviceByName []service
-
-func (s serviceByName) Len() int {
-	return len(s)
-}
-func (s serviceByName) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-func (s serviceByName) Less(i, j int) bool {
-	return s[i].Name < s[j].Name && s[i].FrontendPort < s[j].FrontendPort
-}
-
 func TestDefaultAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("")
 	httpSvc, tcpSvc := flb.getServices()
-	sort.Sort(serviceByName(httpSvc))
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
@@ -324,7 +308,6 @@ func TestDefaultAlgorithm(t *testing.T) {
 func TestDefaultCustomAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("leastconn")
 	httpSvc, tcpSvc := flb.getServices()
-	sort.Sort(serviceByName(httpSvc))
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
@@ -340,7 +323,6 @@ func TestDefaultCustomAlgorithm(t *testing.T) {
 func TestSyslog(t *testing.T) {
 	flb := buildTestLoadBalancer("")
 	httpSvc, tcpSvc := flb.getServices()
-	sort.Sort(serviceByName(httpSvc))
 	flb.cfg.startSyslog = true
 	if err := flb.cfg.write(
 		map[string][]service{
@@ -358,7 +340,6 @@ func TestSvcCustomAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("")
 	httpSvc, tcpSvc := flb.getServices()
 	httpSvc[0].Algorithm = "leastconn"
-	sort.Sort(serviceByName(httpSvc))
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
@@ -375,8 +356,6 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("leastconn")
 	httpSvc, tcpSvc := flb.getServices()
 	httpSvc[0].Algorithm = "roundrobin"
-	sort.Sort(serviceByName(httpSvc))
-
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
@@ -393,8 +372,6 @@ func TestServiceAffinity(t *testing.T) {
 	flb := buildTestLoadBalancer("")
 	httpSvc, tcpSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
-	sort.Sort(serviceByName(httpSvc))
-
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
@@ -407,23 +384,19 @@ func TestServiceAffinity(t *testing.T) {
 	os.Remove(flb.cfg.Config)
 }
 
-// func TestServiceAffinityWithCookies(t *testing.T) {
-// 	flb := buildTestLoadBalancer("")
-// 	httpSvc, tcpSvc := flb.getServices()
-
-// 	httpSvc[0].SessionAffinity = true
-// 	httpSvc[0].CookieStickySession = true
-
-// 	sort.Sort(serviceByName(httpSvc))
-
-// 	if err := flb.cfg.write(
-// 		map[string][]service{
-// 			"http": httpSvc,
-// 			"tcp":  tcpSvc,
-// 		}, false); err != nil {
-// 		t.Fatalf("Expected at least one tcp or http service")
-// 	}
-// 	template, _ := filepath.Abs("./test-samples/TestServiceAffinityWithCookies.cfg")
-// 	compareCfgFiles(t, flb.cfg.Config, template)
-// 	os.Remove(flb.cfg.Config)
-// }
+func TestServiceAffinityWithCookies(t *testing.T) {
+	flb := buildTestLoadBalancer("")
+	httpSvc, tcpSvc := flb.getServices()
+	httpSvc[0].SessionAffinity = true
+	httpSvc[0].CookieStickySession = true
+	if err := flb.cfg.write(
+		map[string][]service{
+			"http": httpSvc,
+			"tcp":  tcpSvc,
+		}, false); err != nil {
+		t.Fatalf("Expected at least one tcp or http service")
+	}
+	template, _ := filepath.Abs("./test-samples/TestServiceAffinityWithCookies.cfg")
+	compareCfgFiles(t, flb.cfg.Config, template)
+	os.Remove(flb.cfg.Config)
+}

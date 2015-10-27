@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -166,6 +167,18 @@ type service struct {
 	// The name of the cookie is SERVERID
 	// This only can be used in http services
 	CookieStickySession bool
+}
+
+type serviceByName []service
+
+func (s serviceByName) Len() int {
+	return len(s)
+}
+func (s serviceByName) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+func (s serviceByName) Less(i, j int) bool {
+	return s[i].Name < s[j].Name
 }
 
 // loadBalancerConfig represents loadbalancer specific configuration. Eventually
@@ -417,6 +430,10 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 			glog.Infof("Found service: %+v", newSvc)
 		}
 	}
+
+	sort.Sort(serviceByName(httpSvc))
+	sort.Sort(serviceByName(tcpSvc))
+
 	return
 }
 
