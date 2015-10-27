@@ -23,12 +23,8 @@ import (
 )
 
 func newLoadBalancerPool(f LoadBalancers, t *testing.T) LoadBalancerPool {
-	return NewLoadBalancerPool(
-		f,
-		&compute.BackendService{
-			SelfLink: defaultBackendName("test"),
-		},
-	)
+	cm := newFakeClusterManager("test")
+	return NewLoadBalancerPool(f, cm.backendPool, testDefaultBeNodePort)
 }
 
 func TestCreateLoadBalancer(t *testing.T) {
@@ -42,7 +38,7 @@ func TestCreateLoadBalancer(t *testing.T) {
 	}
 	um, err := f.GetUrlMap(f.umName())
 	if err != nil ||
-		um.DefaultService != pool.(*L7s).defaultBackend.SelfLink {
+		um.DefaultService != pool.(*L7s).glbcDefaultBackend.SelfLink {
 		t.Fatalf("%v", err)
 	}
 	tp, err := f.GetTargetHttpProxy(f.tpName())

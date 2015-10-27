@@ -35,8 +35,8 @@ type Instances struct {
 // NewNodePool creates a new node pool.
 // - cloud: implements InstanceGroups, used to sync Kubernetes nodes with
 //   members of the cloud InstanceGroup.
-func NewNodePool(cloud InstanceGroups) (NodePool, error) {
-	return &Instances{cloud, newPoolStore()}, nil
+func NewNodePool(cloud InstanceGroups) NodePool {
+	return &Instances{cloud, newPoolStore()}
 }
 
 // AddInstanceGroup creates or gets an instance group.

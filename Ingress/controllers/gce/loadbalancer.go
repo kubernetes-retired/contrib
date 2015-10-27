@@ -85,28 +85,47 @@ func (g gceUrlMap) putDefaultBackend(d *compute.BackendService) {
 
 // L7s implements LoadBalancerPool.
 type L7s struct {
-	cloud          LoadBalancers
-	pool           *poolStore
-	defaultBackend *compute.BackendService
+	cloud LoadBalancers
+	pool  *poolStore
+	// TODO: Remove this field and always ask the BackendPool using the NodePort.
+	glbcDefaultBackend     *compute.BackendService
+	defaultBackendPool     BackendPool
+	defaultBackendNodePort int64
 }
 
 // NewLoadBalancerPool returns a new loadbalancer pool.
 // - cloud: implements LoadBalancers. Used to sync L7 loadbalancer resources
 //	 with the cloud.
-// - defaultBe: a GCE BackendService used as the default backend for
-//   loadbalancers that don't specify one. This BackendService should point to
-//   the NodePort of a kubernetes service capable of serving a 404 page.
+// - defaultBackendPool: a BackendPool used to manage the GCE BackendService for
+//   the default backend.
+// - defaultBackendNodePort: The nodePort of the Kubernetes service representing
+//   the default backend.
 func NewLoadBalancerPool(
 	cloud LoadBalancers,
-	defaultBe *compute.BackendService) LoadBalancerPool {
-	return &L7s{cloud, newPoolStore(), defaultBe}
+	defaultBackendPool BackendPool,
+	defaultBackendNodePort int64) LoadBalancerPool {
+	return &L7s{cloud, newPoolStore(), nil, defaultBackendPool, defaultBackendNodePort}
 }
 
 func (l *L7s) create(name string) (*L7, error) {
+	// Lazily create a default backend so we don't tax users who don't care
+	// about Ingress by consuming 1 of their 3 GCE BackendServices. This
+	// BackendService is deleted when there are no more Ingresses, either
+	// through Sync or Shutdown.
+	if l.glbcDefaultBackend == nil {
+		err := l.defaultBackendPool.Add(l.defaultBackendNodePort)
+		if err != nil {
+			return nil, err
+		}
+		l.glbcDefaultBackend, err = l.defaultBackendPool.Get(l.defaultBackendNodePort)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &L7{
-		Name:           name,
-		cloud:          l.cloud,
-		defaultBackend: l.defaultBackend,
+		Name:               name,
+		cloud:              l.cloud,
+		glbcDefaultBackend: l.glbcDefaultBackend,
 	}, nil
 }
 
@@ -178,6 +197,12 @@ func (l *L7s) Sync(names []string) error {
 			return err
 		}
 	}
+	// Tear down the default backend when there are no more loadbalancers
+	// because the cluster could go down anytime and we'd leak it otherwise.
+	if len(names) == 0 {
+		l.defaultBackendPool.Delete(l.defaultBackendNodePort)
+		l.glbcDefaultBackend = nil
+	}
 	return nil
 }
 
@@ -207,6 +232,9 @@ func (l *L7s) Shutdown() error {
 	if err := l.GC([]string{}); err != nil {
 		return err
 	}
+	if err := l.defaultBackendPool.Shutdown(); err != nil {
+		return err
+	}
 	glog.Infof("Loadbalancer pool shutdown.")
 	return nil
 }
@@ -220,11 +248,11 @@ type L7 struct {
 	fw    *compute.ForwardingRule
 	// This is the backend to use if no path rules match
 	// TODO: Expose this to users.
-	defaultBackend *compute.BackendService
+	glbcDefaultBackend *compute.BackendService
 }
 
 func (l *L7) checkUrlMap(backend *compute.BackendService) (err error) {
-	if l.defaultBackend == nil {
+	if l.glbcDefaultBackend == nil {
 		return fmt.Errorf("Cannot create urlmap without default backend.")
 	}
 	urlMapName := fmt.Sprintf("%v-%v", urlMapPrefix, l.Name)
@@ -235,8 +263,8 @@ func (l *L7) checkUrlMap(backend *compute.BackendService) (err error) {
 		return nil
 	}
 
-	glog.Infof("Creating url map %v for backend %v", urlMapName, l.defaultBackend.Name)
-	urlMap, err = l.cloud.CreateUrlMap(l.defaultBackend, urlMapName)
+	glog.Infof("Creating url map %v for backend %v", urlMapName, l.glbcDefaultBackend.Name)
+	urlMap, err = l.cloud.CreateUrlMap(l.glbcDefaultBackend, urlMapName)
 	if err != nil {
 		return err
 	}
@@ -303,7 +331,7 @@ func (l *L7) checkForwardingRule() (err error) {
 }
 
 func (l *L7) edgeHop() error {
-	if err := l.checkUrlMap(l.defaultBackend); err != nil {
+	if err := l.checkUrlMap(l.glbcDefaultBackend); err != nil {
 		return err
 	}
 	if err := l.checkProxy(); err != nil {
@@ -375,17 +403,15 @@ func (l *L7) UpdateUrlMap(ingressRules gceUrlMap) error {
 	}
 	glog.Infof("Updating urlmap for l7 %v", l.Name)
 
-	defaultService := l.um.DefaultService
+	// All UrlMaps must have a default backend. If the Ingress has a default
+	// backend, it applies to all host rules as well as to the urlmap itself.
+	// If it doesn't the urlmap might have a stale default, so replace it with
+	// glbc's default backend.
 	defaultBackend := ingressRules.getDefaultBackend()
-
-	// If the Ingress has a default backend, it applies to all host rules as
-	// well as to the urlmap itself. If it doesn't the urlmap might have a
-	// stale default, so replace it with the controller's default backend.
 	if defaultBackend != nil {
-		defaultService = defaultBackend.SelfLink
-		l.um.DefaultService = defaultService
+		l.um.DefaultService = defaultBackend.SelfLink
 	} else {
-		l.um.DefaultService = l.defaultBackend.SelfLink
+		l.um.DefaultService = l.glbcDefaultBackend.SelfLink
 	}
 	glog.V(3).Infof("Updating url map %+v", ingressRules)
 
@@ -425,7 +451,7 @@ func (l *L7) UpdateUrlMap(ingressRules gceUrlMap) error {
 			pathMatcher = &compute.PathMatcher{Name: pmName}
 			l.um.PathMatchers = append(l.um.PathMatchers, pathMatcher)
 		}
-		pathMatcher.DefaultService = defaultService
+		pathMatcher.DefaultService = l.um.DefaultService
 
 		// TODO: Every update replaces the entire path map. This will need to
 		// change when we allow joining. Right now we call a single method

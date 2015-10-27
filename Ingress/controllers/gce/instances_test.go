@@ -25,7 +25,7 @@ import (
 func TestNodePoolSync(t *testing.T) {
 	f := newFakeInstanceGroups(sets.NewString(
 		[]string{"n1", "n2"}...))
-	pool, _ := NewNodePool(f)
+	pool := NewNodePool(f)
 	pool.AddInstanceGroup("test", 80)
 
 	// KubeNodes: n1
@@ -44,7 +44,7 @@ func TestNodePoolSync(t *testing.T) {
 	// Try to add n2 to the instance group.
 
 	f = newFakeInstanceGroups(sets.NewString([]string{"n1"}...))
-	pool, _ = NewNodePool(f)
+	pool = NewNodePool(f)
 	pool.AddInstanceGroup("test", 80)
 
 	f.calls = []int{}
@@ -60,7 +60,7 @@ func TestNodePoolSync(t *testing.T) {
 	// Do nothing.
 
 	f = newFakeInstanceGroups(sets.NewString([]string{"n1", "n2"}...))
-	pool, _ = NewNodePool(f)
+	pool = NewNodePool(f)
 	pool.AddInstanceGroup("test", 80)
 
 	f.calls = []int{}

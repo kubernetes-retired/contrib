@@ -22,48 +22,17 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
-func newBackendPool(f BackendServices, fakeIGs InstanceGroups, defaultBeNodePort int64, t *testing.T) BackendPool {
-	nodePool, _ := NewNodePool(fakeIGs)
-	pool, err := NewBackendPool(
+func newBackendPool(f BackendServices, fakeIGs InstanceGroups) BackendPool {
+	return NewBackendPool(
 		f,
-		defaultBeNodePort,
-		NewHealthChecker(newFakeHealthChecks(), "/"), nodePool)
-	if err != nil || pool == nil {
-		t.Fatalf("%v", err)
-	}
-	return pool
-}
-
-func TestNewBackendPool(t *testing.T) {
-	f := newFakeBackendServices()
-	fakeIGs := newFakeInstanceGroups(sets.NewString())
-	defaultBeName := beName(testDefaultBeNodePort)
-
-	// Create a backend and pool, then recreate the pool and make sure
-	// it reuses the existing backend. This simulates the restart scenario.
-	newBackendPool(f, fakeIGs, testDefaultBeNodePort, t)
-	if f.backendServices[0].Name != defaultBeName {
-		t.Fatalf("%v not created as expected", defaultBeName)
-	}
-	f.calls = []int{}
-	pool := newBackendPool(f, fakeIGs, testDefaultBeNodePort, t)
-	for _, call := range f.calls {
-		if call == Create {
-			t.Fatalf("Tried to create instance group when one already exists.")
-		}
-	}
-	got, _ := f.GetBackendService(defaultBeName)
-	if pool.(*Backends).defaultBackend != got {
-		t.Fatalf("Default backend service not create, got %v expected %v",
-			f.backendServices, defaultBeName)
-	}
+		NewHealthChecker(newFakeHealthChecks(), "/"),
+		NewNodePool(fakeIGs))
 }
 
 func TestBackendPoolAdd(t *testing.T) {
 	f := newFakeBackendServices()
 	fakeIGs := newFakeInstanceGroups(sets.NewString())
-	defaultBeName := beName(testDefaultBeNodePort)
-	pool := newBackendPool(f, fakeIGs, testDefaultBeNodePort, t)
+	pool := newBackendPool(f, fakeIGs)
 
 	// Add a backend for a port, then re-add the same port and
 	// make sure it corrects a broken link from the backend to
@@ -104,8 +73,8 @@ func TestBackendPoolAdd(t *testing.T) {
 			t.Fatalf("Unexpected create for existing backend service")
 		}
 	}
-	gotBackend, _ := f.GetBackendService(defaultBeName)
-	gotGroup, _ := fakeIGs.GetInstanceGroup(defaultBeName)
+	gotBackend, _ := f.GetBackendService(beName)
+	gotGroup, _ := fakeIGs.GetInstanceGroup(beName)
 	if gotBackend.Backends[0].Group != gotGroup.SelfLink {
 		t.Fatalf(
 			"Broken instance group link: %v %v",
@@ -121,7 +90,7 @@ func TestBackendPoolSync(t *testing.T) {
 	svcNodePorts := []int64{81, 82, 83}
 	f := newFakeBackendServices()
 	fakeIGs := newFakeInstanceGroups(sets.NewString())
-	pool := newBackendPool(f, fakeIGs, testDefaultBeNodePort, t)
+	pool := newBackendPool(f, fakeIGs)
 	pool.Add(81)
 	pool.Add(90)
 	pool.Sync(svcNodePorts)
@@ -138,17 +107,12 @@ func TestBackendPoolSync(t *testing.T) {
 }
 
 func TestBackendPoolShutdown(t *testing.T) {
-	defaultBeName := beName(testDefaultBeNodePort)
 	f := newFakeBackendServices()
 	fakeIGs := newFakeInstanceGroups(sets.NewString())
-	pool := newBackendPool(f, fakeIGs, testDefaultBeNodePort, t)
+	pool := newBackendPool(f, fakeIGs)
 
-	// Make sure the default backend is only deleted when the pool is empty.
 	pool.Add(80)
 	pool.Shutdown()
-	if _, err := f.GetBackendService(defaultBeName); err == nil {
-		t.Fatalf("%v", err)
-	}
 	if _, err := f.GetBackendService(beName(80)); err == nil {
 		t.Fatalf("%v", err)
 	}

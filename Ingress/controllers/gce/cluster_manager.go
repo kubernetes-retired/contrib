@@ -150,21 +150,15 @@ func NewClusterManager(
 	}
 	cloud := cloudInterface.(*gce.GCECloud)
 	cluster := ClusterManager{ClusterName: name}
-	if cluster.instancePool, err = NewNodePool(cloud); err != nil {
-		return nil, err
-	}
+	cluster.instancePool = NewNodePool(cloud)
 	healthChecker := NewHealthChecker(cloud, defaultHealthCheckPath)
-	if cluster.backendPool, err = NewBackendPool(
-		cloud,
-		defaultBackendNodePort,
-		healthChecker,
-		cluster.instancePool); err != nil {
-		return nil, err
-	}
+	cluster.backendPool = NewBackendPool(
+		cloud, healthChecker, cluster.instancePool)
+	defaultBackendHealthChecker := NewHealthChecker(cloud, "/healthz")
+	defaultBackendPool := NewBackendPool(
+		cloud, defaultBackendHealthChecker, cluster.instancePool)
 	cluster.defaultBackendNodePort = defaultBackendNodePort
-	// TODO: Don't cast, the problem here is the default backend doesn't have
-	// a port and the interface only allows backend access via port.
 	cluster.l7Pool = NewLoadBalancerPool(
-		cloud, cluster.backendPool.(*Backends).defaultBackend)
+		cloud, defaultBackendPool, defaultBackendNodePort)
 	return &cluster, nil
 }

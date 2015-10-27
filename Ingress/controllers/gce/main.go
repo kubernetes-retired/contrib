@@ -169,11 +169,7 @@ func main() {
 		}
 	} else {
 		// Create fake cluster manager
-		fcm, err := newFakeClusterManager(*clusterName)
-		if err != nil {
-			glog.Fatalf("%v", err)
-		}
-		clusterManager = fcm.ClusterManager
+		clusterManager = newFakeClusterManager(*clusterName).ClusterManager
 	}
 
 	// Start loadbalancer controller

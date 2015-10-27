@@ -29,12 +29,10 @@ import (
 
 // Backends implements BackendPool.
 type Backends struct {
-	cloud                  BackendServices
-	nodePool               NodePool
-	healthChecker          HealthChecker
-	pool                   *poolStore
-	defaultBackend         *compute.BackendService
-	defaultBackendNodePort int64
+	cloud         BackendServices
+	nodePool      NodePool
+	healthChecker HealthChecker
+	pool          *poolStore
 }
 
 func portKey(port int64) string {
@@ -47,37 +45,17 @@ func beName(port int64) string {
 
 // NewBackendPool returns a new backend pool.
 // - cloud: implements BackendServices and syncs backends with a cloud provider
-// - defaultBackendNodePort: is the node port of glbc's default backend. This is
-//	 the kubernetes Service that serves the 404 page if no urls match.
 // - nodePool: implements NodePool, used to create/delete new instance groups.
 func NewBackendPool(
 	cloud BackendServices,
-	defaultBackendNodePort int64,
 	healthChecker HealthChecker,
-	nodePool NodePool) (BackendPool, error) {
-	backends := &Backends{
-		cloud:                  cloud,
-		nodePool:               nodePool,
-		pool:                   newPoolStore(),
-		healthChecker:          healthChecker,
-		defaultBackendNodePort: defaultBackendNodePort,
+	nodePool NodePool) *Backends {
+	return &Backends{
+		cloud:         cloud,
+		nodePool:      nodePool,
+		pool:          newPoolStore(),
+		healthChecker: healthChecker,
 	}
-	// TODO: When we figure out a way to expose health checks, this will not
-	// be necessary. The default backend must serve a 404 page on "/", which
-	// is the most common 200 path for every other backend.
-	if err := backends.healthChecker.Add(
-		defaultBackendNodePort, "/healthz"); err != nil {
-		return nil, err
-	}
-	err := backends.Add(defaultBackendNodePort)
-	if err != nil {
-		return nil, err
-	}
-	backends.defaultBackend, err = backends.Get(defaultBackendNodePort)
-	if err != nil {
-		return nil, err
-	}
-	return backends, nil
 }
 
 // Get returns a single backend.
@@ -202,10 +180,6 @@ func (b *Backends) edgeHop(be *compute.BackendService, ig *compute.InstanceGroup
 func (b *Backends) Sync(svcNodePorts []int64) error {
 	glog.Infof("Sync: backends %v", svcNodePorts)
 
-	// The default backend doesn't have an Ingress and won't be a part of the
-	// input node port list.
-	svcNodePorts = append(svcNodePorts, b.defaultBackendNodePort)
-
 	// create backends for new ports, perform an edge hop for existing ports
 	for _, port := range svcNodePorts {
 		if err := b.Add(port); err != nil {
@@ -228,8 +202,7 @@ func (b *Backends) GC(svcNodePorts []int64) error {
 			return err
 		}
 		nodePort := int64(p)
-		if knownPorts.Has(portKey(nodePort)) ||
-			nodePort == b.defaultBackendNodePort {
+		if knownPorts.Has(portKey(nodePort)) {
 			continue
 		}
 		glog.Infof("GCing backend for port %v", p)
@@ -244,9 +217,6 @@ func (b *Backends) GC(svcNodePorts []int64) error {
 // This will fail if one of the backends is being used by another resource.
 func (b *Backends) Shutdown() error {
 	if err := b.GC([]int64{}); err != nil {
-		return err
-	}
-	if err := b.Delete(b.defaultBackendNodePort); err != nil {
 		return err
 	}
 	return nil

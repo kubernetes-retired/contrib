@@ -32,15 +32,6 @@ import (
 	"k8s.io/kubernetes/pkg/util"
 )
 
-// newFakeClusterManagerOrDie creates a new fakeClusterManager.
-func newFakeClusterManagerOrDie(t *testing.T) *fakeClusterManager {
-	fcm, err := newFakeClusterManager(testClusterName)
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-	return fcm
-}
-
 // newLoadBalancerController create a loadbalancer controller.
 func newLoadBalancerController(t *testing.T, cm *fakeClusterManager, masterUrl string) *loadBalancerController {
 	client := client.NewOrDie(&client.Config{Host: masterUrl, Version: testapi.Default.Version()})
@@ -188,7 +179,7 @@ func addIngress(lbc *loadBalancerController, ing *extensions.Ingress, pm *nodePo
 }
 
 func TestLbCreateDelete(t *testing.T) {
-	cm := newFakeClusterManagerOrDie(t)
+	cm := newFakeClusterManager(testClusterName)
 	lbc := newLoadBalancerController(t, cm, "")
 	inputMap1 := map[string]fakeIngressRuleValueMap{
 		"foo.example.com": {
@@ -260,7 +251,7 @@ func TestLbCreateDelete(t *testing.T) {
 }
 
 func TestLbFaultyUpdate(t *testing.T) {
-	cm := newFakeClusterManagerOrDie(t)
+	cm := newFakeClusterManager(testClusterName)
 	lbc := newLoadBalancerController(t, cm, "")
 	inputMap := map[string]fakeIngressRuleValueMap{
 		"foo.example.com": {
@@ -297,7 +288,7 @@ func TestLbFaultyUpdate(t *testing.T) {
 }
 
 func TestLbNoService(t *testing.T) {
-	cm := newFakeClusterManagerOrDie(t)
+	cm := newFakeClusterManager(testClusterName)
 	lbc := newLoadBalancerController(t, cm, "")
 	inputMap := map[string]fakeIngressRuleValueMap{
 		"foo.example.com": {
@@ -363,7 +354,7 @@ func TestLbStatusUpdate(t *testing.T) {
 	testServer := httptest.NewServer(&fakeHandler)
 	defer testServer.Close()
 
-	cm := newFakeClusterManagerOrDie(t)
+	cm := newFakeClusterManager(testClusterName)
 	lbc := newLoadBalancerController(t, cm, testServer.URL)
 
 	pm := newPortManager(1, 65536)
