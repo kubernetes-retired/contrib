@@ -14,13 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pulls
+package mungers
 
 import (
-	github_util "k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
-	"github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -36,33 +35,37 @@ func init() {
 func (LGTMAfterCommitMunger) Name() string { return "lgtm-after-commit" }
 
 // Initialize will initialize the munger
-func (LGTMAfterCommitMunger) Initialize(config *github_util.Config) error { return nil }
+func (LGTMAfterCommitMunger) Initialize(config *github.Config) error { return nil }
 
 // EachLoop is called at the start of every munge loop
-func (LGTMAfterCommitMunger) EachLoop(_ *github_util.Config) error { return nil }
+func (LGTMAfterCommitMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (LGTMAfterCommitMunger) AddFlags(cmd *cobra.Command, config *github_util.Config) {}
+func (LGTMAfterCommitMunger) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
-// MungePullRequest is the workhorse the will actually make updates to the PR
-func (LGTMAfterCommitMunger) MungePullRequest(config *github_util.Config, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
-	if !github_util.HasLabel(issue.Labels, "lgtm") {
+// Munge is the workhorse the will actually make updates to the PR
+func (LGTMAfterCommitMunger) Munge(obj *github.MungeObject) {
+	if !obj.IsPR() {
 		return
 	}
 
-	lastModified := github_util.LastModifiedTime(commits)
-	lgtmTime := github_util.LabelTime("lgtm", events)
+	if !obj.HasLabel("lgtm") {
+		return
+	}
+
+	lastModified := obj.LastModifiedTime()
+	lgtmTime := obj.LabelTime("lgtm")
 
 	if lastModified == nil || lgtmTime == nil {
-		glog.Errorf("PR %d unable to determine lastModified or lgtmTime", *pr.Number)
+		glog.Errorf("PR %d unable to determine lastModified or lgtmTime", *obj.Issue.Number)
 		return
 	}
 
 	if lastModified.After(*lgtmTime) {
 		lgtmRemovedBody := "PR changed after LGTM, removing LGTM."
-		if err := config.WriteComment(*pr.Number, lgtmRemovedBody); err != nil {
+		if err := obj.WriteComment(lgtmRemovedBody); err != nil {
 			return
 		}
-		config.RemoveLabel(*pr.Number, "lgtm")
+		obj.RemoveLabel("lgtm")
 	}
 }

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pulls
+package mungers
 
 import (
 	"math"
@@ -22,11 +22,11 @@ import (
 	"os"
 	"strings"
 
-	github_util "k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/kubernetes/pkg/util/yaml"
 
 	"github.com/golang/glog"
-	"github.com/google/go-github/github"
+	github_api "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -69,7 +69,7 @@ func init() {
 func (b *BlunderbussMunger) Name() string { return "blunderbuss" }
 
 // Initialize will initialize the munger
-func (b *BlunderbussMunger) Initialize(config *github_util.Config) error {
+func (b *BlunderbussMunger) Initialize(config *github.Config) error {
 	if len(b.blunderbussConfigFile) == 0 {
 		glog.Fatalf("--blunderbuss-config is required with the blunderbuss munger")
 	}
@@ -88,37 +88,43 @@ func (b *BlunderbussMunger) Initialize(config *github_util.Config) error {
 }
 
 // EachLoop is called at the start of every munge loop
-func (b *BlunderbussMunger) EachLoop(_ *github_util.Config) error { return nil }
+func (b *BlunderbussMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (b *BlunderbussMunger) AddFlags(cmd *cobra.Command, config *github_util.Config) {
+func (b *BlunderbussMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().StringVar(&b.blunderbussConfigFile, "blunderbuss-config", "./blunderbuss.yml", "Path to the blunderbuss config file")
 	cmd.Flags().BoolVar(&b.blunderbussReassign, "blunderbuss-reassign", false, "Assign PRs even if they're already assigned; use with -dry-run to judge changes to the assignment algorithm")
 	b.addBlunderbussCommand(cmd)
 }
 
 // u may be nil.
-func describeUser(u *github.User) string {
+func describeUser(u *github_api.User) string {
 	if u != nil && u.Login != nil {
 		return *u.Login
 	}
 	return "<nil>"
-
 }
 
-// MungePullRequest is the workhorse the will actually make updates to the PR
-func (b *BlunderbussMunger) MungePullRequest(config *github_util.Config, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
-	if !b.blunderbussReassign && issue.Assignee != nil {
-		glog.V(6).Infof("skipping %v: reassign: %v assignee: %v", *pr.Number, b.blunderbussReassign, describeUser(issue.Assignee))
+// Munge is the workhorse the will actually make updates to the PR
+func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
+	if !obj.IsPR() {
 		return
 	}
+
+	issue := obj.Issue
+	if !b.blunderbussReassign && issue.Assignee != nil {
+		glog.V(6).Infof("skipping %v: reassign: %v assignee: %v", *issue.Number, b.blunderbussReassign, describeUser(issue.Assignee))
+		return
+	}
+
+	commits, err := obj.GetCommits()
+	if err != nil {
+		return
+	}
+
 	potentialOwners := weightMap{}
 	weightSum := int64(0)
 	for _, commit := range commits {
-		if commit.Author == nil || commit.Author.Login == nil || commit.SHA == nil {
-			glog.Warningf("Skipping invalid commit for %d: %#v", *pr.Number, commit)
-			continue
-		}
 		for _, file := range commit.Files {
 			fileWeight := int64(1)
 			if file.Changes != nil && *file.Changes != 0 {
@@ -133,7 +139,7 @@ func (b *BlunderbussMunger) MungePullRequest(config *github_util.Config, pr *git
 				glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
 			}
 			for owner, ownerWeight := range fileOwners {
-				if owner == *pr.User.Login {
+				if owner == *issue.User.Login {
 					continue
 				}
 				potentialOwners[owner] = potentialOwners[owner] + fileWeight*ownerWeight
@@ -142,7 +148,7 @@ func (b *BlunderbussMunger) MungePullRequest(config *github_util.Config, pr *git
 		}
 	}
 	if len(potentialOwners) == 0 {
-		glog.Errorf("No owners found for PR %d", *pr.Number)
+		glog.Errorf("No owners found for PR %d", *issue.Number)
 		return
 	}
 	glog.V(4).Infof("Weights: %#v\nSum: %v", potentialOwners, weightSum)
@@ -160,6 +166,6 @@ func (b *BlunderbussMunger) MungePullRequest(config *github_util.Config, pr *git
 			break
 		}
 	}
-	glog.Infof("Assigning %v to %v (previously assigned to %v)", *pr.Number, owner, describeUser(issue.Assignee))
-	config.AssignPR(*pr.Number, owner)
+	glog.Infof("Assigning %v to %v (previously assigned to %v)", *issue.Number, owner, describeUser(issue.Assignee))
+	obj.AssignPR(owner)
 }

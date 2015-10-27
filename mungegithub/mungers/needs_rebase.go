@@ -14,13 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pulls
+package mungers
 
 import (
-	github_util "k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
-	"github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -38,25 +37,29 @@ func init() {
 func (NeedsRebaseMunger) Name() string { return "needs-rebase" }
 
 // Initialize will initialize the munger
-func (NeedsRebaseMunger) Initialize(config *github_util.Config) error { return nil }
+func (NeedsRebaseMunger) Initialize(config *github.Config) error { return nil }
 
 // EachLoop is called at the start of every munge loop
-func (NeedsRebaseMunger) EachLoop(_ *github_util.Config) error { return nil }
+func (NeedsRebaseMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (NeedsRebaseMunger) AddFlags(cmd *cobra.Command, config *github_util.Config) {}
+func (NeedsRebaseMunger) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
-// MungePullRequest is the workhorse the will actually make updates to the PR
-func (NeedsRebaseMunger) MungePullRequest(config *github_util.Config, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
-	mergeable, err := config.IsPRMergeable(pr)
-	if err != nil {
-		glog.V(2).Infof("Skipping %d - problem determining mergeable", *pr.Number)
+// Munge is the workhorse the will actually make updates to the PR
+func (NeedsRebaseMunger) Munge(obj *github.MungeObject) {
+	if !obj.IsPR() {
 		return
 	}
-	if mergeable && github_util.HasLabel(issue.Labels, needsRebase) {
-		config.RemoveLabel(*pr.Number, needsRebase)
+
+	mergeable, err := obj.IsMergeable()
+	if err != nil {
+		glog.V(2).Infof("Skipping %d - problem determining mergeable", *obj.Issue.Number)
+		return
 	}
-	if !mergeable && !github_util.HasLabel(issue.Labels, needsRebase) {
-		config.AddLabels(*pr.Number, []string{needsRebase})
+	if mergeable && obj.HasLabel(needsRebase) {
+		obj.RemoveLabel(needsRebase)
+	}
+	if !mergeable && !obj.HasLabel(needsRebase) {
+		obj.AddLabels([]string{needsRebase})
 	}
 }

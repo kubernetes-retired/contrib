@@ -14,13 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pulls
+package mungers
 
 import (
-	github_util "k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
-	"github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -36,20 +35,24 @@ func init() {
 func (OkToTestMunger) Name() string { return "ok-to-test" }
 
 // Initialize will initialize the munger
-func (OkToTestMunger) Initialize(config *github_util.Config) error { return nil }
+func (OkToTestMunger) Initialize(config *github.Config) error { return nil }
 
 // EachLoop is called at the start of every munge loop
-func (OkToTestMunger) EachLoop(_ *github_util.Config) error { return nil }
+func (OkToTestMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (OkToTestMunger) AddFlags(cmd *cobra.Command, config *github_util.Config) {}
+func (OkToTestMunger) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
-// MungePullRequest is the workhorse the will actually make updates to the PR
-func (OkToTestMunger) MungePullRequest(config *github_util.Config, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
-	if !github_util.HasLabel(issue.Labels, "lgtm") {
+// Munge is the workhorse the will actually make updates to the PR
+func (OkToTestMunger) Munge(obj *github.MungeObject) {
+	if !obj.IsPR() {
 		return
 	}
-	status, err := config.GetStatus(pr, []string{"Jenkins GCE e2e"})
+
+	if !obj.HasLabel("lgtm") {
+		return
+	}
+	status, err := obj.GetStatus([]string{"Jenkins GCE e2e"})
 	if err != nil {
 		glog.Errorf("unexpected error getting status: %v", err)
 		return
@@ -59,6 +62,6 @@ func (OkToTestMunger) MungePullRequest(config *github_util.Config, pr *github.Pu
 		msg := `@k8s-bot ok to test
 
 	pr builder appears to be missing, activating due to 'lgtm' label.`
-		config.WriteComment(*pr.Number, msg)
+		obj.WriteComment(msg)
 	}
 }

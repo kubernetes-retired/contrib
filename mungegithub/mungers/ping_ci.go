@@ -14,15 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pulls
+package mungers
 
 import (
 	"time"
 
-	github_util "k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
-	"github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -38,40 +37,47 @@ func init() {
 func (PingCIMunger) Name() string { return "ping-ci" }
 
 // Initialize will initialize the munger
-func (PingCIMunger) Initialize(config *github_util.Config) error { return nil }
+func (PingCIMunger) Initialize(config *github.Config) error { return nil }
 
 // EachLoop is called at the start of every munge loop
-func (PingCIMunger) EachLoop(_ *github_util.Config) error { return nil }
+func (PingCIMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (PingCIMunger) AddFlags(cmd *cobra.Command, config *github_util.Config) {}
+func (PingCIMunger) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
-// MungePullRequest is the workhorse the will actually make updates to the PR
-func (PingCIMunger) MungePullRequest(config *github_util.Config, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
-	if !github_util.HasLabel(issue.Labels, "lgtm") {
+// Munge is the workhorse the will actually make updates to the PR
+func (PingCIMunger) Munge(obj *github.MungeObject) {
+	if !obj.IsPR() {
 		return
 	}
-	if mergeable, err := config.IsPRMergeable(pr); err != nil {
-		glog.V(2).Infof("Skipping %d - problem determining mergeability", *pr.Number)
-	} else if !mergeable {
-		glog.V(2).Infof("Skipping %d - not mergeable", *pr.Number)
+
+	if !obj.HasLabel("lgtm") {
+		return
 	}
-	if status, err := config.GetStatus(pr, []string{jenkinsCIContext, travisContext}); err == nil && status != "incomplete" {
+	mergeable, err := obj.IsMergeable()
+	if err != nil {
+		glog.V(2).Infof("Skipping %d - problem determining mergeability", *obj.Issue.Number)
+		return
+	}
+	if !mergeable {
+		glog.V(2).Infof("Skipping %d - not mergeable", *obj.Issue.Number)
+		return
+	}
+	if status, err := obj.GetStatus([]string{jenkinsCIContext, travisContext}); err == nil && status != "incomplete" {
 		glog.V(2).Info("Have %s status - skipping ping CI", jenkinsCIContext)
 		return
 	}
-	status, err := config.GetStatus(pr, []string{shippableContext, travisContext})
+	status, err := obj.GetStatus([]string{shippableContext, travisContext})
 	if err != nil {
 		glog.Errorf("unexpected error getting status: %v", err)
 		return
 	}
 	if status == "incomplete" {
-		glog.V(2).Infof("status is incomplete, closing and re-opening")
 		msg := "Continuous integration appears to have missed, closing and re-opening to trigger it"
-		config.WriteComment(*pr.Number, msg)
+		obj.WriteComment(msg)
 
-		config.ClosePR(pr)
+		obj.ClosePR()
 		time.Sleep(5 * time.Second)
-		config.OpenPR(pr, 10)
+		obj.OpenPR(10)
 	}
 }

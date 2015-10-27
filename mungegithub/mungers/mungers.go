@@ -14,50 +14,50 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pulls
+package mungers
 
 import (
 	"fmt"
 
-	github_util "k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
-	github_api "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
-// PRMunger is the interface which all mungers must implement to register
-type PRMunger interface {
-	// Take action on a specific pull request includes:
-	//   * The config for mungers
-	//   * The PR object
-	//   * The issue object for the PR, github stores some things (e.g. labels) in an "issue" object with the same number as the PR
-	//   * The commits for the PR
-	//   * The events on the PR
-	MungePullRequest(config *github_util.Config, pr *github_api.PullRequest, issue *github_api.Issue, commits []github_api.RepositoryCommit, events []github_api.IssueEvent)
-	AddFlags(cmd *cobra.Command, config *github_util.Config)
+// Munger is the interface which all mungers must implement to register
+type Munger interface {
+	// Take action on a specific github issue:
+	Munge(obj *github.MungeObject)
+	AddFlags(cmd *cobra.Command, config *github.Config)
 	Name() string
-	Initialize(*github_util.Config) error
-	EachLoop(*github_util.Config) error
+	Initialize(*github.Config) error
+	EachLoop() error
 }
 
-var mungerMap = map[string]PRMunger{}
-var mungers = []PRMunger{}
+var mungerMap = map[string]Munger{}
+var mungers = []Munger{}
 
 // GetAllMungers returns a slice of all registered mungers. This list is
 // completely independant of the mungers selected at runtime in --pr-mungers.
 // This is all possible mungers.
-func GetAllMungers() []PRMunger {
-	out := []PRMunger{}
+func GetAllMungers() []Munger {
+	out := []Munger{}
 	for _, munger := range mungerMap {
 		out = append(out, munger)
 	}
 	return out
 }
 
+// GetActiveMungers returns a slice of all mungers which both registered and
+// were requested by the user
+func GetActiveMungers() []Munger {
+	return mungers
+}
+
 // InitializeMungers will call munger.Initialize() for all mungers requested
 // in --pr-mungers
-func InitializeMungers(requestedMungers []string, config *github_util.Config) error {
+func InitializeMungers(requestedMungers []string, config *github.Config) error {
 	for _, name := range requestedMungers {
 		munger, found := mungerMap[name]
 		if !found {
@@ -73,9 +73,9 @@ func InitializeMungers(requestedMungers []string, config *github_util.Config) er
 
 // EachLoop will be called before we start a poll loop and will run the
 // EachLoop function for all active mungers
-func EachLoop(config *github_util.Config) error {
+func EachLoop() error {
 	for _, munger := range mungers {
-		if err := munger.EachLoop(config); err != nil {
+		if err := munger.EachLoop(); err != nil {
 			return err
 		}
 	}
@@ -84,7 +84,7 @@ func EachLoop(config *github_util.Config) error {
 
 // RegisterMunger should be called in `init()` by each munger to make itself
 // available by name
-func RegisterMunger(munger PRMunger) error {
+func RegisterMunger(munger Munger) error {
 	if _, found := mungerMap[munger.Name()]; found {
 		return fmt.Errorf("a munger with that name (%s) already exists", munger.Name())
 	}
@@ -94,42 +94,16 @@ func RegisterMunger(munger PRMunger) error {
 }
 
 // RegisterMungerOrDie will call RegisterMunger but will be fatal on error
-func RegisterMungerOrDie(munger PRMunger) {
+func RegisterMungerOrDie(munger Munger) {
 	if err := RegisterMunger(munger); err != nil {
 		glog.Fatalf("Failed to register munger: %s", err)
 	}
 }
 
-func mungePR(config *github_util.Config, pr *github_api.PullRequest, issue *github_api.Issue) error {
-	if pr == nil {
-		fmt.Printf("found nil pr\n")
-	}
-
-	commits, err := config.GetFilledCommits(*pr.Number)
-	if err != nil {
-		return err
-	}
-
-	events, err := config.GetAllEventsForPR(*pr.Number)
-	if err != nil {
-		return err
-	}
-
+// MungeIssue will call each activated munger with the given object
+func MungeIssue(obj *github.MungeObject) error {
 	for _, munger := range mungers {
-		munger.MungePullRequest(config, pr, issue, commits, events)
+		munger.Munge(obj)
 	}
-	return nil
-}
-
-// MungePullRequests is the main function which asks that each munger be called
-// for each PR
-func MungePullRequests(config *github_util.Config) error {
-	mfunc := func(pr *github_api.PullRequest, issue *github_api.Issue) error {
-		return mungePR(config, pr, issue)
-	}
-	if err := config.ForEachPRDo([]string{}, mfunc); err != nil {
-		return err
-	}
-
 	return nil
 }

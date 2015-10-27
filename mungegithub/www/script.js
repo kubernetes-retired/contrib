@@ -1,69 +1,99 @@
 "use strict";
-angular.module('SubmitQueueModule', ['ngMaterial']);
+angular.module('SubmitQueueModule', ['ngMaterial', 'md.data.table', 'angular-toArrayFilter']);
 
 angular.module('SubmitQueueModule').controller('SQCntl', ['DataService', '$interval', SQCntl]);
 
 function SQCntl(dataService, $interval) {
   var self = this;
-  self.prDisplayValue = "";
   self.prs = {};
   self.users = {};
   self.builds = {};
-  self.querySearch = querySearch;
-  self.updatePRVisibility = updatePRVisibility;
+  self.prQuerySearch = prQuerySearch;
+  self.historicQuerySearch = historicQuerySearch;
+  self.goToPerson = goToPerson;
   self.queryNum = 0;
-  // Load all api data
-  refresh();
-  // Refresh data every 30 seconds
-  $interval(refresh, 30000);
+  self.StatOrder = "-Count";
 
-  function refresh() {
-    dataService.getData().then(function successCallback(response) {
-      var prs = getPRs(response.data.PRStatus);
-      __updatePRVisibility(prs);
+  // Refresh data every 10 minutes
+  refreshPRs();
+  $interval(refreshPRs, 600000);
+
+  function refreshPRs() {
+    dataService.getData('prs').then(function successCallback(response) {
+      var prs = response.data.PRStatus;
       self.prs = prs;
       self.prSearchTerms = getPRSearchTerms();
-      self.users = getUsers(response.data.UserInfo);
-      self.builds = getE2E(response.data.BuildStatus);
-      if (response.data.E2ERunning.Number === "") {
-        self.e2erunning = [];
-      } else {
-        self.e2erunning = [ response.data.E2ERunning ];
-      }
-      self.e2equeue = response.data.E2EQueue;
     }, function errorCallback(response) {
       console.log("Error: Getting SubmitQueue Status");
     });
   }
 
-  function __updatePRVisibility(prs) {
-    angular.forEach(prs, function(pr) {
-      if (typeof self.prDisplayValue === "undefined") {
-        pr.show = true;
-      } else if (pr.Login.toLowerCase().match("^" + self.prDisplayValue.toLowerCase()) || pr.Num.match("^" + self.prDisplayValue)) {
-        pr.show = true;
+  // Refresh every 30 seconds
+  refreshGithubE2E();
+  $interval(refreshGithubE2E, 30000);
+
+  function refreshGithubE2E() {
+    dataService.getData('github-e2e-queue').then(function successCallback(response) {
+      if (response.data.E2ERunning.Number == 0) {
+        self.e2erunning = [];
       } else {
-        pr.show = false;
+        self.e2erunning = [response.data.E2ERunning];
       }
+      self.e2equeue = response.data.E2EQueue;
     });
   }
 
-  function updatePRVisibility() {
-          __updatePRVisibility(self.prs);
+  // Refresh every minute
+  refreshHistoricPRs();
+  $interval(refreshHistoricPRs, 60000);
+
+  function refreshHistoricPRs() {
+    dataService.getData('history').then(function successCallback(response) {
+      var prs = response.data;
+      self.historicPRs = prs;
+      self.historicSearchTerms = getHistoricSearchTerms();
+    });
   }
 
-  function getPRs(prs) {
-    var result = [];
-    angular.forEach(prs, function(value, key) {
-      var obj = {
-        'Num': key
-      };
-      angular.forEach(value, function(value, key) {
-        obj[key] = value;
-      });
-      result.push(obj);
+  // Refresh every 10 minutes
+  refreshStats();
+  $interval(refreshStats, 600000);
+
+  function refreshStats() {
+    dataService.getData('stats').then(function successCallback(response) {
+      var nextLoop = new Date(response.data.NextLoopTime);
+      document.getElementById("next-run-time").innerHTML = nextLoop.toLocaleTimeString();
+
+      self.botStats = response.data.Analytics;
+      self.APICount = response.data.APICount;
+      self.CachedAPICount = response.data.CachedAPICount;
+      document.getElementById("api-calls-per-sec").innerHTML = response.data.APIPerSec;
+      document.getElementById("github-api-limit-count").innerHTML = response.data.LimitRemaining;
+      var nextReset = new Date(response.data.LimitResetTime);
+      document.getElementById("github-api-limit-reset").innerHTML = nextReset.toLocaleTimeString();
     });
-    return result;
+  }
+
+  // Refresh every 15 minutes
+  refreshUsers();
+  $interval(refreshUsers, 900000);
+
+  function refreshUsers() {
+    dataService.getData('users').then(function successCallback(response) {
+      self.users = response.data;
+    });
+  }
+
+  // Refresh every minute
+  refreshGoogleInternalCI();
+  $interval(refreshGoogleInternalCI, 60000);
+
+  function refreshGoogleInternalCI() {
+    dataService.getData('google-internal-ci').then(function successCallback(response) {
+      var result = getE2E(response.data);
+      self.builds = result.builds;
+      self.failedBuild = result.failedBuild;
+    });
   }
 
   function getE2E(builds) {
@@ -90,22 +120,10 @@ function SQCntl(dataService, $interval) {
       }
       result.push(obj);
     });
-    self.failedBuild = failedBuild;
-    return result;
-  }
-
-  function getUsers(users) {
-    var result = [];
-    angular.forEach(users, function(value, key) {
-      var obj = {
-        'Login': key
-      };
-      angular.forEach(value, function(value, key) {
-        obj[key] = value;
-      });
-      result.push(obj);
-    });
-    return result;
+    return {
+      builds: result,
+      failedBuild: failedBuild,
+    };
   }
 
   function searchTermsContain(terms, value) {
@@ -119,8 +137,16 @@ function SQCntl(dataService, $interval) {
   }
 
   function getPRSearchTerms() {
+    return getSearchTerms(self.prs);
+  }
+
+  function getHistoricSearchTerms() {
+    return getSearchTerms(self.historicPRs);
+  }
+
+  function getSearchTerms(prs) {
     var result = [];
-    angular.forEach(self.prs, function(pr) {
+    angular.forEach(prs, function(pr) {
       var llogin = pr.Login.toLowerCase();
       if (!searchTermsContain(result, llogin)) {
         var loginobj = {
@@ -131,8 +157,8 @@ function SQCntl(dataService, $interval) {
       }
       if (!searchTermsContain(result, pr.Num)) {
         var numobj = {
-          value: pr.Num,
-          display: pr.Num,
+          value: pr.Number.toString(),
+          display: pr.Number,
         };
         result.push(numobj);
       }
@@ -152,8 +178,16 @@ function SQCntl(dataService, $interval) {
     return 0;
   }
 
-  function querySearch(query) {
-    var results = query ? self.prSearchTerms.filter(createFilterFor(query)) : self.prSearchTerms;
+  function prQuerySearch(query) {
+    return querySearch(query, self.prSearchTerms);
+  }
+
+  function historicQuerySearch(query) {
+    return querySearch(query, self.historicSearchTerms);
+  }
+
+  function querySearch(query, terms) {
+    var results = query ? terms.filter(createFilterFor(query)) : terms;
     return results;
   }
 
@@ -167,11 +201,36 @@ function SQCntl(dataService, $interval) {
     };
   }
 
+  function goToPerson(person) {
+    console.log(person);
+    window.location.href = 'https://github.com/' + person;
+  }
 }
 
-function goToPerson(person) {
-  window.location.href = 'https://github.com/' + person;
-}
+
+angular.module('SubmitQueueModule').filter('loginOrPR', function() {
+  return function(prs, searchVal) {
+    searchVal = searchVal || "";
+    prs = prs || [];
+    searchVal = angular.lowercase(searchVal);
+    var out = [];
+
+    angular.forEach(prs, function(pr) {
+      var shouldPush = false;
+      var llogin = pr.Login.toLowerCase();
+      if (llogin.indexOf(searchVal) === 0) {
+        shouldPush = true;
+      }
+      if (pr.Number.toString().indexOf(searchVal) === 0) {
+        shouldPush = true;
+      }
+      if (shouldPush) {
+        out.push(pr);
+      }
+    });
+    return out;
+  };
+});
 
 angular.module('SubmitQueueModule').service('DataService', ['$http', dataService]);
 
@@ -180,7 +239,7 @@ function dataService($http) {
     getData: getData,
   });
 
-  function getData() {
-    return $http.get('api');
+  function getData(file) {
+    return $http.get(file);
   }
 }

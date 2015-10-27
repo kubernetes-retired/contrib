@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pulls
+package mungers
 
 import (
 	"bufio"
@@ -22,11 +22,10 @@ import (
 	"os"
 	"strings"
 
-	github_util "k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
-	"github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -47,13 +46,13 @@ func init() {
 func (SizeMunger) Name() string { return "size" }
 
 // Initialize will initialize the munger
-func (SizeMunger) Initialize(config *github_util.Config) error { return nil }
+func (SizeMunger) Initialize(config *github.Config) error { return nil }
 
 // EachLoop is called at the start of every munge loop
-func (SizeMunger) EachLoop(_ *github_util.Config) error { return nil }
+func (SizeMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (s *SizeMunger) AddFlags(cmd *cobra.Command, config *github_util.Config) {
+func (s *SizeMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().StringVar(&s.generatedFilesFile, "generated-files-config", "generated-files.txt", "file containing the pathname to label mappings")
 }
 
@@ -67,7 +66,7 @@ const labelSizePrefix = "size/"
 // our results are slightly wrong, who cares? Instead look for the
 // generated files once and if someone changed what files are generated
 // we'll size slightly wrong. No biggie.
-func (s *SizeMunger) getGeneratedFiles(config *github_util.Config) {
+func (s *SizeMunger) getGeneratedFiles(obj *github.MungeObject) {
 	if s.genFiles != nil {
 		return
 	}
@@ -106,7 +105,7 @@ func (s *SizeMunger) getGeneratedFiles(config *github_util.Config) {
 		} else if eType == "path" {
 			files.Insert(file)
 		} else if eType == "paths-from-repo" {
-			docs, err := config.GetFileContents(file, "")
+			docs, err := obj.GetFileContents(file, "")
 			if err != nil {
 				continue
 			}
@@ -127,9 +126,19 @@ func (s *SizeMunger) getGeneratedFiles(config *github_util.Config) {
 	return
 }
 
-// MungePullRequest is the workhorse the will actually make updates to the PR
-func (s *SizeMunger) MungePullRequest(config *github_util.Config, pr *github.PullRequest, issue *github.Issue, commits []github.RepositoryCommit, events []github.IssueEvent) {
-	s.getGeneratedFiles(config)
+// Munge is the workhorse the will actually make updates to the PR
+func (s *SizeMunger) Munge(obj *github.MungeObject) {
+	if !obj.IsPR() {
+		return
+	}
+
+	issue := obj.Issue
+	pr, err := obj.GetPR()
+	if err != nil {
+		return
+	}
+
+	s.getGeneratedFiles(obj)
 	genFiles := *s.genFiles
 	genPrefixes := *s.genPrefixes
 
@@ -143,6 +152,11 @@ func (s *SizeMunger) MungePullRequest(config *github_util.Config, pr *github.Pul
 		return
 	}
 	dels := *pr.Deletions
+
+	commits, err := obj.GetCommits()
+	if err != nil {
+		return
+	}
 
 	for _, c := range commits {
 		for _, f := range c.Files {
@@ -164,20 +178,20 @@ func (s *SizeMunger) MungePullRequest(config *github_util.Config, pr *github.Pul
 	newSize := calculateSize(adds, dels)
 	newLabel := labelSizePrefix + newSize
 
-	existing := github_util.GetLabelsWithPrefix(issue.Labels, labelSizePrefix)
+	existing := github.GetLabelsWithPrefix(issue.Labels, labelSizePrefix)
 	needsUpdate := true
 	for _, l := range existing {
 		if l == newLabel {
 			needsUpdate = false
 			continue
 		}
-		config.RemoveLabel(*pr.Number, l)
+		obj.RemoveLabel(l)
 	}
 	if needsUpdate {
-		config.AddLabels(*pr.Number, []string{newLabel})
+		obj.AddLabels([]string{newLabel})
 
 		body := fmt.Sprintf("Labelling this PR as %s", newLabel)
-		config.WriteComment(*pr.Number, body)
+		obj.WriteComment(body)
 	}
 }
 
