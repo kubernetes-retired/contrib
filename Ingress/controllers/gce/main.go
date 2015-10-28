@@ -41,7 +41,7 @@ import (
 
 const (
 	// lbApiPort is the port on which the loadbalancer controller serves a
-	// minimal api (/healthz, /quit etc).
+	// minimal api (/healthz, /delete-all-and-quit etc).
 	lbApiPort = 8081
 )
 
@@ -92,15 +92,15 @@ func registerHandlers(lbc *loadBalancerController) {
 		w.WriteHeader(200)
 		w.Write([]byte("ok"))
 	})
-	http.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/delete-all-and-quit", func(w http.ResponseWriter, r *http.Request) {
 		// TODO: Retry failures during shutdown.
-		lbc.Stop()
+		lbc.Stop(true)
 	})
 
 	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", lbApiPort), nil))
 }
 
-func handleSigterm(lbc *loadBalancerController) {
+func handleSigterm(lbc *loadBalancerController, deleteAll bool) {
 	// Multiple SIGTERMs will get dropped
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM)
@@ -109,7 +109,7 @@ func handleSigterm(lbc *loadBalancerController) {
 
 	// TODO: Better retires than relying on restartPolicy.
 	exitCode := 0
-	if err := lbc.Stop(); err != nil {
+	if err := lbc.Stop(deleteAll); err != nil {
 		glog.Infof("Error during shutdown %v", err)
 		exitCode = 1
 	}
@@ -179,9 +179,8 @@ func main() {
 	}
 	glog.Infof("Created lbc %+v", clusterManager.ClusterName)
 	go registerHandlers(lbc)
-	if *deleteAllOnQuit {
-		go handleSigterm(lbc)
-	}
+	go handleSigterm(lbc, *deleteAllOnQuit)
+
 	lbc.Run()
 	for {
 		glog.Infof("Handled quit, awaiting pod deletion.")

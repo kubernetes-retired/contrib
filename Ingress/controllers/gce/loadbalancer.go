@@ -523,5 +523,13 @@ func (l *L7) getBackendNames() []string {
 			}
 		}
 	}
+	// The default Service recorded in the urlMap is a link to the backend.
+	// Note that this can either be user specified, or the L7 controller's
+	// global default.
+	parts := strings.Split(l.um.DefaultService, "/")
+	defaultBackendName := parts[len(parts)-1]
+	if defaultBackendName != "" {
+		beNames.Insert(defaultBackendName)
+	}
 	return beNames.List()
 }

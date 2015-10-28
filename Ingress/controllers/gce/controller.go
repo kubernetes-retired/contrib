@@ -191,17 +191,16 @@ func (lbc *loadBalancerController) Run() {
 	glog.Infof("Shutting down Loadbalancer Controller")
 }
 
-// Stop stops the loadbalancer controller. It deletes shared cluster resources
-// only if nothing is using them, leaving everything as-is otherwise.
-func (lbc *loadBalancerController) Stop() error {
+// Stop stops the loadbalancer controller. It also deletes cluster resources
+// if deleteAll is true.
+func (lbc *loadBalancerController) Stop(deleteAll bool) error {
 	// Stop is invoked from the http endpoint.
 	lbc.stopLock.Lock()
 	defer lbc.stopLock.Unlock()
 
-	// Only try closing the stop channels if we haven't already.
+	// Only try draining the workqueue if we haven't already.
 	if !lbc.shutdown {
 		close(lbc.stopCh)
-		// Stop the workers before invoking cluster shutdown
 		glog.Infof("Shutting down controller queues.")
 		lbc.ingQueue.shutdown()
 		lbc.nodeQueue.shutdown()
@@ -209,8 +208,11 @@ func (lbc *loadBalancerController) Stop() error {
 	}
 
 	// Deleting shared cluster resources is idempotent.
-	glog.Infof("Shutting down cluster manager.")
-	return lbc.clusterManager.shutdown()
+	if deleteAll {
+		glog.Infof("Shutting down cluster manager.")
+		return lbc.clusterManager.shutdown()
+	}
+	return nil
 }
 
 // sync manages Ingress create/updates/deletes.
@@ -256,6 +258,7 @@ func (lbc *loadBalancerController) sync(key string) {
 	if err := lbc.clusterManager.Checkpoint(lbNames, nodeNames, nodePorts); err != nil {
 		if isHTTPErrorCode(err, http.StatusForbidden) && ingExists {
 			lbc.recorder.Eventf(obj.(*extensions.Ingress), "Forbidden", "Error: %v", err)
+			// TODO: Implement proper backoff for the queue.
 		}
 		lbc.ingQueue.requeue(key, err)
 		return
