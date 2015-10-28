@@ -136,12 +136,12 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 					Do().
 					Get()
 			},
-			WatchFunc: func(resourceVersion string) (watch.Interface, error) {
+			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
 				return lbc.client.Get().
 					Prefix("watch").
 					Resource("nodes").
 					FieldsSelectorParam(fields.Everything()).
-					Param("resourceVersion", resourceVersion).Watch()
+					Param("resourceVersion", options.ResourceVersion).Watch()
 			},
 		},
 		&api.Node{}, 0, nodeHandlers)
@@ -158,9 +158,8 @@ func ingressListFunc(c *client.Client) func() (runtime.Object, error) {
 	}
 }
 
-func ingressWatchFunc(c *client.Client) func(rv string) (watch.Interface, error) {
-	return func(rv string) (watch.Interface, error) {
-		options := api.ListOptions{ResourceVersion: rv}
+func ingressWatchFunc(c *client.Client) func(options api.ListOptions) (watch.Interface, error) {
+	return func(options api.ListOptions) (watch.Interface, error) {
 		return c.Extensions().Ingress(api.NamespaceAll).Watch(
 			labels.Everything(), fields.Everything(), options)
 	}
