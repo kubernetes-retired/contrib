@@ -30,6 +30,7 @@ import (
 )
 
 var (
+	base    string
 	last    int
 	current int
 	token   string
@@ -45,21 +46,23 @@ func init() {
 	flag.IntVar(&last, "last-release-pr", 0, "The PR number of the last versioned release.")
 	flag.IntVar(&current, "current-release-pr", 0, "The PR number of the current versioned release.")
 	flag.StringVar(&token, "api-token", "", "Github api token for rate limiting. Background: https://developer.github.com/v3/#rate-limiting and create a token: https://github.com/settings/tokens")
+	flag.StringVar(&base, "base", "master", "The base branch name for PRs to look for.")
+}
+
+func usage() {
+	fmt.Printf(`usage: release-notes --last-release-pr=<number> --current-release-pr=<number>
+                     --api-token=<token> [--base=<branch-name>]
+`)
 }
 
 func main() {
 	flag.Parse()
-	// Automatically determine this from github.
-	if last == 0 {
-		fmt.Printf("--last-release-pr is required.\n")
+	if last == 0 || current == 0 || token == "" {
+		usage()
 		os.Exit(1)
 	}
-	if current == 0 {
-		fmt.Printf("--current-release-pr is required.\n")
-		os.Exit(1)
-	}
-	var tc *http.Client
 
+	var tc *http.Client
 	if len(token) > 0 {
 		tc = oauth2.NewClient(
 			oauth2.NoContext,
@@ -67,13 +70,11 @@ func main() {
 				&oauth2.Token{AccessToken: token}),
 		)
 	}
-
 	client := github.NewClient(tc)
-
-	done := false
 
 	opts := github.PullRequestListOptions{
 		State:     "closed",
+		Base:      base,
 		Sort:      "updated",
 		Direction: "desc",
 		ListOptions: github.ListOptions{
@@ -82,14 +83,14 @@ func main() {
 		},
 	}
 
-	buffer := &bytes.Buffer{}
+	done := false
 	prs := []*github.PullRequest{}
 	var lastVersionMerged *time.Time
 	var currentVersionMerged *time.Time
 	for !done {
 		opts.Page++
 		fmt.Printf("Fetching PR list page %2d\n", opts.Page)
-		results, _, err := client.PullRequests.List("GoogleCloudPlatform", "kubernetes", &opts)
+		results, _, err := client.PullRequests.List("kubernetes", "kubernetes", &opts)
 		if err != nil {
 			fmt.Printf("Error contacting github: %v", err)
 			os.Exit(1)
@@ -104,9 +105,12 @@ func main() {
 				continue
 			}
 			if *result.Number == last {
-				done = true
 				lastVersionMerged = result.MergedAt
 				fmt.Printf(" ... found last PR %d.\n", last)
+				break
+			}
+			if lastVersionMerged != nil && lastVersionMerged.After(*result.UpdatedAt) {
+				done = true
 				break
 			}
 			if *result.Number == current {
@@ -118,12 +122,26 @@ func main() {
 		}
 		fmt.Printf(" ... %d merged PRs, %d unmerged PRs.\n", merged, unmerged)
 	}
-	fmt.Printf("Compiling pretty-printed list of PRs...\n")
+	fmt.Printf("Looking at each PR to see if it is between #%d and #%d and has the release-note label\n", last, current)
 	sort.Sort(byMerged(prs))
+	buffer := &bytes.Buffer{}
 	for _, pr := range prs {
 		if lastVersionMerged.Before(*pr.MergedAt) && (pr.MergedAt.Before(*currentVersionMerged) || (*pr.Number == current)) {
-			fmt.Fprintf(buffer, "   * %s #%d (%s)\n", *pr.Title, *pr.Number, *pr.User.Login)
+			// Check to see if it has the release-note label.
+			fmt.Printf(".")
+			labels, _, err := client.Issues.ListLabelsByIssue("kubernetes", "kubernetes", *pr.Number, &github.ListOptions{})
+			if err != nil {
+				fmt.Printf("Error contacting github: %v", err)
+				os.Exit(1)
+			}
+			for _, label := range labels {
+				if *label.Name == "release-note" {
+					fmt.Fprintf(buffer, "   * %s (#%d, @%s)\n", *pr.Title, *pr.Number, *pr.User.Login)
+				}
+			}
 		}
 	}
+	fmt.Println()
+	fmt.Printf("Release notes for PRs between #%d and #%d against branch %q:\n\n", last, current, base)
 	fmt.Printf("%s", buffer.Bytes())
 }
