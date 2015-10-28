@@ -313,7 +313,7 @@ func TestDefaultCustomAlgorithm(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestDefaultCustomAlgorithm.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -329,7 +329,7 @@ func TestSyslog(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestSyslog.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -345,7 +345,7 @@ func TestSvcCustomAlgorithm(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestSvcCustomAlgorithm.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -361,7 +361,7 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestCustomDefaultAndSvcAlgorithm.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -377,7 +377,7 @@ func TestServiceAffinity(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestServiceAffinity.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -394,9 +394,25 @@ func TestServiceAffinityWithCookies(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestServiceAffinityWithCookies.cfg")
+	compareCfgFiles(t, flb.cfg.Config, template)
+	os.Remove(flb.cfg.Config)
+}
+
+func TestCustomNamespace(t *testing.T) {
+	flb := buildTestLoadBalancer("")
+	httpSvc, tcpSvc := flb.getServices()
+	httpSvc[0].Namespace = "different"
+	if err := flb.cfg.write(
+		map[string][]service{
+			"http": httpSvc,
+			"tcp":  tcpSvc,
+		}, false); err != nil {
+		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
+	}
+	template, _ := filepath.Abs("./test-samples/TestCustomNamespace.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
 	os.Remove(flb.cfg.Config)
 }

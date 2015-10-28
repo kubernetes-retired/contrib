@@ -130,6 +130,9 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
 		default balance algorithm.`)
+
+	allNamespaces = flags.Bool("all-namespaces", false, `if present, watch all namespaces to export services.
+		Namespace in current context is ignored even if specified with --namespace.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -167,6 +170,10 @@ type service struct {
 	// The name of the cookie is SERVERID
 	// This only can be used in http services
 	CookieStickySession bool
+
+	// Namespace is the name of the namespace where the service running.
+	// If is empty means that is running in the "default" namespace
+	Namespace string
 }
 
 type serviceByName []service
@@ -326,6 +333,9 @@ func (lbc *loadBalancerController) getEndpoints(
 	// the target port are capable of service traffic for it.
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
+			if epPort.Protocol == api.ProtocolUDP {
+				continue
+			}
 			var targetPort int
 			switch servicePort.TargetPort.Kind {
 			case util.IntstrInt:
@@ -411,6 +421,12 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 			newSvc.SessionAffinity = false
 			if s.Spec.SessionAffinity != "" {
 				newSvc.SessionAffinity = true
+			}
+
+			if strings.EqualFold(s.Namespace, api.NamespaceDefault) {
+				newSvc.Namespace = ""
+			} else {
+				newSvc.Namespace = s.Namespace
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
@@ -635,7 +651,11 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 	if !specified {
-		namespace = "default"
+		namespace = api.NamespaceDefault
+	}
+
+	if *allNamespaces {
+		namespace = api.NamespaceAll
 	}
 
 	// TODO: Handle multiple namespaces
