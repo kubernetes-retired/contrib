@@ -178,7 +178,7 @@ func (b *Backends) edgeHop(be *compute.BackendService, ig *compute.InstanceGroup
 
 // Sync syncs backend services corresponding to ports in the given list.
 func (b *Backends) Sync(svcNodePorts []int64) error {
-	glog.Infof("Sync: backends %v", svcNodePorts)
+	glog.V(3).Infof("Sync: backends %v", svcNodePorts)
 
 	// create backends for new ports, perform an edge hop for existing ports
 	for _, port := range svcNodePorts {

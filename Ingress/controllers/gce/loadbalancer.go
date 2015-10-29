@@ -189,7 +189,7 @@ func (l *L7s) Delete(name string) error {
 
 // Sync loadbalancers with the given names.
 func (l *L7s) Sync(names []string) error {
-	glog.Infof("Creating loadbalancers %+v", names)
+	glog.V(3).Infof("Creating loadbalancers %+v", names)
 
 	// create new loadbalancers, perform an edge hop for existing
 	for _, n := range names {
@@ -258,7 +258,7 @@ func (l *L7) checkUrlMap(backend *compute.BackendService) (err error) {
 	urlMapName := fmt.Sprintf("%v-%v", urlMapPrefix, l.Name)
 	urlMap, _ := l.cloud.GetUrlMap(urlMapName)
 	if urlMap != nil {
-		glog.Infof("Url map %v already exists", urlMap.Name)
+		glog.V(3).Infof("Url map %v already exists", urlMap.Name)
 		l.um = urlMap
 		return nil
 	}
@@ -401,7 +401,7 @@ func (l *L7) UpdateUrlMap(ingressRules gceUrlMap) error {
 	if l.um == nil {
 		return fmt.Errorf("Cannot add url without an urlmap.")
 	}
-	glog.Infof("Updating urlmap for l7 %v", l.Name)
+	glog.V(3).Infof("Updating urlmap for l7 %v", l.Name)
 
 	// All UrlMaps must have a default backend. If the Ingress has a default
 	// backend, it applies to all host rules as well as to the urlmap itself.

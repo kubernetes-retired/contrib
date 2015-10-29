@@ -50,7 +50,7 @@ func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.Instance
 			return nil, nil, err
 		}
 	} else {
-		glog.Infof("Instance group already exists %v", name)
+		glog.V(3).Infof("Instance group already exists %v", name)
 	}
 	defer i.pool.Add(name, ig)
 	namedPort, err := i.cloud.AddPortToInstanceGroup(ig, port)
@@ -95,19 +95,19 @@ func (i *Instances) Get(name string) (*compute.InstanceGroup, error) {
 
 // Add adds the given instances to the Instance Group.
 func (i *Instances) Add(groupName string, names []string) error {
-	glog.Infof("Adding nodes %v to %v", names, groupName)
+	glog.V(3).Infof("Adding nodes %v to %v", names, groupName)
 	return i.cloud.AddInstancesToInstanceGroup(groupName, names)
 }
 
 // Remove removes the given instances from the Instance Group.
 func (i *Instances) Remove(groupName string, names []string) error {
-	glog.Infof("Removing nodes %v from %v", names, groupName)
+	glog.V(3).Infof("Removing nodes %v from %v", names, groupName)
 	return i.cloud.RemoveInstancesFromInstanceGroup(groupName, names)
 }
 
 // Sync syncs kubernetes instances with the instances in the instance group.
 func (i *Instances) Sync(nodes []string) (err error) {
-	glog.Infof("Syncing nodes %v", nodes)
+	glog.V(3).Infof("Syncing nodes %v", nodes)
 
 	defer func() {
 		// The node pool is only responsible for syncing nodes to instance

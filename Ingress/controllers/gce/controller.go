@@ -91,7 +91,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 		DeleteFunc: lbc.ingQueue.enqueue,
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				glog.Infof("Ingress %v changed, syncing",
+				glog.V(3).Infof("Ingress %v changed, syncing",
 					cur.(*extensions.Ingress).Name)
 			}
 			lbc.ingQueue.enqueue(cur)
@@ -170,7 +170,7 @@ func (lbc *loadBalancerController) enqueueIngressForService(obj interface{}) {
 	svc := obj.(*api.Service)
 	ings, err := lbc.ingLister.GetServiceIngress(svc)
 	if err != nil {
-		glog.Infof("ignoring service %v: %v", svc.Name, err)
+		glog.V(3).Infof("ignoring service %v: %v", svc.Name, err)
 		return
 	}
 	for _, ing := range ings {
@@ -216,7 +216,7 @@ func (lbc *loadBalancerController) Stop(deleteAll bool) error {
 
 // sync manages Ingress create/updates/deletes.
 func (lbc *loadBalancerController) sync(key string) {
-	glog.Infof("Syncing %v", key)
+	glog.V(3).Infof("Syncing %v", key)
 
 	paths, err := lbc.ingLister.List()
 	if err != nil {
@@ -251,7 +251,7 @@ func (lbc *loadBalancerController) sync(key string) {
 		if err := lbc.clusterManager.GC(lbNames, nodePorts); err != nil {
 			lbc.ingQueue.requeue(key, err)
 		}
-		glog.Infof("Finished syncing %v", key)
+		glog.V(3).Infof("Finished syncing %v", key)
 	}()
 
 	if err := lbc.clusterManager.Checkpoint(lbNames, nodeNames, nodePorts); err != nil {
@@ -300,7 +300,7 @@ func (lbc *loadBalancerController) updateIngressStatus(l7 *L7, ing extensions.In
 	if reflect.DeepEqual(ing.Annotations, currIng.Annotations) {
 		return nil
 	}
-	glog.Infof("Updating annotations of %v/%v", ing.Namespace, ing.Name)
+	glog.V(3).Infof("Updating annotations of %v/%v", ing.Namespace, ing.Name)
 	if _, err := ingClient.Update(currIng); err != nil {
 		return err
 	}
