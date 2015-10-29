@@ -161,7 +161,7 @@ func TestGetServices(t *testing.T) {
 		svc1.Name: 20,
 	}
 	http, tcp := flb.getServices()
-	serviceURLEp := fmt.Sprintf("%v:%v", svc1.Name, 20)
+	serviceURLEp := fmt.Sprintf("default_%v:%v", svc1.Name, 20)
 	if len(tcp) != 1 || tcp[0].Name != serviceURLEp || tcp[0].FrontendPort != 20 {
 		t.Fatalf("Unexpected tcp service %+v expected %+v", tcp, svc1.Name)
 	}
@@ -181,9 +181,9 @@ func TestGetServices(t *testing.T) {
 
 	// All pods of either service not mentioned in the tcpmap are multiplexed on port  :80 as http services.
 	expectedURLMapping := map[string]sets.String{
-		fmt.Sprintf("%v:%v", svc1.Name, 10): sets.NewString("1.2.3.4:80", "6.7.8.9:80"),
-		fmt.Sprintf("%v:%v", svc2.Name, 10): sets.NewString("1.2.3.4:80", "6.7.8.9:80"),
-		fmt.Sprintf("%v:%v", svc2.Name, 20): sets.NewString("1.2.3.4:443", "6.7.8.9:443"),
+		fmt.Sprintf("default_%v:%v", svc1.Name, 10): sets.NewString("1.2.3.4:80", "6.7.8.9:80"),
+		fmt.Sprintf("default_%v:%v", svc2.Name, 10): sets.NewString("1.2.3.4:80", "6.7.8.9:80"),
+		fmt.Sprintf("default_%v:%v", svc2.Name, 20): sets.NewString("1.2.3.4:443", "6.7.8.9:443"),
 	}
 	for _, s := range http {
 		if s.FrontendPort != 80 {
@@ -234,7 +234,7 @@ func TestNewStaticPageHandler(t *testing.T) {
 
 //	buildTestLoadBalancer build a common loadBalancerController to be used
 //	in the tests to verify the generated HAProxy configuration file
-func buildTestLoadBalancer(lbDefAlgorithm string) *loadBalancerController {
+func buildTestLoadBalancer(lbDefAlgorithm string, namespace string) *loadBalancerController {
 	endpointAddresses := []api.EndpointAddress{
 		{IP: "1.2.3.4"},
 		{IP: "5.6.7.8"},
@@ -251,8 +251,10 @@ func buildTestLoadBalancer(lbDefAlgorithm string) *loadBalancerController {
 
 	svc1 := getService(servicePorts)
 	svc1.ObjectMeta.Name = "svc-1"
+	svc1.ObjectMeta.Namespace = namespace
 	svc2 := getService(servicePorts)
 	svc2.ObjectMeta.Name = "svc-2"
+	svc2.ObjectMeta.Namespace = namespace
 	endpoints := []*api.Endpoints{
 		getEndpoints(svc1, endpointAddresses, endpointPorts),
 		getEndpoints(svc2, endpointAddresses, endpointPorts),
@@ -291,7 +293,7 @@ func compareCfgFiles(t *testing.T, orig, template string) {
 }
 
 func TestDefaultAlgorithm(t *testing.T) {
-	flb := buildTestLoadBalancer("")
+	flb := buildTestLoadBalancer("", "default")
 	httpSvc, tcpSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
@@ -306,7 +308,7 @@ func TestDefaultAlgorithm(t *testing.T) {
 }
 
 func TestDefaultCustomAlgorithm(t *testing.T) {
-	flb := buildTestLoadBalancer("leastconn")
+	flb := buildTestLoadBalancer("leastconn", "default")
 	httpSvc, tcpSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
@@ -321,7 +323,7 @@ func TestDefaultCustomAlgorithm(t *testing.T) {
 }
 
 func TestSyslog(t *testing.T) {
-	flb := buildTestLoadBalancer("")
+	flb := buildTestLoadBalancer("", "default")
 	httpSvc, tcpSvc := flb.getServices()
 	flb.cfg.startSyslog = true
 	if err := flb.cfg.write(
@@ -337,7 +339,7 @@ func TestSyslog(t *testing.T) {
 }
 
 func TestSvcCustomAlgorithm(t *testing.T) {
-	flb := buildTestLoadBalancer("")
+	flb := buildTestLoadBalancer("", "default")
 	httpSvc, tcpSvc := flb.getServices()
 	httpSvc[0].Algorithm = "leastconn"
 	if err := flb.cfg.write(
@@ -353,7 +355,7 @@ func TestSvcCustomAlgorithm(t *testing.T) {
 }
 
 func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
-	flb := buildTestLoadBalancer("leastconn")
+	flb := buildTestLoadBalancer("leastconn", "default")
 	httpSvc, tcpSvc := flb.getServices()
 	httpSvc[0].Algorithm = "roundrobin"
 	if err := flb.cfg.write(
@@ -369,7 +371,7 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 }
 
 func TestServiceAffinity(t *testing.T) {
-	flb := buildTestLoadBalancer("")
+	flb := buildTestLoadBalancer("", "default")
 	httpSvc, tcpSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
 	if err := flb.cfg.write(
@@ -385,7 +387,7 @@ func TestServiceAffinity(t *testing.T) {
 }
 
 func TestServiceAffinityWithCookies(t *testing.T) {
-	flb := buildTestLoadBalancer("")
+	flb := buildTestLoadBalancer("", "default")
 	httpSvc, tcpSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
 	httpSvc[0].CookieStickySession = true
@@ -402,9 +404,8 @@ func TestServiceAffinityWithCookies(t *testing.T) {
 }
 
 func TestCustomNamespace(t *testing.T) {
-	flb := buildTestLoadBalancer("")
+	flb := buildTestLoadBalancer("", "different")
 	httpSvc, tcpSvc := flb.getServices()
-	httpSvc[0].Namespace = "different"
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,

@@ -1,2 +1,3 @@
 haproxy.apk
 service_loadbalancer
+test-syslog.socket
