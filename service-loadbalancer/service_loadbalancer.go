@@ -130,6 +130,9 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
 		default balance algorithm.`)
+
+	allNamespaces = flags.Bool("all-namespaces", false, `if present, watch all namespaces to export services.
+		Namespace in current context is ignored even if specified with --namespace.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -167,6 +170,12 @@ type service struct {
 	// The name of the cookie is SERVERID
 	// This only can be used in http services
 	CookieStickySession bool
+
+	// URLs are the paths used to route the traffic to the backend, like "<namespace>/<svc name>:<port>".
+	// It requires at least one URL
+	// If the namespace is "default" it will not be used.
+	// If the port if is equals to 80 it will not be used.
+	URLs []string
 }
 
 type serviceByName []service
@@ -326,6 +335,9 @@ func (lbc *loadBalancerController) getEndpoints(
 	// the target port are capable of service traffic for it.
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
+			if epPort.Protocol == api.ProtocolUDP {
+				continue
+			}
 			var targetPort int
 			switch servicePort.TargetPort.Kind {
 			case util.IntstrInt:
@@ -348,14 +360,35 @@ func (lbc *loadBalancerController) getEndpoints(
 	return
 }
 
-// encapsulates all the hacky convenience type name modifications for lb rules.
-// - :80 services don't need a :80 postfix
-// - default ns should be accessible without /ns/name (when we have /ns support)
-func getServiceNameForLBRule(s *api.Service, servicePort int) string {
-	if servicePort == 80 {
-		return s.Name
+// LBRule encapsulates a rule object compatible with Ingress to allow custom routing rules
+type LBRule struct {
+	ACL  string
+	URLs []string
+}
+
+type RuleGetter interface {
+	getRules(s *api.Service, servicePort int) *LBRule
+}
+
+func getLBRules(lb RuleGetter, s *api.Service, servicePort int) *LBRule {
+	return lb.getRules(s, servicePort)
+}
+
+func (lbc *loadBalancerController) getRules(s *api.Service, servicePort int) *LBRule {
+	prefix := ""
+	if !strings.EqualFold(s.Namespace, api.NamespaceDefault) {
+		prefix = "/" + s.Namespace
 	}
-	return fmt.Sprintf("%v:%v", s.Name, servicePort)
+
+	port := ""
+	if servicePort != 80 {
+		port = ":" + strconv.Itoa(servicePort)
+	}
+
+	return &LBRule{
+		ACL:  fmt.Sprintf("%v_%v%v", s.Namespace, s.Name, port),
+		URLs: []string{fmt.Sprintf("%v/%v%v", prefix, s.Name, port)},
+	}
 }
 
 // getServices returns a list of services and their endpoints.
@@ -387,9 +420,17 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 					sName, servicePort)
 				continue
 			}
+
+			rules := getLBRules(lbc, &s, servicePort.Port)
+			if len(rules.URLs) == 0 {
+				glog.Infof("No rules found for service %v, port %+v", sName, servicePort)
+				continue
+			}
+
 			newSvc := service{
-				Name: getServiceNameForLBRule(&s, servicePort.Port),
+				Name: rules.ACL,
 				Ep:   ep,
+				URLs: rules.URLs,
 			}
 
 			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(); ok {
@@ -630,15 +671,23 @@ func main() {
 		}
 		kubeClient, err = unversioned.New(config)
 	}
+
+	// read namespace from configuration
 	namespace, specified, err := clientConfig.Namespace()
 	if err != nil {
 		glog.Fatalf("unexpected error: %v", err)
 	}
+
 	if !specified {
-		namespace = "default"
+		// no namespace, we use the default
+		namespace = api.NamespaceDefault
 	}
 
-	// TODO: Handle multiple namespaces
+	if *allNamespaces {
+		// override the previous value
+		namespace = api.NamespaceAll
+	}
+
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace)
 	go lbc.epController.Run(util.NeverStop)
 	go lbc.svcController.Run(util.NeverStop)

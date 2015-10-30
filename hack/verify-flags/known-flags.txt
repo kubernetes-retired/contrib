@@ -41,3 +41,4 @@ gce-cluster-name
 sync-period
 delete-all-on-quit
 health-check-path
+all-namespaces
