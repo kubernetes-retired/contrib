@@ -2,10 +2,12 @@
 
 # $1 = the kubernetes context (specified in kubeconfig)
 # $2 = directory that contains your kubernetes files to deploy
+# $3 = set to y to perform a rolling update
 
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
-CONTEXT=$1
-DEPLOYDIR=$2
+CONTEXT="$1"
+DEPLOYDIR="$2"
+ROLLING=$(echo "${3:0:1}" | tr '[:upper:]' '[:lower:]')
 
 #make sure we have the kubectl comand
 chmod +x $DIR/ensure-kubectl.sh
@@ -33,17 +35,22 @@ set -x
 echo "Deploying service to ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}"
 echo "Monitor your service at ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/kube-system/services/kibana-logging/?#/discover?_a=(columns:!(_source),filters:!(),index:'logstash-*',interval:auto,query:(query_string:(analyze_wildcard:!t,query:'tag:kubernetes.${SERVICENAME}*')))"
 
-# delete service (does nothing if service does not exist already)
-for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; ~/.kube/kubectl delete --namespace=${kubenamespace} -f kubetemp.yaml || /bin/true; done
+if [ ${ROLLING} = "y" ]
+then
+  # perform a rolling update. 
+  ~/.kube/kubectl rolling-update ${SERVICENAME} --image=${DOCKER_REGISTRY}/${CONTAINER1}:$4 --namespace=$2  || /bin/true
+  
+else
 
-# create service (does nothing if the service already exists)
-for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; ~/.kube/kubectl create --namespace=${kubenamespace} -f kubetemp.yaml || /bin/true; done
+  # delete service (does nothing if service does not exist already)
+  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; ~/.kube/kubectl delete --namespace=${kubenamespace} -f kubetemp.yaml || /bin/true; done
+
+  # create service (does nothing if the service already exists)
+  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; ~/.kube/kubectl create --namespace=${kubenamespace} -f kubetemp.yaml || /bin/true; done
+fi
 
 # wait for services to start
 sleep 30
 
 # try to hit the endpoint
 curl -k ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/
-
-# perform a rolling update. $CIRCLE_SHA1 can be used to tag, push and run your container
-#~/.kube/kubectl rolling-update ${SERVICENAME} --image=${DOCKER_REGISTRY}/${CONTAINER1}:$4 --namespace=$2  || /bin/true
