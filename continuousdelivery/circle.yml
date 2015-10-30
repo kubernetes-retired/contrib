@@ -1,7 +1,7 @@
 ## Customize the test machine
 machine:
 #  services: uncomment if using circleci.com
-#    -  docker #uncomment if using circleci.com or the container docker daemon
+#    - docker #uncomment if using circleci.com or the container docker daemon
   # Add some environment variables
   environment:
     # a url that your ci system can hit to pull down your kube config file
