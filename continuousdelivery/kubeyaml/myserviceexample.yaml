@@ -17,7 +17,8 @@ spec:
 apiVersion: v1
 kind: ReplicationController
 metadata:
-  name: myrc-${SERVICENAME}
+  # rc name matches service name for simplicity of rolling updates
+  name: ${SERVICENAME}
 spec:
   replicas: 2
   selector:

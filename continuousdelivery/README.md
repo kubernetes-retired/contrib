@@ -14,7 +14,7 @@ Deployment scripts are in the ./deploy/ folder.
 ..* ./deploy/ensure-kubectl.sh - pulls down the kubectl binary if it doesn't exist and installs packages that are expected to be in place if missing.
 ..* ./deploy/deploy-service.sh - call kubectl commands to deploy services based on the yaml inside your project.
 
-Your kubernetes spec yaml can be in any folder of your project as specified by the config file for Jenkins (jenkins.sh) or CircleCI (circle.yaml). All environment variables set by the build system can be leveraged in the kubernetes spec yaml and will be replaced before being passed onto the cluster. A kubectl delete, kubectl create pattern was chosen for fast iterations. You can switch to a rolling update deployment by passing a parameter to the deploy command.
+Your kubernetes spec yaml can be in any folder of your project as specified by the config file for Jenkins (jenkins.sh) or CircleCI (circle.yaml). All environment variables set by the build system can be leveraged in the kubernetes spec yaml and will be replaced before being passed onto the cluster. A kubectl delete, kubectl create pattern was chosen for fast qa/integration testing iterations. For production deployments a rolling update is used. This is controlled by passing a parameter to the deploy command and can be easily customized.
 
 
 ## Jenkins
