@@ -12,13 +12,15 @@ Deployment scripts are in the ./deploy/ folder.
 ..* ./deploy/ensure-kubectl.sh - pulls down the kubectl binary if it doesn't exist and installs packages that are expected to be in place if missing.
 ..* ./deploy/deploy-service.sh - call kubectl commands to deploy services based on the yaml inside your project.
 
+Your kubernetes spec yaml can be in any folder of your project as specified by the config file for Jenkins (jenkins.sh) or CircleCI (circle.yaml). All environment variables set by the build system can be leveraged in the kubernetes spec yaml and will be replaced before being passed onto the cluster. A kubectl delete, kubectl create pattern was chosen for fast iterations. You can switch to a rolling update deployment by passing a parameter to the deploy command.
+
 
 ## Jenkins
 If you already have a Jenkins instance running with a local docker daemon installed on the builder box, you should be able to get going by doing the following.
 
 1. Create your jenkins job and link it to your github account using the git source code management plugin.
 2. Create credentials for your docker registry in Jenkins.
-3. Map the credentials to the dockeruser and dockerpass environment variables.
+3. Map the credentials to the $dockeruser and $dockerpass environment variables. NOTE: going this route so that the credentials are not stored in your github account.
 4. Create an execute shell command as follows:
 ```
 cd $WORKSPACE
@@ -28,3 +30,7 @@ chmod +x ./jenkins.sh && ./jenkins.sh
 6. push changes to github and check the Jenkins job console output for errors\success messages.
 
 ## Circle CI
+1. Update the circle.yaml environment variables to fit your environment.
+2. Link your project to Circle CI
+3. Manually set the docker $dockeruser and $dockerpass environment variables on your CircleCI project. NOTE: going this route so that the credentials are not stored in your github account.
+3. Check the job output for any errors and the deploy script output for the proxy api endpoint to hit your service for any manual testing.

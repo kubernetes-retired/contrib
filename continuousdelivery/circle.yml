@@ -1,7 +1,7 @@
 ## Customize the test machine
 machine:
-#  services:
-#    -  docker #commented out because we're using a daemon on the host
+#  services: uncomment if using circleci.com
+#    -  docker #uncomment if using circleci.com or the container docker daemon
   # Add some environment variables
   environment:
     # a url that your ci system can hit to pull down your kube config file
@@ -17,7 +17,7 @@ machine:
     # defaulted to user-repo for circleci
     SERVICENAME: $(tr [A-Z] [a-z] <<< ${CIRCLE_PROJECT_USERNAME:0:8})-$(tr [A-Z] [a-z] <<< ${CIRCLE_PROJECT_REPONAME:0:15} | tr -d '_-')
     # This uses the docker socket on the host instead of inside the container for caching\performance reasons
-    DOCKER_HOST: unix:///tmp/docker.sock
+    DOCKER_HOST: unix:///tmp/docker.sock # comment this out if using circleci.com or the container docker daemon
     # the docker repo
     DOCKER_REGISTRY: docker-registry.concur.com
     # the docker container defaulted to user/project
@@ -34,7 +34,7 @@ dependencies:
   cache_directories:
     - "~/.kube"
   override:
-    # - docker login -u user@domain.com -p $password -e user@domain.com ${DOCKER_REGISTRY}
+   - docker login -u ${dockeruser} -p ${dockerpass} -e user@domain.com ${DOCKER_REGISTRY}
     # install any missing required binaries/config
     - chmod +x ./deploy/ensure-kubectl.sh && ./deploy/ensure-kubectl.sh ${KUBEURL}
     - docker build -t ${DOCKER_REGISTRY}/${CONTAINER1} .
