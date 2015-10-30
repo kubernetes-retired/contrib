@@ -3,7 +3,7 @@
     "preferGlobal": true,
     "version": "0.0.1",
     "author": "<me@concur.com>",
-    "description": "a hello world nodejs app",
+    "description": "a hello world nodejs app.",
     "license": "MIT",
     "engines": {
         "node": ">=0.10"
