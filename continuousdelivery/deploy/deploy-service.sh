@@ -7,7 +7,7 @@
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 CONTEXT="$1"
 DEPLOYDIR="$2"
-ROLLING=$(echo "${3:0:1}" | tr '[:upper:]' '[:lower:]')
+ROLLING=$(echo "${3:0:7}" | tr '[:upper:]' '[:lower:]')
 
 #make sure we have the kubectl comand
 chmod +x $DIR/ensure-kubectl.sh
@@ -35,7 +35,7 @@ set -x
 echo "Deploying service to ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}"
 echo "Monitor your service at ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/kube-system/services/kibana-logging/?#/discover?_a=(columns:!(_source),filters:!(),index:'logstash-*',interval:auto,query:(query_string:(analyze_wildcard:!t,query:'tag:kubernetes.${SERVICENAME}*')))"
 
-if [ ${ROLLING} = "y" ]
+if [ ${ROLLING} = "rolling" ]
 then
   # perform a rolling update.
   # assumes your service\rc are already created

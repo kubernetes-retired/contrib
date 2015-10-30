@@ -63,7 +63,7 @@ deployment:
        - chmod +x ./deploy/deploy-service.sh && ./deploy/deploy-service.sh ${KUBECONTEXTQA} ${KUBEDEPLOYMENTDIR}
        #put integration tests here
        - echo "put integration tests here"
-       - ./deploy/deploy-service.sh ${KUBECONTEXTPROD} ${KUBEDEPLOYMENTDIR}
+       - ./deploy/deploy-service.sh ${KUBECONTEXTPROD} ${KUBEDEPLOYMENTDIR} rolling
        #put deployment verification tests here
        - echo "put deployment verification tests here"
 
