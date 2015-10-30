@@ -1,10 +1,6 @@
 #!/bin/bash
-# used to install kubectl inside circleci.
-# $1 = the url for your kubeconfig file
-# 
-
-KUBECONFIGURL=$1
-
+# used to install kubectl inside the build environment plus other tools these scripts leverage.
+# uncomment for troubleshooting if required
 #set -x
 
 PKG_MANAGER=$( command -v yum || command -v apt-get ) || echo "Neither yum nor apt-get found"
