@@ -37,12 +37,13 @@ echo "Monitor your service at ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v
 
 if [ ${ROLLING} = "y" ]
 then
-  # perform a rolling update. 
-  ~/.kube/kubectl rolling-update ${SERVICENAME} --image=${DOCKER_REGISTRY}/${CONTAINER1}:$4 --namespace=$2  || /bin/true
+  # perform a rolling update.
+  # assumes your service\rc are already created
+  ~/.kube/kubectl rolling-update ${SERVICENAME} --image=${DOCKER_REGISTRY}/${CONTAINER1}:latest || /bin/true
   
 else
 
-  # delete service (does nothing if service does not exist already)
+  # delete service (throws and error to ignore if service does not exist already)
   for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; ~/.kube/kubectl delete --namespace=${kubenamespace} -f kubetemp.yaml || /bin/true; done
 
   # create service (does nothing if the service already exists)
@@ -52,5 +53,5 @@ fi
 # wait for services to start
 sleep 30
 
-# try to hit the endpoint
+# try to hit the api proxy endpoint
 curl -k ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/
