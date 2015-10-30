@@ -4,7 +4,7 @@ Deployment scripts for continuous integration and\or continuous delivery of kube
 
 ## Usage
 
-In general, the documentation for scripts is handled inline with comments. You must have a [kubernetes config](http://kubernetes.io/v1.0/docs/user-guide/kubeconfig-file.html) file available and accessible to your build system from a URL. S3 was used in testing.  See build environment setup instructions for Jenkins and CircleCI. 
+In general, the documentation for scripts is handled inline with comments. You must have a [kubernetes config](http://kubernetes.io/v1.0/docs/user-guide/kubeconfig-file.html) file available and accessible to your build system from a URL. An S3 URL was used in testing. The files from this project should be added to your existing github project (minus the Dockerfile, package.json and server.js that are here just for testing).  ~See build environment setup instructions for Jenkins and CircleCI if you don't currently have an environemtn setup.~ <- TODO.
 
 You must have at least one running kubernetes cluster. If you intend to deploy to production install multiple kubernetes clusters and run the deploy command multiple times with the different context names from your kube config file.
 
@@ -33,4 +33,5 @@ chmod +x ./jenkins.sh && ./jenkins.sh
 1. Update the circle.yaml environment variables to fit your environment.
 2. Link your project to Circle CI
 3. Manually set the docker $dockeruser and $dockerpass environment variables on your CircleCI project. NOTE: going this route so that the credentials are not stored in your github account.
+4. Run a build.
 3. Check the job output for any errors and the deploy script output for the proxy api endpoint to hit your service for any manual testing.
