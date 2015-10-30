@@ -35,19 +35,19 @@ spec:
         image: ${DOCKER_REGISTRY}/${CONTAINER1}:${BUILD} #container image location
         ports:
         - containerPort: 3000 #port running inside and outside the container on the pod IP address
-        #  hostPort: 3000 #not required but shown here, can be used to expose the container port directly on the kubernetes node
+        #  hostPort: 3000 #not recommended\required but shown here, can be used to expose the container port directly on the kubernetes node
         env: #environment variables provided to the container, there are also default ones created for each container that can be leveraged cluster wide.
           - name: "DB_SERVER"
-            value: "mysql-service" #this can be a service endpoint that will be static, external value stored in a registry
+            value: "mysql-service" #this can be a service endpoint that will be static, external value stored in a registry this is not required for this service and is only an example
             #kubernetes adds a cluster wide dns entry for any service created when using the skydns plugin
-        livenessProbe: #health check configuration
-          httpGet: #http shown here, you can also detail out a command\script to execute inside the container that expects a 0 status code.
+        livenessProbe: #health check configuration, will kill the container when this fails
+          httpGet: #http shown here, you can also detail out a command\script to execute inside the container that expects a 200 status code.
             path: /
             port: 3000
           initialDelaySeconds: 120
           timeoutSeconds: 1
-        readinessProbe: #health check configuration
-          httpGet: #http shown here, you can also detail out a command\script to execute inside the container that expects a 0 status code.
+        readinessProbe: #health check configuration, will take the pod out of rotation when this fails
+          httpGet: #http shown here, you can also detail out a command\script to execute inside the container that expects a 200 status code.
             path: /
             port: 3000
           initialDelaySeconds: 5
