@@ -32,7 +32,7 @@ spec:
     spec:
       containers: #many containers can be specified here that will be scheduled together onto the same host
       - name: my-conatiner #first container
-        image: ${DOCKER_REGISTRY}/${CONTAINER1}:${BUILD} #container image location
+        image: ${DOCKER_REGISTRY}/${CONTAINER1}:build${BUILD} #container image location
         ports:
         - containerPort: 3000 #port running inside and outside the container on the pod IP address
         #  hostPort: 3000 #not recommended\required but shown here, can be used to expose the container port directly on the kubernetes node
