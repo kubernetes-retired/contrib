@@ -466,7 +466,8 @@ func (r *Request) TimeoutSeconds(d time.Duration) *Request {
 		return r
 	}
 	if d != 0 {
-		r.Param("timeoutSeconds", d.String())
+		timeout := int64(d.Seconds())
+		r.Param("timeoutSeconds", strconv.FormatInt(timeout, 10))
 	}
 	return r
 }
@@ -475,7 +476,7 @@ func (r *Request) TimeoutSeconds(d time.Duration) *Request {
 // If obj is a string, try to read a file of that name.
 // If obj is a []byte, send it directly.
 // If obj is an io.Reader, use it directly.
-// If obj is a runtime.Object, marshal it correctly.
+// If obj is a runtime.Object, marshal it correctly, and set Content-Type header.
 // Otherwise, set an error.
 func (r *Request) Body(obj interface{}) *Request {
 	if r.err != nil {
@@ -503,6 +504,7 @@ func (r *Request) Body(obj interface{}) *Request {
 		}
 		glog.V(8).Infof("Request Body: %s", string(data))
 		r.body = bytes.NewBuffer(data)
+		r.SetHeader("Content-Type", "application/json")
 	default:
 		r.err = fmt.Errorf("unknown type used for body: %+v", obj)
 	}

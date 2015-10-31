@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 
 	"k8s.io/kubernetes/pkg/util/sets"
@@ -28,12 +29,10 @@ import (
 
 // Backends implements BackendPool.
 type Backends struct {
-	cloud          BackendServices
-	instanceGroups InstanceGroups
-	pool           *poolStore
-	defaultIG      *compute.InstanceGroup
-	defaultBackend *compute.BackendService
-	defaultHc      *compute.HttpHealthCheck
+	cloud         BackendServices
+	nodePool      NodePool
+	healthChecker HealthChecker
+	pool          *poolStore
 }
 
 func portKey(port int64) string {
@@ -46,35 +45,17 @@ func beName(port int64) string {
 
 // NewBackendPool returns a new backend pool.
 // - cloud: implements BackendServices and syncs backends with a cloud provider
-// - defaultBackendNodePort: is the node port of glbc's default backend. This is
-//	 the kubernetes Service that serves the 404 page if no urls match.
-// - defaultIG: is the GCE Instance Group that contains all the vms in your
-//	 cluster. Each new backend opens a port on this Instance Group.
-// - defaultHc: is default GCE health check to use for all backends.
-// - instanceGroups: implements InstanceGroups, every new backend uses this
-//   interface to open a port for itself on the defaultIG.
+// - nodePool: implements NodePool, used to create/delete new instance groups.
 func NewBackendPool(
 	cloud BackendServices,
-	defaultBackendNodePort int64,
-	defaultIG *compute.InstanceGroup,
-	defaultHc *compute.HttpHealthCheck,
-	instanceGroups InstanceGroups) (BackendPool, error) {
-	backends := &Backends{
-		cloud:          cloud,
-		instanceGroups: instanceGroups,
-		pool:           newPoolStore(),
-		defaultIG:      defaultIG,
-		defaultHc:      defaultHc,
+	healthChecker HealthChecker,
+	nodePool NodePool) *Backends {
+	return &Backends{
+		cloud:         cloud,
+		nodePool:      nodePool,
+		pool:          newPoolStore(),
+		healthChecker: healthChecker,
 	}
-	err := backends.Add(defaultBackendNodePort)
-	if err != nil {
-		return nil, err
-	}
-	backends.defaultBackend, err = backends.Get(defaultBackendNodePort)
-	if err != nil {
-		return nil, err
-	}
-	return backends, nil
 }
 
 // Get returns a single backend.
@@ -88,6 +69,14 @@ func (b *Backends) Get(port int64) (*compute.BackendService, error) {
 }
 
 func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPort, name string) (*compute.BackendService, error) {
+	// Create a new health check
+	if err := b.healthChecker.Add(namedPort.Port, ""); err != nil {
+		return nil, err
+	}
+	hc, err := b.healthChecker.Get(namedPort.Port)
+	if err != nil {
+		return nil, err
+	}
 	// Create a new backend
 	backend := &compute.BackendService{
 		Name:     name,
@@ -98,68 +87,88 @@ func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPor
 			},
 		},
 		// Api expects one, means little to kubernetes.
-		HealthChecks: []string{b.defaultHc.SelfLink},
+		HealthChecks: []string{hc.SelfLink},
 		Port:         namedPort.Port,
 		PortName:     namedPort.Name,
 	}
 	if err := b.cloud.CreateBackendService(backend); err != nil {
 		return nil, err
 	}
-	return b.cloud.GetBackendService(name)
+	return b.Get(namedPort.Port)
 }
 
 // Add will get or create a Backend for the given port.
-// If a backend already exists, it performs an edgehop.
-// If one doesn't already exist, it will create it.
-// If the port isn't one of the named ports in the instance group,
-// it will add it. It returns a backend ready for insertion into a
-// urlmap.
 func (b *Backends) Add(port int64) error {
-	namedPort, err := b.instanceGroups.AddPortToInstanceGroup(
-		b.defaultIG, port)
+	name := beName(port)
+
+	// Preemptive addition of a backend to the pool is only to force instance
+	// cleanup if user runs out of quota mid-way through this function, and
+	// decides to delete Ingress. A better solutions is to have the node pool
+	// cleaup after itself.
+	be := &compute.BackendService{}
+	defer func() { b.pool.Add(portKey(port), be) }()
+
+	ig, namedPort, err := b.nodePool.AddInstanceGroup(name, port)
 	if err != nil {
 		return err
 	}
-	be, _ := b.Get(port)
+	be, _ = b.Get(port)
 	if be == nil {
 		glog.Infof("Creating backend for instance group %v port %v named port %v",
-			b.defaultIG.Name, port, namedPort)
-		_, err = b.create(b.defaultIG, namedPort, beName(port))
+			ig.Name, port, namedPort)
+		be, err = b.create(ig, namedPort, beName(port))
 		if err != nil {
 			return err
 		}
-	} else {
-		glog.Infof("Backend %v already exists", be.Name)
-		if err := b.edgeHop(be); err != nil {
-			return err
-		}
 	}
-	_, err = b.Get(port)
+	// Both the backend and instance group might exist, but be disconnected.
+	if err := b.edgeHop(be, ig); err != nil {
+		return err
+	}
 	return err
 }
 
 // Delete deletes the Backend for the given port.
-func (b *Backends) Delete(port int64) error {
+func (b *Backends) Delete(port int64) (err error) {
 	name := beName(port)
 	glog.Infof("Deleting backend %v", name)
-	if err := b.cloud.DeleteBackendService(name); err != nil {
+	defer func() {
+		if isHTTPErrorCode(err, http.StatusNotFound) {
+			err = nil
+		}
+		if err == nil {
+			b.pool.Delete(portKey(port))
+		}
+	}()
+	// Try deleting health checks and instance groups, even if a backend is
+	// not found. This guards against the case where we create one of the
+	// other 2 and run out of quota creating the backend.
+	if err = b.cloud.DeleteBackendService(name); err != nil &&
+		!isHTTPErrorCode(err, http.StatusNotFound) {
 		return err
 	}
-	b.pool.Delete(portKey(port))
+	if err = b.healthChecker.Delete(port); err != nil &&
+		!isHTTPErrorCode(err, http.StatusNotFound) {
+		return err
+	}
+	glog.Infof("Deleting instance group %v", name)
+	if err = b.nodePool.DeleteInstanceGroup(name); err != nil {
+		return err
+	}
 	return nil
 }
 
 // edgeHop checks the links of the given backend by executing an edge hop.
 // It fixes broken links.
-func (b *Backends) edgeHop(be *compute.BackendService) error {
+func (b *Backends) edgeHop(be *compute.BackendService, ig *compute.InstanceGroup) error {
 	if len(be.Backends) == 1 &&
-		compareLinks(be.Backends[0].Group, b.defaultIG.SelfLink) {
+		compareLinks(be.Backends[0].Group, ig.SelfLink) {
 		return nil
 	}
 	glog.Infof("Backend %v has a broken edge, adding link to %v",
-		be.Name, b.defaultIG.Name)
+		be.Name, ig.Name)
 	be.Backends = []*compute.Backend{
-		{Group: b.defaultIG.SelfLink},
+		{Group: ig.SelfLink},
 	}
 	if err := b.cloud.UpdateBackendService(be); err != nil {
 		return err
@@ -169,40 +178,35 @@ func (b *Backends) edgeHop(be *compute.BackendService) error {
 
 // Sync syncs backend services corresponding to ports in the given list.
 func (b *Backends) Sync(svcNodePorts []int64) error {
-	glog.Infof("Sync: backends %v", svcNodePorts)
+	glog.V(3).Infof("Sync: backends %v", svcNodePorts)
+
 	// create backends for new ports, perform an edge hop for existing ports
 	for _, port := range svcNodePorts {
 		if err := b.Add(port); err != nil {
 			return err
 		}
 	}
-
-	// The default backend isn't part of the nodeports given
-	return b.edgeHop(b.defaultBackend)
+	return nil
 }
 
 // GC garbage collects services corresponding to ports in the given list.
 func (b *Backends) GC(svcNodePorts []int64) error {
-	glog.Infof("GC: Existing backends %v", svcNodePorts)
-
 	knownPorts := sets.NewString()
 	for _, port := range svcNodePorts {
 		knownPorts.Insert(portKey(port))
 	}
 	pool := b.pool.snapshot()
-
-	// gc unknown ports
-	for port, be := range pool {
+	for port := range pool {
 		p, err := strconv.Atoi(port)
 		if err != nil {
 			return err
 		}
-		if knownPorts.Has(portKey(int64(p))) ||
-			compareLinks(be.(*compute.BackendService).SelfLink,
-				b.defaultBackend.SelfLink) {
+		nodePort := int64(p)
+		if knownPorts.Has(portKey(nodePort)) {
 			continue
 		}
-		if err := b.Delete(int64(p)); err != nil {
+		glog.Infof("GCing backend for port %v", p)
+		if err := b.Delete(nodePort); err != nil {
 			return err
 		}
 	}
@@ -215,8 +219,20 @@ func (b *Backends) Shutdown() error {
 	if err := b.GC([]int64{}); err != nil {
 		return err
 	}
-	if err := b.cloud.DeleteBackendService(b.defaultBackend.Name); err != nil {
-		return err
-	}
 	return nil
+}
+
+// Status returns the status of the given backend by name.
+func (b *Backends) Status(name string) string {
+	backend, err := b.cloud.GetBackendService(name)
+	if err != nil {
+		return "Unknown"
+	}
+	// TODO: Include port, ip in the status, since it's in the health info.
+	hs, err := b.cloud.GetHealth(name, backend.Backends[0].Group)
+	if err != nil || len(hs.HealthStatus) == 0 || hs.HealthStatus[0] == nil {
+		return "Unknown"
+	}
+	// TODO: State transition are important, not just the latest.
+	return hs.HealthStatus[0].HealthState
 }

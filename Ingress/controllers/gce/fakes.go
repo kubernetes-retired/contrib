@@ -117,7 +117,6 @@ func (f *fakeLoadBalancers) GetGlobalForwardingRule(name string) (*compute.Forwa
 }
 
 func (f *fakeLoadBalancers) CreateGlobalForwardingRule(proxy *compute.TargetHttpProxy, name string, portRange string) (*compute.ForwardingRule, error) {
-
 	rule := &compute.ForwardingRule{
 		Name:       name,
 		Target:     proxy.SelfLink,
@@ -300,31 +299,42 @@ func newFakeLoadBalancers(name string) *fakeLoadBalancers {
 }
 
 type fakeHealthChecks struct {
-	hc *compute.HttpHealthCheck
+	hc []*compute.HttpHealthCheck
 }
 
 func (f *fakeHealthChecks) CreateHttpHealthCheck(hc *compute.HttpHealthCheck) error {
-	f.hc = hc
+	f.hc = append(f.hc, hc)
 	return nil
 }
 
 func (f *fakeHealthChecks) GetHttpHealthCheck(name string) (*compute.HttpHealthCheck, error) {
-	if f.hc == nil || f.hc.Name != name {
-		return nil, fmt.Errorf("Health check %v not found.", name)
+	for _, h := range f.hc {
+		if h.Name == name {
+			return h, nil
+		}
 	}
-	return f.hc, nil
+	return nil, fmt.Errorf("Health check %v not found.", name)
 }
 
 func (f *fakeHealthChecks) DeleteHttpHealthCheck(name string) error {
-	if f.hc == nil || f.hc.Name != name {
-		return fmt.Errorf("Health check %v not found.", name)
+	healthChecks := []*compute.HttpHealthCheck{}
+	exists := false
+	for _, h := range f.hc {
+		if h.Name == name {
+			exists = true
+			continue
+		}
+		healthChecks = append(healthChecks, h)
 	}
-	f.hc = nil
+	if !exists {
+		return fmt.Errorf("Failed to find health check %v", name)
+	}
+	f.hc = healthChecks
 	return nil
 }
 
 func newFakeHealthChecks() *fakeHealthChecks {
-	return &fakeHealthChecks{hc: nil}
+	return &fakeHealthChecks{hc: []*compute.HttpHealthCheck{}}
 }
 
 // BackendServices fakes
@@ -373,6 +383,22 @@ func (f *fakeBackendServices) UpdateBackendService(be *compute.BackendService) e
 	return nil
 }
 
+func (f *fakeBackendServices) GetHealth(name, instanceGroupLink string) (*compute.BackendServiceGroupHealth, error) {
+	be, err := f.GetBackendService(name)
+	if err != nil {
+		return nil, err
+	}
+	states := []*compute.HealthStatus{
+		{
+			HealthState: "HEALTHY",
+			IpAddress:   "",
+			Port:        be.Port,
+		},
+	}
+	return &compute.BackendServiceGroupHealth{
+		HealthStatus: states}, nil
+}
+
 func newFakeBackendServices() *fakeBackendServices {
 	return &fakeBackendServices{
 		backendServices: []*compute.BackendService{},
@@ -399,26 +425,45 @@ func getInstanceList(nodeNames sets.String) *compute.InstanceGroupsListInstances
 
 // InstanceGroup fakes
 type fakeInstanceGroups struct {
-	instances     sets.String
-	instanceGroup string
-	ports         []int64
-	getResult     *compute.InstanceGroup
-	listResult    *compute.InstanceGroupsListInstances
-	calls         []int
+	instances      sets.String
+	instanceGroups []*compute.InstanceGroup
+	ports          []int64
+	getResult      *compute.InstanceGroup
+	listResult     *compute.InstanceGroupsListInstances
+	calls          []int
 }
 
 func (f *fakeInstanceGroups) GetInstanceGroup(name string) (*compute.InstanceGroup, error) {
 	f.calls = append(f.calls, Get)
-	return f.getResult, nil
+	for _, ig := range f.instanceGroups {
+		if ig.Name == name {
+			return ig, nil
+		}
+	}
+	// TODO: Return googleapi 404 error
+	return nil, fmt.Errorf("Instance group %v not found", name)
 }
 
 func (f *fakeInstanceGroups) CreateInstanceGroup(name string) (*compute.InstanceGroup, error) {
-	f.instanceGroup = name
-	return &compute.InstanceGroup{}, nil
+	newGroup := &compute.InstanceGroup{Name: name, SelfLink: name}
+	f.instanceGroups = append(f.instanceGroups, newGroup)
+	return newGroup, nil
 }
 
 func (f *fakeInstanceGroups) DeleteInstanceGroup(name string) error {
-	f.instanceGroup = ""
+	newGroups := []*compute.InstanceGroup{}
+	found := false
+	for _, ig := range f.instanceGroups {
+		if ig.Name == name {
+			found = true
+			continue
+		}
+		newGroups = append(newGroups, ig)
+	}
+	if !found {
+		return fmt.Errorf("Instance Group %v not found", name)
+	}
+	f.instanceGroups = newGroups
 	return nil
 }
 
@@ -459,48 +504,30 @@ type fakeClusterManager struct {
 }
 
 // newFakeClusterManager creates a new fake ClusterManager.
-func newFakeClusterManager(clusterName string) (*fakeClusterManager, error) {
+func newFakeClusterManager(clusterName string) *fakeClusterManager {
 	fakeLbs := newFakeLoadBalancers(clusterName)
 	fakeBackends := newFakeBackendServices()
 	fakeIGs := newFakeInstanceGroups(sets.NewString())
-	fakeHcs := newFakeHealthChecks()
+	fakeHCs := newFakeHealthChecks()
 
-	defaultIGName := defaultInstanceGroupName(clusterName)
-	defaultBeName := beName(testDefaultBeNodePort)
-
-	nodePool, err := NewNodePool(fakeIGs, defaultIGName)
-	if err != nil {
-		return nil, err
-	}
-
-	backendPool, err := NewBackendPool(
+	nodePool := NewNodePool(fakeIGs)
+	healthChecker := NewHealthChecker(fakeHCs, "/")
+	backendPool := NewBackendPool(
 		fakeBackends,
-		testDefaultBeNodePort,
-		&compute.InstanceGroup{
-			SelfLink: defaultIGName,
-		},
-		&compute.HttpHealthCheck{}, fakeIGs)
-	if err != nil {
-		return nil, err
-	}
+		healthChecker, nodePool)
 	l7Pool := NewLoadBalancerPool(
 		fakeLbs,
-		&compute.BackendService{
-			SelfLink: defaultBeName,
-		},
+		// TODO: change this
+		backendPool,
+		testDefaultBeNodePort,
 	)
-	healthChecks, err := NewHealthChecker(fakeHcs, defaultHttpHealthCheck, "/")
-	if err != nil {
-		return nil, err
-	}
 	cm := &ClusterManager{
-		ClusterName:   clusterName,
-		instancePool:  nodePool,
-		backendPool:   backendPool,
-		l7Pool:        l7Pool,
-		healthChecker: healthChecks,
+		ClusterName:  clusterName,
+		instancePool: nodePool,
+		backendPool:  backendPool,
+		l7Pool:       l7Pool,
 	}
-	return &fakeClusterManager{cm, fakeLbs, fakeBackends, fakeIGs}, nil
+	return &fakeClusterManager{cm, fakeLbs, fakeBackends, fakeIGs}
 }
 
 type testIP struct {

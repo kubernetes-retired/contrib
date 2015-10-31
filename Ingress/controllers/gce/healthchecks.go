@@ -20,44 +20,36 @@ import (
 	compute "google.golang.org/api/compute/v1"
 
 	"github.com/golang/glog"
+	"net/http"
 )
 
-// HealthChecks manages health checks. Currently it is only capable of
-// managing a single health check.
+// HealthChecks manages health checks.
 type HealthChecks struct {
-	cloud SingleHealthCheck
-	// default path for the health check, eg: '/'
+	cloud       SingleHealthCheck
 	defaultPath string
 }
 
-// NewHealthChecker returns a HealthChecker.
-// - s: implements SingleHealthCheck, used to create health checks in the cloud.
-// - name: The name of this health check, if a health check with the same name
-//   already exists, it will be reused.
-// - defaultPath: The default path to use for the health check. The backend
-//   service must serve a 200 page on this path.
-func NewHealthChecker(s SingleHealthCheck, name string, defaultPath string) (*HealthChecks, error) {
-	d := defaultPath
-	if defaultPath != "" {
-		d = defaultHealthCheckPath
-	}
-	hc := &HealthChecks{s, d}
-	if err := hc.Add(name); err != nil {
-		return nil, err
-	}
-	return hc, nil
+// NewHealthChecker creates a new health checker.
+// cloud: the cloud object implementing SingleHealthCheck.
+// defaultHealthCheckPath: is the HTTP path to use for health checks.
+func NewHealthChecker(cloud SingleHealthCheck, defaultHealthCheckPath string) HealthChecker {
+	return &HealthChecks{cloud, defaultHealthCheckPath}
 }
 
-// Add adds a healthcheck if one with the same name doesn't already exist.
-func (h *HealthChecks) Add(name string) error {
-	hc, _ := h.Get(name)
+// Add adds a healthcheck if one for the same port doesn't already exist.
+func (h *HealthChecks) Add(port int64, path string) error {
+	hc, _ := h.Get(port)
+	name := beName(port)
+	if path == "" {
+		path = h.defaultPath
+	}
 	if hc == nil {
 		glog.Infof("Creating health check %v", name)
 		if err := h.cloud.CreateHttpHealthCheck(
 			&compute.HttpHealthCheck{
 				Name:        name,
-				Port:        defaultPort,
-				RequestPath: h.defaultPath,
+				Port:        port,
+				RequestPath: path,
 				Description: "Default kubernetes L7 Loadbalancing health check.",
 				// How often to health check.
 				CheckIntervalSec: 1,
@@ -77,12 +69,19 @@ func (h *HealthChecks) Add(name string) error {
 	return nil
 }
 
-// Delete deletes the health check by name.
-func (h *HealthChecks) Delete(name string) error {
-	return h.cloud.DeleteHttpHealthCheck(name)
+// Delete deletes the health check by port.
+func (h *HealthChecks) Delete(port int64) error {
+	name := beName(port)
+	glog.Infof("Deleting health check %v", name)
+	if err := h.cloud.DeleteHttpHealthCheck(beName(port)); err != nil {
+		if !isHTTPErrorCode(err, http.StatusNotFound) {
+			return err
+		}
+	}
+	return nil
 }
 
 // Get returns the given health check.
-func (h *HealthChecks) Get(name string) (*compute.HttpHealthCheck, error) {
-	return h.cloud.GetHttpHealthCheck(name)
+func (h *HealthChecks) Get(port int64) (*compute.HttpHealthCheck, error) {
+	return h.cloud.GetHttpHealthCheck(beName(port))
 }

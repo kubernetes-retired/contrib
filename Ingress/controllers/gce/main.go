@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,7 +41,7 @@ import (
 
 const (
 	// lbApiPort is the port on which the loadbalancer controller serves a
-	// minimal api (/healthz, /quit etc).
+	// minimal api (/healthz, /delete-all-and-quit etc).
 	lbApiPort = 8081
 )
 
@@ -75,10 +76,10 @@ var (
 		testing. In normal environments the controller should only delete
 		a loadbalancer if the associated Ingress is deleted.`)
 
-	defaultBackendNodePort = flags.Int64("default-backend-node-port", 0,
-		`Node port of a default backend to use if none is specified in the
-		Ingress. The controller assumes you have created a service with this
-		node port. This service should serve a default 404 page.`)
+	defaultSvc = flags.String("default-backend-service", "kube-system/glbc-default-backend",
+		`Service used to serve a 404 page for the default backend. Takes the form
+		namespace/name. The controller uses the first node port of this Service for
+		the default backend.`)
 
 	healthCheckPath = flags.String("health-check-path", "/",
 		`Path used to health-check a backend service. All Services must serve
@@ -91,15 +92,15 @@ func registerHandlers(lbc *loadBalancerController) {
 		w.WriteHeader(200)
 		w.Write([]byte("ok"))
 	})
-	http.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/delete-all-and-quit", func(w http.ResponseWriter, r *http.Request) {
 		// TODO: Retry failures during shutdown.
-		lbc.Stop()
+		lbc.Stop(true)
 	})
 
 	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", lbApiPort), nil))
 }
 
-func handleSigterm(lbc *loadBalancerController) {
+func handleSigterm(lbc *loadBalancerController, deleteAll bool) {
 	// Multiple SIGTERMs will get dropped
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM)
@@ -108,7 +109,7 @@ func handleSigterm(lbc *loadBalancerController) {
 
 	// TODO: Better retires than relying on restartPolicy.
 	exitCode := 0
-	if err := lbc.Stop(); err != nil {
+	if err := lbc.Stop(deleteAll); err != nil {
 		glog.Infof("Error during shutdown %v", err)
 		exitCode = 1
 	}
@@ -125,8 +126,8 @@ func main() {
 	flags.Parse(os.Args)
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
-	if *defaultBackendNodePort == 0 {
-		glog.Fatalf("Please specify --default-backend-node-port")
+	if *defaultSvc == "" {
+		glog.Fatalf("Please specify --default-backend")
 	}
 
 	if *proxyUrl != "" {
@@ -147,20 +148,28 @@ func main() {
 			kubeClient, err = client.New(config)
 		}
 	}
+	// Wait for the default backend Service. There's no pretty way to do this.
+	parts := strings.Split(*defaultSvc, "/")
+	if len(parts) != 2 {
+		glog.Fatalf("Default backend should take the form namespace/name: %v",
+			*defaultSvc)
+	}
+	defaultBackendNodePort, err := getNodePort(kubeClient, parts[0], parts[1])
+	if err != nil {
+		glog.Fatalf("Could not configure default backend %v: %v",
+			*defaultSvc, err)
+	}
+
 	if *proxyUrl == "" && *inCluster {
 		// Create cluster manager
 		clusterManager, err = NewClusterManager(
-			*clusterName, *defaultBackendNodePort, *healthCheckPath)
+			*clusterName, defaultBackendNodePort, *healthCheckPath)
 		if err != nil {
 			glog.Fatalf("%v", err)
 		}
 	} else {
 		// Create fake cluster manager
-		fcm, err := newFakeClusterManager(*clusterName)
-		if err != nil {
-			glog.Fatalf("%v", err)
-		}
-		clusterManager = fcm.ClusterManager
+		clusterManager = newFakeClusterManager(*clusterName).ClusterManager
 	}
 
 	// Start loadbalancer controller
@@ -168,11 +177,10 @@ func main() {
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}
-	glog.Infof("Created lbc %+v", lbc)
+	glog.Infof("Created lbc %+v", clusterManager.ClusterName)
 	go registerHandlers(lbc)
-	if *deleteAllOnQuit {
-		go handleSigterm(lbc)
-	}
+	go handleSigterm(lbc, *deleteAllOnQuit)
+
 	lbc.Run()
 	for {
 		glog.Infof("Handled quit, awaiting pod deletion.")

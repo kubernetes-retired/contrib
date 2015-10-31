@@ -27,8 +27,6 @@ const (
 	defaultPort            = 80
 	defaultHealthCheckPath = "/"
 	defaultPortRange       = "80"
-	defaultPortName        = "default-port"
-	defaultHttpHealthCheck = "k8s-default-health-check"
 
 	// A single instance-group is created per cluster manager.
 	// Tagged with the name of the controller.
@@ -64,21 +62,67 @@ type ClusterManager struct {
 	instancePool           NodePool
 	backendPool            BackendPool
 	l7Pool                 LoadBalancerPool
-	// We currently only employ a single cluster wide health check
-	healthChecker HealthChecker
 }
 
 func (c *ClusterManager) shutdown() error {
 	if err := c.l7Pool.Shutdown(); err != nil {
 		return err
 	}
-	if err := c.backendPool.Shutdown(); err != nil {
+	// The backend pool will also delete instance groups.
+	return c.backendPool.Shutdown()
+}
+
+// Checkpoint performs a checkpoint with the cloud.
+// - lbNames are the names of L7 loadbalancers we wish to exist. If they already
+//   exist, they should not have any broken links between say, a UrlMap and
+//   TargetHttpProxy.
+// - nodeNames are the names of nodes we wish to add to all loadbalancer
+//   instance groups.
+// - nodePorts are the ports for which we require BackendServices. Each of
+//   these ports must also be opened on the corresponding Instance Group.
+// If in performing the checkpoint the cluster manager runs out of quota, a
+// googleapi 403 is returned.
+func (c *ClusterManager) Checkpoint(lbNames, nodeNames []string, nodePorts []int64) error {
+	if err := c.backendPool.Sync(nodePorts); err != nil {
 		return err
 	}
-	if err := c.instancePool.Shutdown(); err != nil {
+	if err := c.instancePool.Sync(nodeNames); err != nil {
 		return err
 	}
-	return c.healthChecker.Delete(defaultHttpHealthCheck)
+	if err := c.l7Pool.Sync(lbNames); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GC garbage collects unused resources.
+// - lbNames are the names of L7 loadbalancers we wish to exist. Those not in
+//   this list are removed from the cloud.
+// - nodePorts are the ports for which we want BackendServies. BackendServices
+//   for ports not in this list are deleted.
+// This method ignores googleapi 404 errors (StatusNotFound).
+func (c *ClusterManager) GC(lbNames []string, nodePorts []int64) error {
+
+	// On GC:
+	// * Loadbalancers need to get deleted before backends.
+	// * Backends are refcounted in a shared pool.
+	// * We always want to GC backends even if there was an error in GCing
+	//   loadbalancers, because the next Sync could rely on the GC for quota.
+	// * There are at least 2 cases for backend GC:
+	//   1. The loadbalancer has been deleted.
+	//   2. An update to the url map drops the refcount of a backend. This can
+	//      happen when an Ingress is updated, if we don't GC after the update
+	//      we'll leak the backend.
+
+	lbErr := c.l7Pool.GC(lbNames)
+	beErr := c.backendPool.GC(nodePorts)
+	if lbErr != nil {
+		return lbErr
+	}
+	if beErr != nil {
+		return beErr
+	}
+	return nil
 }
 
 func defaultInstanceGroupName(clusterName string) string {
@@ -95,55 +139,26 @@ func defaultBackendName(clusterName string) string {
 // - defaultBackendNodePort: is the node port of glbc's default backend. This is
 //	 the kubernetes Service that serves the 404 page if no urls match.
 // - defaultHealthCheckPath: is the default path used for L7 health checks, eg: "/healthz"
-func NewClusterManager(name string, defaultBackendNodePort int64, defaultHealthCheckPath string) (*ClusterManager, error) {
+func NewClusterManager(
+	name string,
+	defaultBackendNodePort int64,
+	defaultHealthCheckPath string) (*ClusterManager, error) {
+
 	cloudInterface, err := cloudprovider.GetCloudProvider("gce", nil)
 	if err != nil {
 		return nil, err
 	}
 	cloud := cloudInterface.(*gce.GCECloud)
 	cluster := ClusterManager{ClusterName: name}
-
-	// Why do we need so many defaults?
-	// Default IG: We add all instances to a single ig, and
-	// every service that requires loadbalancing opens up
-	// a nodePort on the cluster, which translates to a node
-	// on this default ig.
-	//
-	// Default Backend: We need a default backend to create
-	// every urlmap, even if the user doesn't specify one.
-	// This is the backend that gets requests if no paths match.
-	// Note that this backend doesn't actually occupy a port
-	// on the instance group.
-	//
-	// Default Health Check: The default backend used by an
-	// Ingress that doesn't specify it.
-
-	defaultIGName := defaultInstanceGroupName(name)
-	if cluster.instancePool, err = NewNodePool(cloud, defaultIGName); err != nil {
-		return nil, err
-	}
-
-	// TODO: We're roud tripping for a resource we just created.
-	defaultIG, err := cluster.instancePool.Get(defaultIGName)
-	if err != nil {
-		return nil, err
-	}
-	if cluster.healthChecker, err = NewHealthChecker(
-		cloud, defaultHttpHealthCheck, defaultHealthCheckPath); err != nil {
-		return nil, err
-	}
-	defaultHc, err := cluster.healthChecker.Get(defaultHttpHealthCheck)
-	if err != nil {
-		return nil, err
-	}
-	if cluster.backendPool, err = NewBackendPool(
-		cloud, defaultBackendNodePort, defaultIG, defaultHc, cloud); err != nil {
-		return nil, err
-	}
+	cluster.instancePool = NewNodePool(cloud)
+	healthChecker := NewHealthChecker(cloud, defaultHealthCheckPath)
+	cluster.backendPool = NewBackendPool(
+		cloud, healthChecker, cluster.instancePool)
+	defaultBackendHealthChecker := NewHealthChecker(cloud, "/healthz")
+	defaultBackendPool := NewBackendPool(
+		cloud, defaultBackendHealthChecker, cluster.instancePool)
 	cluster.defaultBackendNodePort = defaultBackendNodePort
-	// TODO: Don't cast, the problem here is the default backend doesn't have
-	// a port and the interface only allows backend access via port.
 	cluster.l7Pool = NewLoadBalancerPool(
-		cloud, cluster.backendPool.(*Backends).defaultBackend)
+		cloud, defaultBackendPool, defaultBackendNodePort)
 	return &cluster, nil
 }

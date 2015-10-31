@@ -332,10 +332,10 @@ NAME                    READY     STATUS        RESTARTS   AGE
 gcelb-xxa53             1/1       Terminating   0          13m
 ```
 
-__The prod way__: If you didn't start the controller with `--delete-all-on-quit`, you can execute a GET on the `/quit` endpoint. This endpoint is deliberately not exported.
+__The prod way__: If you didn't start the controller with `--delete-all-on-quit`, you can execute a GET on the `/delete-all-and-quit` endpoint. This endpoint is deliberately not exported.
 
 ```
-$ kubectl exec -it gcelb-w4fj9 -- curl http://localhost:8081/quit
+$ kubectl exec -it gcelb-w4fj9 -- curl http://localhost:8081/delete-all-and-quit
 ..Hangs till quit is done..
 
 $ kubectl logs gcelb-w4fj9 --follow

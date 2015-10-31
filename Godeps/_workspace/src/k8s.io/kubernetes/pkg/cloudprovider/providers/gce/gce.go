@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,6 +55,9 @@ const (
 	gceAffinityTypeClientIP = "CLIENT_IP"
 	// AffinityTypeClientIPProto - affinity based on Client IP and port.
 	gceAffinityTypeClientIPProto = "CLIENT_IP_PROTO"
+
+	operationPollInterval        = 3 * time.Second
+	operationPollTimeoutDuration = 30 * time.Minute
 )
 
 // GCECloud is an implementation of Interface, TCPLoadBalancer and Instances for Google Compute Engine.
@@ -201,6 +205,20 @@ func (gce *GCECloud) ProviderName() string {
 	return ProviderName
 }
 
+// Known-useless DNS search path.
+var uselessDNSSearchRE = regexp.MustCompile(`^[0-9]+.google.internal.$`)
+
+// ScrubDNS filters DNS settings for pods.
+func (gce *GCECloud) ScrubDNS(nameservers, searches []string) (nsOut, srchOut []string) {
+	// GCE has too many search paths by default. Filter the ones we know are useless.
+	for _, s := range searches {
+		if !uselessDNSSearchRE.MatchString(s) {
+			srchOut = append(srchOut, s)
+		}
+	}
+	return nameservers, srchOut
+}
+
 // TCPLoadBalancer returns an implementation of TCPLoadBalancer for Google Compute Engine.
 func (gce *GCECloud) TCPLoadBalancer() (cloudprovider.TCPLoadBalancer, bool) {
 	return gce, true
@@ -244,48 +262,57 @@ func (gce *GCECloud) targetPoolURL(name, region string) string {
 	return fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/regions/%s/targetPools/%s", gce.projectID, region, name)
 }
 
-func waitForOp(op *compute.Operation, getOperation func() (*compute.Operation, error)) error {
-	pollOp := op
-	consecPollFails := 0
-	for pollOp.Status != "DONE" {
-		var err error
-		time.Sleep(3 * time.Second)
-		pollOp, err = getOperation()
-		if err != nil {
-			if consecPollFails == 2 {
-				// Only bail if we've seen 3 consecutive polling errors.
-				return err
-			}
-			consecPollFails++
-		} else {
-			consecPollFails = 0
-		}
+func waitForOp(op *compute.Operation, getOperation func(operationName string) (*compute.Operation, error)) error {
+	if op == nil {
+		return fmt.Errorf("operation must not be nil")
 	}
-	if pollOp.Error != nil && len(pollOp.Error.Errors) > 0 {
-		return &googleapi.Error{
-			Code:    int(pollOp.HttpErrorStatusCode),
-			Message: pollOp.Error.Errors[0].Message,
-		}
-	}
-	return nil
 
+	if opIsDone(op) {
+		return getErrorFromOp(op)
+	}
+
+	opName := op.Name
+	return wait.Poll(operationPollInterval, operationPollTimeoutDuration, func() (bool, error) {
+		pollOp, err := getOperation(opName)
+		if err != nil {
+			glog.Warningf("GCE poll operation failed: %v", err)
+		}
+		return opIsDone(pollOp), getErrorFromOp(pollOp)
+	})
+}
+
+func opIsDone(op *compute.Operation) bool {
+	return op != nil && op.Status == "DONE"
+}
+
+func getErrorFromOp(op *compute.Operation) error {
+	if op != nil && op.Error != nil && len(op.Error.Errors) > 0 {
+		err := &googleapi.Error{
+			Code:    int(op.HttpErrorStatusCode),
+			Message: op.Error.Errors[0].Message,
+		}
+		glog.Errorf("GCE operation failed: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 func (gce *GCECloud) waitForGlobalOp(op *compute.Operation) error {
-	return waitForOp(op, func() (*compute.Operation, error) {
-		return gce.service.GlobalOperations.Get(gce.projectID, op.Name).Do()
+	return waitForOp(op, func(operationName string) (*compute.Operation, error) {
+		return gce.service.GlobalOperations.Get(gce.projectID, operationName).Do()
 	})
 }
 
 func (gce *GCECloud) waitForRegionOp(op *compute.Operation, region string) error {
-	return waitForOp(op, func() (*compute.Operation, error) {
-		return gce.service.RegionOperations.Get(gce.projectID, region, op.Name).Do()
+	return waitForOp(op, func(operationName string) (*compute.Operation, error) {
+		return gce.service.RegionOperations.Get(gce.projectID, region, operationName).Do()
 	})
 }
 
 func (gce *GCECloud) waitForZoneOp(op *compute.Operation) error {
-	return waitForOp(op, func() (*compute.Operation, error) {
-		return gce.service.ZoneOperations.Get(gce.projectID, gce.zone, op.Name).Do()
+	return waitForOp(op, func(operationName string) (*compute.Operation, error) {
+		return gce.service.ZoneOperations.Get(gce.projectID, gce.zone, operationName).Do()
 	})
 }
 
@@ -941,6 +968,11 @@ func (gce *GCECloud) DeleteUrlMap(name string) error {
 	return gce.waitForGlobalOp(op)
 }
 
+// ListUrlMaps lists all UrlMaps in the project.
+func (gce *GCECloud) ListUrlMaps() (*compute.UrlMapList, error) {
+	return gce.service.UrlMaps.List(gce.projectID).Do()
+}
+
 // TargetHttpProxy management
 
 // GetTargetHttpProxy returns the UrlMap by name.
@@ -983,6 +1015,11 @@ func (gce *GCECloud) DeleteTargetHttpProxy(name string) error {
 		return err
 	}
 	return gce.waitForGlobalOp(op)
+}
+
+// ListTargetHttpProxies lists all TargetHttpProxies in the project.
+func (gce *GCECloud) ListTargetHttpProxies() (*compute.TargetHttpProxyList, error) {
+	return gce.service.TargetHttpProxies.List(gce.projectID).Do()
 }
 
 // GlobalForwardingRule management
@@ -1031,6 +1068,11 @@ func (gce *GCECloud) GetGlobalForwardingRule(name string) (*compute.ForwardingRu
 	return gce.service.GlobalForwardingRules.Get(gce.projectID, name).Do()
 }
 
+// ListGlobalForwardingRules lists all GlobalForwardingRules in the project.
+func (gce *GCECloud) ListGlobalForwardingRules() (*compute.ForwardingRuleList, error) {
+	return gce.service.GlobalForwardingRules.List(gce.projectID).Do()
+}
+
 // BackendService Management
 
 // GetBackendService retrieves a backend by name.
@@ -1066,6 +1108,19 @@ func (gce *GCECloud) CreateBackendService(bg *compute.BackendService) error {
 		return err
 	}
 	return gce.waitForGlobalOp(op)
+}
+
+// ListBackendServices lists all backend services in the project.
+func (gce *GCECloud) ListBackendServices() (*compute.BackendServiceList, error) {
+	return gce.service.BackendServices.List(gce.projectID).Do()
+}
+
+// GetHealth returns the health of the BackendService identified by the given
+// name, in the given instanceGroup. The instanceGroupLink is the fully
+// qualified self link of an instance group.
+func (gce *GCECloud) GetHealth(name string, instanceGroupLink string) (*compute.BackendServiceGroupHealth, error) {
+	groupRef := &compute.ResourceGroupReference{instanceGroupLink}
+	return gce.service.BackendServices.GetHealth(gce.projectID, name, groupRef).Do()
 }
 
 // Health Checks
@@ -1105,6 +1160,11 @@ func (gce *GCECloud) CreateHttpHealthCheck(hc *compute.HttpHealthCheck) error {
 	return gce.waitForGlobalOp(op)
 }
 
+// ListHttpHealthCheck lists all HttpHealthChecks in the project.
+func (gce *GCECloud) ListHttpHealthChecks() (*compute.HttpHealthCheckList, error) {
+	return gce.service.HttpHealthChecks.List(gce.projectID).Do()
+}
+
 // InstanceGroup Management
 
 // CreateInstanceGroup creates an instance group with the given instances. It is the callers responsibility to add named ports.
@@ -1128,6 +1188,11 @@ func (gce *GCECloud) DeleteInstanceGroup(name string) error {
 		return err
 	}
 	return gce.waitForZoneOp(op)
+}
+
+// ListInstanceGroups lists all InstanceGroups in the project and zone.
+func (gce *GCECloud) ListInstanceGroups() (*compute.InstanceGroupList, error) {
+	return gce.service.InstanceGroups.List(gce.projectID, gce.zone).Do()
 }
 
 // ListInstancesInInstanceGroup lists all the instances in a given istance group and state.
@@ -1442,18 +1507,7 @@ func (gce *GCECloud) AttachDisk(diskName string, readOnly bool) error {
 
 	attachOp, err := gce.service.Instances.AttachDisk(gce.projectID, gce.zone, gce.instanceID, attachedDisk).Do()
 	if err != nil {
-		// Check if the disk is already attached to this instance.  We do this only
-		// in the error case, since it is expected to be exceptional.
-		instance, err := gce.service.Instances.Get(gce.projectID, gce.zone, gce.instanceID).Do()
-		if err != nil {
-			return err
-		}
-		for _, disk := range instance.Disks {
-			if disk.Source == attachedDisk.Source {
-				// Disk is already attached, we're good to go.
-				return nil
-			}
-		}
+		return err
 	}
 
 	return gce.waitForZoneOp(attachOp)

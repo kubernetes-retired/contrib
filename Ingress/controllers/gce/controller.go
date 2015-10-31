@@ -17,7 +17,7 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
+	"net/http"
 	"reflect"
 	"sync"
 	"time"
@@ -37,8 +37,9 @@ import (
 )
 
 var (
-	keyFunc          = framework.DeletionHandlingMetaNamespaceKeyFunc
-	lbControllerName = "lbcontroller"
+	keyFunc             = framework.DeletionHandlingMetaNamespaceKeyFunc
+	lbControllerName    = "lbcontroller"
+	k8sAnnotationPrefix = "ingress.kubernetes.io"
 )
 
 // loadBalancerController watches the kubernetes api and adds/removes services
@@ -90,7 +91,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 		DeleteFunc: lbc.ingQueue.enqueue,
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				glog.Infof("Ingress %v changed, syncing",
+				glog.V(3).Infof("Ingress %v changed, syncing",
 					cur.(*extensions.Ingress).Name)
 			}
 			lbc.ingQueue.enqueue(cur)
@@ -135,12 +136,12 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 					Do().
 					Get()
 			},
-			WatchFunc: func(resourceVersion string) (watch.Interface, error) {
+			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
 				return lbc.client.Get().
 					Prefix("watch").
 					Resource("nodes").
 					FieldsSelectorParam(fields.Everything()).
-					Param("resourceVersion", resourceVersion).Watch()
+					Param("resourceVersion", options.ResourceVersion).Watch()
 			},
 		},
 		&api.Node{}, 0, nodeHandlers)
@@ -157,9 +158,8 @@ func ingressListFunc(c *client.Client) func() (runtime.Object, error) {
 	}
 }
 
-func ingressWatchFunc(c *client.Client) func(rv string) (watch.Interface, error) {
-	return func(rv string) (watch.Interface, error) {
-		options := api.ListOptions{ResourceVersion: rv}
+func ingressWatchFunc(c *client.Client) func(options api.ListOptions) (watch.Interface, error) {
+	return func(options api.ListOptions) (watch.Interface, error) {
 		return c.Extensions().Ingress(api.NamespaceAll).Watch(
 			labels.Everything(), fields.Everything(), options)
 	}
@@ -170,7 +170,7 @@ func (lbc *loadBalancerController) enqueueIngressForService(obj interface{}) {
 	svc := obj.(*api.Service)
 	ings, err := lbc.ingLister.GetServiceIngress(svc)
 	if err != nil {
-		glog.Infof("IGnoring service %v: %v", svc.Name, err)
+		glog.V(3).Infof("ignoring service %v: %v", svc.Name, err)
 		return
 	}
 	for _, ing := range ings {
@@ -190,17 +190,16 @@ func (lbc *loadBalancerController) Run() {
 	glog.Infof("Shutting down Loadbalancer Controller")
 }
 
-// Stop stops the loadbalancer controller. It deletes shared cluster resources
-// only if nothing is using them, leaving everything as-is otherwise.
-func (lbc *loadBalancerController) Stop() error {
+// Stop stops the loadbalancer controller. It also deletes cluster resources
+// if deleteAll is true.
+func (lbc *loadBalancerController) Stop(deleteAll bool) error {
 	// Stop is invoked from the http endpoint.
 	lbc.stopLock.Lock()
 	defer lbc.stopLock.Unlock()
 
-	// Only try closing the stop channels if we haven't already.
+	// Only try draining the workqueue if we haven't already.
 	if !lbc.shutdown {
 		close(lbc.stopCh)
-		// Stop the workers before invoking cluster shutdown
 		glog.Infof("Shutting down controller queues.")
 		lbc.ingQueue.shutdown()
 		lbc.nodeQueue.shutdown()
@@ -208,13 +207,16 @@ func (lbc *loadBalancerController) Stop() error {
 	}
 
 	// Deleting shared cluster resources is idempotent.
-	glog.Infof("Shutting down cluster manager.")
-	return lbc.clusterManager.shutdown()
+	if deleteAll {
+		glog.Infof("Shutting down cluster manager.")
+		return lbc.clusterManager.shutdown()
+	}
+	return nil
 }
 
-// sync manages the syncing of backends and pathmaps.
+// sync manages Ingress create/updates/deletes.
 func (lbc *loadBalancerController) sync(key string) {
-	glog.Infof("Syncing %v", key)
+	glog.V(3).Infof("Syncing %v", key)
 
 	paths, err := lbc.ingLister.List()
 	if err != nil {
@@ -223,50 +225,48 @@ func (lbc *loadBalancerController) sync(key string) {
 	}
 	nodePorts := lbc.tr.toNodePorts(&paths)
 	lbNames := lbc.ingLister.Store.ListKeys()
-
-	// On GC:
-	// * Loadbalancers need to get deleted before backends.
-	// * Backends are refcounted in a shared pool.
-	// * We always want to GC backends even if there was an error in GCing
-	//   loadbalancers, because the next Sync could rely on the GC for quota.
-	// * There are at least 2 cases for backend GC:
-	//   1. The loadbalancer has been deleted.
-	//   2. An update to the url map drops the refcount of a backend. This can
-	//      happen when an Ingress is updated, if we don't GC after the update
-	//      we'll leak the backend.
-	defer func() {
-		lbErr := lbc.clusterManager.l7Pool.GC(lbNames)
-		beErr := lbc.clusterManager.backendPool.GC(nodePorts)
-		if lbErr != nil || beErr != nil {
-			lbc.ingQueue.requeue(key, fmt.Errorf(
-				"Lb GC error: %v, Backend GC error: %v", lbErr, beErr))
-		}
-		glog.Infof("Finished syncing %v", key)
-	}()
-
-	// Create cluster-wide shared resources.
-	// TODO: If this turns into a bottleneck, split them out
-	// into independent sync pools.
-	if err := lbc.clusterManager.l7Pool.Sync(
-		lbNames); err != nil {
+	nodeNames, err := lbc.getReadyNodeNames()
+	if err != nil {
 		lbc.ingQueue.requeue(key, err)
 		return
 	}
-	if err := lbc.clusterManager.backendPool.Sync(
-		nodePorts); err != nil {
-		lbc.ingQueue.requeue(key, err)
-		return
-	}
-
-	// Deal with the single loadbalancer that came through the watch
 	obj, ingExists, err := lbc.ingLister.Store.GetByKey(key)
 	if err != nil {
 		lbc.ingQueue.requeue(key, err)
 		return
 	}
+
+	// This performs a 2 phase checkpoint with the cloud:
+	// * Phase 1 creates/verifies resources are as expected. At the end of a
+	//   successful checkpoint we know that existing L7s are WAI, and the L7
+	//   for the Ingress associated with "key" is ready for a UrlMap update.
+	//   If this encounters an error, eg for quota reasons, we want to invoke
+	//   Phase 2 right away and retry checkpointing.
+	// * Phase 2 performs GC by refcounting shared resources. This needs to
+	//   happen periodically whether or not stage 1 fails. At the end of a
+	//   successful GC we know that there are no dangling cloud resources that
+	//   don't have an associated Kubernetes Ingress/Service/Endpoint.
+
+	defer func() {
+		if err := lbc.clusterManager.GC(lbNames, nodePorts); err != nil {
+			lbc.ingQueue.requeue(key, err)
+		}
+		glog.V(3).Infof("Finished syncing %v", key)
+	}()
+
+	if err := lbc.clusterManager.Checkpoint(lbNames, nodeNames, nodePorts); err != nil {
+		if isHTTPErrorCode(err, http.StatusForbidden) && ingExists {
+			lbc.recorder.Eventf(obj.(*extensions.Ingress), "Forbidden", "Error: %v", err)
+			// TODO: Implement proper backoff for the queue.
+		}
+		lbc.ingQueue.requeue(key, err)
+		return
+	}
+
 	if !ingExists {
 		return
 	}
+	// Update the UrlMap of the single loadbalancer that came through the watch.
 	l7, err := lbc.clusterManager.l7Pool.Get(key)
 	if err != nil {
 		lbc.ingQueue.requeue(key, err)
@@ -278,30 +278,85 @@ func (lbc *loadBalancerController) sync(key string) {
 		lbc.ingQueue.requeue(key, err)
 	} else if err := l7.UpdateUrlMap(urlMap); err != nil {
 		lbc.ingQueue.requeue(key, err)
-	} else if updateLbIp(
-		lbc.client.Extensions().Ingress(ing.Namespace),
-		ing,
-		l7.GetIP()); err != nil {
+	} else if lbc.updateIngressStatus(l7, ing); err != nil {
 		lbc.ingQueue.requeue(key, err)
 	}
 	return
 }
 
+// updateIngressStatus updates the IP and annotations of a loadbalancer.
+// The annotations are parsed by kubectl describe.
+func (lbc *loadBalancerController) updateIngressStatus(l7 *L7, ing extensions.Ingress) error {
+	ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
+
+	// Update annotations through /update endpoint
+	// We do this before the IP update because the forwarding rule is always
+	// the authoritative source of IP, even if the client were to change it.
+	currIng, err := ingClient.Get(ing.Name)
+	if err != nil {
+		return err
+	}
+	currIng.Annotations = getAnnotations(l7, currIng.Annotations, lbc.clusterManager.backendPool)
+	if reflect.DeepEqual(ing.Annotations, currIng.Annotations) {
+		return nil
+	}
+	glog.V(3).Infof("Updating annotations of %v/%v", ing.Namespace, ing.Name)
+	if _, err := ingClient.Update(currIng); err != nil {
+		return err
+	}
+
+	// Update IP through update/status endpoint
+	ip := l7.GetIP()
+	currIng, err = ingClient.Get(ing.Name)
+	if err != nil {
+		return err
+	}
+	currIng.Status = extensions.IngressStatus{
+		LoadBalancer: api.LoadBalancerStatus{
+			Ingress: []api.LoadBalancerIngress{
+				{IP: ip},
+			},
+		},
+	}
+	lbIPs := ing.Status.LoadBalancer.Ingress
+	if len(lbIPs) == 0 && ip != "" || lbIPs[0].IP != ip {
+		// TODO: If this update fails it's probably resource version related,
+		// which means it's advantageous to retry right away vs requeuing.
+		glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, ip)
+		if _, err := ingClient.UpdateStatus(currIng); err != nil {
+			return err
+		}
+	}
+	lbc.recorder.Eventf(currIng, "Success", "Created loadbalancer %v", ip)
+	return nil
+}
+
 // syncNodes manages the syncing of kubernetes nodes to gce instance groups.
 // The instancegroups are referenced by loadbalancer backends.
 func (lbc *loadBalancerController) syncNodes(key string) {
-	kubeNodes, err := lbc.nodeLister.List()
+	nodeNames, err := lbc.getReadyNodeNames()
 	if err != nil {
 		lbc.nodeQueue.requeue(key, err)
 		return
-	}
-	nodeNames := []string{}
-	// TODO: delete unhealthy kubernetes nodes from cluster?
-	for _, n := range kubeNodes.Items {
-		nodeNames = append(nodeNames, n.Name)
 	}
 	if err := lbc.clusterManager.instancePool.Sync(nodeNames); err != nil {
 		lbc.nodeQueue.requeue(key, err)
 	}
 	return
+}
+
+// getReadyNodeNames returns names of schedulable, ready nodes from the node lister.
+func (lbc *loadBalancerController) getReadyNodeNames() ([]string, error) {
+	nodeNames := []string{}
+	nodes, err := lbc.nodeLister.NodeCondition(api.NodeReady, api.ConditionTrue).List()
+	if err != nil {
+		return nodeNames, err
+	}
+	for _, n := range nodes.Items {
+		if n.Spec.Unschedulable {
+			continue
+		}
+		nodeNames = append(nodeNames, n.Name)
+	}
+	return nodeNames, nil
 }

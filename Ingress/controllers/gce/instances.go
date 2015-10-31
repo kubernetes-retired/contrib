@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"net/http"
 	"strings"
 
 	compute "google.golang.org/api/compute/v1"
@@ -25,60 +26,51 @@ import (
 	"github.com/golang/glog"
 )
 
-// Instances implements InstancePool.
+// Instances implements NodePool.
 type Instances struct {
-	cloud     InstanceGroups
-	defaultIG *compute.InstanceGroup
-
-	// Currently unused. The current state for instances is derived from a
-	// kubernetes nodeLister. All services as ports added to a single
-	// instance group, the defaultIG. When we support adding an instance
-	// to multiple instance groups, we can move the createInstanceGroup
-	// method into the interface and use the poolStore.
-	pool *poolStore
-}
-
-// createInstanceGroup creates an instance group.
-func createInstanceGroup(cloud InstanceGroups, name string) (*compute.InstanceGroup, error) {
-	ig, err := cloud.GetInstanceGroup(name)
-	if ig != nil {
-		glog.Infof("Instance group %v already exists", ig.Name)
-		return ig, nil
-	}
-
-	glog.Infof("Creating instance group %v", name)
-	ig, err = cloud.CreateInstanceGroup(name)
-	if err != nil {
-		return nil, err
-	}
-	return ig, err
+	cloud InstanceGroups
+	pool  *poolStore
 }
 
 // NewNodePool creates a new node pool.
 // - cloud: implements InstanceGroups, used to sync Kubernetes nodes with
-//   members of the cloud InstanceGroup identified by defaultIGName.
-// - defaultIGName: Name of a GCE Instance Group with all nodes in your cluster.
-//	 If this Instance Group doesn't exist, it will be created, if it does, it
-//   will be reused.
-func NewNodePool(cloud InstanceGroups, defaultIGName string) (NodePool, error) {
-	// Each node pool has to have at least one default instance group backing
-	// it in the cloud. We currently don't support pools of instance groups,
-	// which is why createInstanceGroup is a private method invoked in the
-	// constructor.
-	ig, err := createInstanceGroup(cloud, defaultIGName)
-	if err != nil {
-		return nil, err
-	}
-
-	instances := &Instances{cloud, ig, newPoolStore()}
-	instances.defaultIG = ig
-	return instances, nil
+//   members of the cloud InstanceGroup.
+func NewNodePool(cloud InstanceGroups) NodePool {
+	return &Instances{cloud, newPoolStore()}
 }
 
-func (i *Instances) list() (sets.String, error) {
+// AddInstanceGroup creates or gets an instance group.
+func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.InstanceGroup, *compute.NamedPort, error) {
+	ig, _ := i.Get(name)
+	if ig == nil {
+		glog.Infof("Creating instance group %v", name)
+		var err error
+		ig, err = i.cloud.CreateInstanceGroup(name)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		glog.V(3).Infof("Instance group already exists %v", name)
+	}
+	defer i.pool.Add(name, ig)
+	namedPort, err := i.cloud.AddPortToInstanceGroup(ig, port)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return ig, namedPort, nil
+}
+
+// DeleteInstanceGroup deletes the given IG by name.
+func (i *Instances) DeleteInstanceGroup(name string) error {
+	defer i.pool.Delete(name)
+	return i.cloud.DeleteInstanceGroup(name)
+}
+
+func (i *Instances) list(name string) (sets.String, error) {
 	nodeNames := sets.NewString()
 	instances, err := i.cloud.ListInstancesInInstanceGroup(
-		i.defaultIG.Name, allInstances)
+		name, allInstances)
 	if err != nil {
 		return nodeNames, err
 	}
@@ -97,54 +89,67 @@ func (i *Instances) Get(name string) (*compute.InstanceGroup, error) {
 	if err != nil {
 		return nil, err
 	}
+	i.pool.Add(name, ig)
 	return ig, nil
 }
 
 // Add adds the given instances to the Instance Group.
-func (i *Instances) Add(names []string) error {
-	glog.Infof("Adding nodes %v to %v", names, i.defaultIG.Name)
-	return i.cloud.AddInstancesToInstanceGroup(i.defaultIG.Name, names)
+func (i *Instances) Add(groupName string, names []string) error {
+	glog.V(3).Infof("Adding nodes %v to %v", names, groupName)
+	return i.cloud.AddInstancesToInstanceGroup(groupName, names)
 }
 
 // Remove removes the given instances from the Instance Group.
-func (i *Instances) Remove(names []string) error {
-	glog.Infof("Removing nodes %v", names)
-	return i.cloud.RemoveInstancesFromInstanceGroup(i.defaultIG.Name, names)
+func (i *Instances) Remove(groupName string, names []string) error {
+	glog.V(3).Infof("Removing nodes %v from %v", names, groupName)
+	return i.cloud.RemoveInstancesFromInstanceGroup(groupName, names)
 }
 
 // Sync syncs kubernetes instances with the instances in the instance group.
-func (i *Instances) Sync(nodes []string) error {
-	glog.Infof("Syncing nodes %v", nodes)
-	gceNodes, err := i.list()
-	if err != nil {
-		return err
-	}
-	kubeNodes := sets.NewString(nodes...)
+func (i *Instances) Sync(nodes []string) (err error) {
+	glog.V(3).Infof("Syncing nodes %v", nodes)
 
-	// A node deleted via kubernetes could still exist as a gce vm. We don't
-	// want to route requests to it. Similarly, a node added to kubernetes
-	// needs to get added to the instance group so we do route requests to it.
+	defer func() {
+		// The node pool is only responsible for syncing nodes to instance
+		// groups. It never creates/deletes, so if an instance groups is
+		// not found there's nothing it can do about it anyway. Most cases
+		// this will happen because the backend pool has deleted the instance
+		// group, however if it happens because a user deletes the IG by mistake
+		// we should just wait till the backend pool fixes it.
+		if isHTTPErrorCode(err, http.StatusNotFound) {
+			glog.Infof("Node pool encountered a 404, ignoring: %v", err)
+			err = nil
+		}
+	}()
 
-	removeNodes := gceNodes.Difference(kubeNodes).List()
-	addNodes := kubeNodes.Difference(gceNodes).List()
-
-	if len(removeNodes) != 0 {
-		if err := i.Remove(
-			gceNodes.Difference(kubeNodes).List()); err != nil {
+	pool := i.pool.snapshot()
+	for name := range pool {
+		gceNodes := sets.NewString()
+		gceNodes, err = i.list(name)
+		if err != nil {
 			return err
 		}
-	}
+		kubeNodes := sets.NewString(nodes...)
 
-	if len(addNodes) != 0 {
-		if err := i.Add(
-			kubeNodes.Difference(gceNodes).List()); err != nil {
-			return err
+		// A node deleted via kubernetes could still exist as a gce vm. We don't
+		// want to route requests to it. Similarly, a node added to kubernetes
+		// needs to get added to the instance group so we do route requests to it.
+
+		removeNodes := gceNodes.Difference(kubeNodes).List()
+		addNodes := kubeNodes.Difference(gceNodes).List()
+		if len(removeNodes) != 0 {
+			if err = i.Remove(
+				name, gceNodes.Difference(kubeNodes).List()); err != nil {
+				return err
+			}
+		}
+
+		if len(addNodes) != 0 {
+			if err = i.Add(
+				name, kubeNodes.Difference(gceNodes).List()); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
-}
-
-// Shutdown deletes the default Instance Group.
-func (i *Instances) Shutdown() error {
-	return i.cloud.DeleteInstanceGroup(i.defaultIG.Name)
 }
