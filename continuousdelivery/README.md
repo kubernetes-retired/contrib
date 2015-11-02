@@ -2,7 +2,7 @@
 # Kubernetes Continuous Delivery
 Deployment scripts for continuous integration and\or continuous delivery of kubernetes projects. This project was tested and released using a private install of both CircleCI and Jenkins. The core deployments scripts (./deploy/) are used for both systems and as a result are designed to be extensible. Please contribute to add features and support for different CI/CD systems as needed.
 
-The idea of these scripts was based off of the [circleci repo](https://github.com/circleci/docker-hello-google). Thank you for giving us all head start!
+The idea of these scripts was based off of the [docker-hello-google example on circleci repo](https://github.com/circleci/docker-hello-google). Thank you for giving us all head start!
 
 ## Usage
 
