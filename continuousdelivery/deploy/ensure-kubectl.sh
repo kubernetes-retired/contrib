@@ -53,7 +53,7 @@ if [ ! -e ~/.kube/kubectl ]; then
 fi
 
 if [ ! -e ~/.kube/config ]; then
-    wget ${KUBECONFIGURL} -O ~/.kube/config
+    wget ${KUBEURL} -O ~/.kube/config
 fi
 
 ~/.kube/kubectl version
