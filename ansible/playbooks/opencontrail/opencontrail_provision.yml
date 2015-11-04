@@ -1,0 +1,15 @@
+---
+# This playbook runs the opencontrail_provision role
+#
+- hosts:
+    - masters
+    - nodes
+  sudo: yes
+  roles:
+    - opencontrail_facts
+    - opencontrail_provision
+  vars:
+    opencontrail_cluster_type: "kubernetes"
+
+
+

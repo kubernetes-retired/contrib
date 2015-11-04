@@ -1,0 +1,15 @@
+---
+
+- name: Assert that input variables are defined.
+  assert:
+    that:
+      - opencontrail_host_address is defined
+      - opencontrail_all_service_addresses is defined
+
+- name: controller provisioning
+  include: master.yml
+  when: inventory_hostname == groups['masters'][0]
+
+- name: node provisioning
+  include: nodes.yml
+  when: inventory_hostname in groups['nodes'] or ('gateways' in groups and inventory_hostname in groups['gateways'])

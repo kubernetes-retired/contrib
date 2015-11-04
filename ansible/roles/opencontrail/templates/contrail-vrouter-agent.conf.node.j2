@@ -1,14 +1,13 @@
 [CONTROL-NODE]
-server={%for host in groups['masters']%}{{ hostvars[host]['ansible_' + opencontrail_interface]['ipv4']['address'] }} {% endfor %}
-
+server={{ opencontrail_master_host_addresses }}
 
 [VIRTUAL-HOST-INTERFACE]
 name=vhost0
+ip={{ opencontrail_host_ipaddr }}
+physical_interface={{ opencontrail_host_interface }}
+{% if opencontrail_host_gateway -%}
+gateway={{ opencontrail_host_gateway }}
+{% endif -%}
 
-ip={{ hostvars[inventory_hostname]['ipaddr'] }}
-
-{% if opencontrail_gateway  %}
-gateway={{ opencontrail_gateway }}
-{% endif %}
-
-physical_interface={{ opencontrail_interface }}
+[HYPERVISOR]
+type=kvm

@@ -1,0 +1,8 @@
+---
+opencontrail_master_kube_service: "{{ openshift.common.service_type }}-master"
+opencontrail_use_systemd: true
+opencontrail_all_kube_config_dir: "{{ openshift.common.config_base }}"
+opencontrail_cluster_services_namespace: default
+opencontrail_gateway_public_subnet: "{{ hostvars[groups['masters'][0]]['opencontrail_public_subnet'] if 'opencontrail_public_subnet' in hostvars[groups['masters'][0]] else None }}"
+opencontrail_master_ifmap_port: 8444
+

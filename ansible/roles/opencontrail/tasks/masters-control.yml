@@ -1,13 +1,32 @@
 ---
-- name: Ensure configuration directory exists
-  file: path="/etc/contrail" state=directory
-
 - name: Configure control-node
   template: src=contrail-control.conf.j2 dest=/etc/contrail/contrail-control.conf
   notify:
     - restart contrail-control
 
 - name: Install control-node manifest
-  copy: src=contrail-control.manifest dest="{{ kube_manifest_dir }}"
+  copy: src=contrail-control.manifest dest="{{ opencontrail_all_kube_manifest_dir }}"
+  when: not opencontrail_use_systemd
 
+- name: Install control-node service
+  template: src=contrail-control.service.j2 dest=/etc/systemd/system/contrail-control.service
+  notify:
+    - reload systemd
+  when: opencontrail_use_systemd
+
+- name: Docker image ids (control)
+  command: docker images -q "{{ item }}"
+  with_items:
+    - "opencontrail/control:{{ opencontrail_all_release }}"
+  register: image_ids
+  always_run: true
+
+- name: Pull docker images (control)
+  command: docker pull "{{ item.item }}"
+  with_items: image_ids.results
+  when: not item.stdout
+
+- name: Start control-node service
+  service: name="contrail-control" enabled=yes state=started
+  when: opencontrail_use_systemd
 

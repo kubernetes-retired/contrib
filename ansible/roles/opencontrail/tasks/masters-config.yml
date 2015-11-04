@@ -1,13 +1,71 @@
 ---
-- name: Install templates
-  copy: src="{{item}}" dest="{{ kube_manifest_dir }}"
+- name: Ensure configuration directory exists
+  file: path="/etc/contrail" state=directory
+
+- file: path="{{ opencontrail_all_kube_config_dir }}" state=directory
+
+- name: Ensure log directory exists
+  file: path="/var/log/contrail" state=directory
+
+- name: Configuration files
+  template: src="{{ item }}.j2" dest="/etc/contrail/{{ item }}"
+  with_items:
+    - contrail-api.conf
+    - contrail-schema.conf
+
+- name: Network manager configuration
+  template: src=kube-network.conf.j2 dest={{ opencontrail_all_kube_config_dir }}/network.conf
+  notify:
+    - restart kube-network-manager
+
+- name: Install manifests
+  copy: src="{{ item }}" dest="{{ opencontrail_all_kube_manifest_dir }}"
   with_items:
     - contrail-api.manifest
     - contrail-schema.manifest
     - ifmap-server.manifest
-    - kube-network-manager.manifest
+  when: not opencontrail_use_systemd
 
-- name: Network manager configuration
-  template: src=kube-network.conf.j2 dest={{ kube_config_dir }}/network.conf
+- name: Install manifests (from templates)
+  template: src="{{ item }}.j2" dest="{{ opencontrail_all_kube_manifest_dir }}/{{ item }}"
+  with_items:
+    - kube-network-manager.manifest
+  when: not opencontrail_use_systemd
+
+- name: Install configuration services
+  template: src="{{item}}.j2" dest="/etc/systemd/system/{{ item }}"
+  with_items:
+    - contrail-api.service
+    - contrail-schema.service
+    - ifmap-server.service
+    - kube-network-manager.service
   notify:
-    - restart kube-network-manager
+    - reload systemd
+  when: opencontrail_use_systemd
+
+- name: Docker image ids (config)
+  command: docker images -q "{{ item }}"
+  with_items:
+    - "opencontrail/config:{{ opencontrail_all_release }}"
+    - "opencontrail/ifmap-server:{{ opencontrail_all_release }}"
+    - "opencontrail/kube-network-manager:{{ opencontrail_kube_release }}"
+  register: image_ids
+  always_run: true
+
+- name: Pull docker images (config)
+  command: docker pull "{{ item.item }}"
+  with_items: image_ids.results
+  when: not item.stdout
+
+- name: Start configuration services
+  service: name="{{ item }}" enabled=yes state=started
+  with_items:
+    - contrail-api
+    - contrail-schema
+    - ifmap-server
+  when: opencontrail_use_systemd
+
+#  kube-network-manager can only be started after origin-master is defined.
+- name: Enable kube-network-manager
+  service: name=kube-network-manager enabled=yes
+  when: opencontrail_use_systemd

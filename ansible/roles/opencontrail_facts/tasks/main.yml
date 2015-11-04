@@ -1,0 +1,40 @@
+---
+- include_vars: openshift.yml
+  when: opencontrail_cluster_type == "openshift"
+
+- include_vars: kubernetes.yml
+  when: opencontrail_cluster_type == "kubernetes"
+
+- name: Host IP address configuration (from inventory)
+  include: interface_inventory_facts.yml
+  when: opencontrail_ipaddr is defined
+
+- name: Host IP address configuration (from physical interface)
+  include: interface_ansible_facts.yml
+  when: "opencontrail_ipaddr is not defined and 'ipv4' in hostvars[inventory_hostname]['ansible_' + opencontrail_host_interface]"
+
+- name: Host IP address configuration (from vhost0)
+  include: vhost_ansible_facts.yml
+  when: "opencontrail_ipaddr is not defined and 'ansible_vhost0' in hostvars[inventory_hostname] and 'ipv4' in ansible_vhost0"
+
+
+- name: Master IP list override
+  set_fact:
+    opencontrail_master_host_addresses: "{{ opencontrail_masters_ipaddr }}"
+  when: opencontrail_masters_ipaddr is defined
+
+- name: Master IP list default
+  set_fact:
+    opencontrail_master_host_addresses: "{%for host in groups['masters']%}{{ hostvars[host]['opencontrail_host_address'] }} {% endfor %}"
+  when: opencontrail_master_host_addresses is not defined
+
+- name: First Master ipaddr override
+  set_fact:
+    opencontrail_master_host_address: "{{ opencontrail_first_masters_ipaddr }}"
+  when: opencontrail_first_masters_ipaddr is defined
+
+- name: First Master ipaddr default
+  set_fact:
+    opencontrail_master_host_address: "{{ hostvars[groups['masters'][0]]['opencontrail_host_address'] }}"
+  when: opencontrail_master_host_address is not defined
+

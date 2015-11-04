@@ -1,0 +1,14 @@
+---
+# This playbook runs the opencontrail role
+#
+- hosts:
+    - masters
+    - nodes
+    - gateways
+  sudo: yes
+  roles:
+    - opencontrail_facts
+    - opencontrail
+  vars:
+    opencontrail_cluster_type: kubernetes
+

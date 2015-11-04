@@ -41,7 +41,10 @@
 - hosts: all
   sudo: yes
   roles:
+    - { role: opencontrail_facts, when: networking == 'opencontrail'}
     - { role: opencontrail, when: networking == 'opencontrail'}
+  vars:
+    opencontrail_cluster_type: kubernetes
   tags:
     - network-service-install
 
@@ -76,6 +79,6 @@
     - nodes
   sudo: yes
   roles:
-    - { role: opencontrail-provision, when: networking == 'opencontrail' }
+    - { role: opencontrail_provision, when: networking == 'opencontrail' }
   tags:
     - network-service-config

@@ -1,0 +1,19 @@
+[Unit]
+Description=Kubernetes OpenContrail plugin
+
+After=contrail-api.service {{ opencontrail_master_kube_service }}.service
+Requires=contrail-api.service {{ opencontrail_master_kube_service }}.service
+
+{% set service = {
+	'name': 'kube-network-manager',
+	'image': 'opencontrail/kube-network-manager:' + opencontrail_kube_release,
+	'network_mode': 'host',
+	'mounts': [ opencontrail_all_kube_config_dir + ':/etc/kubernetes:z']
+}
+-%}
+
+{% import 'systemd.service.j2' as systemd with context -%}
+{{ systemd.systemd_docker_service(service) }}
+
+[Install]
+WantedBy={{ opencontrail_master_kube_service }}.service

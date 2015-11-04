@@ -1,0 +1,16 @@
+---
+# global variables
+opencontrail_all_release: "{{ opencontrail_release | default('2.20') }}"
+
+# master variables
+opencontrail_master_use_systemd: "{{ opencontrail_use_systemd | default(true) }}"
+
+opencontrail_build_http_proxy: "{{ opencontrail_http_proxy | default(None) }}"
+
+# kernel variables
+opencontrail_host_kernel_tag: "{{ ansible_distribution | lower}}{{ansible_distribution_version}}-{{ansible_kernel}}"
+opencontrail_host_kernel_devel: "{{ ansible_kernel | regex_replace('([0-9.]+)-([0-9]+)[0-9.]*([a-z0-9]+).([a-z0-9_]+)', '\\\\1-\\\\2.\\\\3.\\\\4') }}"
+
+opencontrail_host_kernel_build_dir: "/tmp/.ansible/build/{{ opencontrail_host_kernel_tag }}"
+opencontrail_host_kernel_install_dir: "/tmp/.ansible/install/{{ opencontrail_host_kernel_tag }}"
+opencontrail_host_kernel_artifact_tar: "/tmp/.ansible/opencontrail-vrouter-{{ opencontrail_host_kernel_tag }}.tgz"

@@ -1,5 +1,8 @@
 DEVICE=vhost0
 BOOTPROTO=none
 DEVICETYPE=vhost
-IPADDR={{ hostvars[inventory_hostname]['ipaddr'] }}
-PHYSDEV={{ opencontrail_interface }}
+IPADDR="{{ opencontrail_host_ipaddr }}"
+PHYSDEV="{{ opencontrail_host_interface }}"
+{% if opencontrail_host_gateway -%}
+GATEWAY={{ opencontrail_host_gateway }}
+{% endif -%}

@@ -1,0 +1,19 @@
+[Unit]
+Description=RabbitMQ
+
+After=docker.service
+Requires=docker.service
+
+{% set service = {
+	'name': 'rabbitmq',
+	'image': 'rabbitmq:3.5.4',
+	'network_mode': 'host',
+	'env': ['RABBITMQ_ERLANG_COOKIE=opencontrail']
+}
+-%}
+
+{% import 'systemd.service.j2' as systemd with context -%}
+{{ systemd.systemd_docker_service(service) }}
+
+[Install]
+WantedBy=multi-user.target

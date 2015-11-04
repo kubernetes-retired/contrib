@@ -1,12 +1,15 @@
 ---
-- name: build tag
-  set_fact:
-     kmod_build_tag: "{{ ansible_distribution | lower}}{{ansible_distribution_version}}-{{ansible_kernel}}"
+- file: path="~/.ansible/files" state=directory
 
-- name: Unpack vrouter tarball
-  unarchive:
-    src: "/tmp/.ansible/artifacts/opencontrail-vrouter-{{ kmod_build_tag }}.tgz"
-    dest: /
+- name: Copy vrouter tarball
+  copy:
+    src: "/tmp/.ansible/artifacts/opencontrail-vrouter-{{ opencontrail_host_kernel_tag }}.tgz"
+    dest: "~/.ansible/files/opencontrail-vrouter-{{ opencontrail_host_kernel_tag }}.tgz"
+
+- name: Extract vrouter module
+  shell: "tar zxf ~/.ansible/files/opencontrail-vrouter-{{ opencontrail_host_kernel_tag }}.tgz --no-overwrite-dir --skip-old-files"
+  args:
+    chdir: /
 
 - name: Depmod
   command: depmod
@@ -18,7 +21,7 @@
 
 - name: Redhat-style interface configuration
   include: vrouter-redhat.yml
-  when: ansible_distribution == "Fedora"
+  when: ansible_os_family == "RedHat"
 
 - name: Ubuntu interface configuration
   include: vrouter-ubuntu.yml

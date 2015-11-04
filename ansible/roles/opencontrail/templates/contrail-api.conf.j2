@@ -1,0 +1,4 @@
+[DEFAULTS]
+{% if opencontrail_master_ifmap_port is defined %}
+ifmap_server_port = {{ opencontrail_master_ifmap_port }}
+{% endif %}

@@ -1,25 +1,23 @@
 ---
-- name: Set variables
-  set_fact:
-    build_dir: "/tmp/.ansible/build/{{ kmod_build_tag }}"
-    install_dir: "/tmp/.ansible/install/{{ kmod_build_tag }}"
-    artifact_tar: "/tmp/.ansible/opencontrail-vrouter-{{ kmod_build_tag }}.tgz"
-
 - name: Create install tree
   file:
-    path: "{{ install_dir }}/usr/bin"
+    path: "{{ opencontrail_host_kernel_install_dir }}/usr/bin"
     state: directory
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 
 - name: Create install tree (kmod)
   file:
-    path: "{{ install_dir }}/lib/modules/{{ ansible_kernel }}/kernel/drivers/net"
+    path: "{{ opencontrail_host_kernel_install_dir }}/lib/modules/{{ ansible_kernel }}/extra/net"
     state: directory
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 
 - name: Install utilities
-  command: install -m 755 "production/vrouter/utils/{{ item }}" "{{ install_dir }}/usr/bin"
+  command: install -m 755 "production/vrouter/utils/{{ item }}" "{{ opencontrail_host_kernel_install_dir }}/usr/bin"
   args:
-    chdir: "{{ build_dir }}"
-    creates: "{{ install_dir }}/usr/bin/{{ item }}"
+    chdir: "{{ opencontrail_host_kernel_build_dir }}"
+    creates: "{{ opencontrail_host_kernel_install_dir }}/usr/bin/{{ item }}"
   with_items:
     - dropstats
     - flow
@@ -31,18 +29,26 @@
     - vrfstats
     - vrouter
     - vxlan
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 
 - name: Install kmod
-  command: install kbuild/vrouter.ko "{{ install_dir }}/lib/modules/{{ ansible_kernel }}/kernel/drivers/net"
+  command: install kbuild/vrouter.ko "{{ opencontrail_host_kernel_install_dir }}/lib/modules/{{ ansible_kernel }}/extra/net"
   args:
-    chdir: "{{ build_dir }}"
-    creates: "{{ install_dir }}/lib/modules/{{ ansible_kernel }}/kernel/drivers/net/vrouter.ko"
+    chdir: "{{ opencontrail_host_kernel_build_dir }}"
+    creates: "{{ opencontrail_host_kernel_install_dir }}/lib/modules/{{ ansible_kernel }}/extra/net/vrouter.ko"
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 
 - name: Create tarball
-  command: tar zcf "{{ artifact_tar }}" .
+  command: tar zcf "{{ opencontrail_host_kernel_artifact_tar }}" .
   args:
-    chdir: "{{ install_dir }}"
-    creates: "{{ artifact_tar }}"
+    chdir: "{{ opencontrail_host_kernel_install_dir }}"
+    creates: "{{ opencontrail_host_kernel_artifact_tar }}"
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 
 - name: Fetch tarball
-  fetch: src="{{ artifact_tar }}" dest="/tmp/.ansible/artifacts/" flat=yes
+  fetch: src="{{ opencontrail_host_kernel_artifact_tar }}" dest="/tmp/.ansible/artifacts/" flat=yes
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true

@@ -1,1 +1,3 @@
-{{ kube_service_addresses }} via {{ hostvars[groups['gateways'][0]]['ipaddr'] | ipaddr('address') }}
+{% if 'gateways' in groups %}
+{{ opencontrail_all_service_addresses }} via {{ hostvars[groups['gateways'][0]]['opencontrail_host_address'] }}
+{% endif %}

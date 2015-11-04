@@ -1,0 +1,31 @@
+---
+# Patch required for kernel 3.10.0-123.8.1.el7.x86_64
+# This kernel version is toxic due to gro bugs.
+# - name: Set patches
+#   set_fact:
+#     kmod_patches: ['kmod-centos7-3.10.0-123.8.1.patch']
+
+# - name: copy patches
+#   copy: src="{{ item }}" dest="/tmp/.ansible/build/{{ opencontrail_host_kernel_tag }}/{{ item }}"
+#   with_items: kmod_patches
+
+- name: kmod Dockerfile
+  template:
+    src: Dockerfile.redhat.j2
+    dest: /tmp/.ansible/build/{{ opencontrail_host_kernel_tag }}/Dockerfile
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
+
+- name: Build docker container
+  command: docker build -t opencontrail/kmod_{{ opencontrail_host_kernel_tag }} {{ opencontrail_host_kernel_tag }}
+  args:
+    chdir: /tmp/.ansible/build
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
+
+- name: Build kernel module
+  command: docker run -v /tmp/.ansible/build/{{ opencontrail_host_kernel_tag }}:/src/vrouter/build{{ ':Z' if ansible_selinux is defined and ansible_selinux.status == 'enabled' else '' }} opencontrail/kmod_{{ opencontrail_host_kernel_tag }} /bin/bash -c "USER=nobody scons --optimization=production --kernel-dir=/usr/src/kernels/{{ opencontrail_host_kernel_devel }} vrouter && cp vrouter/vrouter.ko build/kbuild"
+  args:
+      creates: /tmp/.ansible/build/{{ opencontrail_host_kernel_tag }}/kbuild/vrouter.ko
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true

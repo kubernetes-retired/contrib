@@ -1,0 +1,4 @@
+---
+# host variables
+opencontrail_host_interface: "{{ opencontrail_interface | default('eth0') }}"
+opencontrail_host_use_vrouter: inventory_hostname in groups['nodes'] or ('gateways' in groups and inventory_hostname in groups['gateways'])

@@ -1,10 +1,11 @@
 ---
-- name: Set selinux permissive to enable directory mounts
-  selinux: state=permissive policy={{ ansible_selinux.type }}
-  when: ansible_selinux is defined and ansible_selinux.status == "enabled"
+#- name: Set selinux permissive to enable directory mounts
+#  selinux: state=permissive policy={{ ansible_selinux.type }}
+#  when: ansible_selinux is defined and ansible_selinux.status == "enabled"
 
 - name: Assures manifests dir exists
-  file: path={{ kube_manifest_dir }} state=directory
+  file: path="{{ opencontrail_all_kube_manifest_dir }}" state=directory
+  when: not opencontrail_use_systemd
 
 - include: masters-services.yml
 

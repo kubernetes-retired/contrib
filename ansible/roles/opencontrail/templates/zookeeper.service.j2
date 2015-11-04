@@ -1,0 +1,19 @@
+[Unit]
+Description=Apache Zookeeper
+After=docker.service
+Requires=docker.service
+
+{% set service = {
+	'name': 'zookeeper',
+	'image': 'mesoscloud/zookeeper:3.4.6',
+	'network_mode': 'host',
+	'mounts': ['/var/lib/zookeeper:/var/lib/zookeeper:Z'],
+	'env': ['MYID=1', 'SERVERS=localhost']
+}
+-%}
+
+{% import 'systemd.service.j2' as systemd with context -%}
+{{ systemd.systemd_docker_service(service) }}
+
+[Install]
+WantedBy=multi-user.target
