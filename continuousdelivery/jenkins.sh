@@ -34,7 +34,7 @@ export SERVICENAME=$(tr [A-Z] [a-z] <<< ${JOB_NAME:0:8})-$(tr [A-Z] [a-z] <<< ${
 # This uses the docker socket on the host instead of inside the container for caching\performance reasons
 export DOCKER_HOST=unix:///var/run/docker.sock
 # the docker repo
-export DOCKER_REGISTRY=docker-sandbox.concurtech.net
+export DOCKER_REGISTRY=docker-registry.yourcompany.com
 # the docker container defaulted to job/branch for jenkins
 export CONTAINER1=$(tr [A-Z] [a-z] <<< ${JOB_NAME:0:8})/$(tr [A-Z] [a-z] <<< ${GIT_BRANCH:0:15}| tr -d '_-' | sed 's/\//-/g')
 

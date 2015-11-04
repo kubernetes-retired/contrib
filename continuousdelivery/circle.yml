@@ -19,7 +19,7 @@ machine:
     # This uses the docker socket on the host instead of inside the container for caching\performance reasons
     DOCKER_HOST: unix:///tmp/docker.sock # comment this out if using circleci.com or the container docker daemon
     # the docker repo
-    DOCKER_REGISTRY: docker-registry.concur.com
+    DOCKER_REGISTRY: docker-registry.yourcompany.com
     # the docker container defaulted to user/project
     CONTAINER1: $(tr [A-Z] [a-z] <<< ${CIRCLE_PROJECT_USERNAME:0:8})/$(tr [A-Z] [a-z] <<< ${CIRCLE_PROJECT_REPONAME:0:15}| tr -d '_-')
 
