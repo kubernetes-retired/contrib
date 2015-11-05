@@ -200,7 +200,9 @@ func (l *L7s) Sync(names []string) error {
 	// Tear down the default backend when there are no more loadbalancers
 	// because the cluster could go down anytime and we'd leak it otherwise.
 	if len(names) == 0 {
-		l.defaultBackendPool.Delete(l.defaultBackendNodePort)
+		if err := l.defaultBackendPool.Delete(l.defaultBackendNodePort); err != nil {
+			return err
+		}
 		l.glbcDefaultBackend = nil
 	}
 	return nil
