@@ -68,4 +68,11 @@ fi
 sleep 30
 
 # try to hit the api proxy endpoint
-curl -k ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/
+curl -k --retry 10 --retry-delay 5 -v ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/
+
+# extra check just to get the status code
+STATUSCODE=$(curl -k --silent --output /dev/stderr --write-out "%{http_code}"  ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/)
+if [ "$STATUSCODE" -ne 200 ]; then
+  # write output and set to false so the CI system can report a failure
+  /bin/false
+fi
