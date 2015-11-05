@@ -11,7 +11,7 @@ Deploying the controller is as easy as creating the RC in this directory. Having
 apiVersion: v1
 kind: Service
 metadata:
-  name: echoheadersx
+  name: echoheaders-x
   labels:
     app: echoheaders
 spec:
@@ -28,7 +28,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: echoheadersdefault
+  name: echoheaders-default
   labels:
     app: echoheaders
 spec:
@@ -45,7 +45,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: echoheadersy
+  name: echoheaders-y
   labels:
     app: echoheaders
 spec:
@@ -89,18 +89,18 @@ spec:
       paths:
       - path: /foo
         backend:
-          serviceName: echoheadersx
+          serviceName: echoheaders-x
           servicePort: 80
   - host: bar.baz.com
     http:
       paths:
       - path: /bar
         backend:
-          serviceName: echoheadersy
+          serviceName: echoheaders-y
           servicePort: 80
       - path: /foo
         backend:
-          serviceName: echoheadersx
+          serviceName: echoheaders-x
           servicePort: 80
 ```
 You should be able to access the Services on the public IP of the node the nginx pod lands on.
