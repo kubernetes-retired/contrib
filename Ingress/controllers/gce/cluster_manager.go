@@ -64,6 +64,14 @@ type ClusterManager struct {
 	l7Pool                 LoadBalancerPool
 }
 
+// isHealthy returns an error if the cluster manager is unhealthy.
+func (c *ClusterManager) isHealthy() (err error) {
+	// TODO: Expand on this, for now we just want to detect when the GCE client
+	// is broken.
+	_, err = c.backendPool.List()
+	return
+}
+
 func (c *ClusterManager) shutdown() error {
 	if err := c.l7Pool.Shutdown(); err != nil {
 		return err

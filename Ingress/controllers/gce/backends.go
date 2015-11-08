@@ -158,6 +158,13 @@ func (b *Backends) Delete(port int64) (err error) {
 	return nil
 }
 
+// List lists all backends.
+func (b *Backends) List() (*compute.BackendServiceList, error) {
+	// TODO: for consistency with the rest of this sub-package this method
+	// should return a list of backend ports.
+	return b.cloud.ListBackendServices()
+}
+
 // edgeHop checks the links of the given backend by executing an edge hop.
 // It fixes broken links.
 func (b *Backends) edgeHop(be *compute.BackendService, ig *compute.InstanceGroup) error {
