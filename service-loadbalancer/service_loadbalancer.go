@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -49,12 +50,13 @@ import (
 )
 
 const (
-	reloadQPS        = 10.0
-	resyncPeriod     = 10 * time.Second
-	lbApiPort        = 8081
-	lbAlgorithmKey   = "serviceloadbalancer/lb.algorithm"
-	lbHostKey        = "serviceloadbalancer/lb.host"
-	defaultErrorPage = "file:///etc/haproxy/errors/404.http"
+	reloadQPS                = 10.0
+	resyncPeriod             = 10 * time.Second
+	lbApiPort                = 8081
+	lbAlgorithmKey           = "serviceloadbalancer/lb.algorithm"
+	lbHostKey                = "serviceloadbalancer/lb.host"
+	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
+	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
 )
 
 var (
@@ -157,6 +159,34 @@ type service struct {
 
 	// Algorithm
 	Algorithm string
+
+	// If SessionAffinity is set and without CookieStickySession, requests are routed to
+	// a backend based on client ip. If both SessionAffinity and CookieStickSession are
+	// set, a SERVERID cookie is inserted by the loadbalancer and used to route subsequent
+	// requests. If neither is set, requests are routed based on the algorithm.
+
+	// Indicates if the service must use sticky sessions
+	// http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#stick-table
+	// Enabled using the attribute service.spec.sessionAffinity
+	// https://github.com/kubernetes/kubernetes/blob/master/docs/user-guide/services.md#virtual-ips-and-service-proxies
+	SessionAffinity bool
+
+	// CookieStickySession use a cookie to enable sticky sessions.
+	// The name of the cookie is SERVERID
+	// This only can be used in http services
+	CookieStickySession bool
+}
+
+type serviceByName []service
+
+func (s serviceByName) Len() int {
+	return len(s)
+}
+func (s serviceByName) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+func (s serviceByName) Less(i, j int) bool {
+	return s[i].Name < s[j].Name
 }
 
 // loadBalancerConfig represents loadbalancer specific configuration. Eventually
@@ -186,6 +216,11 @@ func (s serviceAnnotations) getAlgorithm() (string, bool) {
 
 func (s serviceAnnotations) getHost() (string, bool) {
 	val, ok := s[lbHostKey]
+	return val, ok
+}
+
+func (s serviceAnnotations) getCookieStickySession() (string, bool) {
+	val, ok := s[lbCookieStickySessionKey]
 	return val, ok
 }
 
@@ -382,6 +417,21 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 						break
 					}
 				}
+			} else {
+				newSvc.Algorithm = lbc.cfg.lbDefAlgorithm
+			}
+
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getCookieStickySession(); ok {
+				b, err := strconv.ParseBool(val)
+				if err == nil {
+					newSvc.CookieStickySession = b
+				}
+			}
+
+			// By default sticky session is disabled
+			newSvc.SessionAffinity = false
+			if s.Spec.SessionAffinity != "" {
+				newSvc.SessionAffinity = true
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
@@ -393,6 +443,9 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 			}
 			glog.Infof("Found service: %+v", newSvc)
 		}
+
+		sort.Sort(serviceByName(httpSvc))
+		sort.Sort(serviceByName(tcpSvc))
 	}
 	if lbc.useIngress {
 		// Overwrite the path/host rules if http services based on Ingress.
