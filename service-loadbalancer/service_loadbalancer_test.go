@@ -367,36 +367,3 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 	compareCfgFiles(t, flb.cfg.Config, template)
 	os.Remove(flb.cfg.Config)
 }
-
-func TestServiceAffinity(t *testing.T) {
-	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
-	httpSvc[0].SessionAffinity = true
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
-	}
-	template, _ := filepath.Abs("./test-samples/TestServiceAffinity.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
-}
-
-func TestServiceAffinityWithCookies(t *testing.T) {
-	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
-	httpSvc[0].SessionAffinity = true
-	httpSvc[0].CookieStickySession = true
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
-	}
-	template, _ := filepath.Abs("./test-samples/TestServiceAffinityWithCookies.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
-}

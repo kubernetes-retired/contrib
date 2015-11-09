@@ -572,8 +572,8 @@ func ingressListFunc(c *client.Client) func() (runtime.Object, error) {
 	}
 }
 
-func ingressWatchFunc(c *client.Client) func(rv string) (watch.Interface, error) {
-	return func(rv string) (watch.Interface, error) {
+func ingressWatchFunc(c *client.Client) func(rv api.ListOptions) (watch.Interface, error) {
+	return func(rv api.ListOptions) (watch.Interface, error) {
 		return c.Extensions().Ingress(api.NamespaceAll).Watch(
 			labels.Everything(), fields.Everything(), rv)
 	}
