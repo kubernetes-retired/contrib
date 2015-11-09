@@ -97,6 +97,10 @@ func main() {
 		}
 		unmerged := 0
 		merged := 0
+		if len(results) == 0 {
+			done = true
+			break
+		}
 		for ix := range results {
 			result := &results[ix]
 			// Skip Closed but not Merged PRs
@@ -130,6 +134,7 @@ func main() {
 			// Check to see if it has the release-note label.
 			fmt.Printf(".")
 			labels, _, err := client.Issues.ListLabelsByIssue("kubernetes", "kubernetes", *pr.Number, &github.ListOptions{})
+			time.Sleep(5 * time.Second)
 			if err != nil {
 				fmt.Printf("Error contacting github: %v", err)
 				os.Exit(1)
