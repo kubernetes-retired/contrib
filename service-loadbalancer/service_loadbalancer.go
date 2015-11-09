@@ -462,9 +462,6 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		return errDeferredSync
 	}
 	httpSvc, tcpSvc := lbc.getServices()
-	if len(httpSvc) == 0 && len(tcpSvc) == 0 {
-		return nil
-	}
 	if err := lbc.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
