@@ -1,6 +1,6 @@
 {
 	"ImportPath": "k8s.io/contrib",
-	"GoVersion": "go1.5.1",
+	"GoVersion": "go1.4.3",
 	"Packages": [
 		"./..."
 	],
@@ -317,6 +317,15 @@
 		{
 			"ImportPath": "github.com/spf13/pflag",
 			"Rev": "b084184666e02084b8ccb9b704bf0d79c466eb1d"
+		},
+		{
+			"ImportPath": "github.com/streadway/quantile",
+			"Rev": "b0c588724d25ae13f5afb3d90efec0edc636432b"
+		},
+		{
+			"ImportPath": "github.com/tsenart/vegeta/lib",
+			"Comment": "v5.9.0-6-gd77cf6c",
+			"Rev": "d77cf6c9bdf6dd42f29060688453854dc18755dc"
 		},
 		{
 			"ImportPath": "github.com/ugorji/go/codec",
