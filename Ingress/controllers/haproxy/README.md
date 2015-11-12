@@ -1,3 +1,7 @@
+## TODO 
+This controller has gone through many changes and now supports both [Ingress](https://github.com/kubernetes/kubernetes/blob/release-1.1/docs/user-guide/ingress.md) and [Services](https://github.com/kubernetes/kubernetes/blob/release-1.1/docs/user-guide/services.md). 
+The documentation below is valid when it is started with --use-ingress=false, this is the default, but this will change very soon.
+
 # Bare Metal Service Load Balancers
 
 AKA "how to set up a bank of haproxy for platforms that don't have load balancers".

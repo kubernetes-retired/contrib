@@ -13,18 +13,8 @@
 # limitations under the License.
 
 
-FROM alpine:3.2
+FROM gcr.io/google_containers/haproxy:0.1
 MAINTAINER Prashanth B <beeps@google.com>
-
-COPY haproxy.apk /var/cache/apk/haproxy.apk
-
-RUN apk add -U pcre bash curl socat lua5.3 && \
-  apk add --allow-untrusted /var/cache/apk/haproxy.apk && \
-  rm -rf /var/cache/apk/*
-
-RUN mkdir -p /etc/haproxy/errors /var/state/haproxy
-RUN for ERROR_CODE in 400 403 404 408 500 502 503 504;do curl -sSL -o /etc/haproxy/errors/$ERROR_CODE.http \
-	https://raw.githubusercontent.com/haproxy/haproxy-1.5/master/examples/errorfiles/$ERROR_CODE.http;done
 
 ADD haproxy.cfg /etc/haproxy/haproxy.cfg
 ADD hlbc hlbc
