@@ -18,6 +18,9 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# Export proxy to ensure commands like curl could work
+export ${HTTP_PROXY} ${HTTPS_PROXY} 
+
 # Caller should set in the ev:
 # MASTER_IP - this may be an ip or things like "_use_gce_external_ip_"
 # MASTER_NAME - DNS name for the master
