@@ -30,7 +30,9 @@ stats-port
 tcp-services
 token-file
 ttl-secs
+url-list
 use-http-cache
+use-ip
 use-kubernetes-cluster-service
 running-in-cluster
 user-whitelist
