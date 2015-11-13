@@ -9,5 +9,15 @@
   register: distro
   always_run: yes
 
+- name: Determine if Atomic
+  stat: path=/run/ostree-booted
+  register: s
+  changed_when: false
+
+- name: Set the is_atomic fact
+  set_fact:
+    is_atomic: true
+  when: s.stat.exists
+
 - include: fedora-dnf.yml
-  when: os_version.stdout|int >= 22 and 'Fedora' in distro.stdout
+  when: os_version.stdout|int >= 22 and 'Fedora' in distro.stdout and is_atomic is not defined
