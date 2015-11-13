@@ -19,7 +19,8 @@ set -o nounset
 set -o pipefail
 
 # Export proxy to ensure commands like curl could work
-export ${HTTP_PROXY} ${HTTPS_PROXY} 
+export HTTP_PROXY=${HTTP_PROXY}
+export HTTPS_PROXY=${HTTPS_PROXY}
 
 # Caller should set in the ev:
 # MASTER_IP - this may be an ip or things like "_use_gce_external_ip_"
