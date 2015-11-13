@@ -7,6 +7,10 @@
     url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/kube-ui/{{ item }}
     dest="{{ kube_addons_dir }}/kube-ui/"
     force=yes
+    validate_certs=False
+  environment:
+    http_proxy: http://squid.apac.redhat.com:3128
+    https_proxy: https://squid.apac.redhat.com:3128
   with_items:
     - kube-ui-rc.yaml
     - kube-ui-svc.yaml
