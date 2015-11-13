@@ -52,14 +52,23 @@ cert_group="${CERT_GROUP:="kube-cert"}"
 # TODO: Add support for discovery on other providers?
 if [ "$cert_ip" == "_use_gce_external_ip_" ]; then
   cert_ip=$(curl -s -H Metadata-Flavor:Google http://metadata.google.internal./computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip)
+  if test -z "${cert_ip}"; then
+      echo "Failed to retrieve external IP" 1>&2; exit 1
+  fi
 fi
 
 if [ "$cert_ip" == "_use_aws_external_ip_" ]; then
   cert_ip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+  if test -z "${cert_ip}"; then
+      echo "Failed to retrieve external IP" 1>&2; exit 1
+  fi
 fi
 
 if [ "$cert_ip" == "_use_azure_dns_name_" ]; then
   cert_ip=$(uname -n | awk -F. '{ print $2 }').cloudapp.net
+  if test -z "${cert_ip}"; then
+      echo "Failed to retrieve external IP" 1>&2; exit 1
+  fi
 fi
 
 tmpdir=$(mktemp -d --tmpdir kubernetes_cacert.XXXXXX)
@@ -87,26 +96,25 @@ service_ip=$(echo "${octets[*]}" | sed 's/ /./g')
 # Determine appropriete subject alt names
 sans="IP:${cert_ip},IP:${service_ip},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.${dns_domain},DNS:${master_name}"
 
-curl -L -O https://storage.googleapis.com/kubernetes-release/easy-rsa/easy-rsa.tar.gz > /dev/null 2>&1
-tar xzf easy-rsa.tar.gz > /dev/null
+curl -sSL -O https://storage.googleapis.com/kubernetes-release/easy-rsa/easy-rsa.tar.gz
+tar xzf easy-rsa.tar.gz
 cd easy-rsa-master/easyrsa3
 
-(./easyrsa init-pki > /dev/null 2>&1
- ./easyrsa --batch "--req-cn=${cert_ip}@$(date +%s)" build-ca nopass > /dev/null 2>&1
- ./easyrsa --subject-alt-name="${sans}" build-server-full "${master_name}" nopass > /dev/null 2>&1
- ./easyrsa build-client-full kubelet nopass > /dev/null 2>&1
- ./easyrsa build-client-full kubecfg nopass > /dev/null 2>&1) || {
- # If there was an error in the subshell, just die.
- # TODO(roberthbailey): add better error handling here
- echo "=== Failed to generate certificates: Aborting ==="
- exit 2
- }
+# Sadly, openssl is very verbose to std*err* with no option to turn it off.
+if ! (./easyrsa --batch init-pki
+      ./easyrsa --batch "--req-cn=${cert_ip}@$(date +%s)" build-ca nopass
+      ./easyrsa --batch --subject-alt-name="${sans}" build-server-full "${master_name}" nopass
+      ./easyrsa --batch build-client-full kubelet nopass
+      ./easyrsa --batch build-client-full kubecfg nopass) >/dev/null 2>&1; then
+    echo "=== Failed to generate certificates: Aborting ===" 1>&2
+    exit 2
+fi
 
 mkdir -p "$cert_dir"
 
 cp -p pki/ca.crt "${cert_dir}/ca.crt"
-cp -p "pki/issued/${master_name}.crt" "${cert_dir}/server.crt" > /dev/null 2>&1
-cp -p "pki/private/${master_name}.key" "${cert_dir}/server.key" > /dev/null 2>&1
+cp -p "pki/issued/${master_name}.crt" "${cert_dir}/server.crt"
+cp -p "pki/private/${master_name}.key" "${cert_dir}/server.key"
 cp -p pki/issued/kubecfg.crt "${cert_dir}/kubecfg.crt"
 cp -p pki/private/kubecfg.key "${cert_dir}/kubecfg.key"
 cp -p pki/issued/kubelet.crt "${cert_dir}/kubelet.crt"
