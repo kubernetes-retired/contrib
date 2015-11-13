@@ -21,6 +21,10 @@
     url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/fluentd-es/fluentd-es.yaml
     dest="{{ kube_manifest_dir }}"
     force=yes
+    validate_certs=False
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
   when: cluster_logging
 
 - name: Get the node token values

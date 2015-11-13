@@ -7,6 +7,10 @@
     url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/cluster-monitoring/influxdb/{{ item }}
     dest="{{ kube_addons_dir }}/cluster-monitoring/"
     force=yes
+    validate_certs=False
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
   with_items:
     - grafana-service.yaml
     - heapster-controller.yaml

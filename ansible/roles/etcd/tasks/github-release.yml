@@ -10,6 +10,10 @@
   get_url:
     url: "https://github.com/coreos/etcd/releases/download/{{ etcd_version }}/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
     dest: /tmp/.ansible/files
+    validate_certs: False
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
 
 - name: Extract tar file
   unarchive:

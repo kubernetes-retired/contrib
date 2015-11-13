@@ -7,6 +7,10 @@
     url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/fluentd-elasticsearch/{{ item }}
     dest="{{ kube_addons_dir }}/cluster-logging/"
     force=yes
+    validate_certs=False
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
   with_items:
     - es-controller.yaml
     - es-service.yaml
