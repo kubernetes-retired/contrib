@@ -62,10 +62,11 @@ You can manage a GCE L7 by creating/updating/deleting the associated Kubernetes 
 Before you can start creating Ingress you need to start up glbc. We can use the rc.yaml in this directory:
 ```shell
 $ kubectl create -f rc.yaml
-replicationcontroller "gcelb" created
+replicationcontroller "glbc" created
 $ kubectl get pods
 NAME                READY     STATUS    RESTARTS   AGE
-gcelb-xxa53         1/1       Running   0          12s
+glbc-6m6b6          2/2       Running   0          21s
+
 ```
 
 A couple of things to note about this controller:
@@ -101,7 +102,7 @@ echomap   -             echoheadersdefault:80
 
 You can tail the logs of the controller to observe its progress:
 ```
-$ kubectl logs --follow gcelb-xxa53
+$ kubectl logs --follow glbc-6m6b6 l7-lb-controller
 I1005 22:11:26.731845       1 instances.go:48] Creating instance group k8-ig-foo
 I1005 22:11:34.360689       1 controller.go:152] Created new loadbalancer controller
 I1005 22:11:34.360737       1 controller.go:172] Starting loadbalancer controller
@@ -298,8 +299,8 @@ As before, wait a while for the update to take effect, and try accessing `loadba
 
 Most production loadbalancers live as long as the nodes in the cluster and are torn down when the nodes are destroyed. That said, there are plenty of use cases for deleting an Ingress, deleting a loadbalancer controller, or just purging external loadbalancer resources alltogether. Deleting a loadbalancer controller pod will not affect the loadbalancers themselves, this way your backends won't suffer a loss of availability if the scheduler pre-empts your controller pod. Deleting a single loadbalancer is as easy as deleting an Ingress via kubectl:
 ```shell
-$ kubectl delete ing echoamp
-$ kubectl logs gcelb-xxa53 --follow
+$ kubectl delete ing echomap
+$ kubectl logs --follow glbc-6m6b6 l7-lb-controller
 I1007 00:25:45.099429       1 loadbalancer.go:144] Deleting lb default-echomap
 I1007 00:25:45.099432       1 loadbalancer.go:437] Deleting global forwarding rule k8-fw-default-echomap
 I1007 00:25:54.885823       1 loadbalancer.go:444] Deleting target proxy k8-tp-default-echomap
@@ -320,25 +321,26 @@ args:
 
 So simply delete the replication controller:
 ```shell
-$ kubectl get rc gcelb
-CONTROLLER        CONTAINER(S)      IMAGE(S)                    SELECTOR               REPLICAS   AGE
-gcelb             gcelb             bprashanth/gcelb:0.0        app=gcelb,version=v1   1          13m
+$ kubectl get rc glbc
+CONTROLLER   CONTAINER(S)           IMAGE(S)                                      SELECTOR                    REPLICAS   AGE
+glbc         default-http-backend   gcr.io/google_containers/defaultbackend:1.0   k8s-app=glbc,version=v0.5   1          2m
+             l7-lb-controller       gcr.io/google_containers/glbc:0.5
 
-$ kubectl delete rc gcelb
-replicationcontroller "gcelb" deleted
+$ kubectl delete rc glbc
+replicationcontroller "glbc" deleted
 
 $ kubectl get pods
 NAME                    READY     STATUS        RESTARTS   AGE
-gcelb-xxa53             1/1       Terminating   0          13m
+glbc-6m6b6              1/1       Terminating   0          13m
 ```
 
 __The prod way__: If you didn't start the controller with `--delete-all-on-quit`, you can execute a GET on the `/delete-all-and-quit` endpoint. This endpoint is deliberately not exported.
 
 ```
-$ kubectl exec -it gcelb-w4fj9 -- curl http://localhost:8081/delete-all-and-quit
+$ kubectl exec -it glbc-6m6b6  -- curl http://localhost:8081/delete-all-and-quit
 ..Hangs till quit is done..
 
-$ kubectl logs gcelb-w4fj9 --follow
+$ kubectl logs glbc-6m6b6  --follow
 I1007 00:26:09.159016       1 controller.go:232] Finished syncing default/echomap
 I1007 00:29:30.321419       1 controller.go:192] Shutting down controller queues.
 I1007 00:29:30.321970       1 controller.go:199] Shutting down cluster manager.
@@ -414,7 +416,7 @@ Then head over to the GCE node with internal ip 10.240.29.196 and check that the
 * A crash loop looks like:
 ```shell
 $ kubectl get pods
-gcelb-fjtlq             0/1       CrashLoopBackOff   17         1h
+glbc-fjtlq             0/1       CrashLoopBackOff   17         1h
 ```
 If you hit that it means the controller isn't even starting. Re-check your input flags, especially the required ones.
 
