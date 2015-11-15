@@ -23,8 +23,8 @@
     force=yes
     validate_certs=False
   environment:
-    http_proxy: "{{ http_proxy }}"
-    https_proxy: "{{ https_proxy }}"
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
   when: cluster_logging
 
 - name: Get the node token values

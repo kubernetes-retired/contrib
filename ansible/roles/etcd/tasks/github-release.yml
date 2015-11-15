@@ -12,8 +12,8 @@
     dest: /tmp/.ansible/files
     validate_certs: False
   environment:
-    http_proxy: "{{ http_proxy }}"
-    https_proxy: "{{ https_proxy }}"
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
 
 - name: Extract tar file
   unarchive:
