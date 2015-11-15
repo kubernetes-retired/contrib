@@ -16,12 +16,10 @@
 FROM gcr.io/google_containers/haproxy:0.1
 MAINTAINER Prashanth B <beeps@google.com>
 
-ADD haproxy.cfg /etc/haproxy/haproxy.cfg
 ADD hlbc hlbc
 ADD hlbc.go hlbc.go
 ADD template.cfg template.cfg
-ADD loadbalancer.json loadbalancer.json
 ADD haproxy_reload haproxy_reload
 ADD README.md README.md
 
-ENTRYPOINT ["/hlbc"]
+CMD ["/hlbc"]

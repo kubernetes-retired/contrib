@@ -2,20 +2,16 @@
 This controller has gone through many changes and now supports both [Ingress](https://github.com/kubernetes/kubernetes/blob/release-1.1/docs/user-guide/ingress.md) and [Services](https://github.com/kubernetes/kubernetes/blob/release-1.1/docs/user-guide/services.md). 
 The documentation below is valid when it is started with --use-ingress=false, this is the default, but this will change very soon.
 
-# Bare Metal Service Load Balancers
+# HAProxy Ingress controller
 
-AKA "how to set up a bank of haproxy for platforms that don't have load balancers".
+AKA "how to set up a bank of haproxy for platforms that don't have load balancers using [Ingress](https://github.com/kubernetes/kubernetes/blob/release-1.1/docs/user-guide/ingress.md)".
 
 ## Disclaimer:
 - This is a **work in progress**.
 - A better way to achieve this will probably emerge once discussions on (#260, #561) converge.
 - Backends are pluggable, but [Haproxy](https://cbonte.github.io/haproxy-dconv/configuration-1.5.html) is the only loadbalancer with a working implementation.
 - I have never deployed haproxy to production, so contributions are welcome (see [wishlist](#wishlist) for ideas).
-- For fault tolerant load balancing of ingress traffic, you need:
-  1. Multiple hosts running load balancers
-  2. Multiple A records for each hostname in a DNS service.
-
-This module will not help with the latter
+- For fault tolerant load balancing of ingress traffic, you need multiple hosts running load balancers.
 
 ## Overview
 
@@ -26,13 +22,13 @@ There are 2 ways to expose a service to ingress traffic in the current kubernete
 - Create a cloud load balancer.
 - Allocate a port (the same port) on every node in your cluster and proxy ingress traffic through that port to the endpoints.
 
-The service-loadbalancer aims to give you 1 on bare metal, making 2 unnecessary for the common case. The replication controller manifest in this directly creates a service-loadbalancer pod on all nodes with the `role=loadbalancer` label. Each service-loadbalancer pod contains:
+The Ingress haproxy aims to give you 1 on bare metal, making 2 unnecessary for the common case. The replication controller manifest in this directly creates a service-loadbalancer pod on all nodes with the `role=loadbalancer` label. Each service-loadbalancer pod contains:
 - A load balancer controller that watches the kubernetes api for services and endpoints.
 - A load balancer manifest. This is used to bootstrap the load balancer. The load balancer itself is pluggable, so you can easily swap
   haproxy for something like [f5](https://f5.com/glossary/load-balancer) or [pound](http://www.apsis.ch/pound).
 - A template used to write load balancer rules. This is tied to the loadbalancer used in the manifest, since each one has a different config format.
 
-__L7 load balancing of Http services__: The load balancer controller automatically exposes http services to ingress traffic on all nodes with a `role=loadbalancer` label. It assumes all services are http unless otherwise instructed. Each http service gets a loadbalancer forwarding rule, such that requests received on `http://loadbalancer-node/serviceName:port` balanced between its endpoints according to the algorithm specified in the loadbalacer.json manifest. You do not need more than a single loadbalancer pod to balance across all your http services (you can scale the rc to increase capacity).
+__L7 load balancing of Http services__: The load balancer controller automatically exposes http services with Ingress rules on all nodes with a `role=loadbalancer` label. You do not need more than a single loadbalancer pod to balance across all your http services (you can scale the rc to increase capacity).
 
 __L4 loadbalancing of Tcp services__: Since one needs to specify ports at pod creation time (kubernetes doesn't currently support port ranges), a single loadbalancer is tied to a set of preconfigured node ports, and hence a set of TCP services it can expose. The load balancer controller will dynamically add rules for each configured TCP service as it pops into existence. However, each "new" (unspecified in the tcpServices section of the loadbalancer.json) service will need you to open up a new container-host port pair for traffic. You can achieve this by creating a new loadbalancer pod with the `targetPort` set to the name of your service, and that service specified in the tcpServices map of the new loadbalancer.
 
@@ -120,7 +116,7 @@ $ curl https://104.197.63.17:8080 -k
 ```
 
 A couple of points to note:
-- The nginxsvc is specified in the tcpServices of the loadbalancer.json manifest.
+- The nginxsvc is specified in the tcpServices flag.
 - The https service is accessible directly on the specified port, which matches the *service port*.
 - You need to take care of ensuring there is no collision between these service ports on the node.
 
@@ -300,15 +296,11 @@ status of the services or stats about the traffic
 - Scrape :1936/;csv and autoscale services
 - Better https support. 3 options to handle ssl:
   1. __Termination__: certificate lives on load balancer. All traffic to load balancer is encrypted, traffic from load balancer to service is not.
-  2. __Pass Through__: Load balancer drops down to L4 balancing and forwards TCP encrypted packets to destination.
-  3. __Redirect__: All traffic is https. HTTP connections are encrypted using load balancer certs.
+  2. __Redirect__: All traffic is https. HTTP connections are encrypted using load balancer certs.
 
-  Currently you need to trigger TCP loadbalancing for your https service by specifying it in loadbalancer.json. Support for the other 2 would be nice.
-- Multinamespace support: Currently the controller only watches a single namespace for services.
+  Currently you need to trigger TCP loadbalancing for your https service. Support for the other 2 would be nice.
 - Support for external services (eg: amazon rds)
-- Dynamically modify loadbalancer.json. Will become unnecessary when we have a loadbalancer resource.
 - Headless services: I just didn't think people would care enough about this.
-
 
 
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/service-loadbalancer/README.md?pixel)]()

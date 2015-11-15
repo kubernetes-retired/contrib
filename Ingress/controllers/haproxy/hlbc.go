@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -103,22 +102,6 @@ var (
 
 	targetService = flags.String(
 		"target-service", "", `Restrict loadbalancing to a single target service.`)
-
-	// ForwardServices == true:
-	// The lb just forwards packets to the vip of the service and we use
-	// kube-proxy's inbuilt load balancing. You get rules:
-	// backend svc_p1: svc_ip:p1
-	// backend svc_p2: svc_ip:p2
-	//
-	// ForwardServices == false:
-	// The lb is configured to match up services to endpoints. So for example,
-	// you have (svc:p1, p2 -> tp1, tp2) we essentially get all endpoints with
-	// the same targetport and create a new svc backend for them, i.e:
-	// backend svc_p1: pod1:tp1, pod2:tp1
-	// backend svc_p2: pod1:tp2, pod2:tp2
-
-	forwardServices = flags.Bool("forward-services", false, `Forward to service vip
-		instead of endpoints. This will use kube-proxy's inbuilt load balancing.`)
 
 	httpPort  = flags.Int("http-port", 80, `Port to expose http services.`)
 	statsPort = flags.Int("stats-port", 1936, `Port for loadbalancer stats,
@@ -287,7 +270,6 @@ type loadBalancerController struct {
 	reloadRateLimiter util.RateLimiter
 	template          string
 	targetService     string
-	forwardServices   bool
 	tcpServices       map[string]int
 	httpPort          int
 	useIngress        bool
@@ -359,12 +341,8 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				continue
 			}
 
-			if lbc.forwardServices {
-				ep = []string{
-					fmt.Sprintf("%v:%v", s.Spec.ClusterIP, servicePort.Port)}
-			} else {
-				ep = lbc.getEndpoints(&s, &servicePort)
-			}
+			ep = lbc.getEndpoints(&s, &servicePort)
+
 			if len(ep) == 0 {
 				glog.Infof("No endpoints found for service %v, port %+v",
 					sName, servicePort)
@@ -407,6 +385,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 
 // fillIngressRules writes rules from the Ingress to the Service.
 // If no Ingress exists for a Service:port, it's discarded.
+// TODO: it doesn't take into accout the default backend.
 func (lbc *loadBalancerController) fillIngressRules(svcs []service) []service {
 	svcLookup := map[string]service{}
 	for _, svc := range svcs {
@@ -502,17 +481,14 @@ func (lbc *loadBalancerController) worker() {
 
 // newLoadBalancerController creates a new controller from the given config.
 func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *client.Client, namespace string) *loadBalancerController {
-
 	lbc := loadBalancerController{
-		cfg:    cfg,
-		client: kubeClient,
-		queue:  workqueue.New(),
-		reloadRateLimiter: util.NewTokenBucketRateLimiter(
-			reloadQPS, int(reloadQPS)),
-		targetService:   *targetService,
-		forwardServices: *forwardServices,
-		httpPort:        *httpPort,
-		tcpServices:     map[string]int{},
+		cfg:               cfg,
+		client:            kubeClient,
+		queue:             workqueue.New(),
+		reloadRateLimiter: util.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
+		targetService:     *targetService,
+		httpPort:          *httpPort,
+		tcpServices:       map[string]int{},
 	}
 
 	for _, service := range strings.Split(*tcpServices, ",") {
@@ -579,24 +555,6 @@ func ingressWatchFunc(c *client.Client) func(rv api.ListOptions) (watch.Interfac
 	}
 }
 
-// parseCfg parses the given configuration file.
-// cmd line params take precedence over config directives.
-func parseCfg(configPath string, defLbAlgorithm string) *loadBalancerConfig {
-	jsonBlob, err := ioutil.ReadFile(configPath)
-	if err != nil {
-		glog.Fatalf("Could not parse lb config: %v", err)
-	}
-	var cfg loadBalancerConfig
-	err = json.Unmarshal(jsonBlob, &cfg)
-	if err != nil {
-		glog.Fatalf("Unable to unmarshal json blob: %v", string(jsonBlob))
-	}
-
-	cfg.lbDefAlgorithm = defLbAlgorithm
-	glog.Infof("Creating new loadbalancer: %+v", cfg)
-	return &cfg
-}
-
 // registerHandlers  services liveness probes.
 func registerHandlers(s *staticPageHandler) {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -640,7 +598,15 @@ func dryRun(lbc *loadBalancerController) {
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
-	cfg := parseCfg(*config, *lbDefAlgorithm)
+
+	cfg := &loadBalancerConfig{
+		Name:           "haproxy",
+		ReloadCmd:      "/haproxy_reload",
+		Config:         "/etc/haproxy/haproxy.cfg",
+		Template:       "template.cfg",
+		lbDefAlgorithm: *lbDefAlgorithm,
+	}
+
 	if len(*tcpServices) == 0 {
 		glog.Infof("All tcp/https services will be ignored.")
 	}
@@ -679,7 +645,7 @@ func main() {
 	var namespace string
 	if *watchAll {
 		namespace = api.NamespaceAll
-		// One can't watch servcies in all namespaces because of collisions.
+		// One can't watch services in all namespaces because of collisions.
 		// i.e an Ingress specifically configures a loadbalancer behind a
 		// given IP with some path rules. This has nothing to do with
 		// namespaces. However, if 2 services with the same name show up in

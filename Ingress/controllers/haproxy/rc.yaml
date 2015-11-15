@@ -20,7 +20,7 @@ spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: bprashanth/hlbc-test:0.0
+      - image: gcr.io/google_containers/hlbc:0.0
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
