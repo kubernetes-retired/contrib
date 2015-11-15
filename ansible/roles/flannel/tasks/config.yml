@@ -1,7 +1,7 @@
 ---
 - name: Set facts about etcdctl command
   set_fact:
-    peers: "{% for hostname in groups['etcd'] %}http://{{ hostname }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
+    peers: "{% for hostname in groups['etcd'] %}http://{{ hostvars[hostname]['ansible_fqdn'] }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
     conf_file: "/tmp/flannel-conf.json"
     conf_loc: "/{{ cluster_name }}/network/config"
   run_once: true
