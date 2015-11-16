@@ -18,7 +18,9 @@ set -vx
 
 # a url that your ci system can hit to pull down your kube config file
 export KUBEURL=http://
-
+# checksum for the kubeconfig file, used to determine if cached copy is old
+export KUBECHECKSUM=a1e27f4bfad4df1de8f9a4662223dac7
+    
 # contexts from your kubeconfig file that are used for deployment
 export KUBECONTEXTQA=aws_kubernetes
 export KUBECONTEXTPROD=aws_kubernetes2

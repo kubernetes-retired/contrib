@@ -43,25 +43,25 @@ export kubeip=`(echo $kubeurl | sed 's~http[s]*://~~g')`
 
 export https=`(echo $kubeurl | awk 'BEGIN { FS = ":" } ; { print $1 }')`
 
-set -x
+#set -x
 
 #print some useful data for folks to check on their service later
 echo "Deploying service to ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}"
 echo "Monitor your service at ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/kube-system/services/kibana-logging/?#/discover?_a=(columns:!(_source),filters:!(),index:'logstash-*',interval:auto,query:(query_string:(analyze_wildcard:!t,query:'tag:kubernetes.${SERVICENAME}*')))"
 
-if [ ${ROLLING} = "rolling" ]
+if [ "${ROLLING}" = "rolling" ]
 then
   # perform a rolling update.
   # assumes your service\rc are already created
-  ~/.kube/kubectl rolling-update ${SERVICENAME} --image=${DOCKER_REGISTRY}/${CONTAINER1}:latest || /bin/true
+  ~/.kube/kubectl rolling-update ${SERVICENAME} --image=${DOCKER_REGISTRY}/${CONTAINER1}:latest || true
   
 else
 
   # delete service (throws and error to ignore if service does not exist already)
-  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; ~/.kube/kubectl delete --namespace=${kubenamespace} -f kubetemp.yaml || /bin/true; done
+  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; ~/.kube/kubectl delete --namespace=${kubenamespace} -f kubetemp.yaml || true; done
 
   # create service (does nothing if the service already exists)
-  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; ~/.kube/kubectl create --namespace=${kubenamespace} -f kubetemp.yaml || /bin/true; done
+  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; ~/.kube/kubectl create --namespace=${kubenamespace} -f kubetemp.yaml || true; done
 fi
 
 # wait for services to start
@@ -72,7 +72,7 @@ curl -k --retry 10 --retry-delay 5 -v ${https}://${kubeuser}:${kubepass}@${kubei
 
 # extra check just to get the status code
 STATUSCODE=$(curl -k --silent --output /dev/stderr --write-out "%{http_code}"  ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/)
-if [ "$STATUSCODE" -ne 200 ]; then
+if [ "$STATUSCODE" -ne "200" ]; then
   # write output and set to false so the CI system can report a failure
-  /bin/false
+  false
 fi

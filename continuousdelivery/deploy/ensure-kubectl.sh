@@ -16,20 +16,21 @@
 
 # used to install kubectl inside the build environment plus other tools these scripts leverage.
 # uncomment for troubleshooting if required
-#set -x
+# set -xv
 
 PKG_MANAGER=$( command -v yum || command -v apt-get ) || echo "Neither yum nor apt-get found"
 
 #make sure sudo is installed
 if [ ! -e "/usr/bin/sudo" ]; then
    ${PKG_MANAGER} install -y sudo
-   # remove default setting of requiretty if it exists
-   sed -i '/Defaults requiretty/d' /etc/sudoers
 fi
+
+# remove default setting of requiretty if it exists
+sed -i '/Defaults requiretty/d' /etc/sudoers
 
 #make sure wget is installed
 if [ ! -e "/usr/bin/wget" ]; then
-   ${PKG_MANAGER} install -y wget
+   sudo ${PKG_MANAGER} install -y wget
 fi
 
 #make sure jq is installed
@@ -52,10 +53,13 @@ if [ ! -e ~/.kube/kubectl ]; then
     chmod +x ~/.kube/kubectl
 fi
 
-if [ ! -e ~/.kube/config ]; then
-    wget ${KUBEURL} -O ~/.kube/config
+if md5sum -c - <<<"${KUBECHECKSUM} `ls ~/.kube/config`"; then 
+  echo kubeconfig checksum matches;
+else 
+  wget ${KUBEURL} -O ~/.kube/config;
 fi
 
+~/.kube/kubectl config use-context ${KUBECONTEXTQA}
 ~/.kube/kubectl version
 
 ## uncomment if you need to add an intermediate certificate to get push working
