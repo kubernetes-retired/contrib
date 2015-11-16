@@ -9,8 +9,8 @@
     force=yes
     validate_certs=False
   environment:
-    http_proxy: http://squid.apac.redhat.com:3128
-    https_proxy: https://squid.apac.redhat.com:3128
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ https_proxy }}"
   with_items:
     - kube-ui-rc.yaml
     - kube-ui-svc.yaml
