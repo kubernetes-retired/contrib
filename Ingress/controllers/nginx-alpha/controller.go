@@ -42,7 +42,6 @@ http {
   server {
     listen 80;
     server_name {{$rule.Host}};
-    resolver 127.0.0.1;
 {{ range $path := $rule.HTTP.Paths }}
     location {{$path.Path}} {
       proxy_pass http://{{$path.Backend.ServiceName}};
