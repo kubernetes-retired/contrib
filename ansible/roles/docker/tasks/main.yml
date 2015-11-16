@@ -8,6 +8,24 @@
 - include: generic-install.yml
   when: ansible_distribution != "Debian" and ansible_distribution != "Ubuntu"
 
+#
+# systemd service configuration uses EnvironmentFile (docker and docker-network)
+# upstart service configuration sources docker_config_dir / docker
+#
+- set_fact:
+    docker_use_upstart: ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
+
+- name: Local vars for systemd installs
+  set_fact:
+    docker_config_net: "{{ docker_config_dir }}/docker-network"
+    docker_env_export: ""
+
+- name: Local vars for upstart installs
+  set_fact:
+    docker_config_net: "{{ docker_config_dir }}/docker"
+    docker_env_export: "export "
+  when: docker_use_upstart
+
 - name: Verify docker config files exists
   file: path={{ docker_config_dir }}/{{ item }} state=touch
   changed_when: false
@@ -19,22 +37,22 @@
   lineinfile: dest={{ docker_config_dir }}/docker regexp=^OPTIONS= line=OPTIONS="'--selinux-enabled --log-level=warn'"
   notify:
     - restart docker
-  when: ansible_distribution != "Ubuntu"
+  when: docker_use_upstart
 
-- name: Install http_proxy into docker-network
-  lineinfile: dest={{ docker_config_dir }}/docker-network regexp=^HTTP_PROXY= line=HTTP_PROXY="{{ http_proxy }}"
+- name: Install http_proxy into docker(-network)
+  lineinfile: dest={{ docker_config_net }} regexp="^{{ docker_env_export }}http_proxy=" line="{{docker_env_export}}http_proxy={{ http_proxy }}"
   when: http_proxy is defined
   notify:
     - restart docker
 
-- name: Install https_proxy into docker-network
-  lineinfile: dest={{ docker_config_dir }}/docker-network regexp=^HTTPS_PROXY= line=HTTPS_PROXY="{{ https_proxy }}"
+- name: Install https_proxy into docker(-network)
+  lineinfile: dest={{ docker_config_net }} regexp="^{{ docker_env_export }}https_proxy=" line="{{ docker_env_export }}https_proxy={{ https_proxy }}"
   when: https_proxy is defined
   notify:
     - restart docker
 
-- name: Install no-proxy into docker-network
-  lineinfile: dest={{ docker_config_dir }}/docker-network regexp=^NO_PROXY= line=NO_PROXY="{{ no_proxy }}"
+- name: Install no-proxy into docker(-network)
+  lineinfile: dest={{ docker_config_net }} regexp="^{{ docker_env_export }}no_proxy=" line="{{ docker_env_export }}no_proxy={{ no_proxy }}"
   when: no_proxy is defined
   notify:
     - restart docker

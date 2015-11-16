@@ -18,6 +18,14 @@
   tags:
     - etcd
 
+- hosts: all
+  sudo: yes
+  roles:
+    - common
+    - docker
+  tags:
+    - docker
+
 # install flannel
 - hosts:
     - etcd
