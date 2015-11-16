@@ -1,0 +1,11 @@
+---
+- name: CentOS | Install kubernetes master
+  yum:
+    name={{ item }}
+    state=latest
+    enablerepo=virt7-docker-common-candidate
+  with_items:
+    - kubernetes-master
+    - kubernetes-node
+  notify:
+    - restart daemons

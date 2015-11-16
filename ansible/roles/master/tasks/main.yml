@@ -1,9 +1,4 @@
 ---
-- include: packageManagerInstall.yml
-  when: source_type == "packageManager"
-  tags:
-    - binary-update
-
 - include: localBuildInstall.yml
   when: source_type == "localBuild"
   tags:
