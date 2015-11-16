@@ -336,7 +336,7 @@ func isHTTPErrorCode(err error, code int) bool {
 func getNodePort(client *client.Client, ns, name string) (nodePort int64, err error) {
 	var svc *api.Service
 	glog.Infof("Waiting for %v/%v", ns, name)
-	wait.Poll(100*time.Microsecond, 5*time.Minute, func() (bool, error) {
+	wait.Poll(1*time.Second, 5*time.Minute, func() (bool, error) {
 		svc, err = client.Services(ns).Get(name)
 		if err != nil {
 			return false, nil
