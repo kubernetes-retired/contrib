@@ -37,6 +37,11 @@ events {
   worker_connections 1024;
 }
 http {
+  # http://nginx.org/en/docs/http/ngx_http_core_module.html
+  types_hash_max_size 2048;
+  server_names_hash_max_size 512;
+  server_names_hash_bucket_size 64;
+
 {{range $ing := .Items}}
 {{range $rule := $ing.Spec.Rules}}
   server {
