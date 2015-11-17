@@ -9,7 +9,7 @@
   when: is_atomic
 
 - include: pkgMgrInstallers/centos-install.yml
-  when: ansible_distribution == "CentOS"
+  when: ansible_distribution == "CentOS" and not is_atomic
 
 - name: Set fact saying we did CentOS package install
   set_fact:
@@ -19,7 +19,7 @@
 
 
 - include: pkgMgrInstallers/fedora-install.yml
-  when: ansible_distribution == "Fedora" and ansible_distribution_release != "Rawhide"
+  when: ansible_distribution == "Fedora" and ansible_distribution_release != "Rawhide" and not is_atomic
 
 - name: Set fact saying we did Fedora package install
   set_fact:
