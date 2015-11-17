@@ -287,6 +287,24 @@ func TestLbFaultyUpdate(t *testing.T) {
 	cm.fakeLbs.checkUrlMap(t, l7, pm.toNodePortSvcNames(inputMap))
 }
 
+func TestLbDefaulting(t *testing.T) {
+	cm := newFakeClusterManager(testClusterName)
+	lbc := newLoadBalancerController(t, cm, "")
+	// Make sure the controller plugs in the default values accepted by GCE.
+	ing := newIngress(map[string]fakeIngressRuleValueMap{"": {"": "foo1svc"}})
+	pm := newPortManager(1, 65536)
+	addIngress(lbc, ing, pm)
+
+	ingStoreKey := getKey(ing, t)
+	lbc.sync(ingStoreKey)
+	l7, err := cm.l7Pool.Get(ingStoreKey)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	expectedMap := map[string]fakeIngressRuleValueMap{defaultHost: {defaultPath: "foo1svc"}}
+	cm.fakeLbs.checkUrlMap(t, l7, pm.toNodePortSvcNames(expectedMap))
+}
+
 func TestLbNoService(t *testing.T) {
 	cm := newFakeClusterManager(testClusterName)
 	lbc := newLoadBalancerController(t, cm, "")

@@ -39,6 +39,9 @@ const (
 	// The host used if none is specified. It is a valid value for Host
 	// recognized by GCE.
 	defaultHost = "*"
+
+	// The path used if none is specified. It is a valid path recognized by GCE.
+	defaultPath = "/*"
 )
 
 // gceUrlMap is a nested map of hostname->path regex->backend
