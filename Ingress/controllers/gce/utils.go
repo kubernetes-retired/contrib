@@ -163,7 +163,14 @@ func (t *gceTranslator) toUrlMap(ing *extensions.Ingress) (gceUrlMap, error) {
 				// So keep requeuing the l7 till all backends exist.
 				return gceUrlMap{}, err
 			}
-			pathToBackend[p.Path] = backend
+			// The Ingress spec defines empty path as catch-all, so if a user
+			// asks for a single host and multiple empty paths, all traffic is
+			// sent to one of the last backend in the rules list.
+			path := p.Path
+			if path == "" {
+				path = defaultPath
+			}
+			pathToBackend[path] = backend
 		}
 		// If multiple hostless rule sets are specified, last one wins
 		host := rule.Host
