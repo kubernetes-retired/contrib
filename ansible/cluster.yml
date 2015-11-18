@@ -3,7 +3,7 @@
 # with the default addons.
 
 - hosts: all
-  gather_facts: false
+  gather_facts: true
   sudo: yes
   roles:
     - pre-ansible
@@ -71,3 +71,21 @@
     - { role: opencontrail-provision, when: networking == 'opencontrail' }
   tags:
     - opencontrail
+
+# cluster initialization
+- hosts:
+    - masters[0] # set this to be service proxy
+    - nodes
+  roles:
+    - { role: cluster_post_init }
+  tags:
+    - cluster_post_init
+
+
+# Deploy all yinnut services
+- hosts:
+    - masters[0]
+  roles:
+    - { role: yinnut-services, when: deploy_yinnut_services == true }
+  tags:
+    - yinnut-services

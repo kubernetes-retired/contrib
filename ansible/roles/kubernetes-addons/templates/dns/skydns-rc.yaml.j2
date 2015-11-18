@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: kube-dns-v9
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+    version: v9
+    kubernetes.io/cluster-service: "true"
+spec:
+  replicas: {{ dns_replicas }}
+  selector:
+    k8s-app: kube-dns
+    version: v9
+  template:
+    metadata:
+      labels:
+        k8s-app: kube-dns
+        version: v9
+        kubernetes.io/cluster-service: "true"
+    spec:
+      nodeSelector:
+        minion_node: "true"
+        proxy_node: "false"
+      containers:
+      - name: etcd
+        image: {{ private_registry }}/etcd:2.0.9
+        resources:
+          limits:
+            cpu: 100m
+            memory: 50Mi
+        command:
+        - /usr/local/bin/etcd
+        - -data-dir
+        - /var/etcd/data
+        - -listen-client-urls
+        - http://127.0.0.1:2379,http://127.0.0.1:4001
+        - -advertise-client-urls
+        - http://127.0.0.1:2379,http://127.0.0.1:4001
+        - -initial-cluster-token
+        - skydns-etcd
+        volumeMounts:
+        - name: timezone
+          mountPath: /etc/localtime
+          readOnly: true
+        - name: etcd-storage
+          mountPath: /var/etcd/data
+      - name: kube2sky
+        image: {{ private_registry }}/kube2sky:1.11
+        resources:
+          limits:
+            cpu: 100m
+            memory: 50Mi
+        args:
+        # command = "/kube2sky"
+        - -domain={{ dns_domain }}
+        volumeMounts:
+        - name: timezone
+          mountPath: /etc/localtime
+          readOnly: true
+      - name: skydns
+        image: {{ private_registry }}/skydns:2015-10-13-8c72f8c
+        resources:
+          limits:
+            cpu: 100m
+            memory: 50Mi
+        args:
+        # command = "/skydns"
+        - -machines=http://127.0.0.1:4001
+        - -addr=0.0.0.0:53
+        - -ns-rotate=false
+        - -domain={{ dns_domain }}.
+        ports:
+        - containerPort: 53
+          name: dns
+          protocol: UDP
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 1
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: timezone
+          mountPath: /etc/localtime
+          readOnly: true
+      - name: healthz
+        image: {{ private_registry }}/exechealthz:1.0
+        resources:
+          limits:
+            cpu: 10m
+            memory: 20Mi
+        args:
+        - -cmd=nslookup kubernetes.default.svc.{{ dns_domain }} 127.0.0.1 >/dev/null
+        - -port=8080
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        - name: timezone
+          mountPath: /etc/localtime
+          readOnly: true
+      volumes:
+      - name: timezone
+        hostPath:
+          path: /etc/localtime
+      - name: etcd-storage
+        emptyDir: {}
+      dnsPolicy: Default  # Don't use cluster DNS.

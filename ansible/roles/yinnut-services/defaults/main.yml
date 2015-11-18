@@ -1,0 +1,6 @@
+node_port_friend_service: 30001
+
+node_port_other_service: 30002
+
+node_port_kube_logging_kibana: 30101
+

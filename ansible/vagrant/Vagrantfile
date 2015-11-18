@@ -23,8 +23,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.ssh.insert_key = false
 
   # This explicitly sets the order that vagrant will use by default if no --provider given
-  config.vm.provider "openstack"
-  config.vm.provider "libvirt"
+  # config.vm.provider "openstack"
+  # config.vm.provider "libvirt"
   config.vm.provider "virtualbox"
 
   def set_openstack(os, config, n)
@@ -60,12 +60,14 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   end
 
   def set_vbox(vb, config)
-    config.vm.box = "chef/centos-7.0"
+    config.vm.box = "chef/centos-7.1"
     config.vm.network "private_network", type: "dhcp"
     vb.gui = false
-    vb.memory = 2048
-    vb.cpus = 2
-
+    vb.memory = 1024
+    vb.cpus = 8
+    
+    # Use a different mac address 
+    vb.customize ["modifyvm", :id, "--macaddress1", "auto"] 
     # Use faster paravirtualized networking
     vb.customize ["modifyvm", :id, "--nictype1", "virtio"]
     vb.customize ["modifyvm", :id, "--nictype2", "virtio"]
@@ -119,8 +121,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     name = "kube-master"
     n.vm.hostname = name
     set_provider(n)
+    nodes.push(name)
 
-    if ansible_tags.nil?
+    # if ansible_tags.nil?
       # This set up the vagrant hosts before we run the main playbook
       # Today this just creates /etc/hosts so machines can talk via their
       # 'internal' IPs instead of the openstack public ip.
@@ -130,7 +133,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
         ansible.raw_ssh_args = ['-o ControlMaster=no']
       end
-    end
+    # end
 
     # This sets up both flannel and kube.
     n.vm.provision :ansible do |ansible|

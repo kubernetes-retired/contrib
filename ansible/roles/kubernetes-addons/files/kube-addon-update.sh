@@ -299,6 +299,7 @@ function create-objects() {
         # we check it. Let's have the race
         # condition happen a bit more often so that
         # we see that our tests pass anyway.
+#        sed -i "s,\(beta.\)\?gcr.io/google_containers,${PRIVATE_REGISTRY},g" ${file_path} # NOTE: use our private registry -- morgan.wu@yinnut
         create-object ${obj_type} ${file_path} &
     done
 }
@@ -318,7 +319,7 @@ function update-objects() {
     for objdesc in ${update_spec}; do
         IFS=';' read nsname file_path <<< "${objdesc}"
         IFS='/' read namespace obj_name <<< "${nsname}"
-
+#        sed -i 's,\(beta.\)\?gcr.io/google_containers,${private_registry}},g' ${file_path} # NOTE: use our private registry -- morgan.wu@yinnut
         update-object ${obj_type} ${namespace} ${obj_name} ${file_path} &
     done
 }

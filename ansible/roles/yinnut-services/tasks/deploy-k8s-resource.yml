@@ -1,0 +1,21 @@
+---
+
+- name: Copy {{ resource_name }} template
+  template: src="{{ template_path }}" dest="{{ resource_path }}"
+
+- name: Check if {{ resource_name }} deployed
+  shell: "kubectl get {{ resource_type }} --all-namespaces| grep {{ resource_filter }} > /dev/null 2>&1"
+  register: deployed_resource
+  changed_when: false
+  failed_when: false
+  always_run: yes
+
+# only can delete/create rc and svc, for pod we need to use do-until loop to check if pod name exist or not
+- name: Delete kubernetes resource from {{ resource_path }}
+  shell: kubectl delete -f {{ resource_path }}
+  when: deployed_resource.rc == 0
+
+- name: Deploy kubernetes resource from {{ resource_path }}
+  shell: kubectl create -f {{ resource_path }}
+
+

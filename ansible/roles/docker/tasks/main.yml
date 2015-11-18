@@ -16,7 +16,7 @@
     - docker-network
 
 - name: Turn down docker logging
-  lineinfile: dest={{ docker_config_dir }}/docker regexp=^OPTIONS= line=OPTIONS="'--selinux-enabled --log-level=warn'"
+  lineinfile: dest={{ docker_config_dir }}/docker regexp=^OPTIONS= line=OPTIONS="'--selinux-enabled --log-level=warn --log-opt max-size={{ container_log_size_max }} --log-opt max-file={{ container_log_file_max }}'"
   notify:
     - restart docker
   when: ansible_distribution != "Ubuntu"
@@ -45,7 +45,14 @@
   notify:
     - restart docker
 
-- name: Enable Docker
-  service: name=docker enabled=yes
+- name: Enable and Start Docker
+  service: name=docker enabled=yes state=started
   notify:
     - start docker
+
+- name: Login into private docker registry
+  shell: "docker login -u imageuser -p Nice2015! -e infra@yinnut.com https://{{ private_registry }}"
+
+- name: Import default gcr pause image
+  shell: 'if ! docker images | grep "beta.gcr.io/google_containers/pause"|grep "2.0" > /dev/null; then docker pull {{ private_registry }}/pause:2.0 && docker tag {{ private_registry }}/pause:2.0 beta.gcr.io/google_containers/pause:2.0; fi'
+

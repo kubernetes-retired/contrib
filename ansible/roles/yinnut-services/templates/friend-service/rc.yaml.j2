@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: friend-service
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        yinnut-svc: "friend"
+        version: "0.2"
+    spec:
+      nodeSelector:
+        minion_node: "true"
+        proxy_node: "false"
+      containers:
+      - name: friend-service
+        image: {{ private_registry }}/friend-service:0.2
+        ports:
+        - containerPort: {{ service_port }}
+          protocol: TCP
+        command: ["java", "-jar", "jetty-runner.jar", "--port", "{{ service_port }}", "--log", "jetty.log", "FriendService.war"]
+        volumeMounts:
+        - name: timezone
+          mountPath: /etc/localtime
+          readOnly: true
+      volumes:
+      - name: timezone
+        hostPath:
+          path: /etc/localtime

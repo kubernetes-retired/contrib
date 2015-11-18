@@ -1,0 +1,34 @@
+---
+- name: check Nginx is installed
+  shell: "rpm -qa | grep nginx > /dev/null 2>&1"
+  register: nginx_installed
+  changed_when: false
+  failed_when: false
+  always_run: yes
+
+- name: Copy Nginx Repo
+  copy: src=nginx-release-centos-7-0.el7.ngx.noarch.rpm  dest=/tmp/nginx-release-centos-7-0.el7.ngx.noarch.rpm
+  when: nginx_installed.rc | int != 0
+
+- name: Install Nginx Repo
+  yum: name=/tmp/nginx-release-centos-7-0.el7.ngx.noarch.rpm state=present update_cache=yes
+  when: nginx_installed.rc | int != 0
+
+- name: Install Nginx Service
+  yum: name=nginx state=latest
+  when: nginx_installed.rc | int != 0
+
+- name: Configure Nginx worker_processes
+  lineinfile: dest=/etc/nginx/nginx.conf  regexp=^worker_processes line="worker_processes {{ ansible_processor_vcpus }};"
+  when: nginx_installed.rc | int != 0
+
+- name: check Nginx is runnning
+  shell: "systemctl status nginx | grep running > /dev/null 2>&1"
+  register: nginx_running
+  changed_when: false
+  failed_when: false
+  always_run: yes
+
+- name: Enable and Start Nginx
+  service: name=nginx state=started enabled=yes
+  when: nginx_running.rc | int != 0

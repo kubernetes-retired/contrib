@@ -1,0 +1,3 @@
+---
+- name: YUM REPO | Install Yum Repo of YINNUT
+  template: src=yinnut.repo.j2 dest=/etc/yum.repos.d/yinnut.repo

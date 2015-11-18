@@ -1,0 +1,15 @@
+---
+- hosts: masters
+  tasks:
+    - name: "stop kube-addons.service kube-apiserver.service kube-controller-manager.service kube-proxy.service kube-scheduler.service on master"
+      shell: 'for i in etcd flanneld kube-addons kube-apiserver kube-controller-manager kube-proxy kube-scheduler; do systemctl restart $i; done'
+      tags:
+         - stop
+
+- hosts: nodes
+  tasks:
+    - name: "stop kubelet.service kube-proxy.service on master"
+      shell: 'for i in kubelet kube-proxy docker flanneld; do systemctl restart $i; done'
+      tags:
+         - stop
+

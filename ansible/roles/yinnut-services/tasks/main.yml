@@ -1,0 +1,10 @@
+---
+
+# TODO: considering http and https redirection
+- include: friend-service.yml service_port=9999 node_port={{ node_port_friend_service }}
+  tags:
+    - friend-service
+
+- include: other-service.yml service_port=9080 node_port={{ node_port_other_service }}
+  tags:
+    - other-service

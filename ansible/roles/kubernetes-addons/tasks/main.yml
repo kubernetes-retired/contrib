@@ -11,11 +11,14 @@
     state=directory
   sudo: no
 
+# - name: Make sure the system services namespace exists
+#   get_url:
+#     url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/kube-addons/namespace.yaml
+#     dest="{{ kube_config_dir }}/addons/"
+#     force=yes
+
 - name: Make sure the system services namespace exists
-  get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/kube-addons/namespace.yaml
-    dest="{{ kube_config_dir }}/addons/"
-    force=yes
+  copy: src="namespace.yaml" dest="{{ kube_config_dir }}/addons/"
 
 - include: dns.yml
   when: dns_setup

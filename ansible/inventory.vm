@@ -1,0 +1,15 @@
+master ansible_ssh_host=192.168.33.10 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+
+# node1 ansible_ssh_host=192.168.33.11 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=/Users/morganwu/code/kubernetes/src/github.com/kubernetes/kubernetes/contrib/ansible/private_keys/ansible_private_key
+
+
+
+[masters]
+master
+
+[etcd]
+master
+
+[nodes]
+master
+# node1

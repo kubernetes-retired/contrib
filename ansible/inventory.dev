@@ -1,0 +1,23 @@
+yinnut-node-232 ansible_ssh_host=192.168.1.232 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-233 ansible_ssh_host=192.168.1.233 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-234 ansible_ssh_host=192.168.1.234 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-235 ansible_ssh_host=192.168.1.235 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-236 ansible_ssh_host=192.168.1.236 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-237 ansible_ssh_host=192.168.1.237 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-238 ansible_ssh_host=192.168.1.238 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-239 ansible_ssh_host=192.168.1.239 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-240 ansible_ssh_host=192.168.1.240 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-241 ansible_ssh_host=192.168.1.241 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+yinnut-node-242 ansible_ssh_host=192.168.1.242 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
+
+
+[masters]
+yinnut-node-232
+
+[etcd]
+yinnut-node-232
+
+[nodes]
+yinnut-node-232
+yinnut-node-2[33:42]
+
