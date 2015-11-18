@@ -5,6 +5,10 @@
   tags:
     - friend-service
 
+- include: passport-service.yml service_port=9080 node_port={{ node_port_passport_service }}
+  tags:
+    - passport-service
+
 - include: other-service.yml service_port=9080 node_port={{ node_port_other_service }}
   tags:
     - other-service

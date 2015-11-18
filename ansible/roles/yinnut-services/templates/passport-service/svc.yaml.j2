@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: passportsvc
+  labels:
+    yinnut-svc: passport
+spec:
+  type: NodePort
+  ports:
+  - port: {{ service_port }}
+    protocol: TCP
+    targetPort: {{ service_port }}
+    name: http
+    nodePort: {{ node_port }}
+  selector:
+    yinnut-svc: passport
+
