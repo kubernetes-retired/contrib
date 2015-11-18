@@ -35,7 +35,7 @@ docker build -t dockerimages.yinnut.com:15043/${SVC_NAME}:${VERSION} . # use app
 docker push dockerimages.yinnut.com:15043/${SVC_NAME}:${VERSION}
 
 echo "######################### deploy service ############################"
-ANSIBLE_BASE_PATH="/home/dockerbuild/yinnut/ansible/"
+ANSIBLE_BASE_PATH="/home/dockerbuild/yinnut/kubernetes_contrib/ansible/"
 cd ${ANSIBLE_BASE_PATH}
 ansible all -i "localhost," -c local -m copy -a "src=${SVC_PATH}/dist/k8s/${SVC_NAME}-rc.yaml.j2 dest=roles/yinnut-services/templates/${SVC_NAME}/rc.yaml.j2 force=yes"
 ansible all -i "localhost," -c local -m copy -a "src=${SVC_PATH}/dist/k8s/${SVC_NAME}-svc.yaml.j2 dest=roles/yinnut-services/templates/${SVC_NAME}/svc.yaml.j2 force=yes"
