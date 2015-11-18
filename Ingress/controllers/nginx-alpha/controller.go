@@ -78,7 +78,11 @@ func main() {
 	for {
 		rateLimiter.Accept()
 		ingresses, err := ingClient.List(labels.Everything(), fields.Everything())
-		if err != nil || reflect.DeepEqual(ingresses.Items, known.Items) {
+		if err != nil {
+			log.Printf("Error retrieving ingresses: %v", err)
+			continue
+		}
+		if reflect.DeepEqual(ingresses.Items, known.Items) {
 			continue
 		}
 		known = ingresses
