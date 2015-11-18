@@ -60,8 +60,8 @@ func NewEndpointController(client *client.Client) *endpointController {
 			ListFunc: func() (runtime.Object, error) {
 				return e.client.Services(api.NamespaceAll).List(labels.Everything(), fields.Everything())
 			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				return e.client.Services(api.NamespaceAll).Watch(labels.Everything(), fields.Everything(), options)
+			WatchFunc: func(rv string) (watch.Interface, error) {
+				return e.client.Services(api.NamespaceAll).Watch(labels.Everything(), fields.Everything(), rv)
 			},
 		},
 		&api.Service{},
@@ -80,8 +80,8 @@ func NewEndpointController(client *client.Client) *endpointController {
 			ListFunc: func() (runtime.Object, error) {
 				return e.client.Pods(api.NamespaceAll).List(labels.Everything(), fields.Everything())
 			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				return e.client.Pods(api.NamespaceAll).Watch(labels.Everything(), fields.Everything(), options)
+			WatchFunc: func(rv string) (watch.Interface, error) {
+				return e.client.Pods(api.NamespaceAll).Watch(labels.Everything(), fields.Everything(), rv)
 			},
 		},
 		&api.Pod{},
@@ -384,7 +384,7 @@ func (e *endpointController) syncService(key string) {
 // some stragglers could have been left behind if the endpoint controller
 // reboots).
 func (e *endpointController) checkLeftoverEndpoints() {
-	list, err := e.client.Endpoints(api.NamespaceAll).List(labels.Everything(), fields.Everything())
+	list, err := e.client.Endpoints(api.NamespaceAll).List(labels.Everything())
 	if err != nil {
 		glog.Errorf("Unable to list endpoints (%v); orphaned endpoints will not be cleaned up. (They're pretty harmless, but you can restart this component if you want another attempt made.)", err)
 		return
