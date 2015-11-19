@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"reflect"
 	"sync"
@@ -87,7 +88,11 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 
 	// Ingress watch handlers
 	pathHandlers := framework.ResourceEventHandlerFuncs{
-		AddFunc:    lbc.ingQueue.enqueue,
+		AddFunc: func(obj interface{}) {
+			addIng := obj.(*extensions.Ingress)
+			lbc.recorder.Eventf(addIng, "ADD", addIng.Name)
+			lbc.ingQueue.enqueue(obj)
+		},
 		DeleteFunc: lbc.ingQueue.enqueue,
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
@@ -255,9 +260,15 @@ func (lbc *loadBalancerController) sync(key string) {
 	}()
 
 	if err := lbc.clusterManager.Checkpoint(lbNames, nodeNames, nodePorts); err != nil {
-		if isHTTPErrorCode(err, http.StatusForbidden) && ingExists {
-			lbc.recorder.Eventf(obj.(*extensions.Ingress), "Forbidden", "Error: %v", err)
-			// TODO: Implement proper backoff for the queue.
+		// TODO: Implement proper backoff for the queue.
+		eventType := "GCE"
+		if isHTTPErrorCode(err, http.StatusForbidden) {
+			eventType += " :Quota"
+		}
+		if ingExists {
+			lbc.recorder.Eventf(obj.(*extensions.Ingress), eventType, "%v", err)
+		} else {
+			err = fmt.Errorf("%v Error: %v", eventType, err)
 		}
 		lbc.ingQueue.requeue(key, err)
 		return
@@ -277,8 +288,10 @@ func (lbc *loadBalancerController) sync(key string) {
 	if urlMap, err := lbc.tr.toUrlMap(&ing); err != nil {
 		lbc.ingQueue.requeue(key, err)
 	} else if err := l7.UpdateUrlMap(urlMap); err != nil {
+		lbc.recorder.Eventf(&ing, "UrlMap", "%v", err)
 		lbc.ingQueue.requeue(key, err)
 	} else if lbc.updateIngressStatus(l7, ing); err != nil {
+		lbc.recorder.Eventf(&ing, "Status", "%v", err)
 		lbc.ingQueue.requeue(key, err)
 	}
 	return
@@ -289,25 +302,9 @@ func (lbc *loadBalancerController) sync(key string) {
 func (lbc *loadBalancerController) updateIngressStatus(l7 *L7, ing extensions.Ingress) error {
 	ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
 
-	// Update annotations through /update endpoint
-	// We do this before the IP update because the forwarding rule is always
-	// the authoritative source of IP, even if the client were to change it.
-	currIng, err := ingClient.Get(ing.Name)
-	if err != nil {
-		return err
-	}
-	currIng.Annotations = getAnnotations(l7, currIng.Annotations, lbc.clusterManager.backendPool)
-	if reflect.DeepEqual(ing.Annotations, currIng.Annotations) {
-		return nil
-	}
-	glog.V(3).Infof("Updating annotations of %v/%v", ing.Namespace, ing.Name)
-	if _, err := ingClient.Update(currIng); err != nil {
-		return err
-	}
-
 	// Update IP through update/status endpoint
 	ip := l7.GetIP()
-	currIng, err = ingClient.Get(ing.Name)
+	currIng, err := ingClient.Get(ing.Name)
 	if err != nil {
 		return err
 	}
@@ -326,8 +323,21 @@ func (lbc *loadBalancerController) updateIngressStatus(l7 *L7, ing extensions.In
 		if _, err := ingClient.UpdateStatus(currIng); err != nil {
 			return err
 		}
+		lbc.recorder.Eventf(currIng, "CREATE", "ip: %v", ip)
 	}
-	lbc.recorder.Eventf(currIng, "Success", "Created loadbalancer %v", ip)
+
+	// Update annotations through /update endpoint
+	currIng, err = ingClient.Get(ing.Name)
+	if err != nil {
+		return err
+	}
+	currIng.Annotations = getAnnotations(l7, currIng.Annotations, lbc.clusterManager.backendPool)
+	if !reflect.DeepEqual(ing.Annotations, currIng.Annotations) {
+		glog.V(3).Infof("Updating annotations of %v/%v", ing.Namespace, ing.Name)
+		if _, err := ingClient.Update(currIng); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -88,7 +88,11 @@ var (
 
 func registerHandlers(lbc *loadBalancerController) {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Better healthz.
+		if err := lbc.clusterManager.isHealthy(); err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(fmt.Sprintf("Cluster unhealthy: %v", err)))
+			return
+		}
 		w.WriteHeader(200)
 		w.Write([]byte("ok"))
 	})

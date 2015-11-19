@@ -372,6 +372,10 @@ func (f *fakeBackendServices) DeleteBackendService(name string) error {
 	return nil
 }
 
+func (f *fakeBackendServices) ListBackendServices() (*compute.BackendServiceList, error) {
+	return &compute.BackendServiceList{Items: f.backendServices}, nil
+}
+
 func (f *fakeBackendServices) UpdateBackendService(be *compute.BackendService) error {
 
 	f.calls = append(f.calls, Update)
