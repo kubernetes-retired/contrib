@@ -9,6 +9,10 @@
   tags:
     - passport-service
 
+- include: post-service.yml service_port=5000 node_port={{ node_port_post_service }}
+  tags:
+    - post-service
+
 - include: other-service.yml service_port=9080 node_port={{ node_port_other_service }}
   tags:
     - other-service
