@@ -38,7 +38,7 @@ const (
 
 type assignmentConfig struct {
 	Assignees []string `json:assignees yaml:assignees`
-	//Owners []string `json:owners`
+	Owners    []string `json:owners yaml:owners`
 }
 
 // RepoInfo provides information about users in OWNERS files in a git repo
@@ -46,7 +46,7 @@ type RepoInfo struct {
 	enabled       bool
 	kubernetesDir string
 	assignees     map[string]sets.String
-	//owners     map[string]sets.String
+	owners        map[string]sets.String
 }
 
 func init() {
@@ -98,7 +98,7 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 	}
 	path = filepath.Dir(path)
 	o.assignees[path] = sets.NewString(c.Assignees...)
-	//o.owners[path] = sets.NewString(c.Assignees...)
+	o.owners[path] = sets.NewString(c.Assignees...)
 	return nil
 }
 
@@ -199,17 +199,34 @@ func (o *RepoInfo) LeafAssignees(path string) sets.String {
 	return peopleForPath(path, o.assignees, true)
 }
 
-// Assignees returns a set of users who are the closest assginees to the
+// Assignees returns a set of users who are assignees anywhere along the path to the
 // requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
 // will return both user1 and user2 for the path pkg/util/sets/file.go
 func (o *RepoInfo) Assignees(path string) sets.String {
 	return peopleForPath(path, o.assignees, false)
 }
 
-//func (o *RepoInfo) LeafOwners(path string) sets.String {
-//return people(path, o.owners, true)
-//}
+// LeafOwners returns a set of users who are the closest owners to the
+// requested file. If pkgOWNERS has user1 and pkg/util/OWNERS has user2 this
+// will only return user2 for the path pkg/util/sets/file.go
+func (o *RepoInfo) LeafOwners(path string) sets.String {
+	return peopleForPath(path, o.owners, true)
+}
 
-//func (o *RepoInfo) Owners(path string) sets.String {
-//return people(path, o.owners, false)
-//}
+// Assignees returns a set of users who are owners anywhere along the path to the
+// requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
+// will return both user1 and user2 for the path pkg/util/sets/file.go
+func (o *RepoInfo) Owners(path string) sets.String {
+	return peopleForPath(path, o.owners, false)
+}
+
+// TestFakeRepo returns a repo with the specified values. It should only be used in
+// _test.go
+func TestFakeRepo(assignees, owners map[string]sets.String) *RepoInfo {
+	info := RepoInfo{
+		enabled:   true,
+		assignees: assignees,
+		owners:    owners,
+	}
+	return &info
+}

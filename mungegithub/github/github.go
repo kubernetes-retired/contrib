@@ -487,6 +487,7 @@ func (obj *MungeObject) LastModifiedTime() *time.Time {
 	var lastModified *time.Time
 	commits, err := obj.GetCommits()
 	if err != nil {
+		glog.Errorf("Unable to determine LastModifiedTime for #%d: %v", *obj.Issue.Number, err)
 		return lastModified
 	}
 	for _, commit := range commits {
