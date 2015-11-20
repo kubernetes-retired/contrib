@@ -1,0 +1,51 @@
+<html lang="en" ng-app="PerfDashApp">
+  <head>
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/angular_material/0.9.4/angular-material.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=RobotoDraft:300,400,500,700,400italic">
+    <meta name="viewport" content="initial-scale=1" />
+  </head>
+  <body>
+    <div layout="column" style="margin-top: 20px; width: 80%" offset="10" ng-controller="AppCtrl">
+      <md-toolbar layout="row" layout-align="space-around center">
+	<h1 class="md-display-2">Performance Dashboard</h1>
+	<a href="https://k8s.io"> <img src="https://raw.githubusercontent.com/kubernetes/kubernetes/master/logo.png" style="width:84; height: 84" />
+	</a>
+      </md-toolbar>
+      <div id="content" class="md-whiteframe-z2" style="padding: 20px">
+	<div style="width: 200px">
+	  <md-input-container>
+	    <md-select placeholder="Resource" ng-model="controller.selectedResource"  ng-change="controller.resourceChanged()">
+	      <md-option ng-value="resource" ng-repeat="resource in controller.resources">
+		{{resource}}
+	      </md-option>
+	    </md-select>
+	  </md-input-container>
+	</div>
+
+	<div style="width: 200px">
+	  <md-input-container>
+	    <md-select placeholder="Verb" ng-model="controller.selectedVerb"  ng-change="controller.resourceChanged()">
+	      <md-option ng-value="verb" ng-repeat="verb in controller.verbs">
+		{{verb}}
+	      </md-option>
+	    </md-select>
+	  </md-input-container>
+	</div>
+
+	<canvas id="line" class="chart chart-line" chart-data="controller.seriesData"
+		chart-labels="controller.labels" chart-legend="false" chart-series="controller.series"
+		chart-click="controller.onClick" >
+	</canvas>
+      </div>
+      <!-- Angular Material Dependencies -->
+      <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.15/angular.min.js"></script>
+      <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.15/angular-animate.min.js"></script>
+      <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.15/angular-aria.min.js"></script>
+
+      <script src="https://ajax.googleapis.com/ajax/libs/angular_material/0.9.4/angular-material.min.js"></script>
+      <script src="Chart.js"></script>
+      <script src="angular-chart.js"></script>
+      <script src="script.js"></script>
+    </div>
+  </body>
+</html>
