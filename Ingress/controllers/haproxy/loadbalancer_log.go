@@ -62,7 +62,7 @@ func (h *handler) mainLoop() {
 			break
 		}
 
-		fmt.Printf("servicelb [%s] %s%s\n", strings.ToUpper(message.Severity.String()), message.Tag, message.Content)
+		fmt.Printf("hlbc [%s] %s%s\n", strings.ToUpper(message.Severity.String()), message.Tag, message.Content)
 	}
 
 	h.End()

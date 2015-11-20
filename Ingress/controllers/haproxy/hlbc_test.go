@@ -17,10 +17,7 @@ limitations under the License.
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -153,10 +150,7 @@ func TestGetServices(t *testing.T) {
 		getEndpoints(svc1, endpointAddresses, endpointPorts),
 		getEndpoints(svc2, endpointAddresses, endpointPorts),
 	}
-
 	flb := newFakeLoadBalancerController(endpoints, []*api.Service{svc1, svc2})
-	cfg, _ := filepath.Abs("./test-samples/loadbalancer_test.json")
-	flb.cfg = parseCfg(cfg, "roundrobin")
 	flb.tcpServices = map[string]int{
 		svc1.Name: 20,
 	}
@@ -230,173 +224,4 @@ func TestNewStaticPageHandler(t *testing.T) {
 	if handler.pagePath != testDefPage {
 		t.Fatalf("Expected local file content with not valid URL")
 	}
-}
-
-//	buildTestLoadBalancer build a common loadBalancerController to be used
-//	in the tests to verify the generated HAProxy configuration file
-func buildTestLoadBalancer(lbDefAlgorithm string) *loadBalancerController {
-	endpointAddresses := []api.EndpointAddress{
-		{IP: "1.2.3.4"},
-		{IP: "5.6.7.8"},
-	}
-	ports := []int{80, 443}
-	endpointPorts := []api.EndpointPort{
-		{Port: ports[0], Protocol: "TCP"},
-		{Port: ports[1], Protocol: "HTTP"},
-	}
-	servicePorts := []api.ServicePort{
-		{Port: 10, TargetPort: util.NewIntOrStringFromInt(ports[0])},
-		{Port: 20, TargetPort: util.NewIntOrStringFromInt(ports[1])},
-	}
-
-	svc1 := getService(servicePorts)
-	svc1.ObjectMeta.Name = "svc-1"
-	svc2 := getService(servicePorts)
-	svc2.ObjectMeta.Name = "svc-2"
-	endpoints := []*api.Endpoints{
-		getEndpoints(svc1, endpointAddresses, endpointPorts),
-		getEndpoints(svc2, endpointAddresses, endpointPorts),
-	}
-	flb := newFakeLoadBalancerController(endpoints, []*api.Service{svc1, svc2})
-	cfg, _ := filepath.Abs("./test-samples/loadbalancer_test.json")
-	// do not have the input parameters. We need to specify a default.
-	if lbDefAlgorithm == "" {
-		lbDefAlgorithm = "roundrobin"
-	}
-
-	flb.cfg = parseCfg(cfg, lbDefAlgorithm)
-	cfgFile, _ := filepath.Abs("test-" + string(util.NewUUID()))
-	flb.cfg.Config = cfgFile
-	flb.tcpServices = map[string]int{
-		svc1.Name: 20,
-	}
-
-	return flb
-}
-
-// compareCfgFiles check that two files are equals
-func compareCfgFiles(t *testing.T, orig, template string) {
-	f1, err := ioutil.ReadFile(orig)
-	if err != nil {
-		t.Fatalf("Expected a file but an error was returned: %v", err)
-	}
-	f2, err := ioutil.ReadFile(template)
-	if err != nil {
-		t.Fatalf("Expected a file but an error was returned: %v", err)
-	}
-
-	if !bytes.Equal(f1, f2) {
-		t.Fatalf("Expected the file contents were equals")
-	}
-}
-
-func TestDefaultAlgorithm(t *testing.T) {
-	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
-	}
-	template, _ := filepath.Abs("./test-samples/TestDefaultAlgorithm.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
-}
-
-func TestDefaultCustomAlgorithm(t *testing.T) {
-	flb := buildTestLoadBalancer("leastconn")
-	httpSvc, tcpSvc := flb.getServices()
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
-	}
-	template, _ := filepath.Abs("./test-samples/TestDefaultCustomAlgorithm.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
-}
-
-func TestSyslog(t *testing.T) {
-	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
-	flb.cfg.startSyslog = true
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
-	}
-	template, _ := filepath.Abs("./test-samples/TestSyslog.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
-}
-
-func TestSvcCustomAlgorithm(t *testing.T) {
-	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
-	httpSvc[0].Algorithm = "leastconn"
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
-	}
-	template, _ := filepath.Abs("./test-samples/TestSvcCustomAlgorithm.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
-}
-
-func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
-	flb := buildTestLoadBalancer("leastconn")
-	httpSvc, tcpSvc := flb.getServices()
-	httpSvc[0].Algorithm = "roundrobin"
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
-	}
-	template, _ := filepath.Abs("./test-samples/TestCustomDefaultAndSvcAlgorithm.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
-}
-
-func TestServiceAffinity(t *testing.T) {
-	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
-	httpSvc[0].SessionAffinity = true
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
-	}
-	template, _ := filepath.Abs("./test-samples/TestServiceAffinity.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
-}
-
-func TestServiceAffinityWithCookies(t *testing.T) {
-	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
-	httpSvc[0].SessionAffinity = true
-	httpSvc[0].CookieStickySession = true
-	if err := flb.cfg.write(
-		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
-		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
-	}
-	template, _ := filepath.Abs("./test-samples/TestServiceAffinityWithCookies.cfg")
-	compareCfgFiles(t, flb.cfg.Config, template)
-	os.Remove(flb.cfg.Config)
 }

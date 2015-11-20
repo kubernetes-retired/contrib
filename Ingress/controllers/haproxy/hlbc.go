@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -25,7 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
-	"sort"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -35,27 +34,30 @@ import (
 	"github.com/openshift/origin/pkg/util/proc"
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/client/unversioned"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/workqueue"
+	"k8s.io/kubernetes/pkg/watch"
 )
 
 const (
-	reloadQPS                = 10.0
-	resyncPeriod             = 10 * time.Second
-	lbApiPort                = 8081
-	lbAlgorithmKey           = "serviceloadbalancer/lb.algorithm"
-	lbHostKey                = "serviceloadbalancer/lb.host"
-	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
-	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
+	reloadQPS        = 10.0
+	resyncPeriod     = 10 * time.Second
+	lbApiPort        = 8081
+	lbAlgorithmKey   = "serviceloadbalancer/lb.algorithm"
+	lbHostKey        = "serviceloadbalancer/lb.host"
+	defaultErrorPage = "file:///etc/haproxy/errors/404.http"
 )
 
 var (
-	flags = flag.NewFlagSet("", flag.ContinueOnError)
+	flags = flag.NewFlagSet("hlbc", flag.ExitOnError)
 
 	// keyFunc for endpoints and services.
 	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
@@ -79,8 +81,8 @@ var (
 	dry = flags.Bool("dry", false, `if set, a single dry run of configuration
 		parsing is executed. Results written to stdout.`)
 
-	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the built in kubernetes
-		cluster for creating the client`)
+	cluster = flags.Bool("running-in-cluster", true, `Optional, if this controller is
+		running in a Kubernetes cluster, use the pod secrets for creating the client.`)
 
 	// If you have pure tcp services or https services that need L3 routing, you
 	// must specify them by name. Note that you are responsible for:
@@ -101,22 +103,6 @@ var (
 	targetService = flags.String(
 		"target-service", "", `Restrict loadbalancing to a single target service.`)
 
-	// ForwardServices == true:
-	// The lb just forwards packets to the vip of the service and we use
-	// kube-proxy's inbuilt load balancing. You get rules:
-	// backend svc_p1: svc_ip:p1
-	// backend svc_p2: svc_ip:p2
-	//
-	// ForwardServices == false:
-	// The lb is configured to match up services to endpoints. So for example,
-	// you have (svc:p1, p2 -> tp1, tp2) we essentially get all endpoints with
-	// the same targetport and create a new svc backend for them, i.e:
-	// backend svc_p1: pod1:tp1, pod2:tp1
-	// backend svc_p2: pod1:tp2, pod2:tp2
-
-	forwardServices = flags.Bool("forward-services", false, `Forward to service vip
-		instead of endpoints. This will use kube-proxy's inbuilt load balancing.`)
-
 	httpPort  = flags.Int("http-port", 80, `Port to expose http services.`)
 	statsPort = flags.Int("stats-port", 1936, `Port for loadbalancer stats,
 		Used in the loadbalancer liveness probe.`)
@@ -130,6 +116,13 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
 		default balance algorithm.`)
+
+	useIngress = flags.Bool("use-ingress", false, `if set, the Ingress resource is consulted
+    	to get route information for a Service (eg: host, path).`)
+
+	watchAll = flags.Bool("watch-all-namespaces", false, `if set, the controller watches all
+		namespaces. Otherwise it only watches the namespace specifiec via -namespace, and
+		default if none is specified.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -151,34 +144,6 @@ type service struct {
 
 	// Algorithm
 	Algorithm string
-
-	// If SessionAffinity is set and without CookieStickySession, requests are routed to
-	// a backend based on client ip. If both SessionAffinity and CookieStickSession are
-	// set, a SERVERID cookie is inserted by the loadbalancer and used to route subsequent
-	// requests. If neither is set, requests are routed based on the algorithm.
-
-	// Indicates if the service must use sticky sessions
-	// http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#stick-table
-	// Enabled using the attribute service.spec.sessionAffinity
-	// https://github.com/kubernetes/kubernetes/blob/master/docs/user-guide/services.md#virtual-ips-and-service-proxies
-	SessionAffinity bool
-
-	// CookieStickySession use a cookie to enable sticky sessions.
-	// The name of the cookie is SERVERID
-	// This only can be used in http services
-	CookieStickySession bool
-}
-
-type serviceByName []service
-
-func (s serviceByName) Len() int {
-	return len(s)
-}
-func (s serviceByName) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-func (s serviceByName) Less(i, j int) bool {
-	return s[i].Name < s[j].Name
 }
 
 // loadBalancerConfig represents loadbalancer specific configuration. Eventually
@@ -208,11 +173,6 @@ func (s serviceAnnotations) getAlgorithm() (string, bool) {
 
 func (s serviceAnnotations) getHost() (string, bool) {
 	val, ok := s[lbHostKey]
-	return val, ok
-}
-
-func (s serviceAnnotations) getCookieStickySession() (string, bool) {
-	val, ok := s[lbCookieStickySessionKey]
 	return val, ok
 }
 
@@ -300,17 +260,19 @@ func (cfg *loadBalancerConfig) reload() error {
 type loadBalancerController struct {
 	cfg               *loadBalancerConfig
 	queue             *workqueue.Type
-	client            *unversioned.Client
+	client            *client.Client
 	epController      *framework.Controller
 	svcController     *framework.Controller
+	ingController     *framework.Controller
+	ingStore          cache.Store
 	svcLister         cache.StoreToServiceLister
 	epLister          cache.StoreToEndpointsLister
 	reloadRateLimiter util.RateLimiter
 	template          string
 	targetService     string
-	forwardServices   bool
 	tcpServices       map[string]int
 	httpPort          int
+	useIngress        bool
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -323,7 +285,7 @@ func (lbc *loadBalancerController) getEndpoints(
 
 	// The intent here is to create a union of all subsets that match a targetPort.
 	// We know the endpoint already matches the service, so all pod ips that have
-	// the target port are capable of service traffic for it.
+	// the target port are capable of servicing traffic for it.
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
 			var targetPort int
@@ -351,11 +313,14 @@ func (lbc *loadBalancerController) getEndpoints(
 // encapsulates all the hacky convenience type name modifications for lb rules.
 // - :80 services don't need a :80 postfix
 // - default ns should be accessible without /ns/name (when we have /ns support)
-func getServiceNameForLBRule(s *api.Service, servicePort int) string {
-	if servicePort == 80 {
-		return s.Name
+func getServiceNameForLBRule(serviceName string, servicePort api.ServicePort) string {
+	if servicePort.Port != 0 {
+		if servicePort.Port == 80 {
+			return serviceName
+		}
+		return fmt.Sprintf("%v:%v", serviceName, servicePort.Port)
 	}
-	return fmt.Sprintf("%v:%v", s.Name, servicePort)
+	return fmt.Sprintf("%v:%v", serviceName, servicePort.Name)
 }
 
 // getServices returns a list of services and their endpoints.
@@ -376,19 +341,15 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				continue
 			}
 
-			if lbc.forwardServices {
-				ep = []string{
-					fmt.Sprintf("%v:%v", s.Spec.ClusterIP, servicePort.Port)}
-			} else {
-				ep = lbc.getEndpoints(&s, &servicePort)
-			}
+			ep = lbc.getEndpoints(&s, &servicePort)
+
 			if len(ep) == 0 {
 				glog.Infof("No endpoints found for service %v, port %+v",
 					sName, servicePort)
 				continue
 			}
 			newSvc := service{
-				Name: getServiceNameForLBRule(&s, servicePort.Port),
+				Name: getServiceNameForLBRule(s.Name, servicePort),
 				Ep:   ep,
 			}
 
@@ -403,38 +364,82 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 						break
 					}
 				}
-			} else {
-				newSvc.Algorithm = lbc.cfg.lbDefAlgorithm
-			}
-
-			// By default sticky session is disabled
-			newSvc.SessionAffinity = false
-			if s.Spec.SessionAffinity != "" {
-				newSvc.SessionAffinity = true
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
 				newSvc.FrontendPort = servicePort.Port
 				tcpSvc = append(tcpSvc, newSvc)
 			} else {
-				if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getCookieStickySession(); ok {
-					b, err := strconv.ParseBool(val)
-					if err == nil {
-						newSvc.CookieStickySession = b
-					}
-				}
-
 				newSvc.FrontendPort = lbc.httpPort
 				httpSvc = append(httpSvc, newSvc)
 			}
 			glog.Infof("Found service: %+v", newSvc)
 		}
 	}
-
-	sort.Sort(serviceByName(httpSvc))
-	sort.Sort(serviceByName(tcpSvc))
-
+	if lbc.useIngress {
+		// Overwrite the path/host rules if http services based on Ingress.
+		httpSvc = lbc.fillIngressRules(httpSvc)
+	}
 	return
+}
+
+// fillIngressRules writes rules from the Ingress to the Service.
+// If no Ingress exists for a Service:port, it's discarded.
+// TODO: it doesn't take into accout the default backend.
+func (lbc *loadBalancerController) fillIngressRules(svcs []service) []service {
+	svcLookup := map[string]service{}
+	for _, svc := range svcs {
+		svcLookup[svc.Name] = svc
+	}
+	out := []service{}
+	for _, m := range lbc.ingStore.List() {
+		ing := *m.(*extensions.Ingress)
+		for _, rules := range ing.Spec.Rules {
+			if rules.IngressRuleValue.HTTP == nil {
+				continue
+			}
+			for _, p := range rules.IngressRuleValue.HTTP.Paths {
+				servicePort := api.ServicePort{}
+				sp := p.Backend.ServicePort
+				switch sp.Kind {
+				case util.IntstrInt:
+					servicePort.Port = sp.IntVal
+				case util.IntstrString:
+					servicePort.Name = sp.StrVal
+				}
+				name := getServiceNameForLBRule(
+					p.Backend.ServiceName, servicePort)
+				s, ok := svcLookup[name]
+				if !ok {
+					glog.Infof("Service %v has no Ingress, ignoring", name)
+					continue
+				}
+				if path, err := sanitizePath(p.Path); err != nil {
+					// TODO: Add an event here.
+					glog.Infof("%v: %v is invalid, ignoring", ing.Name, path)
+					continue
+				} else {
+					s.Name = path
+				}
+				s.Host = rules.Host
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
+// sanitizePath removes leading and trailing slashes, and checks if the given
+// path is a PCRE regex.
+func sanitizePath(path string) (string, error) {
+	if strings.HasPrefix(path, "/") {
+		path = path[1:]
+	}
+	if strings.HasSuffix(path, "/") {
+		path = path[:len(path)-1]
+	}
+	_, err := regexp.Compile(path)
+	return path, err
 }
 
 // sync all services with the loadbalancer.
@@ -475,18 +480,15 @@ func (lbc *loadBalancerController) worker() {
 }
 
 // newLoadBalancerController creates a new controller from the given config.
-func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.Client, namespace string) *loadBalancerController {
-
+func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *client.Client, namespace string) *loadBalancerController {
 	lbc := loadBalancerController{
-		cfg:    cfg,
-		client: kubeClient,
-		queue:  workqueue.New(),
-		reloadRateLimiter: util.NewTokenBucketRateLimiter(
-			reloadQPS, int(reloadQPS)),
-		targetService:   *targetService,
-		forwardServices: *forwardServices,
-		httpPort:        *httpPort,
-		tcpServices:     map[string]int{},
+		cfg:               cfg,
+		client:            kubeClient,
+		queue:             workqueue.New(),
+		reloadRateLimiter: util.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
+		targetService:     *targetService,
+		httpPort:          *httpPort,
+		tcpServices:       map[string]int{},
 	}
 
 	for _, service := range strings.Split(*tcpServices, ",") {
@@ -530,25 +532,27 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 			lbc.client, "endpoints", namespace, fields.Everything()),
 		&api.Endpoints{}, resyncPeriod, eventHandlers)
 
+	lbc.ingStore, lbc.ingController = framework.NewInformer(
+		&cache.ListWatch{
+			ListFunc:  ingressListFunc(lbc.client),
+			WatchFunc: ingressWatchFunc(lbc.client),
+		},
+		&extensions.Ingress{}, resyncPeriod, framework.ResourceEventHandlerFuncs{})
+
 	return &lbc
 }
 
-// parseCfg parses the given configuration file.
-// cmd line params take precedence over config directives.
-func parseCfg(configPath string, defLbAlgorithm string) *loadBalancerConfig {
-	jsonBlob, err := ioutil.ReadFile(configPath)
-	if err != nil {
-		glog.Fatalf("Could not parse lb config: %v", err)
+func ingressListFunc(c *client.Client) func() (runtime.Object, error) {
+	return func() (runtime.Object, error) {
+		return c.Extensions().Ingress(api.NamespaceAll).List(labels.Everything(), fields.Everything())
 	}
-	var cfg loadBalancerConfig
-	err = json.Unmarshal(jsonBlob, &cfg)
-	if err != nil {
-		glog.Fatalf("Unable to unmarshal json blob: %v", string(jsonBlob))
-	}
+}
 
-	cfg.lbDefAlgorithm = defLbAlgorithm
-	glog.Infof("Creating new loadbalancer: %+v", cfg)
-	return &cfg
+func ingressWatchFunc(c *client.Client) func(rv api.ListOptions) (watch.Interface, error) {
+	return func(rv api.ListOptions) (watch.Interface, error) {
+		return c.Extensions().Ingress(api.NamespaceAll).Watch(
+			labels.Everything(), fields.Everything(), rv)
+	}
 }
 
 // registerHandlers  services liveness probes.
@@ -594,12 +598,20 @@ func dryRun(lbc *loadBalancerController) {
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
-	cfg := parseCfg(*config, *lbDefAlgorithm)
+
+	cfg := &loadBalancerConfig{
+		Name:           "haproxy",
+		ReloadCmd:      "/haproxy_reload",
+		Config:         "/etc/haproxy/haproxy.cfg",
+		Template:       "template.cfg",
+		lbDefAlgorithm: *lbDefAlgorithm,
+	}
+
 	if len(*tcpServices) == 0 {
 		glog.Infof("All tcp/https services will be ignored.")
 	}
 
-	var kubeClient *unversioned.Client
+	var kubeClient *client.Client
 	var err error
 
 	defErrorPage := newStaticPageHandler(*errorPage, defaultErrorPage)
@@ -620,7 +632,7 @@ func main() {
 	}
 
 	if *cluster {
-		if kubeClient, err = unversioned.NewInCluster(); err != nil {
+		if kubeClient, err = client.NewInCluster(); err != nil {
 			glog.Fatalf("Failed to create client: %v", err)
 		}
 	} else {
@@ -628,20 +640,41 @@ func main() {
 		if err != nil {
 			glog.Fatalf("error connecting to the client: %v", err)
 		}
-		kubeClient, err = unversioned.New(config)
+		kubeClient, err = client.New(config)
 	}
-	namespace, specified, err := clientConfig.Namespace()
-	if err != nil {
-		glog.Fatalf("unexpected error: %v", err)
+	var namespace string
+	if *watchAll {
+		namespace = api.NamespaceAll
+		// One can't watch services in all namespaces because of collisions.
+		// i.e an Ingress specifically configures a loadbalancer behind a
+		// given IP with some path rules. This has nothing to do with
+		// namespaces. However, if 2 services with the same name show up in
+		// different namespaces, which one gets the service name path? This
+		// is a case of explicit (Ingress) vs implicit (service name), where
+		// we simply don't handle the implicit case.
+		if !*useIngress {
+			glog.Fatalf(
+				"Invalid configuration: --use-ingress=false, --watch-all-namespaces=true.")
+		}
+	} else {
+		var specified bool
+		var err error
+		namespace, specified, err = clientConfig.Namespace()
+		if err != nil {
+			glog.Fatalf("unexpected error: %v", err)
+		}
+		if !specified {
+			namespace = "default"
+		}
 	}
-	if !specified {
-		namespace = "default"
-	}
-
 	// TODO: Handle multiple namespaces
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace)
 	go lbc.epController.Run(util.NeverStop)
 	go lbc.svcController.Run(util.NeverStop)
+	if *useIngress {
+		lbc.useIngress = true
+		go lbc.ingController.Run(util.NeverStop)
+	}
 	if *dry {
 		dryRun(lbc)
 	} else {
