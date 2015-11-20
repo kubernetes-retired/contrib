@@ -13,6 +13,10 @@
   tags:
     - post-service
 
+- include: page-service.yml service_port=5001 node_port={{ node_port_page_service }}
+  tags:
+    - page-service
+
 - include: other-service.yml service_port=9080 node_port={{ node_port_other_service }}
   tags:
     - other-service

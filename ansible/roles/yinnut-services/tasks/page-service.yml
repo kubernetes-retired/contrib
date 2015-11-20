@@ -1,0 +1,25 @@
+---
+
+- name: Make sure remote /tmp/yinnut-services/page-service exsist
+  file: path=/tmp/yinnut-services/page-service state=directory
+
+- include: deploy-k8s-resource.yml
+  vars:
+    resource_name: Page Service rc.yaml
+    resource_type: rc
+    resource_filter: page-service
+    template_path: page-service/rc.yaml.j2
+    resource_path: /tmp/yinnut-services/page-service/rc.yaml
+
+- include: deploy-k8s-resource.yml
+  vars:
+    resource_name: Page Service svc.yaml
+    resource_type: svc
+    resource_filter: pagesvc
+    template_path: page-service/svc.yaml.j2
+    resource_path: /tmp/yinnut-services/page-service/svc.yaml
+
+- include: register-nginx-proxy.yml
+  vars:
+    nginx_conf: /etc/nginx/conf.d/page-service.conf
+    iptables_comment: page-service-node-port
