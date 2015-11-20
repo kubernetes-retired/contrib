@@ -54,3 +54,6 @@ use-kubernetes-cluster-service
 user-whitelist
 watch-namespace
 whitelist-override-label
+configuration-name
+custom-error-service
+
