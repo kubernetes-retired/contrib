@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM python
+FROM python:3.4-slim
 MAINTAINER Prashanth B <beeps@google.com>
 ADD echoserver.py echoserver.py
 ADD README.md README.md
