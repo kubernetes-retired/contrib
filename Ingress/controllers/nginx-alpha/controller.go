@@ -49,7 +49,7 @@ http {
     server_name {{$rule.Host}};
 {{ range $path := $rule.HTTP.Paths }}
     location {{$path.Path}} {
-      proxy_pass http://{{$path.Backend.ServiceName}};
+      proxy_pass http://{{$path.Backend.ServiceName}}.{{$ing.Namespace}}.svc.cluster.local;
     }{{end}}
   }{{end}}{{end}}
 }`
