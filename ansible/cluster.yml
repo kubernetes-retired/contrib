@@ -35,7 +35,7 @@
   roles:
     - { role: flannel, when: networking == 'flannel' }
   tags:
-    - flannel
+    - network-service-install
 
 # install opencontrail
 - hosts: all
