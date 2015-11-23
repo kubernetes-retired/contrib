@@ -44,3 +44,7 @@ sync-period
 delete-all-on-quit
 health-check-path
 default-backend-service
+etcd-prefix
+etcd-server
+healthz-port
+network-config
