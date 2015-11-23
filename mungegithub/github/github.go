@@ -181,6 +181,7 @@ type analytics struct {
 	ListIssues        analytic
 	ListIssueEvents   analytic
 	ListCommits       analytic
+	ListComments      analytic
 	GetCommit         analytic
 	GetCombinedStatus analytic
 	SetStatus         analytic
@@ -207,6 +208,7 @@ func (a analytics) print() {
 	fmt.Fprintf(w, "ListIssues\t%d\t\n", a.ListIssues.Count)
 	fmt.Fprintf(w, "ListIssueEvents\t%d\t\n", a.ListIssueEvents.Count)
 	fmt.Fprintf(w, "ListCommits\t%d\t\n", a.ListCommits.Count)
+	fmt.Fprintf(w, "ListComments\t%d\t\n", a.ListComments.Count)
 	fmt.Fprintf(w, "GetCommit\t%d\t\n", a.GetCommit.Count)
 	fmt.Fprintf(w, "GetCombinedStatus\t%d\t\n", a.GetCombinedStatus.Count)
 	fmt.Fprintf(w, "SetStatus\t%d\t\n", a.SetStatus.Count)
@@ -511,6 +513,11 @@ func (obj *MungeObject) AddLabels(labels []string) error {
 	return nil
 }
 
+// AddLabel will add just the single `label` to the PR
+func (obj *MungeObject) AddLabel(label string) error {
+	return obj.AddLabels([]string{label})
+}
+
 // RemoveLabel will remove the `label` from the PR
 func (obj *MungeObject) RemoveLabel(label string) error {
 	config := obj.config
@@ -628,6 +635,34 @@ func (obj *MungeObject) GetEvents() ([]github.IssueEvent, error) {
 	}
 	obj.events = events
 	return events, nil
+}
+
+// GetComments returns all comments for the given object.
+func (obj *MungeObject) GetComments() ([]github.IssueComment, error) {
+	config := obj.config
+	prNum := *obj.Issue.Number
+	comments := []github.IssueComment{}
+	page := 1
+	for {
+		opt := &github.IssueListCommentsOptions{
+			ListOptions: github.ListOptions{
+				PerPage: 100,
+				Page:    page,
+			},
+		}
+		commentsPage, response, err := config.client.Issues.ListComments(config.Org, config.Project, prNum, opt)
+		config.analytics.ListComments.Call(config, response)
+		if err != nil {
+			glog.Errorf("Error getting comments for issue: %v", err)
+			return nil, err
+		}
+		comments = append(comments, commentsPage...)
+		if response.LastPage == 0 || response.LastPage <= page {
+			break
+		}
+		page++
+	}
+	return comments, nil
 }
 
 func computeStatus(combinedStatus *github.CombinedStatus, requiredContexts []string) string {
