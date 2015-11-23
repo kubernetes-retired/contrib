@@ -3,6 +3,7 @@ node_port_other_service: 30002
 node_port_passport_service: 30003
 node_port_post_service: 30004
 node_port_page_service: 30005
+node_port_group_service: 30006
 
 node_port_kube_logging_kibana: 30101
 

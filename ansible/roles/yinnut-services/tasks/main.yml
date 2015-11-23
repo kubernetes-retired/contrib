@@ -17,6 +17,10 @@
   tags:
     - page-service
 
+- include: group-service.yml service_port=8898 node_port={{ node_port_group_service }}
+  tags:
+    - group-service
+
 - include: other-service.yml service_port=9080 node_port={{ node_port_other_service }}
   tags:
     - other-service
