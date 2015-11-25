@@ -5,7 +5,7 @@
 
 - include: deploy-k8s-resource.yml
   vars:
-    resource_name: Post Service rc.yaml
+    resource_name: User Service rc.yaml
     resource_type: rc
     resource_filter: user-service
     template_path: user-service/rc.yaml.j2
@@ -13,7 +13,7 @@
 
 - include: deploy-k8s-resource.yml
   vars:
-    resource_name: Post Service svc.yaml
+    resource_name: User Service svc.yaml
     resource_type: svc
     resource_filter: usersvc
     template_path: user-service/svc.yaml.j2
