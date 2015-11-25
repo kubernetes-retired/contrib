@@ -174,6 +174,7 @@ type analytics struct {
 	ListCommits       analytic
 	GetCommit         analytic
 	GetCombinedStatus analytic
+	SetStatus         analytic
 	GetPR             analytic
 	AssignPR          analytic
 	ClosePR           analytic
@@ -199,6 +200,7 @@ func (a analytics) print() {
 	fmt.Fprintf(w, "ListCommits\t%d\t\n", a.ListCommits.Count)
 	fmt.Fprintf(w, "GetCommit\t%d\t\n", a.GetCommit.Count)
 	fmt.Fprintf(w, "GetCombinedStatus\t%d\t\n", a.GetCombinedStatus.Count)
+	fmt.Fprintf(w, "SetStatus\t%d\t\n", a.SetStatus.Count)
 	fmt.Fprintf(w, "GetPR\t%d\t\n", a.GetPR.Count)
 	fmt.Fprintf(w, "AssignPR\t%d\t\n", a.AssignPR.Count)
 	fmt.Fprintf(w, "ClosePR\t%d\t\n", a.ClosePR.Count)
@@ -641,39 +643,83 @@ func computeStatus(combinedStatus *github.CombinedStatus, requiredContexts []str
 	}
 }
 
-// GetStatus gets the current status of a PR.
-//    * If any member of the 'requiredContexts' list is missing, it is 'incomplete'
-//    * If any is 'pending', the PR is 'pending'
-//    * If any is 'error', the PR is in 'error'
-//    * If any is 'failure', the PR is 'failure'
-//    * Otherwise the PR is 'success'
-func (obj *MungeObject) GetStatus(requiredContexts []string) (string, error) {
+func (obj *MungeObject) getCombinedStatus() (status *github.CombinedStatus) {
 	config := obj.config
 	pr, err := obj.GetPR()
 	if err != nil {
-		return "failure", err
+		return nil
 	}
 	if pr.Head == nil {
-		glog.Errorf("pr.Head is nil in GetStatus for PR# %d", *pr.Number)
-		return "failure", nil
+		glog.Errorf("pr.Head is nil in getCombinedStatus for PR# %d", *obj.Issue.Number)
+		return nil
 	}
 	// TODO If we have more than 100 statuses we need to deal with paging.
 	combinedStatus, response, err := config.client.Repositories.GetCombinedStatus(config.Org, config.Project, *pr.Head.SHA, &github.ListOptions{})
 	config.analytics.GetCombinedStatus.Call(config, response)
 	if err != nil {
 		glog.Errorf("Failed to get combined status: %v", err)
-		return "failure", err
+		return nil
 	}
+	return combinedStatus
+}
 
-	return computeStatus(combinedStatus, requiredContexts), nil
+// SetStatus allowes you to set the Github Status
+func (obj *MungeObject) SetStatus(state, url, description, context string) error {
+	config := obj.config
+	status := &github.RepoStatus{
+		State:       &state,
+		TargetURL:   &url,
+		Description: &description,
+		Context:     &context,
+	}
+	pr, err := obj.GetPR()
+	if err != nil {
+		return err
+	}
+	ref := *pr.Head.SHA
+	glog.Infof("PR %d setting %q Github status to %q", *obj.Issue.Number, context, description)
+	config.analytics.SetStatus.Call(config, nil)
+	if config.DryRun {
+		return nil
+	}
+	_, _, err = config.client.Repositories.CreateStatus(config.Org, config.Project, ref, status)
+	if err != nil {
+		glog.Errorf("Unable to set status. PR %d Ref: %q: %v", *obj.Issue.Number, ref, err)
+	}
+	return err
+}
+
+// GetStatus returns the actual requested status, or nil if not found
+func (obj *MungeObject) GetStatus(context string) *github.RepoStatus {
+	combinedStatus := obj.getCombinedStatus()
+	if combinedStatus == nil {
+		return nil
+	}
+	for _, status := range combinedStatus.Statuses {
+		if *status.Context == context {
+			return &status
+		}
+	}
+	return nil
+}
+
+// GetStatusState gets the current status of a PR.
+//    * If any member of the 'requiredContexts' list is missing, it is 'incomplete'
+//    * If any is 'pending', the PR is 'pending'
+//    * If any is 'error', the PR is in 'error'
+//    * If any is 'failure', the PR is 'failure'
+//    * Otherwise the PR is 'success'
+func (obj *MungeObject) GetStatusState(requiredContexts []string) string {
+	combinedStatus := obj.getCombinedStatus()
+	if combinedStatus == nil {
+		return "failure"
+	}
+	return computeStatus(combinedStatus, requiredContexts)
 }
 
 // IsStatusSuccess makes sure that the combined status for all commits in a PR is 'success'
 func (obj *MungeObject) IsStatusSuccess(requiredContexts []string) bool {
-	status, err := obj.GetStatus(requiredContexts)
-	if err != nil {
-		return false
-	}
+	status := obj.GetStatusState(requiredContexts)
 	if status == "success" {
 		return true
 	}
@@ -689,11 +735,7 @@ func timeout(sleepTime time.Duration, c chan bool) {
 func (obj *MungeObject) doWaitStatus(pending bool, requiredContexts []string, c chan error) {
 	config := obj.config
 	for {
-		status, err := obj.GetStatus(requiredContexts)
-		if err != nil {
-			c <- err
-			return
-		}
+		status := obj.GetStatusState(requiredContexts)
 		var done bool
 		if pending {
 			done = (status == "pending")
