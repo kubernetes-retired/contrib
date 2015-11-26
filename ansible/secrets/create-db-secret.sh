@@ -28,4 +28,4 @@ else
   echo "db [${db_name}] secret already exist!"
 fi
 
-kubectl get secrets/${db_name} -o yaml
+kubectl get secrets/${db_name}
