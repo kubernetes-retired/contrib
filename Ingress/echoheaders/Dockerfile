@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM python:3.4-slim
+FROM gcr.io/google_containers/nginx-slim:0.1
 MAINTAINER Prashanth B <beeps@google.com>
-ADD echoserver.py echoserver.py
+ADD nginx.conf /etc/nginx/nginx.conf
 ADD README.md README.md
-ENTRYPOINT ["python", "/echoserver.py"]
-
