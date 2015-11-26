@@ -18,4 +18,6 @@
 - name: Deploy kubernetes resource from {{ resource_path }}
   shell: kubectl create -f {{ resource_path }}
 
+- name: Store file {{ resource_path }} to bak
+  shell: "mv {{ resource_path }} {{ resource_path }}.bak"
 
