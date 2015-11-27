@@ -1,7 +1,7 @@
 ---
 - name: Copy node binaries
   copy:
-    src: "{{ localBuildOutput }}/go/bin/{{ item }}"
+    src: "{{ localBuildOutput }}/{{ item }}"
     dest: /usr/bin/
     mode: 0755
   with_items:

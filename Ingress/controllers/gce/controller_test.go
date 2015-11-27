@@ -19,7 +19,6 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -28,7 +27,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/testapi"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util"
 )
 
@@ -287,6 +285,24 @@ func TestLbFaultyUpdate(t *testing.T) {
 	cm.fakeLbs.checkUrlMap(t, l7, pm.toNodePortSvcNames(inputMap))
 }
 
+func TestLbDefaulting(t *testing.T) {
+	cm := newFakeClusterManager(testClusterName)
+	lbc := newLoadBalancerController(t, cm, "")
+	// Make sure the controller plugs in the default values accepted by GCE.
+	ing := newIngress(map[string]fakeIngressRuleValueMap{"": {"": "foo1svc"}})
+	pm := newPortManager(1, 65536)
+	addIngress(lbc, ing, pm)
+
+	ingStoreKey := getKey(ing, t)
+	lbc.sync(ingStoreKey)
+	l7, err := cm.l7Pool.Get(ingStoreKey)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	expectedMap := map[string]fakeIngressRuleValueMap{defaultHost: {defaultPath: "foo1svc"}}
+	cm.fakeLbs.checkUrlMap(t, l7, pm.toNodePortSvcNames(expectedMap))
+}
+
 func TestLbNoService(t *testing.T) {
 	cm := newFakeClusterManager(testClusterName)
 	lbc := newLoadBalancerController(t, cm, "")
@@ -331,51 +347,4 @@ func TestLbNoService(t *testing.T) {
 	cm.fakeLbs.checkUrlMap(t, l7, expectedMap)
 }
 
-func TestLbStatusUpdate(t *testing.T) {
-	inputMap := map[string]fakeIngressRuleValueMap{
-		"foo.example.com": {
-			"/foo1": "foo1svc",
-		},
-	}
-	ing := newIngress(inputMap)
-	// Set the namespace because we're testing client get/set
-	ing.Namespace = api.NamespaceDefault
-
-	response := runtime.EncodeOrDie(
-		testapi.Extensions.Codec(), ing)
-
-	// The loadbalancer controller will do a get, to retrieve the most current
-	// version of the resource, followed by a PUT with the new ip. This handler
-	// responds to the GET and records the PUT.
-	fakeHandler := util.FakeHandler{
-		StatusCode:   200,
-		ResponseBody: response,
-	}
-	testServer := httptest.NewServer(&fakeHandler)
-	defer testServer.Close()
-
-	cm := newFakeClusterManager(testClusterName)
-	lbc := newLoadBalancerController(t, cm, testServer.URL)
-
-	pm := newPortManager(1, 65536)
-	addIngress(lbc, ing, pm)
-
-	ingStoreKey := getKey(ing, t)
-	lbc.sync(ingStoreKey)
-	l7, err := cm.l7Pool.Get(ingStoreKey)
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-	ing.Status = extensions.IngressStatus{
-		LoadBalancer: api.LoadBalancerStatus{
-			Ingress: []api.LoadBalancerIngress{
-				{IP: l7.GetIP()},
-			},
-		},
-	}
-	updatedIng := runtime.EncodeOrDie(testapi.Extensions.Codec(), ing)
-	fakeHandler.ValidateRequest(
-		t, testapi.Extensions.ResourcePath(
-			"ingresses", ing.Namespace, ing.Name)+"/status",
-		"PUT", &updatedIng)
-}
+// TODO: Test lb status update when annotation stabilize

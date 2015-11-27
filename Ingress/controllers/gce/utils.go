@@ -143,7 +143,7 @@ func (t *gceTranslator) toUrlMap(ing *extensions.Ingress) (gceUrlMap, error) {
 	hostPathBackend := gceUrlMap{}
 	for _, rule := range ing.Spec.Rules {
 		if rule.HTTP == nil {
-			glog.Errorf("IGnoring non http Ingress rule")
+			glog.Errorf("Ignoring non http Ingress rule")
 			continue
 		}
 		pathToBackend := map[string]*compute.BackendService{}
@@ -163,7 +163,14 @@ func (t *gceTranslator) toUrlMap(ing *extensions.Ingress) (gceUrlMap, error) {
 				// So keep requeuing the l7 till all backends exist.
 				return gceUrlMap{}, err
 			}
-			pathToBackend[p.Path] = backend
+			// The Ingress spec defines empty path as catch-all, so if a user
+			// asks for a single host and multiple empty paths, all traffic is
+			// sent to one of the last backend in the rules list.
+			path := p.Path
+			if path == "" {
+				path = defaultPath
+			}
+			pathToBackend[path] = backend
 		}
 		// If multiple hostless rule sets are specified, last one wins
 		host := rule.Host
@@ -247,7 +254,7 @@ func (t *gceTranslator) toNodePorts(ings *extensions.IngressList) []int64 {
 		}
 		for _, rule := range ing.Spec.Rules {
 			if rule.HTTP == nil {
-				glog.Errorf("IGnoring non http Ingress rule.")
+				glog.Errorf("Ignoring non http Ingress rule.")
 				continue
 			}
 			for _, path := range rule.HTTP.Paths {
@@ -336,7 +343,7 @@ func isHTTPErrorCode(err error, code int) bool {
 func getNodePort(client *client.Client, ns, name string) (nodePort int64, err error) {
 	var svc *api.Service
 	glog.Infof("Waiting for %v/%v", ns, name)
-	wait.Poll(100*time.Microsecond, 5*time.Minute, func() (bool, error) {
+	wait.Poll(1*time.Second, 5*time.Minute, func() (bool, error) {
 		svc, err = client.Services(ns).Get(name)
 		if err != nil {
 			return false, nil

@@ -93,6 +93,7 @@ func Issue(user string, number int, labels []string, isPR bool) *github.Issue {
 // It expresses what label the event should be about and what time
 // the event took place.
 type LabelTime struct {
+	User  string
 	Label string
 	Time  int64
 }
@@ -109,6 +110,9 @@ func Events(labels []LabelTime) []github.IssueEvent {
 				Name: stringPtr(l.Label),
 			},
 			CreatedAt: timePtr(time.Unix(l.Time, 0)),
+			Actor: &github.User{
+				Login: stringPtr(l.User),
+			},
 		}
 		eMap[i] = event
 	}
@@ -181,8 +185,10 @@ func updateStatusState(status *github.CombinedStatus) *github.CombinedStatus {
 func fillMap(sMap map[int]github.RepoStatus, contexts []string, state string) {
 	for _, context := range contexts {
 		s := github.RepoStatus{
-			Context: stringPtr(context),
-			State:   stringPtr(state),
+			Context:   stringPtr(context),
+			State:     stringPtr(state),
+			UpdatedAt: timePtr(time.Unix(0, 0)),
+			CreatedAt: timePtr(time.Unix(0, 0)),
 		}
 		sMap[len(sMap)] = s
 	}
@@ -268,7 +274,7 @@ func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, event
 	}
 
 	if issue != nil {
-		path := fmt.Sprintf("repos/o/r/issues/%d", issueNum)
+		path := fmt.Sprintf("/repos/o/r/issues/%d", issueNum)
 		setMux(t, mux, path, issue)
 	}
 	if pr != nil {

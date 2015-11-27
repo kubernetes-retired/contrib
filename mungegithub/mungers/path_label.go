@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"k8s.io/contrib/mungegithub/github"
@@ -33,10 +34,20 @@ var (
 	_ = fmt.Print
 )
 
+const (
+	botName = "k8s-merge-robot"
+)
+
+type labelMap struct {
+	regexp *regexp.Regexp
+	label  string
+}
+
 // PathLabelMunger will add labels to PRs based on what files it modified.
 // The mapping of files to labels if provided in a file in --path-label-config
 type PathLabelMunger struct {
-	labelMap      *map[string]string
+	labelMap      []labelMap
+	allLabels     sets.String
 	pathLabelFile string
 }
 
@@ -49,8 +60,8 @@ func (p *PathLabelMunger) Name() string { return "path-label" }
 
 // Initialize will initialize the munger
 func (p *PathLabelMunger) Initialize(config *github.Config) error {
-	out := map[string]string{}
-	p.labelMap = &out
+	allLabels := sets.NewString()
+	out := []labelMap{}
 	file := p.pathLabelFile
 	if len(file) == 0 {
 		glog.Infof("No --path-label-config= supplied, applying no labels")
@@ -67,15 +78,30 @@ func (p *PathLabelMunger) Initialize(config *github.Config) error {
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
+		if line == "" {
+			continue
+		}
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			glog.Errorf("Invalid line in path based label munger config %s: %q", file, line)
 			continue
 		}
-		file := fields[0]
+		r, err := regexp.Compile(fields[0])
+		if err != nil {
+			glog.Errorf("Invalid regexp in label munger config %s: %q", file, fields[0])
+			continue
+		}
+
 		label := fields[1]
-		out[file] = label
+		lm := labelMap{
+			regexp: r,
+			label:  label,
+		}
+		out = append(out, lm)
+		allLabels.Insert(label)
 	}
+	p.allLabels = allLabels
+	p.labelMap = out
 	return scanner.Err()
 }
 
@@ -98,20 +124,30 @@ func (p *PathLabelMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	labelMap := *p.labelMap
-
 	needsLabels := sets.NewString()
 	for _, c := range commits {
 		for _, f := range c.Files {
-			for prefix, label := range labelMap {
-				if strings.HasPrefix(*f.Filename, prefix) && !obj.HasLabel(label) {
-					needsLabels.Insert(label)
+			for _, lm := range p.labelMap {
+				if lm.regexp.MatchString(*f.Filename) {
+					needsLabels.Insert(lm.label)
 				}
 			}
 		}
 	}
 
-	if needsLabels.Len() != 0 {
+	// This is all labels on the issue that the path munger controls
+	hasLabels := obj.LabelSet().Intersection(p.allLabels)
+
+	missingLabels := needsLabels.Difference(hasLabels)
+	if missingLabels.Len() != 0 {
 		obj.AddLabels(needsLabels.List())
+	}
+
+	extraLabels := hasLabels.Difference(needsLabels)
+	for _, label := range extraLabels.List() {
+		creator := obj.LabelCreator(label)
+		if creator == botName {
+			obj.RemoveLabel(label)
+		}
 	}
 }

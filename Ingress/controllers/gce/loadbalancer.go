@@ -39,6 +39,9 @@ const (
 	// The host used if none is specified. It is a valid value for Host
 	// recognized by GCE.
 	defaultHost = "*"
+
+	// The path used if none is specified. It is a valid path recognized by GCE.
+	defaultPath = "/*"
 )
 
 // gceUrlMap is a nested map of hostname->path regex->backend
@@ -200,7 +203,9 @@ func (l *L7s) Sync(names []string) error {
 	// Tear down the default backend when there are no more loadbalancers
 	// because the cluster could go down anytime and we'd leak it otherwise.
 	if len(names) == 0 {
-		l.defaultBackendPool.Delete(l.defaultBackendNodePort)
+		if err := l.defaultBackendPool.Delete(l.defaultBackendNodePort); err != nil {
+			return err
+		}
 		l.glbcDefaultBackend = nil
 	}
 	return nil

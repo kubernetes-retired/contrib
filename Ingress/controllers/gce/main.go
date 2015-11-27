@@ -33,11 +33,11 @@ import (
 )
 
 // Entrypoint of GLBC. Example invocation:
-// 1. In a pod (30312 is the node port of an actual Kubernetes Service):
-// glbc --delete-all-on-quit --default-backend-node-port=30312
+// 1. In a pod:
+// glbc --delete-all-on-quit
 // 2. Dry run (on localhost):
 // $ kubectl proxy --api-prefix="/"
-// $ glbc --proxy="http://localhost:proxyport" --default-backend-node-port=123
+// $ glbc --proxy="http://localhost:proxyport"
 
 const (
 	// lbApiPort is the port on which the loadbalancer controller serves a
@@ -56,7 +56,7 @@ var (
 		printed to stdout and no changes are made to your cluster. This flag is for
 		testing.`)
 
-	clusterName = flags.String("gce-cluster-name", "foo",
+	clusterName = flags.String("gce-cluster-name", "default-cluster-name",
 		`Optional, used to tag cluster wide, shared loadbalancer resources such
 		 as instance groups. Use this flag if you'd like to continue using the
 		 same resources across a pod restart. Note that this does not need to
@@ -76,7 +76,7 @@ var (
 		testing. In normal environments the controller should only delete
 		a loadbalancer if the associated Ingress is deleted.`)
 
-	defaultSvc = flags.String("default-backend-service", "kube-system/glbc-default-backend",
+	defaultSvc = flags.String("default-backend-service", "kube-system/default-http-backend",
 		`Service used to serve a 404 page for the default backend. Takes the form
 		namespace/name. The controller uses the first node port of this Service for
 		the default backend.`)
@@ -88,7 +88,11 @@ var (
 
 func registerHandlers(lbc *loadBalancerController) {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		// TODO: Better healthz.
+		if err := lbc.clusterManager.isHealthy(); err != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(fmt.Sprintf("Cluster unhealthy: %v", err)))
+			return
+		}
 		w.WriteHeader(200)
 		w.Write([]byte("ok"))
 	})

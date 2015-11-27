@@ -9,6 +9,16 @@
   register: distro
   always_run: yes
 
+- name: Determine if Atomic
+  stat: path=/run/ostree-booted
+  register: s
+  changed_when: false
+
+- name: Set the is_atomic fact
+  set_fact:
+    is_atomic: true
+  when: s.stat.exists
+
 - name: "Build hosts file"
   lineinfile:
     dest=/etc/hosts
@@ -48,7 +58,7 @@
   service: name=iptables state=started enabled=yes
 
 - include: fedora-dnf.yml
-  when: os_version.stdout|int >= 22 and 'Fedora' in distro.stdout
+  when: os_version.stdout|int >= 22 and 'Fedora' in distro.stdout and is_atomic is not defined
 
 - include: yum_repo.yml
   when: ansible_distribution == "CentOS"
