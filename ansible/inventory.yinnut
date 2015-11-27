@@ -1,9 +1,6 @@
 centos7-node-221 ansible_ssh_host=192.168.1.221 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
 centos7-node-226 ansible_ssh_host=192.168.1.226 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
 centos7-node-223 ansible_ssh_host=192.168.1.223 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
-centos7-node-224 ansible_ssh_host=192.168.1.224 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
-centos7-node-225 ansible_ssh_host=192.168.1.225 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
-#centos7-node-227 ansible_ssh_host=192.168.1.227 ansible_ssh_port=22 ansible_ssh_user=root ansible_ssh_private_key_file=private_keys/ansible_private_key
 
 
 [masters]
@@ -14,5 +11,5 @@ centos7-node-221
 
 [nodes]
 centos7-node-221
-centos7-node-22[3:6]
-
+centos7-node-223
+centos7-node-226
