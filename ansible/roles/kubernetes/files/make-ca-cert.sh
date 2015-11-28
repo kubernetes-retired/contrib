@@ -101,6 +101,7 @@ tar xzf easy-rsa.tar.gz
 cd easy-rsa-master/easyrsa3
 
 # Sadly, openssl is very verbose to std*err* with no option to turn it off.
+# Warning: If you get errors on 64 byte length below, --req-cn=kube.example.com will solve the problem.
 if ! (./easyrsa --batch init-pki
       ./easyrsa --batch "--req-cn=${cert_ip}@$(date +%s)" build-ca nopass
       ./easyrsa --batch --subject-alt-name="${sans}" build-server-full "${master_name}" nopass

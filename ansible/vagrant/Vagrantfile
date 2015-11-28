@@ -6,6 +6,7 @@ require "yaml"
 ### RUN: vagrant plugin uninstall vagrant-openstack-plugin"
 ### Then RUN: "vagrant plugin install vagrant-openstack-provider"
 require 'vagrant-openstack-provider'
+require 'vagrant-hostmanager'
 
 $num_nodes = (ENV['NUM_NODES'] || 2).to_i
 ansible_tags = ENV['ANSIBLE_TAGS']
@@ -14,6 +15,20 @@ VAGRANTFILE_API_VERSION = "2"
 
 # Openstack providers are best used with latest versions.
 Vagrant.require_version ">= 1.7"
+
+# for vbox, we avoid private networks: Let the vbox VM set the IP and just write it out at runtime.
+def getip(vm, cached_addresses, name)
+	
+	if cached_addresses[vm.name].nil?
+		if hostname = (vm.ssh_info && vm.ssh_info[:host])
+		        vm.communicate.execute("/usr/sbin/ip addr show eth1 | grep 'inet ' | xargs | cut -f 2 -d ' '| cut -f 1 -d '/' 2>&1") do |type, contents|
+		        cached_addresses[name] = contents.split("\n").first[/(\d+\.\d+\.\d+\.\d+)/, 1]
+	           end
+	        end
+         end
+### Since we aren't gauranteed to have calculated the result, just return whatevers in the cache.
+cached_addresses[name]
+end
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # By default, Vagrant 1.7+ automatically inserts a different
@@ -59,12 +74,16 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     os.server_name = n.vm.hostname
   end
 
-  def set_vbox(vb, config)
-    config.vm.box = "chef/centos-7.0"
+  def set_vbox(vb, config, cached_addresses_in)
+    config.vm.box = "hfm4/centos7"
     config.vm.network "private_network", type: "dhcp"
     vb.gui = false
     vb.memory = 2048
     vb.cpus = 2
+
+    config.hostmanager.ip_resolver = proc do |vm, resolving_vm|
+      	getip(vm, cached_addresses_in, vm.name)
+    end
 
     # Use faster paravirtualized networking
     vb.customize ["modifyvm", :id, "--nictype1", "virtio"]
@@ -85,7 +104,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       set_openstack(os, override, n)
     end
     n.vm.provider :virtualbox do |vb, override|
-      set_vbox(vb, override)
+      cached_addresses ||= {}
+      cached_addresses = set_vbox(vb, override, cached_addresses)
     end
     n.vm.provider :libvirt do |lv, override|
       set_libvirt(lv, override)
@@ -93,16 +113,17 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   end
 
   config.vm.synced_folder ".", "/vagrant", disabled: true
-
+  cached_addresses = {}
+  config.hostmanager.enabled = true
   nodes = Array.new()
+
   $num_nodes.times do |i|
-    # multi vm config
-    name = "kube-node-#{i+1}"
-    nodes.push(name)
-    config.vm.define "#{name}" do |n|
-      n.vm.hostname = name
-      set_provider(n)
-    end
+      name="kube-node-#{i+1}"
+      config.vm.define name do |n|
+         n.vm.hostname = name
+         nodes.push(name)
+         set_provider(n)
+      end
   end
 
   # This is how we create the ansible inventory, see it in .vagrant
@@ -114,31 +135,25 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
      "nodes" => nodes,
      "all_groups:children" => ["etcd","masters","nodes"]
   }
-
   config.vm.define "kube-master" do |n|
     name = "kube-master"
     n.vm.hostname = name
     set_provider(n)
-
     if ansible_tags.nil?
-      # This set up the vagrant hosts before we run the main playbook
-      # Today this just creates /etc/hosts so machines can talk via their
-      # 'internal' IPs instead of the openstack public ip.
+      # This sets up both flannel and kube.
       n.vm.provision :ansible do |ansible|
         ansible.groups = groups
-        ansible.playbook = "./vagrant-ansible.yml"
-        ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
-        ansible.raw_ssh_args = ['-o ControlMaster=no']
-      end
-    end
+        ansible.playbook = "../cluster.yml"
 
-    # This sets up both flannel and kube.
-    n.vm.provision :ansible do |ansible|
-      ansible.groups = groups
-      ansible.playbook = "../cluster.yml"
-      ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
-      ansible.tags = ansible_tags
-      ansible.raw_ssh_args = ['-o ControlMaster=no']
-    end
-  end
+        # Most of the time, eth1 is the real address we use for networking.
+        n.vm.provider :virtualbox do |vb, override|
+          ansible.extra_vars = { flannel_iface: "eth1" }
+        end
+
+      	ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
+      	ansible.tags = ansible_tags
+        ansible.raw_ssh_args = ['-o ControlMaster=no']
+      end # provision
+    end # if
+  end # define 
 end
