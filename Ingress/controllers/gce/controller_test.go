@@ -33,7 +33,7 @@ import (
 // newLoadBalancerController create a loadbalancer controller.
 func newLoadBalancerController(t *testing.T, cm *fakeClusterManager, masterUrl string) *loadBalancerController {
 	client := client.NewOrDie(&client.Config{Host: masterUrl, Version: testapi.Default.Version()})
-	lb, err := NewLoadBalancerController(client, cm.ClusterManager, 1*time.Second)
+	lb, err := NewLoadBalancerController(client, cm.ClusterManager, 1*time.Second, api.NamespaceAll)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}

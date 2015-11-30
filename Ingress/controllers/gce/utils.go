@@ -359,3 +359,13 @@ func getNodePort(client *client.Client, ns, name string) (nodePort int64, err er
 	})
 	return
 }
+
+// truncate truncates the given key to a GCE length limit.
+func truncate(key string) string {
+	if len(key) > nameLenLimit {
+		// GCE requires names to end with an albhanumeric, but allows characters
+		// like '-', so make sure the trucated name ends legally.
+		return fmt.Sprintf("%v%v", key[:nameLenLimit], alphaNumericChar)
+	}
+	return key
+}

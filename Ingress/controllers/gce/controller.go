@@ -71,7 +71,7 @@ type loadBalancerController struct {
 // - clusterManager: A ClusterManager capable of creating all cloud resources
 //	 required for L7 loadbalancing.
 // - resyncPeriod: Watchers relist from the Kubernetes API server this often.
-func NewLoadBalancerController(kubeClient *client.Client, clusterManager *ClusterManager, resyncPeriod time.Duration) (*loadBalancerController, error) {
+func NewLoadBalancerController(kubeClient *client.Client, clusterManager *ClusterManager, resyncPeriod time.Duration, namespace string) (*loadBalancerController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(kubeClient.Events(""))
@@ -104,8 +104,8 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 	}
 	lbc.ingLister.Store, lbc.ingController = framework.NewInformer(
 		&cache.ListWatch{
-			ListFunc:  ingressListFunc(lbc.client),
-			WatchFunc: ingressWatchFunc(lbc.client),
+			ListFunc:  ingressListFunc(lbc.client, namespace),
+			WatchFunc: ingressWatchFunc(lbc.client, namespace),
 		},
 		&extensions.Ingress{}, resyncPeriod, pathHandlers)
 
@@ -122,7 +122,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 
 	lbc.svcLister.Store, lbc.svcController = framework.NewInformer(
 		cache.NewListWatchFromClient(
-			lbc.client, "services", api.NamespaceAll, fields.Everything()),
+			lbc.client, "services", namespace, fields.Everything()),
 		&api.Service{}, resyncPeriod, svcHandlers)
 
 	nodeHandlers := framework.ResourceEventHandlerFuncs{
@@ -157,15 +157,15 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 	return &lbc, nil
 }
 
-func ingressListFunc(c *client.Client) func() (runtime.Object, error) {
+func ingressListFunc(c *client.Client, ns string) func() (runtime.Object, error) {
 	return func() (runtime.Object, error) {
-		return c.Extensions().Ingress(api.NamespaceAll).List(labels.Everything(), fields.Everything())
+		return c.Extensions().Ingress(ns).List(labels.Everything(), fields.Everything())
 	}
 }
 
-func ingressWatchFunc(c *client.Client) func(options api.ListOptions) (watch.Interface, error) {
+func ingressWatchFunc(c *client.Client, ns string) func(options api.ListOptions) (watch.Interface, error) {
 	return func(options api.ListOptions) (watch.Interface, error) {
-		return c.Extensions().Ingress(api.NamespaceAll).Watch(
+		return c.Extensions().Ingress(ns).Watch(
 			labels.Everything(), fields.Everything(), options)
 	}
 }

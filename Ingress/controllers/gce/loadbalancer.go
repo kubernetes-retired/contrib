@@ -133,7 +133,15 @@ func (l *L7s) create(name string) (*L7, error) {
 }
 
 func lbName(key string) string {
-	return strings.Replace(key, "/", "-", -1)
+	// TODO: Pipe the clusterName through, for now it saves code churn to just
+	// grab it globally, especially since we haven't decided how to handle
+	// namespace conflicts in the Ubernetes context.
+	parts := strings.Split(key, clusterNameDelimiter)
+	scrubbedName := strings.Replace(key, "/", "-", -1)
+	if *clusterName == "" || parts[len(parts)-1] == *clusterName {
+		return scrubbedName
+	}
+	return truncate(fmt.Sprintf("%v%v%v", scrubbedName, clusterNameDelimiter, *clusterName))
 }
 
 // Get returns the loadbalancer by name.
@@ -260,7 +268,7 @@ func (l *L7) checkUrlMap(backend *compute.BackendService) (err error) {
 	if l.glbcDefaultBackend == nil {
 		return fmt.Errorf("Cannot create urlmap without default backend.")
 	}
-	urlMapName := fmt.Sprintf("%v-%v", urlMapPrefix, l.Name)
+	urlMapName := truncate(fmt.Sprintf("%v-%v", urlMapPrefix, l.Name))
 	urlMap, _ := l.cloud.GetUrlMap(urlMapName)
 	if urlMap != nil {
 		glog.V(3).Infof("Url map %v already exists", urlMap.Name)
@@ -281,7 +289,7 @@ func (l *L7) checkProxy() (err error) {
 	if l.um == nil {
 		return fmt.Errorf("Cannot create proxy without urlmap.")
 	}
-	proxyName := fmt.Sprintf("%v-%v", targetProxyPrefix, l.Name)
+	proxyName := truncate(fmt.Sprintf("%v-%v", targetProxyPrefix, l.Name))
 	proxy, _ := l.cloud.GetTargetHttpProxy(proxyName)
 	if proxy == nil {
 		glog.Infof("Creating new http proxy for urlmap %v", l.um.Name)
@@ -308,7 +316,7 @@ func (l *L7) checkForwardingRule() (err error) {
 		return fmt.Errorf("Cannot create forwarding rule without proxy.")
 	}
 
-	forwardingRuleName := fmt.Sprintf("%v-%v", forwardingRulePrefix, l.Name)
+	forwardingRuleName := truncate(fmt.Sprintf("%v-%v", forwardingRulePrefix, l.Name))
 	fw, _ := l.cloud.GetGlobalForwardingRule(forwardingRuleName)
 	if fw == nil {
 		glog.Infof("Creating forwarding rule for proxy %v", l.tp.Name)

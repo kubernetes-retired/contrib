@@ -26,6 +26,7 @@ import (
 	"time"
 
 	flag "github.com/spf13/pflag"
+	"k8s.io/kubernetes/pkg/api"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
@@ -43,6 +44,13 @@ const (
 	// lbApiPort is the port on which the loadbalancer controller serves a
 	// minimal api (/healthz, /delete-all-and-quit etc).
 	lbApiPort = 8081
+
+	// A delimiter used for clarity in naming GCE resources.
+	clusterNameDelimiter = "--"
+
+	// Arbitrarily chosen alphanumeric character to use in constructing resource
+	// names, eg: to avoid cases where we end up with a name ending in '-'.
+	alphaNumericChar = "0"
 )
 
 var (
@@ -56,7 +64,7 @@ var (
 		printed to stdout and no changes are made to your cluster. This flag is for
 		testing.`)
 
-	clusterName = flags.String("gce-cluster-name", "default-cluster-name",
+	clusterName = flags.String("cluster-uid", "",
 		`Optional, used to tag cluster wide, shared loadbalancer resources such
 		 as instance groups. Use this flag if you'd like to continue using the
 		 same resources across a pod restart. Note that this does not need to
@@ -84,6 +92,9 @@ var (
 	healthCheckPath = flags.String("health-check-path", "/",
 		`Path used to health-check a backend service. All Services must serve
 		a 200 page on this path. Currently this is only configurable globally.`)
+
+	watchNamespace = flags.String("watch-namespace", api.NamespaceAll,
+		`Namespace to watch for Ingress/Services/Endpoints.`)
 )
 
 func registerHandlers(lbc *loadBalancerController) {
@@ -177,7 +188,7 @@ func main() {
 	}
 
 	// Start loadbalancer controller
-	lbc, err := NewLoadBalancerController(kubeClient, clusterManager, *resyncPeriod)
+	lbc, err := NewLoadBalancerController(kubeClient, clusterManager, *resyncPeriod, *watchNamespace)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}

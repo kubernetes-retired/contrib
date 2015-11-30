@@ -39,7 +39,7 @@ user-whitelist
 whitelist-override-label
 error-page
 balance-algorithm
-gce-cluster-name
+cluster-uid
 sync-period
 delete-all-on-quit
 health-check-path
@@ -48,3 +48,4 @@ etcd-prefix
 etcd-server
 healthz-port
 network-config
+watch-namespace
