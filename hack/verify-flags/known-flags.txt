@@ -46,6 +46,7 @@ sync-period
 tcp-services
 token-file
 ttl-secs
+unit-status-context
 url-list
 use-http-cache
 use-ip
