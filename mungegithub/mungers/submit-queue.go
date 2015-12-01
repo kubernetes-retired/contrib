@@ -36,14 +36,14 @@ import (
 
 const (
 	needsOKToMergeLabel = "needs-ok-to-merge"
-	claContext          = "cla/google"
-	gceE2EContext       = "Jenkins GCE e2e"
-	jenkinsCIContext    = "Jenkins unit/integration"
-	shippableContext    = "Shippable"
-	travisContext       = "continuous-integration/travis-ci/pr"
+	e2eNotRequiredLabel = "e2e-not-required"
 	claYes              = "cla: yes"
 	claHuman            = "cla: human-approved"
-	sqContext           = "Submit Queue"
+
+	jenkinsE2EContext  = "Jenkins GCE e2e"
+	jenkinsUnitContext = "Jenkins unit/integration"
+	travisContext      = "continuous-integration/travis-ci/pr"
+	sqContext          = "Submit Queue"
 )
 
 var (
@@ -92,7 +92,6 @@ type SubmitQueue struct {
 	WhitelistOverride      string
 	Committers             string
 	Address                string
-	DontRequireE2ELabel    string
 	E2EStatusContext       string
 	RequiredStatusContexts []string
 	WWWRoot                string
@@ -202,10 +201,9 @@ func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 		"kubernetes-kubemark-gce",
 	}, "Comma separated list of jobs in Jenkins to use for stability testing")
 	cmd.Flags().StringVar(&sq.JenkinsHost, "jenkins-host", "http://jenkins-master:8080", "The URL for the jenkins job to watch")
-	cmd.Flags().StringSliceVar(&sq.RequiredStatusContexts, "required-contexts", []string{travisContext}, "Comma separate list of status contexts required for a PR to be considered ok to merge")
+	cmd.Flags().StringSliceVar(&sq.RequiredStatusContexts, "required-contexts", []string{travisContext, jenkinsUnitContext}, "Comma separate list of status contexts required for a PR to be considered ok to merge")
 	cmd.Flags().StringVar(&sq.Address, "address", ":8080", "The address to listen on for HTTP Status")
-	cmd.Flags().StringVar(&sq.DontRequireE2ELabel, "dont-require-e2e-label", "e2e-not-required", "If non-empty, a PR with this label will be merged automatically without looking at e2e results")
-	cmd.Flags().StringVar(&sq.E2EStatusContext, "e2e-status-context", gceE2EContext, "The name of the github status context for the e2e PR Builder")
+	cmd.Flags().StringVar(&sq.E2EStatusContext, "e2e-status-context", jenkinsE2EContext, "The name of the github status context for the e2e PR Builder")
 	cmd.Flags().StringVar(&sq.WWWRoot, "www", "www", "Path to static web files to serve from the webserver")
 	sq.addWhitelistCommand(cmd, config)
 }
@@ -388,14 +386,7 @@ const (
 
 func (sq *SubmitQueue) requiredStatusContexts(obj *github.MungeObject) []string {
 	contexts := sq.RequiredStatusContexts
-
-	// If the pr has a jenkins ci status, require it, otherwise require shippable
-	if state := obj.GetStatusState([]string{jenkinsCIContext}); state != "incomplete" {
-		contexts = append(contexts, jenkinsCIContext)
-	} else {
-		contexts = append(contexts, shippableContext)
-	}
-	if len(sq.E2EStatusContext) > 0 && (len(sq.DontRequireE2ELabel) == 0 || !obj.HasLabel(sq.DontRequireE2ELabel)) {
+	if len(sq.E2EStatusContext) > 0 && !obj.HasLabel(e2eNotRequiredLabel) {
 		contexts = append(contexts, sq.E2EStatusContext)
 	}
 	return contexts
@@ -471,7 +462,7 @@ func (sq *SubmitQueue) Munge(obj *github.MungeObject) {
 	}
 
 	// if there is a 'e2e-not-required' label, just merge it.
-	if len(sq.DontRequireE2ELabel) > 0 && obj.HasLabel(sq.DontRequireE2ELabel) {
+	if obj.HasLabel(e2eNotRequiredLabel) {
 		obj.MergePR("submit-queue")
 		sq.SetMergeStatus(obj, merged, true)
 		return
