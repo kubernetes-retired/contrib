@@ -1,0 +1,6 @@
+---
+
+- name: Deploy Other Service
+  shell: echo "service port {{ service_port }} and node port {{ node_port }}"
+
+

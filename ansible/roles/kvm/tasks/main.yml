@@ -1,0 +1,18 @@
+---
+
+- name: install kvm teplate
+  template: src=centos7-node-base.xml.j2 dest=/etc/libvirt/qemu/{{ item.domain }}.xml
+  with_items:
+    - {domain: 'yinnut-node-232', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14232', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:32'}
+    - {domain: 'yinnut-node-233', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14233', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:33'}
+    - {domain: 'yinnut-node-234', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14234', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:34'}
+    - {domain: 'yinnut-node-235', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14235', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:35'}
+    - {domain: 'yinnut-node-236', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14236', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:36'}
+    - {domain: 'yinnut-node-237', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14237', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:37'}
+    - {domain: 'yinnut-node-238', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14238', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:38'}
+    - {domain: 'yinnut-node-239', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14239', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:39'}
+    - {domain: 'yinnut-node-240', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14240', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:40'}
+    - {domain: 'yinnut-node-241', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14241', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:41'}
+    - {domain: 'yinnut-node-242', uuid: 'dc2eb21c-0d60-4926-8596-4a51fac14242', memory: '6291456', vcpu: '4', mac_addr: '52:54:00:d7:a2:42'}
+
+

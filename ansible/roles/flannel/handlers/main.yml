@@ -36,7 +36,7 @@
   when: '"docker0" in ansible_interfaces'
 
   # TODO: work only on default installation...
-- name: docker graph driver 
+- name: docker graph driver
   command: findmnt -no FSTYPE -T /var/lib/docker
   register: docker_driver
   when: has_docker.rc|int != 2

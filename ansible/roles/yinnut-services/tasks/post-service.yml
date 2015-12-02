@@ -1,0 +1,25 @@
+---
+
+- name: Make sure remote /tmp/yinnut-services/post-service exsist
+  file: path=/tmp/yinnut-services/post-service state=directory
+
+- include: deploy-k8s-resource.yml
+  vars:
+    resource_name: Post Service rc.yaml
+    resource_type: rc
+    resource_filter: post-service
+    template_path: post-service/rc.yaml.j2
+    resource_path: /tmp/yinnut-services/post-service/rc.yaml
+
+- include: deploy-k8s-resource.yml
+  vars:
+    resource_name: Post Service svc.yaml
+    resource_type: svc
+    resource_filter: postsvc
+    template_path: post-service/svc.yaml.j2
+    resource_path: /tmp/yinnut-services/post-service/svc.yaml
+
+- include: register-nginx-proxy.yml
+  vars:
+    nginx_conf: /etc/nginx/conf.d/post-service.conf
+    iptables_comment: post-service-node-port

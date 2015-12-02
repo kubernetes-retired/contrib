@@ -2,6 +2,8 @@
 - name: Generic | Install Docker
   action: "{{ ansible_pkg_mgr }}"
   args:
-    name: docker
-    state: latest
+#   name: docker
+#   we now didn't use docker-engine-1.8.3-1.el7.centos.x86_64 from yinnut repo cause this will cause SDM-310
+    name: docker-1.8.2
+    state: present
   when: not is_atomic

@@ -1,0 +1,25 @@
+---
+
+- name: Make sure remote /tmp/yinnut-services/passport-service exsist
+  file: path=/tmp/yinnut-services/passport-service state=directory
+
+- include: deploy-k8s-resource.yml
+  vars:
+    resource_name: Passport Service rc.yaml
+    resource_type: rc
+    resource_filter: passport-service
+    template_path: passport-service/rc.yaml.j2
+    resource_path: /tmp/yinnut-services/passport-service/rc.yaml
+
+- include: deploy-k8s-resource.yml
+  vars:
+    resource_name: Passport Service svc.yaml
+    resource_type: svc
+    resource_filter: passportsvc
+    template_path: passport-service/svc.yaml.j2
+    resource_path: /tmp/yinnut-services/passport-service/svc.yaml
+
+- include: register-nginx-proxy.yml
+  vars:
+    nginx_conf: /etc/nginx/conf.d/passport-service.conf
+    iptables_comment: passport-service-node-port

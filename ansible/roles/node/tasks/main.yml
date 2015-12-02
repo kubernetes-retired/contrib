@@ -13,18 +13,27 @@
   tags:
     - binary-update
 
+- name: create symlink from .docker credentials to /var/lib/kubelet
+  file: src=/root/.docker dest=/var/lib/kubelet/.docker  state=link
+  tags:
+    - binary-update            
+
 - name: Make sure manifest directory exists
   file: path={{ kube_manifest_dir }} state=directory
 
+#- name: Install fluentd pod into each node
+#  get_url:
+#    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/fluentd-es/fluentd-es.yaml
+#    dest="{{ kube_manifest_dir }}"
+#    force=yes
+#    validate_certs=False
+#  environment:
+#    http_proxy: "{{ http_proxy|default('') }}"
+#    https_proxy: "{{ https_proxy|default('') }}"
+#  when: cluster_logging
+
 - name: Install fluentd pod into each node
-  get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/fluentd-es/fluentd-es.yaml
-    dest="{{ kube_manifest_dir }}"
-    force=yes
-    validate_certs=False
-  environment:
-    http_proxy: "{{ http_proxy|default('') }}"
-    https_proxy: "{{ https_proxy|default('') }}"
+  template: src="fluentd-es/fluentd-es.yaml.j2" dest="{{ kube_manifest_dir }}/fluentd-es.yaml"
   when: cluster_logging
 
 - name: Get the node token values
@@ -75,3 +84,6 @@
 
 - include: iptables.yml
   when: not has_firewalld and has_iptables
+
+- name: set kubectl alias to use /etc/kubernetes/kube.config
+  lineinfile: dest=/root/.bashrc line="alias kubectl='kubectl --kubeconfig=/etc/kubernetes/kubelet.kubeconfig'"

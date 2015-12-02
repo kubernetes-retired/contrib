@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: friend-service
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        yinnut-svc: "friend"
+        version: "deploy"
+    spec:
+      nodeSelector:
+        minion_node: "true"
+        proxy_node: "false"
+      containers:
+      - name: friend-service
+        image: {{ private_registry }}/friend-service:deploy
+        ports:
+        - containerPort: {{ service_port }}
+          protocol: TCP
+        command: ["sh","-c","/friend-service/run.sh"]
+        volumeMounts:
+        - name: mysql-secret-volume
+          mountPath: /etc/yinnut-secrets/mysql
+        - name: neo4j-secret-volume
+          mountPath: /etc/yinnut-secrets/neo4j
+        - name: timezone
+          mountPath: /etc/localtime
+          readOnly: true
+      volumes:
+      - name: mysql-secret-volume
+        secret:
+          secretName: yinnut-mysql-dev
+      - name: neo4j-secret-volume
+        secret:
+          secretName: yinnut-neo4j-dev
+      - name: timezone
+        hostPath:
+          path: /etc/localtime

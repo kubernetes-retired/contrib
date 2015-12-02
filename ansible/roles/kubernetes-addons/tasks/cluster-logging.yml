@@ -2,17 +2,29 @@
 - name: LOGGING | Assures {{ kube_addons_dir }}/cluster-logging dir exists
   file: path={{ kube_addons_dir }}/cluster-logging state=directory
 
-- name: LOGGING | Download logging files from Kubernetes repo
-  get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/fluentd-elasticsearch/{{ item }}
-    dest="{{ kube_addons_dir }}/cluster-logging/"
-    force=yes
-    validate_certs=False
-  environment:
-    http_proxy: "{{ http_proxy|default('') }}"
-    https_proxy: "{{ https_proxy|default('') }}"
-  with_items:
-    - es-controller.yaml
-    - es-service.yaml
-    - kibana-controller.yaml
-    - kibana-service.yaml
+#- name: LOGGING | Download logging files from Kubernetes repo
+#  get_url:
+#    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/fluentd-elasticsearch/{{ item }}
+#    dest="{{ kube_addons_dir }}/cluster-logging/"
+#    force=yes
+#    validate_certs=False
+#  environment:
+#    http_proxy: "{{ http_proxy|default('') }}"
+#    https_proxy: "{{ https_proxy|default('') }}"
+#  with_items:
+#    - es-controller.yaml
+#    - es-service.yaml
+#    - kibana-controller.yaml
+#    - kibana-service.yaml
+
+- name: LOGGING | Install es-controller.yaml Template to remote masters
+  template: src="cluster-logging/es-controller.yaml.j2" dest="{{ kube_addons_dir }}/cluster-logging/es-controller.yaml"
+
+- name: LOGGING | Install es-service.yaml Template to remote masters
+  template: src="cluster-logging/es-service.yaml.j2" dest="{{ kube_addons_dir }}/cluster-logging/es-service.yaml"
+
+- name: LOGGING | Install kibana-controller.yaml Template to remote masters
+  template: src="cluster-logging/kibana-controller.yaml.j2" dest="{{ kube_addons_dir }}/cluster-logging/kibana-controller.yaml"
+
+- name: LOGGING | Install kibana-service.yaml Template to remote masters
+  template: src="cluster-logging/kibana-service.yaml.j2" dest="{{ kube_addons_dir }}/cluster-logging/kibana-service.yaml"

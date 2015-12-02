@@ -20,4 +20,4 @@
 
 - include: secrets.yml
   tags:
-    secrets
+    - secrets

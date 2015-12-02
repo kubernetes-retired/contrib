@@ -19,5 +19,46 @@
     is_atomic: true
   when: s.stat.exists
 
+- name: "Build hosts file"
+  lineinfile:
+    dest=/etc/hosts
+    regexp=".*{{ item }}$"
+    line="{{ hostvars[item].ansible_default_ipv4.address }} {{item}}"
+    state=present
+  when: hostvars[item].ansible_default_ipv4.address is defined
+  with_items: groups['all']
+
+- name: "Remove hostname from localhost line"
+  replace: 
+    dest=/etc/hosts
+    regexp="{{ item }} localhost?"
+    replace="localhost"
+  when: hostvars[item].ansible_default_ipv4.address is defined
+  with_items: groups['all']
+
+- name: "Install iptables"
+  yum: name=iptables-services state=present
+
+- name: "Install ntpd"
+  yum: name=ntp state=present
+
+- name: "Enable and Start ntpd"
+  service: name=ntpd state=started enabled=yes
+
+- name: "Sync Server Time"
+  shell: "ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && ntpdate -u 0.centos.pool.ntp.org"
+
+- name: "Stop firewalld"
+  service: name=firewalld state=stopped enabled=no
+
+- name: "Remove firewalld"
+  yum: name=firewalld state=absent
+
+- name: "Enable and start iptables"
+  service: name=iptables state=started enabled=yes
+
 - include: fedora-dnf.yml
   when: os_version.stdout|int >= 22 and 'Fedora' in distro.stdout and is_atomic is not defined
+
+- include: yum_repo.yml
+  when: ansible_distribution == "CentOS"

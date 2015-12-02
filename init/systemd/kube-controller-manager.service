@@ -1,6 +1,7 @@
 [Unit]
 Description=Kubernetes Controller Manager
 Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+After=kube-apiserver.service
 
 [Service]
 EnvironmentFile=-/etc/kubernetes/config

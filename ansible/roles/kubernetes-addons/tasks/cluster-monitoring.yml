@@ -2,18 +2,33 @@
 - name: MONITORING | Assures {{ kube_config_dir }}/addons/cluster-monitoring dir exists
   file: path={{ kube_addons_dir }}/cluster-monitoring state=directory
 
-- name: MONITORING | Download monitoring files from Kubernetes repo
-  get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/cluster-monitoring/influxdb/{{ item }}
-    dest="{{ kube_addons_dir }}/cluster-monitoring/"
-    force=yes
-    validate_certs=False
-  environment:
-    http_proxy: "{{ http_proxy|default('') }}"
-    https_proxy: "{{ https_proxy|default('') }}"
-  with_items:
-    - grafana-service.yaml
-    - heapster-controller.yaml
-    - heapster-service.yaml
-    - influxdb-grafana-controller.yaml
-    - influxdb-service.yaml
+#- name: MONITORING | Download monitoring files from Kubernetes repo
+#  get_url:
+#    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/cluster-monitoring/influxdb/{{ item }}
+#    dest="{{ kube_addons_dir }}/cluster-monitoring/"
+#    force=yes
+#    validate_certs=False
+#  environment:
+#    http_proxy: "{{ http_proxy|default('') }}"
+#    https_proxy: "{{ https_proxy|default('') }}"
+#  with_items:
+#    - grafana-service.yaml
+#    - heapster-controller.yaml
+#    - heapster-service.yaml
+#    - influxdb-grafana-controller.yaml
+#    - influxdb-service.yaml
+
+- name: MONITORING | Install grafana-service.yaml Template to remote masters
+  template: src="cluster-monitoring/grafana-service.yaml.j2" dest="{{ kube_addons_dir }}/cluster-monitoring/grafana-service.yaml"
+
+- name: MONITORING | Install heapster-controller.yaml Template to remote masters
+  template: src="cluster-monitoring/heapster-controller.yaml.j2" dest="{{ kube_addons_dir }}/cluster-monitoring/heapster-controller.yaml"
+
+- name: MONITORING | Install heapster-service.yaml Template to remote masters
+  template: src="cluster-monitoring/heapster-service.yaml.j2" dest="{{ kube_addons_dir }}/cluster-monitoring/heapster-service.yaml"
+
+- name: MONITORING | Install influxdb-grafana-controller.yaml Template to remote masters
+  template: src="cluster-monitoring/influxdb-grafana-controller.yaml.j2" dest="{{ kube_addons_dir }}/cluster-monitoring/influxdb-grafana-controller.yaml"
+
+- name: MONITORING | Install influxdb-service.yaml Template to remote masters
+  template: src="cluster-monitoring/influxdb-service.yaml.j2" dest="{{ kube_addons_dir }}/cluster-monitoring/influxdb-service.yaml"

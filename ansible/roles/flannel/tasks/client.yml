@@ -11,6 +11,9 @@
   notify:
     - restart flannel
 
+# - name: Use Internal Interface for Flanneld, modify /etc/sysconfig/flanneld file
+  # command: sh -c 'echo "FLANNEL_OPTIONS=\"-iface=eth1\"" >> /etc/sysconfig/flanneld'
+
 - name: Launch Flannel
   service: name=flanneld state=started enabled=yes
   notify:

@@ -5,6 +5,7 @@
 # localBuild - requires make release to have been run to build local binaries
 # packageManager - will install packages from your distribution using yum/dnf/apt
 source_type: localBuild
+# source_type: packageManager
 
 # will be used as the Internal dns domain name if DNS is enabled. Services
 # will be discoverable under <service-name>.<namespace>.svc.<domainname>, e.g.
@@ -23,9 +24,13 @@ cluster_name: cluster.local
 # If a password is needed to sudo to root that password must be set here
 #ansible_sudo_pass: password
 
+private_registry: dockerimages.yinnut.com:15043
 # A list of insecure registrys you night need to define
 insecure_registrys:
 #  - "gcr.io"
+   - "https://{{ private_registry }}"
+   - "{{ private_registry }}"
+
 
 # If you need a proxy for the docker daemon define these here
 #http_proxy: "http://proxy.example.com:3128"
@@ -68,7 +73,7 @@ flannel_host_prefix: 24
 cluster_logging: true
 
 # Turn to false to disable cluster monitoring with heapster and influxdb
-cluster_monitoring: true
+cluster_monitoring: false
 
 # Turn to false to disable the kube-ui addon for this cluster
 kube-ui: false
@@ -81,3 +86,20 @@ dns_replicas: 1
 # There are other variable in roles/kubernetes/defaults/main.yml but changing
 # them comes with a much higher risk to your cluster. So proceed over there
 # with caution.
+
+# number of minions
+num_nodes: 10
+
+
+
+
+######## Self-Custome variables ##################
+# container-log max file will be 10, with each size of them no more than 50MB
+container_log_size_max: 50M
+container_log_file_max: 10
+
+# yinnut repo url
+yinnut_yum_repo: http://116.228.223.234:8080/repos/yum/
+
+# Whether deploy yinnut service
+deploy_yinnut_services: true

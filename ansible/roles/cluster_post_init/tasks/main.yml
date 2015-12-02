@@ -1,0 +1,29 @@
+---
+
+# This cluster post init will do the following two things:
+# 1. set masters[0] to be proxy_node and install the nginx on this master node
+# 2. set normal nodes to be minion_node
+- include: nginx.yml
+  when: inventory_hostname == groups['masters'][0]
+  tags:
+    - install-nginx-proxy
+
+- name: Mark node {{ item }} with label minion_node to be true
+  shell: "kubectl label no {{ item }} minion_node=true proxy_node=false --overwrite"
+  with_items: groups['nodes']
+  when: inventory_hostname == groups['masters'][0]
+
+# this must after the upper task, cause we override the master's proxy_node label
+- name: Mark master {{ item }} with label proxy_node to be true
+  shell: "kubectl label no {{ item }} proxy_node=true minion_node=false --overwrite"
+  with_items: groups['masters'][0]
+  when: inventory_hostname == groups['masters'][0]
+
+
+- include: register-nginx-proxy.yml
+  vars:
+    nginx_conf: /etc/nginx/conf.d/kibana-service.conf
+    iptables_comment: kibana-service-node-port
+    service_port: 5601
+    node_port: "{{ node_port_kube_logging_kibana }}"
+  when: inventory_hostname == groups['masters'][0]

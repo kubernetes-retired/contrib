@@ -9,6 +9,7 @@
         state=present
       when: hostvars[item].ansible_default_ipv4.address is defined
       with_items: groups['all']
+      
     - name: "Remove hostname from localhost line"
       replace:
         dest=/etc/hosts
@@ -16,4 +17,8 @@
         replace="localhost"
       when: hostvars[item].ansible_default_ipv4.address is defined
       with_items: groups['all']
+
+    
+    - name: "Use iptables rather than firewalld"
+      command: sh -c 'sudo /usr/bin/yum install iptables-services -y && sudo /usr/bin/systemctl disable firewalld && sudo /usr/bin/yum remove firewalld -y && sudo /usr/bin/systemctl enable iptables && sudo /usr/bin/systemctl start iptables'
 

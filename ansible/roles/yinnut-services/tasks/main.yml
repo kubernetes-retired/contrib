@@ -1,0 +1,30 @@
+---
+
+# TODO: considering http and https redirection
+- include: friend-service.yml service_port=9999 node_port={{ node_port_friend_service }}
+  tags:
+    - friend-service
+
+- include: passport-service.yml service_port=9080 node_port={{ node_port_passport_service }}
+  tags:
+    - passport-service
+
+- include: post-service.yml service_port=5000 node_port={{ node_port_post_service }}
+  tags:
+    - post-service
+
+- include: page-service.yml service_port=5001 node_port={{ node_port_page_service }}
+  tags:
+    - page-service
+
+- include: group-service.yml service_port=8898 node_port={{ node_port_group_service }}
+  tags:
+    - group-service
+
+- include: user-service.yml service_port=8900 node_port={{ node_port_user_service }}
+  tags:
+    - user-service
+
+- include: other-service.yml service_port=9080 node_port={{ node_port_other_service }}
+  tags:
+    - other-service

@@ -1,0 +1,38 @@
+#################################################################################
+# command: 后面是启动的代码配置
+#################################################################################
+
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: page-service
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        yinnut-svc: "page"
+        version: "deploy" # this version is from ansible-playbook CLI extra-varibles
+    spec:
+      nodeSelector:
+        minion_node: "true"
+        proxy_node: "false"
+      containers:
+      - name: page-service
+        image: {{ private_registry }}/page-service:deploy  # this version is from ansible-playbook CLI extra-varibles
+        imagePullPolicy: Always # we always update using the latest image
+        env:
+        - name: KEY
+          value: "VALUE"
+        ports:
+        - containerPort: {{ service_port }}
+          protocol: TCP
+        command: ["sh","-c","/page-service/run.sh"]
+        volumeMounts:
+        - name: timezone
+          mountPath: /etc/localtime
+          readOnly: true
+      volumes:
+      - name: timezone
+        hostPath:
+          path: /etc/localtime
