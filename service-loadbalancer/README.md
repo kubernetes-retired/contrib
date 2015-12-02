@@ -76,13 +76,8 @@ NAME                         LABELS                                             
 e2e-test-beeps-minion-c9up   kubernetes.io/hostname=e2e-test-beeps-minion-c9up,role=loadbalancer   Ready
 ```
 #### Expose services
-Your kube-ui should be publicly accessible once the loadbalancer created in the previous step is in `Running` (if you're on a cloud provider, you need to create firewall-rules for :80)
-```console
-$ kubectl get nodes e2e-test-beeps-minion-c9up -o json | grep -i externalip -A 1
-                "type": "ExternalIP",
-                "address": "104.197.63.17"
-$ curl http://104.197.63.17/kube-ui
-```
+
+Let's create 3 services (HTTP, HTTP and TCP) to test the loadbalancer.
 
 #### HTTP
 You can use the [https-nginx](../../examples/https-nginx) example to create some new HTTP/HTTPS services.
@@ -186,6 +181,35 @@ $ mysql -u root -ppassword --host 104.197.63.17 --port 3306 -e 'show databases;'
 +--------------------+
 ```
 
+#### Cross-namespace loadbalancing
+
+By default, the loadbalancer only listens for services in the `default` namespace. You can list available namespaces via:
+```
+$ kubectl get namespaces
+NAME          LABELS    STATUS    AGE
+default       <none>    Active    1d
+kube-system   <none>    Active    1d
+```
+
+You can tell it to expose services on a different namespace through a command line argument. Currently, each namespace needs a different loadbalancer (see [wishlist](#wishlist)). Modify the rc.yaml file to supply the namespace argument by adding the following lines to the bottom of the loadbalancer spec:
+```yaml
+args:
+  - --tcp-services=mysql:3306,nginxsvc:443
+  - --namespace=kube-system
+```
+
+Though the loadbalancer can watch services across namespaces you can't start 2 loadbalancers with the same name in a single namespace. So if you already have a loadbalancer running, either change the name of the rc, or change the namespace in rc.yaml:
+```console
+$ kubectl create -f rc.yaml
+$ kubectl get pods -o wide
+NAME                         READY     STATUS    RESTARTS   AGE       NODE
+service-loadbalancer-yofyv   1/1       Running   0          1m        e2e-test-beeps-minion-c9up
+
+$ kubectl get nodes e2e-test-beeps-minion-c9up -o json | grep -i externalip -A 1
+                "type": "ExternalIP",
+                "address": "104.197.63.17"
+$ curl http://104.197.63.17/kube-ui
+```
 
 #### Cross-cluster loadbalancing
 
@@ -275,6 +299,12 @@ $ curl http://104.197.81.116/nginxsvc
 Europe
 ```
 
+#### Advanced features
+
+* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L155).
+* __Name based virtual hosting__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L148).
+* __Configurable algorithms__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L153).
+
 ### Troubleshooting:
 - If you can curl or netcat the endpoint from the pod (with kubectl exec) and not from the node, you have not specified hostport and containerport.
 - If you can hit the ips from the node but not from your machine outside the cluster, you have not opened firewall rules for the right network.
@@ -286,7 +316,7 @@ Europe
   5. run the service_loadbalancer with --dry
 - Check http://<node_ip>:1936 for the stats page. It requires the password used in the template file.
 - Try talking to haproxy on the stats socket directly on the container using kubectl exec, eg: echo “show info” | socat unix-connect:/tmp/haproxy stdio
-- Run the service_loadbalancer with the flag --syslog to append the haproxy log as part of the pod stdout. Use kubectl logs to check the 
+- Run the service_loadbalancer with the flag --syslog to append the haproxy log as part of the pod stdout. Use kubectl logs to check the
 status of the services or stats about the traffic
 
 ### Wishlist:
