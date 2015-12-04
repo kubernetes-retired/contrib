@@ -45,6 +45,14 @@ http {
 {{range $ing := .Items}}
 {{range $rule := $ing.Spec.Rules}}
   server {
+    {{$annotations := $ing.Annotations}}
+    {{if $annotations}}
+    {{$client_max_body_size := index $annotations "nginx/client_max_body_size"}}
+    {{if $client_max_body_size}}
+    client_max_body_size {{$client_max_body_size}};
+    {{end}}
+    {{end}}
+
     listen 80;
     server_name {{$rule.Host}};
 {{ range $path := $rule.HTTP.Paths }}
