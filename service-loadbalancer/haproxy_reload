@@ -23,6 +23,4 @@
 # -s soft reload, wait for pids to finish handling requests
 # -f send pids a resume signal if reload of new config fails
 
-socat /tmp/haproxy - <<< "show servers state" > /var/state/haproxy/global
-
 haproxy -f /etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid -D -sf $(cat /var/run/haproxy.pid)

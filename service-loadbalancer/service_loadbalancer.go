@@ -140,6 +140,8 @@ type service struct {
 	Name string
 	Ep   []string
 
+	BackendPort int
+
 	// FrontendPort is the port that the loadbalancer listens on for traffic
 	// for this service. For http, it's always :80, for each tcp service it
 	// is the service port of any service matching a name in the tcpServices set.
@@ -388,8 +390,9 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				continue
 			}
 			newSvc := service{
-				Name: getServiceNameForLBRule(&s, servicePort.Port),
-				Ep:   ep,
+				Name:        getServiceNameForLBRule(&s, servicePort.Port),
+				Ep:          ep,
+				BackendPort: servicePort.Port,
 			}
 
 			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(); ok {

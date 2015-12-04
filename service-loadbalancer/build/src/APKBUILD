@@ -14,7 +14,7 @@
 
 pkgname=haproxy
 pkgver=1.6
-pkgrel=0
+pkgrel=2
 pkgdesc="HAProxy is a free, very fast and reliable solution offering high availability, load balancing"
 url="http://www.haproxy.org/"
 arch="x86_64"
@@ -36,6 +36,6 @@ package() {
 	install -d "$pkgdir"/var/lib/haproxy
 }
 
-md5sums="2361c7dd0a709a1b235215225875f34c  haproxy-1.6.0.tar.gz"
-sha256sums="e83a272b7d3638cf1d37bba58d3e75f497c1862315ee5bb7f5efc1d98d26e25b  haproxy-1.6.0.tar.gz"
-sha512sums="44bfcd040c87e0c3e7d925bb671009e8ed568a7a32ae32ac5d58921417aaa458b772a1368876fee8bf9252106fb315c1c3d29b7f03739a239567b86fb3c25e8e  haproxy-1.6.0.tar.gz"
+md5sums="d0ebd3d123191a8136e2e5eb8aaff039  haproxy-1.6.2.tar.gz"
+sha256sums="bd4a7eee79e1bfd25af59d956bb60e82acbb6f146f3fb3b30636036f4c9548d3  haproxy-1.6.2.tar.gz"
+sha512sums="8cb1f2bb7e63e75b1350e37b4a06dae9627bc6004ceefc0e3dac7c6f56ea66cdc41ebaee0e536a5acbd4e5b067feba2589d3e360dd7fdc6d3d67c000f6c83ba9  haproxy-1.6.2.tar.gz"
