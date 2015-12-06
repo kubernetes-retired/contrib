@@ -104,9 +104,9 @@ func TestGetEndpoints(t *testing.T) {
 		{Port: ports[2], Protocol: "TCP", Name: "mysql"},
 	}
 	servicePorts := []api.ServicePort{
-		{Port: 10, TargetPort: util.NewIntOrStringFromInt(ports[0])},
-		{Port: 20, TargetPort: util.NewIntOrStringFromInt(ports[1])},
-		{Port: 30, TargetPort: util.NewIntOrStringFromString("mysql")},
+		{Port: ports[0], TargetPort: util.NewIntOrStringFromInt(ports[0])},
+		{Port: ports[1], TargetPort: util.NewIntOrStringFromInt(ports[1])},
+		{Port: ports[2], TargetPort: util.NewIntOrStringFromString("mysql")},
 	}
 
 	svc := getService(servicePorts)
@@ -245,8 +245,8 @@ func buildTestLoadBalancer(lbDefAlgorithm string) *loadBalancerController {
 		{Port: ports[1], Protocol: "HTTP"},
 	}
 	servicePorts := []api.ServicePort{
-		{Port: 10, TargetPort: util.NewIntOrStringFromInt(ports[0])},
-		{Port: 20, TargetPort: util.NewIntOrStringFromInt(ports[1])},
+		{Port: ports[0], TargetPort: util.NewIntOrStringFromInt(ports[0])},
+		{Port: ports[1], TargetPort: util.NewIntOrStringFromInt(ports[1])},
 	}
 
 	svc1 := getService(servicePorts)
@@ -313,7 +313,7 @@ func TestDefaultCustomAlgorithm(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestDefaultCustomAlgorithm.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -329,7 +329,7 @@ func TestSyslog(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestSyslog.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -345,7 +345,7 @@ func TestSvcCustomAlgorithm(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestSvcCustomAlgorithm.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -361,7 +361,7 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestCustomDefaultAndSvcAlgorithm.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -377,7 +377,7 @@ func TestServiceAffinity(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestServiceAffinity.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
@@ -394,7 +394,7 @@ func TestServiceAffinityWithCookies(t *testing.T) {
 			"http": httpSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
-		t.Fatalf("Expected at least one tcp or http service")
+		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestServiceAffinityWithCookies.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)

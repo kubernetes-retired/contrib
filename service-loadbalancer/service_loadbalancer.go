@@ -140,6 +140,9 @@ type service struct {
 	Name string
 	Ep   []string
 
+	// Kubernetes endpoint port. The application must serve a 200 page on this port.
+	BackendPort int
+
 	// FrontendPort is the port that the loadbalancer listens on for traffic
 	// for this service. For http, it's always :80, for each tcp service it
 	// is the service port of any service matching a name in the tcpServices set.
@@ -313,6 +316,11 @@ type loadBalancerController struct {
 	httpPort          int
 }
 
+// getTargetPort returns the numeric value of TargetPort
+func getTargetPort(servicePort *api.ServicePort) int {
+	return servicePort.TargetPort.IntVal
+}
+
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
 func (lbc *loadBalancerController) getEndpoints(
 	s *api.Service, servicePort *api.ServicePort) (endpoints []string) {
@@ -329,7 +337,7 @@ func (lbc *loadBalancerController) getEndpoints(
 			var targetPort int
 			switch servicePort.TargetPort.Kind {
 			case util.IntstrInt:
-				if epPort.Port == servicePort.TargetPort.IntVal {
+				if epPort.Port == getTargetPort(servicePort) {
 					targetPort = epPort.Port
 				}
 			case util.IntstrString:
@@ -388,8 +396,9 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				continue
 			}
 			newSvc := service{
-				Name: getServiceNameForLBRule(&s, servicePort.Port),
-				Ep:   ep,
+				Name:        getServiceNameForLBRule(&s, servicePort.Port),
+				Ep:          ep,
+				BackendPort: getTargetPort(&servicePort),
 			}
 
 			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(); ok {
