@@ -202,6 +202,11 @@ func (l *L7s) Delete(name string) error {
 func (l *L7s) Sync(names []string) error {
 	glog.V(3).Infof("Creating loadbalancers %+v", names)
 
+	// The default backend is completely managed by the l7 pool.
+	// This includes recreating it if it's deleted, or fixing broken links.
+	if err := l.defaultBackendPool.Sync([]int64{l.defaultBackendNodePort}); err != nil {
+		return err
+	}
 	// create new loadbalancers, perform an edge hop for existing
 	for _, n := range names {
 		if err := l.Add(n); err != nil {
