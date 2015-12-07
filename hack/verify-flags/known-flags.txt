@@ -1,4 +1,3 @@
-Found flags in golang files not in the list of known flags. Please add these to hack/verify-flags/known-flags.txt
 api-token
 balance-algorithm
 blunderbuss-config
@@ -35,6 +34,7 @@ poll-period
 pr-mungers
 rate-limit
 rate-limit-burst
+relnote-filter
 required-contexts
 running-in-cluster
 shame-cc
