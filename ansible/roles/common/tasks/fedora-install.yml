@@ -5,3 +5,15 @@
     name: python-firewall
     state: latest
   when: ansible_distribution_major_version|int >= 22
+
+- name: Generic | Install Python
+  action: "{{ ansible_pkg_mgr }}"
+  args: 
+    name: python
+    state: latest
+
+- name: Generic | Install SELinux Python Bindings
+  action: "{{ ansible_pkg_mgr }}"
+  args:
+    name: libselinux-python
+    state: latest

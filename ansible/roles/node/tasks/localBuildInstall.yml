@@ -1,7 +1,7 @@
 ---
 - name: Copy node binaries
   copy:
-    src: "{{ localBuildOutput }}/{{ item }}"
+    src: "{{ localBuildOutput }}/{{ item }}" #docker builds, use: kubernetes/_output/dockerized/bin/linux/amd64/{{ item }}
     dest: /usr/bin/
     mode: 0755
   with_items:
