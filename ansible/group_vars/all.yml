@@ -81,3 +81,6 @@ dns_replicas: 1
 # There are other variable in roles/kubernetes/defaults/main.yml but changing
 # them comes with a much higher risk to your cluster. So proceed over there
 # with caution.
+
+# See kube documentation for apiserver runtime config options.  Example below enables HPA, deployments features.
+# apiserver_runtime_config: "extensions/v1beta1/deployments=true"
