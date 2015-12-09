@@ -137,6 +137,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       ansible.groups = groups
       ansible.playbook = "../cluster.yml"
       ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
+      # for some hypervisors, like vbox, eth0 is not the right interface to bind to.
+      # ansible.extra_vars = { flannel_opts: "--iface=eth1"}
       ansible.tags = ansible_tags
       ansible.raw_ssh_args = ['-o ControlMaster=no']
     end
