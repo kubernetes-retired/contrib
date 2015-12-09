@@ -36,6 +36,9 @@ import (
 
 type config struct {
 	etcdServers string
+	etcdCA      string
+	etcdCert    string
+	etcdKey     string
 	key         string
 	whoami      string
 	ttl         uint64
@@ -138,6 +141,9 @@ func copyFile(src, dest string) error {
 
 func initFlags(c *config) {
 	pflag.StringVar(&c.etcdServers, "etcd-servers", "", "The comma-seprated list of etcd servers to use")
+	pflag.StringVar(&c.etcdCA, "etcd-ca", "", "The CA file for etcd tls.")
+	pflag.StringVar(&c.etcdCert, "etcd-cert", "", "The cert file for etcd tls.")
+	pflag.StringVar(&c.etcdKey, "etcd-key", "", "The key file for etcd tls.")
 	pflag.StringVar(&c.key, "key", "", "The key to use for the lock")
 	pflag.StringVar(&c.whoami, "whoami", "", "The name to use for the reservation.  If empty use os.Hostname")
 	pflag.Uint64Var(&c.ttl, "ttl-secs", 30, "The time to live for the lock.")
@@ -159,6 +165,12 @@ func validateFlags(c *config) {
 	if len(c.dest) == 0 {
 		glog.Fatalf("--dest-file=<some-file> is required")
 	}
+	//either all are populated, or none are populated
+	if len(c.etcdCert) != 0 || len(c.etcdCA) != 0 || len(c.etcdKey) != 0 {
+		if len(c.etcdCert) == 0 || len(c.etcdCA) == 0 || len(c.etcdKey) == 0 {
+			glog.Fatal("must specify all or none of etcd tls settings (etcd-ca, etcd-cert, etcd-key)")
+		}
+	}
 	if len(c.whoami) == 0 {
 		hostname, err := os.Hostname()
 		if err != nil {
@@ -176,7 +188,16 @@ func main() {
 	validateFlags(&c)
 
 	machines := strings.Split(c.etcdServers, ",")
-	etcdClient := etcd.NewClient(machines)
+	var etcdClient *etcd.Client
+	if c.etcdCert != "" {
+		var err error
+		etcdClient, err = etcd.NewTLSClient(machines, c.etcdCert, c.etcdKey, c.etcdCA)
+		if err != nil {
+			glog.Fatal(err)
+		}
+	} else {
+		etcdClient = etcd.NewClient(machines)
+	}
 
 	c.leaseAndUpdateLoop(etcdClient)
 }

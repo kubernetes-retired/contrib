@@ -15,6 +15,9 @@ error-page
 etcd-prefix
 etcd-server
 etcd-servers
+etcd-ca
+etcd-cert
+etcd-key
 forward-services
 generated-files-config
 health-check-path
