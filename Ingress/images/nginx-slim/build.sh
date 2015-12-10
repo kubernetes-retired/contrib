@@ -17,13 +17,15 @@
 
 set -eof pipefail
 
-export NGINX_VERSION=1.9.7
+export NGINX_VERSION=1.9.9
 export NDK_VERSION=0.2.19
-export VTS_VERSION=0.1.6
+export VTS_VERSION=0.1.8
 export SETMISC_VERSION=0.29
-export LUA_VERSION=049feaffd06877a72f58d81a89377277ca37b521
+export LUA_VERSION=0.10.0rc0
 export LUA_CJSON_VERSION=f79aa68af865ae84b36c7e794beedd87fef2ed54
 export LUA_RESTY_HTTP_VERSION=0.06
+export LUA_UPSTREAM_VERSION=0.04
+export MORE_HEADERS_VERSION=0.29
 
 export BUILD_PATH=/tmp/build
 
@@ -57,12 +59,12 @@ apk add --update-cache \
   pcre-dev \
   libaio \
   libaio-dev \
-  lua5.1 \
-  lua5.1-dev \
+  luajit \
+  luajit-dev \
   linux-headers
 
 # download, verify and extract the source files
-get_src 794bd217affdfce1c6263d9199c3961f387a2df9d57dcb42876faaf41c1748d5 \
+get_src de66bb2b11c82533aa5cb5ccc27cbce736ab87c9f2c761e5237cda0b00068d73 \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
@@ -71,17 +73,25 @@ get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
 get_src 8d280fc083420afb41dbe10df9a8ceec98f1d391bd2caa42ebae67d5bc9295d8 \
         "https://github.com/openresty/set-misc-nginx-module/archive/v$SETMISC_VERSION.tar.gz"
 
-get_src ef7c5c9c748ab79264e8244f614ea79ad4d1ebfb108ab6b20a7b3e4a1da823d7 \
+get_src 6bb9a36d8d70302d691c49557313fb7262cafd942a961d11a2730d9a5d9f70e0 \
         "https://github.com/vozlt/nginx-module-vts/archive/v$VTS_VERSION.tar.gz"
 
-get_src 9df14f6efa48e423b48abb73dd9e91cc90cff01c0634d84f0dfde40fea2c8460 \
-        "https://github.com/openresty/lua-nginx-module/archive/$LUA_VERSION.tar.gz"
+get_src 3d04c36a447948d27648af6303f58b2ef6b8b43ad886c4186b3c080b9b16ab58 \
+        "https://github.com/openresty/lua-nginx-module/archive/v$LUA_VERSION.tar.gz"
 
 get_src 2c451368a9e1a6fc01ed196cd6bd1602ee29f4b264df9263816e4dce17bca2c0 \
         "https://github.com/openresty/lua-cjson/archive/$LUA_CJSON_VERSION.tar.gz"
 
 get_src 30ea2b03e8e8c4add5e143cc1826fd3364df58ea7f4b9a3fe02cd1630a505701 \
         "https://github.com/pintsized/lua-resty-http/archive/v$LUA_RESTY_HTTP_VERSION.tar.gz"
+
+get_src 0a5f3003b5851373b03c542723eb5e7da44a01bf4c4c5f20b4de53f355a28d33 \
+        "https://github.com/openresty/headers-more-nginx-module/archive/v$MORE_HEADERS_VERSION.tar.gz"
+
+get_src eec4bbb40fd14e12179fd536a029e2fe82a7f29340ed357879d0b02b65302913 \
+        "https://github.com/openresty/lua-upstream-nginx-module/archive/v$LUA_UPSTREAM_VERSION.tar.gz"
+
+
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
@@ -111,8 +121,6 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
   --with-http_gzip_static_module \
   --with-http_sub_module \
   --with-http_v2_module \
-  --with-mail \
-  --with-mail_ssl_module \
   --with-stream \
   --with-stream_ssl_module \
   --with-threads \
@@ -121,11 +129,13 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
   --add-module="$BUILD_PATH/set-misc-nginx-module-$SETMISC_VERSION" \
   --add-module="$BUILD_PATH/nginx-module-vts-$VTS_VERSION" \
   --add-module="$BUILD_PATH/lua-nginx-module-$LUA_VERSION" \
+  --add-module="$BUILD_PATH/headers-more-nginx-module-$MORE_HEADERS_VERSION" \
+  --add-module="$BUILD_PATH/lua-upstream-nginx-module-$LUA_UPSTREAM_VERSION" \
   && make && make install
 
 echo "Installing CJSON module"
 cd "$BUILD_PATH/lua-cjson-$LUA_CJSON_VERSION"
-make && make install
+make LUA_INCLUDE_DIR=/usr/include/luajit-2.0 && make install
 
 echo "Installing lua-resty-http module"
 # copy lua module
@@ -148,8 +158,7 @@ apk del --purge \
   zlib-dev \
   pcre-dev \
   openssl-dev \
-  linux-headers \
-  lua5.1-dev
+  linux-headers
 
 mkdir -p /var/lib/nginx/body /usr/share/nginx/html
 mv /usr/html /usr/share/nginx
