@@ -23,11 +23,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/exec"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -41,6 +41,7 @@ import (
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 )
 
@@ -194,6 +195,8 @@ type loadBalancerConfig struct {
 	Algorithm      string `json:"algorithm" description:"loadbalancing algorithm."`
 	startSyslog    bool   `description:"indicates if the load balancer uses syslog."`
 	lbDefAlgorithm string `description:"custom default load balancer algorithm".`
+	exec           exec.Interface
+	reloadLock     *sync.Mutex
 }
 
 type staticPageHandler struct {
@@ -289,7 +292,9 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 
 // reload reloads the loadbalancer using the reload cmd specified in the json manifest.
 func (cfg *loadBalancerConfig) reload() error {
-	output, err := exec.Command("sh", "-c", cfg.ReloadCmd).CombinedOutput()
+	cfg.reloadLock.Lock()
+	defer cfg.reloadLock.Unlock()
+	output, err := cfg.exec.Command("sh", "-c", cfg.ReloadCmd).CombinedOutput()
 	msg := fmt.Sprintf("%v -- %v", cfg.Name, string(output))
 	if err != nil {
 		return fmt.Errorf("error restarting %v: %v", msg, err)
@@ -556,6 +561,9 @@ func parseCfg(configPath string, defLbAlgorithm string) *loadBalancerConfig {
 	}
 
 	cfg.lbDefAlgorithm = defLbAlgorithm
+	cfg.reloadLock = &sync.Mutex{}
+	cfg.exec = exec.New()
+
 	glog.Infof("Creating new loadbalancer: %+v", cfg)
 	return &cfg
 }

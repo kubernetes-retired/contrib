@@ -22,11 +22,15 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
@@ -399,4 +403,44 @@ func TestServiceAffinityWithCookies(t *testing.T) {
 	template, _ := filepath.Abs("./test-samples/TestServiceAffinityWithCookies.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
 	os.Remove(flb.cfg.Config)
+}
+
+func TestReloadLock(t *testing.T) {
+	flb := buildTestLoadBalancer("")
+	flb.cfg.reloadLock = &sync.Mutex{}
+	var count uint64
+
+	fcmd := exec.FakeCmd{
+		CombinedOutputScript: []exec.FakeCombinedOutputAction{
+			func() ([]byte, error) { return []byte{}, nil },
+			func() ([]byte, error) { return []byte{}, nil },
+			func() ([]byte, error) { return []byte{}, nil },
+		},
+	}
+	fexec := exec.FakeExec{
+		CommandScript: []exec.FakeCommandAction{
+			func(cmd string, args ...string) exec.Cmd {
+				atomic.AddUint64(&count, 1)
+				return exec.InitFakeCmd(&fcmd, cmd, args...)
+			},
+			func(cmd string, args ...string) exec.Cmd {
+				atomic.AddUint64(&count, 1)
+				return exec.InitFakeCmd(&fcmd, cmd, args...)
+			},
+			func(cmd string, args ...string) exec.Cmd {
+				return exec.InitFakeCmd(&fcmd, cmd, args...)
+			},
+		},
+	}
+	flb.cfg.exec = &fexec
+
+	go flb.cfg.reload()
+	go flb.cfg.reload()
+	flb.cfg.reload()
+
+	time.Sleep(time.Second * 1)
+
+	if atomic.LoadUint64(&count) != 2 {
+		t.Fatalf("Invalid lock count. Expected 2 but was %v", count)
+	}
 }
