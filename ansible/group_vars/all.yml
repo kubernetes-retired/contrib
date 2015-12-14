@@ -83,4 +83,4 @@ dns_replicas: 1
 # with caution.
 
 # See kube documentation for apiserver runtime config options.  Example below enables HPA, deployments features.
-# apiserver_runtime_config: "extensions/v1beta1/deployments=true"
+# apiserver_extra_args: "--runtime-config=extensions/v1beta1/deployments=true"
