@@ -59,7 +59,7 @@ func doMungers(config *mungeConfig) error {
 
 		mungers.EachLoop()
 
-		if err := config.ForEachIssueDo(mungers.MungeIssue); err != nil {
+		if err := config.ForEachIssueDo("open", nil, mungers.MungeIssue); err != nil {
 			glog.Errorf("Error munging PRs: %v", err)
 		}
 		config.ResetAPICount()

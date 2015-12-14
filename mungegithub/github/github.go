@@ -387,6 +387,37 @@ func (config *Config) GetObject(num int) (*MungeObject, error) {
 	return obj, nil
 }
 
+// MergedAt will return the time the object was merged. If this is not a PR
+// is this was not merged, or if we can't tell, we return nil
+func (obj *MungeObject) MergedAt() *time.Time {
+	merged, err := obj.IsMerged()
+	if err != nil {
+		return nil
+	}
+	if !merged {
+		return nil
+	}
+	pr, err := obj.GetPR()
+	if err != nil {
+		return nil
+	}
+	return pr.MergedAt
+}
+
+// IsForBranch return true if the object is a PR for a branch with the given
+// name. It return false if it is not a pr, it isn't against the given branch,
+// or we can't tell
+func (obj *MungeObject) IsForBranch(branch string) bool {
+	pr, err := obj.GetPR()
+	if err != nil {
+		return false
+	}
+	if pr.Base != nil && pr.Base.Ref != nil && *pr.Base.Ref == branch {
+		return true
+	}
+	return false
+}
+
 // LastModifiedTime returns the time the last commit was made
 // BUG: this should probably return the last time a git push happened or something like that.
 func (obj *MungeObject) LastModifiedTime() *time.Time {
@@ -1091,14 +1122,15 @@ func (obj *MungeObject) IsMerged() (bool, error) {
 // ForEachIssueDo will run for each Issue in the project that matches:
 //   * pr.Number >= minPRNumber
 //   * pr.Number <= maxPRNumber
-func (config *Config) ForEachIssueDo(fn MungeFunction) error {
+func (config *Config) ForEachIssueDo(state string, labels []string, fn MungeFunction) error {
 	page := 1
 	for {
 		glog.V(4).Infof("Fetching page %d of issues", page)
 		listOpts := &github.IssueListByRepoOptions{
 			Sort:        "created",
-			State:       "open",
 			Direction:   "asc",
+			State:       state,
+			Labels:      labels,
 			ListOptions: github.ListOptions{PerPage: 100, Page: page},
 		}
 		issues, response, err := config.client.Issues.ListByRepo(config.Org, config.Project, listOpts)

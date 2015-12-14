@@ -18,130 +18,82 @@ package main
 
 import (
 	"bytes"
+	goflag "flag"
 	"fmt"
-	"net/http"
 	"os"
-	"sort"
 	"time"
 
-	"github.com/google/go-github/github"
-	flag "github.com/spf13/pflag"
-	"golang.org/x/oauth2"
+	"github.com/golang/glog"
+	"github.com/spf13/cobra"
+
+	"k8s.io/contrib/mungegithub/github"
 )
 
 var (
-	base    string
-	last    int
-	current int
-	token   string
+	base        string
+	last        int
+	lastTime    time.Time
+	current     int
+	currentTime time.Time
 )
 
-type byMerged []*github.PullRequest
-
-func (a byMerged) Len() int           { return len(a) }
-func (a byMerged) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byMerged) Less(i, j int) bool { return a[i].MergedAt.Before(*a[j].MergedAt) }
-
-func init() {
-	flag.IntVar(&last, "last-release-pr", 0, "The PR number of the last versioned release.")
-	flag.IntVar(&current, "current-release-pr", 0, "The PR number of the current versioned release.")
-	flag.StringVar(&token, "api-token", "", "Github api token for rate limiting. Background: https://developer.github.com/v3/#rate-limiting and create a token: https://github.com/settings/tokens")
-	flag.StringVar(&base, "base", "master", "The base branch name for PRs to look for.")
+func addFlags(cmd *cobra.Command) {
+	cmd.Flags().IntVar(&last, "last-release-pr", 0, "The PR number of the last versioned release.")
+	cmd.Flags().IntVar(&current, "current-release-pr", 0, "The PR number of the current versioned release.")
+	cmd.Flags().StringVar(&base, "base", "master", "The base branch name for PRs to look for.")
+	cmd.PersistentFlags().AddGoFlagSet(goflag.CommandLine)
 }
 
-func usage() {
-	fmt.Printf(`usage: release-notes --last-release-pr=<number> --current-release-pr=<number>
-                     --api-token=<token> [--base=<branch-name>]
-`)
+func mergedAt(num int, config *github.Config) time.Time {
+	obj, err := config.GetObject(num)
+	if err != nil {
+		glog.Fatalf("Unable to get munge object for %d: %v", num, err)
+	}
+	t := obj.MergedAt()
+	if t == nil {
+		glog.Fatalf("Unable to get merge time for %d: %v", num, err)
+	}
+	return *t
 }
 
 func main() {
-	flag.Parse()
-	if last == 0 || current == 0 || token == "" {
-		usage()
-		os.Exit(1)
-	}
+	config := &github.Config{}
+	cmd := &cobra.Command{
+		Use: "release-notes --last-release-pr=NUM --current-release-pr=NUM",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := config.PreExecute(); err != nil {
+				return err
+			}
+			if last == 0 || current == 0 {
+				return fmt.Errorf("Must set (at least) --last-releae-pr and --current-release-pr")
+			}
+			lastTime = mergedAt(last, config)
+			currentTime = mergedAt(current, config)
 
-	var tc *http.Client
-	if len(token) > 0 {
-		tc = oauth2.NewClient(
-			oauth2.NoContext,
-			oauth2.StaticTokenSource(
-				&oauth2.Token{AccessToken: token}),
-		)
-	}
-	client := github.NewClient(tc)
+			buffer := &bytes.Buffer{}
+			config.ForEachIssueDo("closed", []string{"release-note"}, func(obj *github.MungeObject) error {
+				if !obj.IsForBranch(base) {
+					return nil
+				}
 
-	opts := github.PullRequestListOptions{
-		State:     "closed",
-		Base:      base,
-		Sort:      "updated",
-		Direction: "desc",
-		ListOptions: github.ListOptions{
-			Page:    0,
-			PerPage: 100,
+				mergedAt := obj.MergedAt()
+				if mergedAt.Before(lastTime) {
+					return nil
+				}
+				if mergedAt.After(currentTime) {
+					return nil
+				}
+				fmt.Fprintf(buffer, "   * %s (#%d, @%s)\n", *obj.Issue.Title, *obj.Issue.Number, *obj.Issue.User.Login)
+			})
+			fmt.Println()
+			fmt.Printf("Release notes for PRs between #%d and #%d against branch %q:\n\n", last, current, base)
+			fmt.Printf("%s", buffer.Bytes())
+			return nil
 		},
 	}
-
-	done := false
-	prs := []*github.PullRequest{}
-	var lastVersionMerged *time.Time
-	var currentVersionMerged *time.Time
-	for !done {
-		opts.Page++
-		fmt.Printf("Fetching PR list page %2d\n", opts.Page)
-		results, _, err := client.PullRequests.List("kubernetes", "kubernetes", &opts)
-		if err != nil {
-			fmt.Printf("Error contacting github: %v", err)
-			os.Exit(1)
-		}
-		unmerged := 0
-		merged := 0
-		for ix := range results {
-			result := &results[ix]
-			// Skip Closed but not Merged PRs
-			if result.MergedAt == nil {
-				unmerged++
-				continue
-			}
-			if *result.Number == last {
-				lastVersionMerged = result.MergedAt
-				fmt.Printf(" ... found last PR %d.\n", last)
-				break
-			}
-			if lastVersionMerged != nil && lastVersionMerged.After(*result.UpdatedAt) {
-				done = true
-				break
-			}
-			if *result.Number == current {
-				currentVersionMerged = result.MergedAt
-				fmt.Printf(" ... found current PR %d.\n", current)
-			}
-			prs = append(prs, result)
-			merged++
-		}
-		fmt.Printf(" ... %d merged PRs, %d unmerged PRs.\n", merged, unmerged)
+	addFlags(cmd)
+	config.AddRootFlags(cmd)
+	if err := cmd.Execute(); err != nil {
+		os.Exit(1)
 	}
-	fmt.Printf("Looking at each PR to see if it is between #%d and #%d and has the release-note label\n", last, current)
-	sort.Sort(byMerged(prs))
-	buffer := &bytes.Buffer{}
-	for _, pr := range prs {
-		if lastVersionMerged.Before(*pr.MergedAt) && (pr.MergedAt.Before(*currentVersionMerged) || (*pr.Number == current)) {
-			// Check to see if it has the release-note label.
-			fmt.Printf(".")
-			labels, _, err := client.Issues.ListLabelsByIssue("kubernetes", "kubernetes", *pr.Number, &github.ListOptions{})
-			if err != nil {
-				fmt.Printf("Error contacting github: %v", err)
-				os.Exit(1)
-			}
-			for _, label := range labels {
-				if *label.Name == "release-note" {
-					fmt.Fprintf(buffer, "   * %s (#%d, @%s)\n", *pr.Title, *pr.Number, *pr.User.Login)
-				}
-			}
-		}
-	}
-	fmt.Println()
-	fmt.Printf("Release notes for PRs between #%d and #%d against branch %q:\n\n", last, current, base)
-	fmt.Printf("%s", buffer.Bytes())
 }
