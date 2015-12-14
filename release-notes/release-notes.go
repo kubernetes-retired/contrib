@@ -30,10 +30,11 @@ import (
 )
 
 var (
-	base    string
-	last    int
-	current int
-	token   string
+	base          string
+	last          int
+	current       int
+	token         string
+	relnoteFilter bool
 )
 
 type byMerged []*github.PullRequest
@@ -47,6 +48,7 @@ func init() {
 	flag.IntVar(&current, "current-release-pr", 0, "The PR number of the current versioned release.")
 	flag.StringVar(&token, "api-token", "", "Github api token for rate limiting. Background: https://developer.github.com/v3/#rate-limiting and create a token: https://github.com/settings/tokens")
 	flag.StringVar(&base, "base", "master", "The base branch name for PRs to look for.")
+	flag.BoolVar(&relnoteFilter, "relnote-filter", true, "Whether to filter PRs by the release-note label.")
 }
 
 func usage() {
@@ -97,6 +99,10 @@ func main() {
 		}
 		unmerged := 0
 		merged := 0
+		if len(results) == 0 {
+			done = true
+			break
+		}
 		for ix := range results {
 			result := &results[ix]
 			// Skip Closed but not Merged PRs
@@ -127,16 +133,22 @@ func main() {
 	buffer := &bytes.Buffer{}
 	for _, pr := range prs {
 		if lastVersionMerged.Before(*pr.MergedAt) && (pr.MergedAt.Before(*currentVersionMerged) || (*pr.Number == current)) {
-			// Check to see if it has the release-note label.
-			fmt.Printf(".")
-			labels, _, err := client.Issues.ListLabelsByIssue("kubernetes", "kubernetes", *pr.Number, &github.ListOptions{})
-			if err != nil {
-				fmt.Printf("Error contacting github: %v", err)
-				os.Exit(1)
-			}
-			for _, label := range labels {
-				if *label.Name == "release-note" {
-					fmt.Fprintf(buffer, "   * %s (#%d, @%s)\n", *pr.Title, *pr.Number, *pr.User.Login)
+			if !relnoteFilter {
+				fmt.Fprintf(buffer, "   * %s (#%d, @%s)\n", *pr.Title, *pr.Number, *pr.User.Login)
+			} else {
+				// Check to see if it has the release-note label.
+				fmt.Printf(".")
+				labels, _, err := client.Issues.ListLabelsByIssue("kubernetes", "kubernetes", *pr.Number, &github.ListOptions{})
+				// Sleep for 5 seconds to avoid irritating the API rate limiter.
+				time.Sleep(5 * time.Second)
+				if err != nil {
+					fmt.Printf("Error contacting github: %v", err)
+					os.Exit(1)
+				}
+				for _, label := range labels {
+					if *label.Name == "release-note" {
+						fmt.Fprintf(buffer, "   * %s (#%d, @%s)\n", *pr.Title, *pr.Number, *pr.User.Login)
+					}
 				}
 			}
 		}
