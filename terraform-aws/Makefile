@@ -4,7 +4,7 @@ kube-up: tokens.tfvars
 	terraform get
 	terraform apply -var-file=tokens.tfvars
 	terraform output "kubectl configuration" > cfg_kubectl.sh
-	bash -x cfg_kubectl.sh
+	until bash -x cfg_kubectl.sh; do sleep 1; done
 
 kube-down:
 	terraform destroy -var-file=tokens.tfvars

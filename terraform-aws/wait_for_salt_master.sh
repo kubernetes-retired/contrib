@@ -21,7 +21,7 @@ while true; do
   ok=1
   output=$(pgrep salt-master) || ok=0
   if [[ ${ok} == 0 ]]; then
-    if (( attempt > 30 )); then
+    if (( attempt > 60 )); then
       echo
       echo "(Failed) output was: ${output}"
       echo

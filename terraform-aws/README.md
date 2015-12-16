@@ -1,7 +1,7 @@
 Terraforming Kubernetes on AWS
 ==============================
 
-Status: upstream v1.1.2 parity
+Status: upstream v1.1.3 parity
 
 This set of terraform descriptions aims to match the result of a fairly standard AWS deployment.
 
@@ -51,6 +51,7 @@ Supply the contents of your public key to use in new cluster like so:
 ```sh
 $ ssh-keygen -f "~/.ssh/kube_aws_rsa" -N ''
 $ export TF_VAR_aws_key_pair_pubkey="$(cat ~/.ssh/kube_aws_rsa.pub)"
+$ ssh-add ~/.ssh/kube_aws_rsa
 $ make kube-up
 ```
 
@@ -58,13 +59,10 @@ Parameters
 ----------------
 See variables.tf for full list but a few interesting ones follow:
 
-Supplying a custom Kubernetes version (currently defaults to v1.1.2)
+Supplying a custom Kubernetes version (currently defaults to v1.1.3)
 ```sh
-$ TF_VAR_KUBE_VERSION=v1.1.2 make kube-up
+$ TF_VAR_KUBE_VERSION=v1.1.3 make kube-up
 ```
-This will create a wholly separate instance of a cluster with 'terranetes' as the prefix.
-
-
 
 Supplying a custom cluster identifier:
 ```sh

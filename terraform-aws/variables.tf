@@ -18,7 +18,7 @@ variable "AWS_S3_REGION" {
 # Provisioning values
 
 variable "KUBE_VERSION" {
-  default = "v1.1.2"
+  default = "v1.1.3"
 }
 
 variable "KUBE_PROXY_TOKEN" {}

@@ -6,6 +6,8 @@ output "kubernetes-api-server-credentials" {
 }
 output "kubectl configuration" {
 value = <<EOF
+#!/bin/bash
+set -euo pipefail
 ssh ubuntu@${aws_eip.kubernetes-master.public_ip} 'sudo cat /srv/kubernetes/ca.crt' > ca.crt
 ssh ubuntu@${aws_eip.kubernetes-master.public_ip} 'sudo cat /srv/kubernetes/kubecfg.crt' > kubecfg.crt
 ssh ubuntu@${aws_eip.kubernetes-master.public_ip} 'sudo cat /srv/kubernetes/kubecfg.key' > kubecfg.key
@@ -16,7 +18,7 @@ kubectl config set-context ${var.CLUSTER_ID} --cluster=${var.CLUSTER_ID} --user=
 kubectl config use-context ${var.CLUSTER_ID}
 rm ca.crt kubecfg.crt kubecfg.key
 
-kubectl cluster-info
+until kubectl cluster-info; do echo 'not ready'; sleep 5; done
 EOF
 }
 
@@ -43,7 +45,6 @@ resource "aws_key_pair" "kubernetes" {
 resource "aws_eip" "kubernetes-master" {
   instance = "${aws_instance.kubernetes-master.id}"
   vpc      = true
-  lifecycle { create_before_destroy = true }
 }
 
 module "ami-kubernetes-master" {
@@ -99,7 +100,6 @@ resource "aws_instance" "kubernetes-master" {
       user = "ubuntu"
     }
   }
-  lifecycle { create_before_destroy = true }
 }
 
 resource "template_file" "user_data-master" {
@@ -135,11 +135,11 @@ resource "template_file" "user_data-master" {
 
 resource "aws_autoscaling_group" "kubernetes-minion-group" {
   desired_capacity          = "${var.NUM_MINIONS}"
-  health_check_grace_period = 0
   health_check_type         = "EC2"
   launch_configuration      = "${aws_launch_configuration.kubernetes-minion-group.name}"
   max_size                  = "${var.NUM_MINIONS}"
   min_size                  = "${var.NUM_MINIONS}"
+  default_cooldown          = 10
   name                      = "${var.CLUSTER_ID}-minion-group"
   vpc_zone_identifier       = ["${aws_subnet.main.id}"]
 
@@ -159,7 +159,6 @@ resource "aws_autoscaling_group" "kubernetes-minion-group" {
     propagate_at_launch = true
   }
   lifecycle { create_before_destroy = true }
-  depends_on = ["aws_instance.kubernetes-master"]
 }
 
 module "ami-kubernetes-minions" {
