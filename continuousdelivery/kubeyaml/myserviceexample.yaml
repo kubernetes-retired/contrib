@@ -32,7 +32,7 @@ spec:
         build: build${BUILD}
     spec:
       containers: #many containers can be specified here that will be scheduled together onto the same host
-      - name: my-conatiner #first container
+      - name: my-container #first container
         image: ${DOCKER_REGISTRY}/${CONTAINER1}:build${BUILD} #container image location
         ports:
         - containerPort: 3000 #port running inside and outside the container on the pod IP address
