@@ -341,7 +341,10 @@ func (lbc *loadBalancerController) getEndpoints(
 					targetPort = epPort.Port
 				}
 			case util.IntstrString:
-				if epPort.Name == servicePort.TargetPort.StrVal {
+				// two situations:
+				// 1. A service's every port have an attr name (more than one port the spec.ports[i].name was required value)
+				// 2. only one port and didnot have an attr name and it must have only one endpoint. In this situation the servicePort.Name and epPort.Name was empty, but TargetPort.Name was not
+				if servicePort.Name == epPort.Name {
 					targetPort = epPort.Port
 				}
 			}
