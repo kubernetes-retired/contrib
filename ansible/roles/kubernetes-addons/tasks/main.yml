@@ -33,6 +33,9 @@
 - include: kube-ui.yml
   when: kube-ui
 
+- include: kube-dash.yml
+  when: kube-dash
+
 #- name: Get kube-addons script from Kubernetes
 #  get_url:
 #    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addons.sh
