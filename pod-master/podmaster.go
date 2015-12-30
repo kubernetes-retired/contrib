@@ -22,6 +22,8 @@ limitations under the License.
 package main
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -109,11 +111,26 @@ func (c *config) update(master bool) error {
 	switch {
 	case master && !exists:
 		return copyFile(c.src, c.dest)
-		// TODO: validate sha hash for the two files and overwrite if dest is different than src.
+	case master && exists && sum(c.src) != sum(c.dest):
+		return copyFile(c.src, c.dest)
 	case !master && exists:
 		return os.Remove(c.dest)
 	}
 	return nil
+}
+
+// sum returns in string the SHA-1 hash for the input file, error if there is any
+func sum(file string) string {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		glog.Errorf("Error reading file %s: %v", file, err)
+	}
+	hash := sha1.New()
+	_, err = hash.Write(data)
+	if err != nil {
+		glog.Errorf("Error copying file %s: %v", file, err)
+	}
+	return fmt.Sprintf("% x", hash.Sum(nil))
 }
 
 // exists tests to see if a file exists.
