@@ -101,7 +101,17 @@ func loadData() {
 		fmt.Printf("Error creating client: %v", err)
 		return
 	}
-	pods, err := c.Pods("default").List(labels.Everything(), fields.Everything())
+	var labelSelector labels.Selector
+	if *selector != "" {
+		labelSelector, err = labels.Parse(*selector)
+		if err != nil {
+			fmt.Printf("Parse label selector err: %v", err)
+			return
+		}
+	} else {
+		labelSelector = labels.Everything()
+	}
+	pods, err := c.Pods("default").List(labelSelector, fields.Everything())
 	if err != nil {
 		fmt.Printf("Error getting pods: %v", err)
 		return
