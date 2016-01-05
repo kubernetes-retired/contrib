@@ -200,6 +200,10 @@
 			"Rev": "7dd4489c2eb6073e5a9d7746c3274c5b5f0387df"
 		},
 		{
+			"ImportPath": "github.com/fatih/structs",
+			"Rev": "d2e1722acaab51fc7fc55686706d08bbf9e4fafb"
+		},
+		{
 			"ImportPath": "github.com/ghodss/yaml",
 			"Rev": "73d445a93680fa1a78ae23a5839bad48f32ba1ee"
 		},
