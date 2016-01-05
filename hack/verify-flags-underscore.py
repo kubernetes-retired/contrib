@@ -85,6 +85,8 @@ def normalize_files(rootdir, files):
             continue
         if f.endswith(".gliffy"):
             continue
+        if f.endswith(".md"):
+            continue
         newfiles.append(f)
     for i, f in enumerate(newfiles):
         if not os.path.isabs(f):
