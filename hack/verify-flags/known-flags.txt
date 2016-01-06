@@ -10,6 +10,7 @@ dest-file
 dont-require-e2e-label
 dry-run
 e2e-status-context
+election-namespace
 error-page
 etcd-prefix
 etcd-server
@@ -48,6 +49,7 @@ token-file
 ttl-secs
 unit-status-context
 url-list
+use-cluster-credentials
 use-http-cache
 use-ip
 use-kubernetes-cluster-service
