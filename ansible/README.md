@@ -52,8 +52,10 @@ You can just setup certain parts instead of doing it all.
 
 `$ ./setup.sh --tags=nodes`
 
-### flannel
+### Network Service
 
-`$ ./setup.sh --tags=flannel`
+By changing the `networking` variable in the `group_vars/all.yml` file, you can choose the network-service to use.  The default is flannel.
+
+`$ ./setup.sh --tags=network-service-install`
 
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/ansible/README.md?pixel)]()
