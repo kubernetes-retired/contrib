@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"time"
 
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/kubernetes/pkg/util/yaml"
@@ -35,7 +36,11 @@ type weightMap map[string]int64
 
 // A BlunderbussConfig maps a set of file prefixes to a set of owner names (github users)
 type BlunderbussConfig struct {
-	PrefixMap map[string][]string `json:"prefixMap,omitempty" yaml:"prefixMap,omitempty"`
+	PrefixMap        map[string][]string `json:"prefixMap,omitempty" yaml:"prefixMap,omitempty"`
+	vacationing      map[string]bool
+	vacationSyncTime time.Time
+
+	githubConfig *github.Config
 }
 
 func (b *BlunderbussConfig) findOwners(filename string) weightMap {
@@ -50,6 +55,57 @@ func (b *BlunderbussConfig) findOwners(filename string) weightMap {
 		}
 	}
 	return wm
+}
+
+func (b *BlunderbussConfig) filterVacationers(w weightMap) weightMap {
+	w2 := weightMap{}
+	for u, i := range w {
+		if !b.vacationing[u] {
+			w2[u] = i
+		}
+	}
+	return w2
+}
+
+// This checks the location field for containing the string "OOO". Total
+// placeholder until we think of something better (gist? shared file?)
+func (b *BlunderbussConfig) lookupVacation(u string) (ooo bool, err error) {
+	config := b.githubConfig
+	user, err := config.GetUser(u)
+	if err != nil {
+		return false, err
+	}
+	if user.Location == nil {
+		return false, nil
+	}
+	return strings.Contains(*user.Location, "OOO"), nil
+}
+
+func (b *BlunderbussConfig) maybeRefreshVacations() error {
+	if time.Now().Sub(b.vacationSyncTime) < 24*time.Hour {
+		return nil
+	}
+	allUsers := map[string]bool{}
+	for _, list := range b.PrefixMap {
+		for _, u := range list {
+			allUsers[u] = true
+		}
+	}
+
+	b.vacationing = map[string]bool{}
+	for u := range allUsers {
+		ooo, err := b.lookupVacation(u)
+		if err != nil {
+			return err
+		}
+		if ooo {
+			b.vacationing[u] = true
+		}
+	}
+	glog.Infof("On vacation: %v", b.vacationing)
+
+	b.vacationSyncTime = time.Now()
+	return nil
 }
 
 // BlunderbussMunger will assign issues to users based on the config file
@@ -79,7 +135,10 @@ func (b *BlunderbussMunger) Initialize(config *github.Config) error {
 	}
 	defer file.Close()
 
-	b.config = &BlunderbussConfig{}
+	b.config = &BlunderbussConfig{
+		vacationing:  map[string]bool{},
+		githubConfig: config,
+	}
 	if err := yaml.NewYAMLToJSONDecoder(file).Decode(b.config); err != nil {
 		glog.Fatalf("Failed to load blunderbuss config: %v", err)
 	}
@@ -88,7 +147,9 @@ func (b *BlunderbussMunger) Initialize(config *github.Config) error {
 }
 
 // EachLoop is called at the start of every munge loop
-func (b *BlunderbussMunger) EachLoop() error { return nil }
+func (b *BlunderbussMunger) EachLoop() error {
+	return b.config.maybeRefreshVacations()
+}
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (b *BlunderbussMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
@@ -112,8 +173,10 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 	}
 
 	issue := obj.Issue
+	ownerOnVacation := false
 	if !b.blunderbussReassign && issue.Assignee != nil {
-		glog.V(6).Infof("skipping %v: reassign: %v assignee: %v", *issue.Number, b.blunderbussReassign, describeUser(issue.Assignee))
+		ownerOnVacation = b.config.vacationing[*issue.Assignee.Login]
+		glog.V(6).Infof("skipping %v: reassign: %v assignee: %v assignee on vacation: %v", *issue.Number, b.blunderbussReassign, describeUser(issue.Assignee), ownerOnVacation)
 		return
 	}
 
@@ -147,6 +210,8 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 			}
 		}
 	}
+	potentialOwners = b.config.filterVacationers(potentialOwners)
+
 	if len(potentialOwners) == 0 {
 		glog.Errorf("No owners found for PR %d", *issue.Number)
 		return
@@ -155,7 +220,7 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 
 	if issue.Assignee != nil {
 		cur := *issue.Assignee.Login
-		glog.Infof("Current assignee %v has a %02.2f%% chance of having been chosen", cur, 100.0*float64(potentialOwners[cur])/float64(weightSum))
+		glog.Infof("Current assignee %v has a %02.2f%% chance of having been chosen. vacationing[%v] == %v", cur, 100.0*float64(potentialOwners[cur])/float64(weightSum), cur, ownerOnVacation)
 	}
 	selection := rand.Int63n(weightSum)
 	owner := ""
