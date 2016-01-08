@@ -18,7 +18,6 @@ package mungers
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"strings"
 
@@ -189,9 +188,6 @@ func (s *SizeMunger) Munge(obj *github.MungeObject) {
 	}
 	if needsUpdate {
 		obj.AddLabels([]string{newLabel})
-
-		body := fmt.Sprintf("Labelling this PR as %s", newLabel)
-		obj.WriteComment(body)
 	}
 }
 
