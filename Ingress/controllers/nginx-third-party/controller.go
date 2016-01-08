@@ -31,7 +31,6 @@ import (
 	"k8s.io/kubernetes/pkg/client/record"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
-	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
@@ -123,7 +122,7 @@ func NewLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 	pathHandlers := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			addIng := obj.(*extensions.Ingress)
-			lbc.recorder.Eventf(addIng, "ADD", addIng.Name)
+			lbc.recorder.Eventf(addIng, "ADD", addIng.Name, fmt.Sprintf("Adding ingress %s", addIng.Name))
 			lbc.ingQueue.enqueue(obj)
 		},
 		DeleteFunc: lbc.ingQueue.enqueue,
@@ -157,7 +156,7 @@ func NewLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 
 	lbc.configLister.Store, lbc.configController = framework.NewInformer(
 		&cache.ListWatch{
-			ListFunc: func() (runtime.Object, error) {
+			ListFunc: func(api.ListOptions) (runtime.Object, error) {
 				rc, err := kubeClient.ReplicationControllers(lbInfo.RCNamespace).Get(lbInfo.RCName)
 				return &api.ReplicationControllerList{
 					Items: []api.ReplicationController{*rc},
@@ -165,7 +164,7 @@ func NewLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 			},
 			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
 				options.LabelSelector = labels.SelectorFromSet(labels.Set{"name": lbInfo.RCName})
-				return kubeClient.ReplicationControllers(lbInfo.RCNamespace).Watch(labels.Everything(), fields.Everything(), options)
+				return kubeClient.ReplicationControllers(lbInfo.RCNamespace).Watch(options)
 			},
 		},
 		&api.ReplicationController{}, resyncPeriod, configHandlers)
@@ -173,16 +172,15 @@ func NewLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 	return &lbc, nil
 }
 
-func ingressListFunc(c *client.Client, ns string) func() (runtime.Object, error) {
-	return func() (runtime.Object, error) {
-		return c.Extensions().Ingress(ns).List(labels.Everything(), fields.Everything())
+func ingressListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
+	return func(opts api.ListOptions) (runtime.Object, error) {
+		return c.Extensions().Ingress(ns).List(opts)
 	}
 }
 
 func ingressWatchFunc(c *client.Client, ns string) func(options api.ListOptions) (watch.Interface, error) {
 	return func(options api.ListOptions) (watch.Interface, error) {
-		return c.Extensions().Ingress(ns).Watch(
-			labels.Everything(), fields.Everything(), options)
+		return c.Extensions().Ingress(ns).Watch(options)
 	}
 }
 
@@ -212,7 +210,7 @@ func (lbc *loadBalancerController) syncIngress(key string) {
 
 	ing := *obj.(*extensions.Ingress)
 	if err := lbc.updateIngressStatus(ing); err != nil {
-		lbc.recorder.Eventf(&ing, "Status", "%v", err)
+		lbc.recorder.Eventf(&ing, "Status", "ERROR", err.Error())
 		lbc.ingQueue.requeue(key, err)
 	}
 	return

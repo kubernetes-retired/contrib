@@ -28,7 +28,7 @@ import (
 	"os"
 	"time"
 
-	etcdstorage "k8s.io/kubernetes/pkg/storage/etcd"
+	etcdutil "k8s.io/kubernetes/pkg/storage/etcd/util"
 
 	etcd "github.com/coreos/etcd/client"
 	"github.com/golang/glog"
@@ -75,7 +75,7 @@ func (c *config) acquireOrRenewLease(etcdClient *etcd.Client) (bool, error) {
 	keysAPI := etcd.NewKeysAPI(*etcdClient)
 	resp, err := keysAPI.Get(context.TODO(), c.key, nil)
 	if err != nil {
-		if etcdstorage.IsEtcdNotFound(err) {
+		if etcdutil.IsEtcdNotFound(err) {
 			// there is no current master, try to become master, create will fail if the key already exists
 			opts := etcd.SetOptions{
 				TTL:       time.Duration(c.ttl) * time.Second,

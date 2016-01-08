@@ -28,11 +28,12 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
 // newLoadBalancerController create a loadbalancer controller.
 func newLoadBalancerController(t *testing.T, cm *fakeClusterManager, masterUrl string) *loadBalancerController {
-	client := client.NewOrDie(&client.Config{Host: masterUrl, Version: testapi.Default.Version()})
+	client := client.NewOrDie(&client.Config{Host: masterUrl, GroupVersion: testapi.Default.GroupVersion()})
 	lb, err := NewLoadBalancerController(client, cm.ClusterManager, 1*time.Second, api.NamespaceAll)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -163,9 +164,9 @@ func addIngress(lbc *loadBalancerController, ing *extensions.Ingress, pm *nodePo
 				},
 			}
 			var svcPort api.ServicePort
-			switch path.Backend.ServicePort.Kind {
-			case util.IntstrInt:
-				svcPort = api.ServicePort{Port: path.Backend.ServicePort.IntVal}
+			switch path.Backend.ServicePort.Type {
+			case intstr.Int:
+				svcPort = api.ServicePort{Port: int(path.Backend.ServicePort.IntVal)}
 			default:
 				svcPort = api.ServicePort{Name: path.Backend.ServicePort.StrVal}
 			}

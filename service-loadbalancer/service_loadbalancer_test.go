@@ -27,6 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
@@ -104,9 +105,9 @@ func TestGetEndpoints(t *testing.T) {
 		{Port: ports[2], Protocol: "TCP", Name: "mysql"},
 	}
 	servicePorts := []api.ServicePort{
-		{Port: ports[0], TargetPort: util.NewIntOrStringFromInt(ports[0])},
-		{Port: ports[1], TargetPort: util.NewIntOrStringFromInt(ports[1])},
-		{Port: ports[2], TargetPort: util.NewIntOrStringFromString("mysql")},
+		{Port: ports[0], TargetPort: intstr.FromInt(ports[0])},
+		{Port: ports[1], TargetPort: intstr.FromInt(ports[1])},
+		{Port: ports[2], TargetPort: intstr.FromString("mysql")},
 	}
 
 	svc := getService(servicePorts)
@@ -142,8 +143,8 @@ func TestGetServices(t *testing.T) {
 		{Port: ports[1], Protocol: "TCP"},
 	}
 	servicePorts := []api.ServicePort{
-		{Port: 10, TargetPort: util.NewIntOrStringFromInt(ports[0])},
-		{Port: 20, TargetPort: util.NewIntOrStringFromInt(ports[1])},
+		{Port: 10, TargetPort: intstr.FromInt(ports[0])},
+		{Port: 20, TargetPort: intstr.FromInt(ports[1])},
 	}
 
 	// 2 services targeting the same endpoints, one of which is declared as a tcp service.
@@ -245,8 +246,8 @@ func buildTestLoadBalancer(lbDefAlgorithm string) *loadBalancerController {
 		{Port: ports[1], Protocol: "HTTP"},
 	}
 	servicePorts := []api.ServicePort{
-		{Port: ports[0], TargetPort: util.NewIntOrStringFromInt(ports[0])},
-		{Port: ports[1], TargetPort: util.NewIntOrStringFromInt(ports[1])},
+		{Port: ports[0], TargetPort: intstr.FromInt(ports[0])},
+		{Port: ports[1], TargetPort: intstr.FromInt(ports[1])},
 	}
 
 	svc1 := getService(servicePorts)
