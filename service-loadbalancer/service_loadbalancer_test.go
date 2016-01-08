@@ -106,7 +106,7 @@ func TestGetEndpoints(t *testing.T) {
 	servicePorts := []api.ServicePort{
 		{Port: ports[0], TargetPort: util.NewIntOrStringFromInt(ports[0])},
 		{Port: ports[1], TargetPort: util.NewIntOrStringFromInt(ports[1])},
-		{Port: ports[2], TargetPort: util.NewIntOrStringFromString("mysql")},
+		{Port: ports[2], TargetPort: util.NewIntOrStringFromString("api"), Name: "mysql"},
 	}
 
 	svc := getService(servicePorts)
