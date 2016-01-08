@@ -80,6 +80,10 @@ var (
 	dry = flags.Bool("dry", false, `if set, a single dry run of configuration
 		parsing is executed. Results written to stdout.`)
 
+	nameLabel = flags.String("httpName", "", `if this flag is set value of the service label indicated
+		by this flag will be used to generate http endpoint name in load balancer configuration. All
+		services which do not have the correct label set will be ignored.`)
+
 	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the built in kubernetes
 		cluster for creating the client`)
 
@@ -361,6 +365,12 @@ func (lbc *loadBalancerController) getEndpoints(
 // - :80 services don't need a :80 postfix
 // - default ns should be accessible without /ns/name (when we have /ns support)
 func getServiceNameForLBRule(s *api.Service, servicePort int) string {
+	if *nameLabel != "" {
+		if val, ok := s.Labels[*nameLabel]; ok {
+			return val
+		}
+	}
+
 	if servicePort == 80 {
 		return s.Name
 	}
@@ -376,6 +386,14 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 			glog.Infof("Ignoring service %v, it already has a loadbalancer", s.Name)
 			continue
 		}
+
+		if *nameLabel != "" {
+			if _, ok := s.Labels[*nameLabel]; !ok {
+				glog.Infof("Ignoring service %v, it doesn't have http endpoint name label set", s.Name)
+				continue
+			}
+		}
+
 		for _, servicePort := range s.Spec.Ports {
 			// TODO: headless services?
 			sName := s.Name
@@ -454,9 +472,6 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		return errDeferredSync
 	}
 	httpSvc, tcpSvc := lbc.getServices()
-	if len(httpSvc) == 0 && len(tcpSvc) == 0 {
-		return nil
-	}
 	if err := lbc.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
