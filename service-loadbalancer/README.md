@@ -51,7 +51,7 @@ $ kubectl get svc --all-namespaces -o yaml  | grep -i "selfLink"
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-heapster
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-influxdb
 ```
-These are all the [cluster addon](../../cluster/addons) services in `namespace=kube-system`.
+These are all the [cluster addon](https://github.com/kubernetes/kubernetes/tree/master/cluster/addons) services in `namespace=kube-system`.
 
 #### Create a loadbalancer
 * Loadbalancers are created via a ReplicationController.
@@ -80,7 +80,7 @@ e2e-test-beeps-minion-c9up   kubernetes.io/hostname=e2e-test-beeps-minion-c9up,r
 Let's create 3 services (HTTP, HTTP and TCP) to test the loadbalancer.
 
 #### HTTP
-You can use the [https-nginx](../../examples/https-nginx) example to create some new HTTP/HTTPS services.
+You can use the [https-nginx](https://github.com/kubernetes/kubernetes/tree/master/examples/https-nginx) example to create some new HTTP/HTTPS services.
 
 ```console
 $ cd ../../examples/https-nginx
