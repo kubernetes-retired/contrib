@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	compute "google.golang.org/api/compute/v1"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -47,7 +47,7 @@ const (
 )
 
 var (
-	testBackendPort       = util.IntOrString{Kind: util.IntstrInt, IntVal: 80}
+	testBackendPort       = intstr.IntOrString{Type: intstr.Int, IntVal: 80}
 	testDefaultBeNodePort = int64(3000)
 	testClusterName       = "testcluster"
 	testPathMap           = map[string]string{"/foo": defaultBackendName(testClusterName)}
