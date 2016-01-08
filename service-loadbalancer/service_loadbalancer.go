@@ -645,7 +645,7 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 	if !specified {
-		namespace = "default"
+		namespace = api.NamespaceDefault
 	}
 
 	// TODO: Handle multiple namespaces

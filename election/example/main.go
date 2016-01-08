@@ -27,6 +27,7 @@ import (
 
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
+	"k8s.io/kubernetes/pkg/api"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
@@ -37,7 +38,7 @@ var (
 		flag.ExitOnError)
 	name      = flags.String("election", "", "The name of the election")
 	id        = flags.String("id", "", "The id of this participant")
-	namespace = flags.String("election-namespace", "default", "The Kubernetes namespace for this election")
+	namespace = flags.String("election-namespace", api.NamespaceDefault, "The Kubernetes namespace for this election")
 	ttl       = flags.Duration("ttl", 10*time.Second, "The TTL for this election")
 	inCluster = flags.Bool("use-cluster-credentials", false, "Should this request use cluster credentials?")
 	addr      = flags.String("http", "", "If non-empty, stand up a simple webserver that reports the leader state")
