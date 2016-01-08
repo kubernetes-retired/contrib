@@ -5,7 +5,7 @@ TAG = 0.0
 PREFIX = gcr.io/google_containers/glbc
 
 server:
-	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o  glbc *.go
+	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o glbc
 
 container: server
 	docker build -t $(PREFIX):$(TAG) .

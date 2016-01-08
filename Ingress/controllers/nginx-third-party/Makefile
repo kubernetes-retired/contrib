@@ -2,7 +2,7 @@ all: push
 
 # 0.0 shouldn't clobber any release builds
 TAG = 0.1
-PREFIX = aledbf/nginx-third-party
+PREFIX = gcr.io/google_containers/nginx-third-party
 
 controller: controller.go clean
 	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o nginx-third-party-lb

@@ -33,7 +33,7 @@ import (
 	"github.com/golang/glog"
 )
 
-const ns = "default"
+const ns = api.NamespaceDefault
 
 // storeEps stores the given endpoints in a store.
 func storeEps(eps []*api.Endpoints) cache.Store {

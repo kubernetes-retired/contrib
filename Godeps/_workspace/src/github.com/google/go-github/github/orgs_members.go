@@ -52,7 +52,7 @@ type ListMembersOptions struct {
 	// 2fa_disabled, all.  Default is "all".
 	Filter string `url:"filter,omitempty"`
 
-	// Role filters memebers returned by their role in the organization.
+	// Role filters members returned by their role in the organization.
 	// Possible values are:
 	//     all - all members of the organization, regardless of role
 	//     admin - organization owners
@@ -172,7 +172,7 @@ func (s *OrganizationsService) ConcealMembership(org, user string) (*Response, e
 // ListOrgMembershipsOptions specifies optional parameters to the
 // OrganizationsService.ListOrgMemberships method.
 type ListOrgMembershipsOptions struct {
-	// Filter memberships to include only those withe the specified state.
+	// Filter memberships to include only those with the specified state.
 	// Possible values are: "active", "pending".
 	State string `url:"state,omitempty"`
 
@@ -238,14 +238,16 @@ func (s *OrganizationsService) GetOrgMembership(user, org string) (*Membership, 
 // GitHub API docs: https://developer.github.com/v3/orgs/members/#add-or-update-organization-membership
 // GitHub API docs: https://developer.github.com/v3/orgs/members/#edit-your-organization-membership
 func (s *OrganizationsService) EditOrgMembership(user, org string, membership *Membership) (*Membership, *Response, error) {
-	var u string
+	var u, method string
 	if user != "" {
 		u = fmt.Sprintf("orgs/%v/memberships/%v", org, user)
+		method = "PUT"
 	} else {
 		u = fmt.Sprintf("user/memberships/orgs/%v", org)
+		method = "PATCH"
 	}
 
-	req, err := s.client.NewRequest("PATCH", u, membership)
+	req, err := s.client.NewRequest(method, u, membership)
 	if err != nil {
 		return nil, nil, err
 	}

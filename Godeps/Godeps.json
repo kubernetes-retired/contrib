@@ -290,11 +290,6 @@
 			"Rev": "ab6edd8170522fa775fb5054d1c54b4e0d791444"
 		},
 		{
-			"ImportPath": "k8s.io/kubernetes/pkg/client/leaderelection",
-			"Comment": "v1.2.0-alpha.5-690-gab6edd8",
-			"Rev": "ab6edd8170522fa775fb5054d1c54b4e0d791444"
-		},
-		{
 			"ImportPath": "k8s.io/kubernetes/pkg/client/metrics",
 			"Comment": "v1.2.0-alpha.5-690-gab6edd8",
 			"Rev": "ab6edd8170522fa775fb5054d1c54b4e0d791444"
