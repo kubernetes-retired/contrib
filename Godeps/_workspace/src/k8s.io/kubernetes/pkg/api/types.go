@@ -23,7 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/types"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
 // Common string formats
@@ -198,6 +198,10 @@ type VolumeSource struct {
 	PersistentVolumeClaim *PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty"`
 	// RBD represents a Rados Block Device mount on the host that shares a pod's lifetime
 	RBD *RBDVolumeSource `json:"rbd,omitempty"`
+	// FlexVolume represents a generic volume resource that is
+	// provisioned/attached using a exec based plugin. This is an alpha feature and may change in future.
+	FlexVolume *FlexVolumeSource `json:"flexVolume,omitempty"`
+
 	// Cinder represents a cinder volume attached and mounted on kubelets host machine
 	Cinder *CinderVolumeSource `json:"cinder,omitempty"`
 
@@ -236,6 +240,9 @@ type PersistentVolumeSource struct {
 	// ISCSIVolumeSource represents an ISCSI resource that is attached to a
 	// kubelet's host machine and then exposed to the pod.
 	ISCSI *ISCSIVolumeSource `json:"iscsi,omitempty"`
+	// FlexVolume represents a generic volume resource that is
+	// provisioned/attached using a exec based plugin. This is an alpha feature and may change in future.
+	FlexVolume *FlexVolumeSource `json:"flexVolume,omitempty"`
 	// Cinder represents a cinder volume attached and mounted on kubelets host machine
 	Cinder *CinderVolumeSource `json:"cinder,omitempty"`
 	// CephFS represents a Ceph FS mount on the host that shares a pod's lifetime
@@ -253,6 +260,8 @@ type PersistentVolumeClaimVolumeSource struct {
 	// will force the ReadOnly setting in VolumeMounts
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
+
+// +genclient=true
 
 type PersistentVolume struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -309,6 +318,8 @@ type PersistentVolumeList struct {
 	unversioned.ListMeta `json:"metadata,omitempty"`
 	Items                []PersistentVolume `json:"items"`
 }
+
+// +genclient=true
 
 // PersistentVolumeClaim is a user's request for and claim to a persistent volume
 type PersistentVolumeClaim struct {
@@ -386,12 +397,14 @@ const (
 	ClaimBound PersistentVolumeClaimPhase = "Bound"
 )
 
-// HostPathVolumeSource represents a host directory mapped into a pod.
+// Represents a host path mapped into a pod.
+// Host path volumes do not support ownership management or SELinux relabeling.
 type HostPathVolumeSource struct {
 	Path string `json:"path"`
 }
 
-// EmptyDirVolumeSource represents an empty directory for a pod.
+// Represents an empty directory for a pod.
+// Empty directory volumes support ownership management and SELinux relabeling.
 type EmptyDirVolumeSource struct {
 	// TODO: Longer term we want to represent the selection of underlying
 	// media more like a scheduling problem - user says what traits they
@@ -399,7 +412,7 @@ type EmptyDirVolumeSource struct {
 	// this will cover the most common needs.
 	// Optional: what type of storage medium should back this directory.
 	// The default is "" which means to use the node's default medium.
-	Medium StorageMedium `json:"medium"`
+	Medium StorageMedium `json:"medium,omitempty"`
 }
 
 // StorageMedium defines ways that storage can be allocated to a volume.
@@ -420,11 +433,12 @@ const (
 	ProtocolUDP Protocol = "UDP"
 )
 
-// GCEPersistentDiskVolumeSource represents a Persistent Disk resource in Google Compute Engine.
+// Represents a Persistent Disk resource in Google Compute Engine.
 //
 // A GCE PD must exist and be formatted before mounting to a container.
 // The disk must also be in the same GCE project and zone as the kubelet.
 // A GCE PD can only be mounted as read/write once.
+// GCE PDs support ownership management and SELinux relabeling.
 type GCEPersistentDiskVolumeSource struct {
 	// Unique name of the PD resource. Used to identify the disk in GCE
 	PDName string `json:"pdName"`
@@ -442,7 +456,9 @@ type GCEPersistentDiskVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// A ISCSI Disk can only be mounted as read/write once.
+// Represents an ISCSI disk.
+// ISCSI volumes can only be mounted as read/write once.
+// ISCSI volumes support ownership management and SELinux relabeling.
 type ISCSIVolumeSource struct {
 	// Required: iSCSI target portal
 	// the portal is either an IP or ip_addr:port if port is other than default (typically TCP ports 860 and 3260)
@@ -451,6 +467,8 @@ type ISCSIVolumeSource struct {
 	IQN string `json:"iqn,omitempty"`
 	// Required: iSCSI target lun number
 	Lun int `json:"lun,omitempty"`
+	// Optional: Defaults to 'default' (tcp). iSCSI interface name that uses an iSCSI transport.
+	ISCSIInterface string `json:"iscsiInterface,omitempty"`
 	// Required: Filesystem type to mount.
 	// Must be a filesystem type supported by the host operating system.
 	// Ex. "ext4", "xfs", "ntfs"
@@ -461,7 +479,9 @@ type ISCSIVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// A Fibre Channel Disk can only be mounted as read/write once.
+// Represents a Fibre Channel volume.
+// Fibre Channel volumes can only be mounted as read/write once.
+// Fibre Channel volumes support ownership management and SELinux relabeling.
 type FCVolumeSource struct {
 	// Required: FC target world wide names (WWNs)
 	TargetWWNs []string `json:"targetWWNs"`
@@ -477,11 +497,30 @@ type FCVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// AWSElasticBlockStoreVolumeSource represents a Persistent Disk resource in AWS.
+// FlexVolume represents a generic volume resource that is
+// provisioned/attached using a exec based plugin. This is an alpha feature and may change in future.
+type FlexVolumeSource struct {
+	// Driver is the name of the driver to use for this volume.
+	Driver string `json:"driver"`
+	// Required: Filesystem type to mount.
+	// Must be a filesystem type supported by the host operating system.
+	// Ex. "ext4", "xfs", "ntfs"
+	FSType string `json:"fsType,omitempty"`
+	// Optional: SecretRef is reference to the authentication secret for User, default is empty.
+	SecretRef *LocalObjectReference `json:"secretRef,omitempty"`
+	// Optional: Defaults to false (read/write). ReadOnly here will force
+	// the ReadOnly setting in VolumeMounts.
+	ReadOnly bool `json:"readOnly,omitempty"`
+	// Optional: Extra driver options if any.
+	Options map[string]string `json:"options,omitempty"`
+}
+
+// Represents a Persistent Disk resource in AWS.
 //
 // An AWS EBS disk must exist and be formatted before mounting to a container.
 // The disk must also be in the same AWS zone as the kubelet.
 // A AWS EBS disk can only be mounted as read/write once.
+// AWS EBS volumes support ownership management and SELinux relabeling.
 type AWSElasticBlockStoreVolumeSource struct {
 	// Unique id of the persistent disk resource. Used to identify the disk in AWS
 	VolumeID string `json:"volumeID"`
@@ -499,25 +538,34 @@ type AWSElasticBlockStoreVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// GitRepoVolumeSource represents a volume that is pulled from git when the pod is created.
+// Represents a volume that is populated with the contents of a git repository.
+// Git repo volumes do not support ownership management.
+// Git repo volumes support SELinux relabeling.
 type GitRepoVolumeSource struct {
 	// Repository URL
 	Repository string `json:"repository"`
 	// Commit hash, this is optional
-	Revision string `json:"revision"`
+	Revision string `json:"revision,omitempty"`
+	// Clone target, this is optional
+	// Must not contain or start with '..'.  If '.' is supplied, the volume directory will be the
+	// git repository.  Otherwise, if specified, the volume will contain the git repository in
+	// the subdirectory with the given name.
+	Directory string `json:"directory,omitempty"`
 	// TODO: Consider credentials here.
 }
 
-// SecretVolumeSource adapts a Secret into a VolumeSource.
+// Adapts a Secret into a volume.
 //
 // The contents of the target Secret's Data field will be presented in a volume
 // as files using the keys in the Data field as the file names.
+// Secret volumes support ownership management and SELinux relabeling.
 type SecretVolumeSource struct {
 	// Name of the secret in the pod's namespace to use
 	SecretName string `json:"secretName"`
 }
 
-// NFSVolumeSource represents an NFS Mount that lasts the lifetime of a pod
+// Represents an NFS mount that lasts the lifetime of a pod.
+// NFS volumes do not support ownership management or SELinux relabeling.
 type NFSVolumeSource struct {
 	// Server is the hostname or IP address of the NFS server
 	Server string `json:"server"`
@@ -530,7 +578,8 @@ type NFSVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// GlusterfsVolumeSource represents a Glusterfs Mount that lasts the lifetime of a pod
+// Represents a Glusterfs mount that lasts the lifetime of a pod.
+// Glusterfs volumes do not support ownership management or SELinux relabeling.
 type GlusterfsVolumeSource struct {
 	// Required: EndpointsName is the endpoint name that details Glusterfs topology
 	EndpointsName string `json:"endpoints"`
@@ -543,7 +592,8 @@ type GlusterfsVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// RBDVolumeSource represents a Rados Block Device Mount that lasts the lifetime of a pod
+// Represents a Rados Block Device mount that lasts the lifetime of a pod.
+// RBD volumes support ownership management and SELinux relabeling.
 type RBDVolumeSource struct {
 	// Required: CephMonitors is a collection of Ceph monitors
 	CephMonitors []string `json:"monitors"`
@@ -567,9 +617,10 @@ type RBDVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// CinderVolumeSource represents a cinder volume resource in Openstack.
+// Represents a cinder volume resource in Openstack.
 // A Cinder volume must exist and be formatted before mounting to a container.
 // The volume must also be in the same region as the kubelet.
+// Cinder volumes support ownership management and SELinux relabeling.
 type CinderVolumeSource struct {
 	// Unique id of the volume used to identify the cinder volume
 	VolumeID string `json:"volumeID"`
@@ -582,7 +633,8 @@ type CinderVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// CephFSVolumeSource represents a Ceph Filesystem Mount that lasts the lifetime of a pod
+// Represents a Ceph Filesystem mount that lasts the lifetime of a pod
+// Cephfs volumes do not support ownership management or SELinux relabeling.
 type CephFSVolumeSource struct {
 	// Required: Monitors is a collection of Ceph monitors
 	Monitors []string `json:"monitors"`
@@ -597,19 +649,21 @@ type CephFSVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// FlockerVolumeSource represents a Flocker volume mounted by the Flocker agent.
+// Represents a Flocker volume mounted by the Flocker agent.
+// Flocker volumes do not support ownership management or SELinux relabeling.
 type FlockerVolumeSource struct {
 	// Required: the volume name. This is going to be store on metadata -> name on the payload for Flocker
 	DatasetName string `json:"datasetName"`
 }
 
-// DownwardAPIVolumeSource represents a volume containing downward API info
+// Represents a volume containing downward API info.
+// Downward API volumes support ownership management and SELinux relabeling.
 type DownwardAPIVolumeSource struct {
 	// Items is a list of DownwardAPIVolume file
 	Items []DownwardAPIVolumeFile `json:"items,omitempty"`
 }
 
-// DownwardAPIVolumeFile represents a single file containing information from the downward API
+// Represents a single file containing information from the downward API
 type DownwardAPIVolumeFile struct {
 	// Required: Path is  the relative path name of the file to be created. Must not be absolute or contain the '..' path. Must be utf-8 encoded. The first item of the relative path must not start with '..'
 	Path string `json:"path"`
@@ -681,7 +735,7 @@ type HTTPGetAction struct {
 	// Optional: Path to access on the HTTP server.
 	Path string `json:"path,omitempty"`
 	// Required: Name or number of the port to access on the container.
-	Port util.IntOrString `json:"port,omitempty"`
+	Port intstr.IntOrString `json:"port,omitempty"`
 	// Optional: Host name to connect to, defaults to the pod IP.
 	Host string `json:"host,omitempty"`
 	// Optional: Scheme to use for connecting to the host, defaults to HTTP.
@@ -701,7 +755,7 @@ const (
 // TCPSocketAction describes an action based on opening a socket
 type TCPSocketAction struct {
 	// Required: Port to connect to.
-	Port util.IntOrString `json:"port,omitempty"`
+	Port intstr.IntOrString `json:"port,omitempty"`
 }
 
 // ExecAction describes a "run in container" action.
@@ -713,14 +767,22 @@ type ExecAction struct {
 	Command []string `json:"command,omitempty"`
 }
 
-// Probe describes a liveness probe to be examined to the container.
+// Probe describes a health check to be performed against a container to determine whether it is
+// alive or ready to receive traffic.
 type Probe struct {
 	// The action taken to determine the health of a container
 	Handler `json:",inline"`
 	// Length of time before health checking is activated.  In seconds.
-	InitialDelaySeconds int64 `json:"initialDelaySeconds,omitempty"`
+	InitialDelaySeconds int `json:"initialDelaySeconds,omitempty"`
 	// Length of time before health checking times out.  In seconds.
-	TimeoutSeconds int64 `json:"timeoutSeconds,omitempty"`
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+	// How often (in seconds) to perform the probe.
+	PeriodSeconds int `json:"periodSeconds,omitempty"`
+	// Minimum consecutive successes for the probe to be considered successful after having failed.
+	// Must be 1 for liveness.
+	SuccessThreshold int `json:"successThreshold,omitempty"`
+	// Minimum consecutive failures for the probe to be considered failed after having succeeded.
+	FailureThreshold int `json:"failureThreshold,omitempty"`
 }
 
 // PullPolicy describes a policy for if/when to pull a container image
@@ -1080,6 +1142,8 @@ type PodStatusResult struct {
 	Status PodStatus `json:"status,omitempty"`
 }
 
+// +genclient=true
+
 // Pod is a collection of containers, used as either input (create, update) or as output (list, get).
 type Pod struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -1101,6 +1165,8 @@ type PodTemplateSpec struct {
 	// Spec defines the behavior of a pod.
 	Spec PodSpec `json:"spec,omitempty"`
 }
+
+// +genclient=true
 
 // PodTemplate describes a template for creating copies of a predefined pod.
 type PodTemplate struct {
@@ -1137,7 +1203,6 @@ type ReplicationControllerSpec struct {
 	// Template is the object that describes the pod that will be created if
 	// insufficient replicas are detected. Internally, this takes precedence over a
 	// TemplateRef.
-	// Must be set before converting to a v1beta1 or v1beta2 API object.
 	Template *PodTemplateSpec `json:"template,omitempty"`
 }
 
@@ -1150,6 +1215,8 @@ type ReplicationControllerStatus struct {
 	// ObservedGeneration is the most recent generation observed by the controller.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
+
+// +genclient=true
 
 // ReplicationController represents the configuration of a replication controller.
 type ReplicationController struct {
@@ -1293,12 +1360,14 @@ type ServicePort struct {
 	// is a string, it will be looked up as a named port in the target
 	// Pod's container ports.  If this is not specified, the default value
 	// is the sames as the Port field (an identity map).
-	TargetPort util.IntOrString `json:"targetPort"`
+	TargetPort intstr.IntOrString `json:"targetPort"`
 
 	// The port on each node on which this service is exposed.
 	// Default is to auto-allocate a port if the ServiceType of this Service requires one.
 	NodePort int `json:"nodePort"`
 }
+
+// +genclient=true
 
 // Service is a named abstraction of software service (for example, mysql) consisting of local port
 // (for example 3306) that the proxy listens on, and the selector that determines which pods
@@ -1313,6 +1382,8 @@ type Service struct {
 	// Status represents the current status of a service.
 	Status ServiceStatus `json:"status,omitempty"`
 }
+
+// +genclient=true
 
 // ServiceAccount binds together:
 // * a name, understood by users, and perhaps by peripheral systems, for an identity
@@ -1338,6 +1409,8 @@ type ServiceAccountList struct {
 
 	Items []ServiceAccount `json:"items"`
 }
+
+// +genclient=true
 
 // Endpoints is a collection of endpoints that implement the actual service.  Example:
 //   Name: "mysvc",
@@ -1446,7 +1519,7 @@ type NodeSystemInfo struct {
 	// Kernel Version reported by the node.
 	KernelVersion string `json:"kernelVersion"`
 	// OS Image reported by the node.
-	OsImage string `json:"osImage"`
+	OSImage string `json:"osImage"`
 	// ContainerRuntime Version reported by the node.
 	ContainerRuntimeVersion string `json:"containerRuntimeVersion"`
 	// Kubelet Version reported by the node.
@@ -1457,8 +1530,10 @@ type NodeSystemInfo struct {
 
 // NodeStatus is information about the current status of a node.
 type NodeStatus struct {
-	// Capacity represents the available resources of a node.
+	// Capacity represents the total resources of a node.
 	Capacity ResourceList `json:"capacity,omitempty"`
+	// Allocatable represents the resources of a node that are available for scheduling.
+	Allocatable ResourceList `json:"allocatable,omitempty"`
 	// NodePhase is the current lifecycle phase of the node.
 	Phase NodePhase `json:"phase,omitempty"`
 	// Conditions is an array of current node conditions.
@@ -1544,6 +1619,8 @@ const (
 // ResourceList is a set of (resource name, quantity) pairs.
 type ResourceList map[ResourceName]resource.Quantity
 
+// +genclient=true
+
 // Node is a worker node in Kubernetes
 // The name of the node according to etcd is in ObjectMeta.Name.
 type Node struct {
@@ -1594,6 +1671,8 @@ const (
 	NamespaceTerminating NamespacePhase = "Terminating"
 )
 
+// +genclient=true
+
 // A namespace provides a scope for Names.
 // Use of multiple namespaces is optional
 type Namespace struct {
@@ -1633,6 +1712,15 @@ type DeleteOptions struct {
 	// The value zero indicates delete immediately. If this value is nil, the default grace period for the
 	// specified type will be used.
 	GracePeriodSeconds *int64 `json:"gracePeriodSeconds"`
+}
+
+// ExportOptions is the query options to the standard REST get call.
+type ExportOptions struct {
+	unversioned.TypeMeta `json:",inline"`
+	// Should this value be exported.  Export strips fields that a user can not specify.
+	Export bool `json:"export"`
+	// Should the export be exact.  Exact export maintains cluster-specific fields like 'Namespace'
+	Exact bool `json:"exact"`
 }
 
 // ListOptions is the query options to a standard REST list call, and has future support for
@@ -1774,6 +1862,16 @@ type EventSource struct {
 	Host string `json:"host,omitempty"`
 }
 
+// Valid values for event types (new types could be added in future)
+const (
+	// Information only and will not cause any problems
+	EventTypeNormal string = "Normal"
+	// These events are to warn that something might go wrong
+	EventTypeWarning string = "Warning"
+)
+
+// +genclient=true
+
 // Event is a report of an event somewhere in the cluster.
 // TODO: Decide whether to store these separately or with the object they apply to.
 type Event struct {
@@ -1804,6 +1902,9 @@ type Event struct {
 
 	// The number of times this event has occurred.
 	Count int `json:"count,omitempty"`
+
+	// Type of this event (Normal, Warning), new types could be added in the future.
+	Type string `json:"type,omitempty"`
 }
 
 // EventList is a list of events.
@@ -1854,6 +1955,8 @@ type LimitRangeSpec struct {
 	Limits []LimitRangeItem `json:"limits"`
 }
 
+// +genclient=true
+
 // LimitRange sets resource usage limits for each kind of resource in a Namespace
 type LimitRange struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -1902,6 +2005,8 @@ type ResourceQuotaStatus struct {
 	Used ResourceList `json:"used,omitempty"`
 }
 
+// +genclient=true
+
 // ResourceQuota sets aggregate quota restrictions enforced per namespace
 type ResourceQuota struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -1922,6 +2027,8 @@ type ResourceQuotaList struct {
 	// Items is a list of ResourceQuota objects
 	Items []ResourceQuota `json:"items"`
 }
+
+// +genclient=true
 
 // Secret holds secret data of a certain type.  The total bytes of the values in
 // the Data field must be less than MaxSecretSize bytes.
@@ -2057,6 +2164,8 @@ type ComponentCondition struct {
 	Error   string                 `json:"error,omitempty"`
 }
 
+// +genclient=true
+
 // ComponentStatus (and ComponentStatusList) holds the cluster validation info.
 type ComponentStatus struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -2134,3 +2243,8 @@ type RangeAllocation struct {
 	// a single allocated address (the fifth bit on CIDR 10.0.0.0/8 is 10.0.0.4).
 	Data []byte `json:"data"`
 }
+
+const (
+	// "default-scheduler" is the name of default scheduler.
+	DefaultSchedulerName = "default-scheduler"
+)
