@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -35,6 +34,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/elb"
@@ -45,6 +45,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
 const ProviderName = "aws"
@@ -57,6 +58,11 @@ const TagNameKubernetesCluster = "KubernetesCluster"
 // In an eventually consistent system, it could fail unboundedly
 // MaxReadThenCreateRetries sets the maximum number of attempts we will make
 const MaxReadThenCreateRetries = 30
+
+// Default volume type for newly created Volumes
+// TODO: Remove when user/admin can configure volume types and thus we don't
+// need hardcoded defaults.
+const DefaultVolumeType = "gp2"
 
 // Abstraction over AWS, to allow mocking/other implementations
 type AWSServices interface {
@@ -74,7 +80,7 @@ type EC2 interface {
 	DescribeInstances(request *ec2.DescribeInstancesInput) ([]*ec2.Instance, error)
 
 	// Attach a volume to an instance
-	AttachVolume(volumeID, instanceId, mountDevice string) (resp *ec2.VolumeAttachment, err error)
+	AttachVolume(*ec2.AttachVolumeInput) (*ec2.VolumeAttachment, error)
 	// Detach a volume from an instance it is attached to
 	DetachVolume(request *ec2.DetachVolumeInput) (resp *ec2.VolumeAttachment, err error)
 	// Lists volumes
@@ -82,7 +88,7 @@ type EC2 interface {
 	// Create an EBS volume
 	CreateVolume(request *ec2.CreateVolumeInput) (resp *ec2.Volume, err error)
 	// Delete an EBS volume
-	DeleteVolume(volumeID string) (resp *ec2.DeleteVolumeOutput, err error)
+	DeleteVolume(*ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error)
 
 	DescribeSecurityGroups(request *ec2.DescribeSecurityGroupsInput) ([]*ec2.SecurityGroup, error)
 
@@ -135,7 +141,8 @@ type EC2Metadata interface {
 }
 
 type VolumeOptions struct {
-	CapacityMB int
+	CapacityGB int
+	Tags       *map[string]string
 }
 
 // Volumes is an interface for managing cloud-provisioned volumes
@@ -152,6 +159,9 @@ type Volumes interface {
 	// Create a volume with the specified options
 	CreateVolume(volumeOptions *VolumeOptions) (volumeName string, err error)
 	DeleteVolume(volumeName string) error
+
+	// Get labels to apply to volume on creation
+	GetVolumeLabels(volumeName string) (map[string]string, error)
 }
 
 // InstanceGroups is an interface for managing cloud-managed instance groups / autoscaling instance groups
@@ -214,10 +224,10 @@ func addHandlers(h *request.Handlers) {
 }
 
 func (p *awsSDKProvider) Compute(regionName string) (EC2, error) {
-	service := ec2.New(&aws.Config{
+	service := ec2.New(session.New(&aws.Config{
 		Region:      &regionName,
 		Credentials: p.creds,
-	})
+	}))
 
 	addHandlers(&service.Handlers)
 
@@ -228,10 +238,10 @@ func (p *awsSDKProvider) Compute(regionName string) (EC2, error) {
 }
 
 func (p *awsSDKProvider) LoadBalancing(regionName string) (ELB, error) {
-	elbClient := elb.New(&aws.Config{
+	elbClient := elb.New(session.New(&aws.Config{
 		Region:      &regionName,
 		Credentials: p.creds,
-	})
+	}))
 
 	addHandlers(&elbClient.Handlers)
 
@@ -239,10 +249,10 @@ func (p *awsSDKProvider) LoadBalancing(regionName string) (ELB, error) {
 }
 
 func (p *awsSDKProvider) Autoscaling(regionName string) (ASG, error) {
-	client := autoscaling.New(&aws.Config{
+	client := autoscaling.New(session.New(&aws.Config{
 		Region:      &regionName,
 		Credentials: p.creds,
-	})
+	}))
 
 	addHandlers(&client.Handlers)
 
@@ -324,19 +334,6 @@ func (self *awsSdkEC2) DescribeInstances(request *ec2.DescribeInstancesInput) ([
 	return results, nil
 }
 
-type awsSdkMetadata struct {
-	metadata *ec2metadata.Client
-}
-
-var metadataClient = http.Client{
-	Timeout: time.Second * 10,
-}
-
-// Implements EC2Metadata.GetMetadata
-func (self *awsSdkMetadata) GetMetadata(path string) (string, error) {
-	return self.metadata.GetMetadata(path)
-}
-
 // Implements EC2.DescribeSecurityGroups
 func (s *awsSdkEC2) DescribeSecurityGroups(request *ec2.DescribeSecurityGroupsInput) ([]*ec2.SecurityGroup, error) {
 	// Security groups are not paged
@@ -347,13 +344,8 @@ func (s *awsSdkEC2) DescribeSecurityGroups(request *ec2.DescribeSecurityGroupsIn
 	return response.SecurityGroups, nil
 }
 
-func (s *awsSdkEC2) AttachVolume(volumeID, instanceId, device string) (resp *ec2.VolumeAttachment, err error) {
-	request := ec2.AttachVolumeInput{
-		Device:     &device,
-		InstanceId: &instanceId,
-		VolumeId:   &volumeID,
-	}
-	return s.ec2.AttachVolume(&request)
+func (s *awsSdkEC2) AttachVolume(request *ec2.AttachVolumeInput) (*ec2.VolumeAttachment, error) {
+	return s.ec2.AttachVolume(request)
 }
 
 func (s *awsSdkEC2) DetachVolume(request *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error) {
@@ -388,9 +380,8 @@ func (s *awsSdkEC2) CreateVolume(request *ec2.CreateVolumeInput) (resp *ec2.Volu
 	return s.ec2.CreateVolume(request)
 }
 
-func (s *awsSdkEC2) DeleteVolume(volumeID string) (resp *ec2.DeleteVolumeOutput, err error) {
-	request := ec2.DeleteVolumeInput{VolumeId: &volumeID}
-	return s.ec2.DeleteVolume(&request)
+func (s *awsSdkEC2) DeleteVolume(request *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error) {
+	return s.ec2.DeleteVolume(request)
 }
 
 func (s *awsSdkEC2) DescribeSubnets(request *ec2.DescribeSubnetsInput) ([]*ec2.Subnet, error) {
@@ -510,6 +501,16 @@ func isRegionValid(region string) bool {
 	return false
 }
 
+// Derives the region from a valid az name.
+// Returns an error if the az is known invalid (empty)
+func azToRegion(az string) (string, error) {
+	if len(az) < 1 {
+		return "", fmt.Errorf("invalid (empty) AZ")
+	}
+	region := az[:len(az)-1]
+	return region, nil
+}
+
 // newAWSCloud creates a new instance of AWSCloud.
 // AWSProvider and instanceId are primarily for tests
 func newAWSCloud(config io.Reader, awsServices AWSServices) (*AWSCloud, error) {
@@ -527,7 +528,10 @@ func newAWSCloud(config io.Reader, awsServices AWSServices) (*AWSCloud, error) {
 	if len(zone) <= 1 {
 		return nil, fmt.Errorf("invalid AWS zone in config file: %s", zone)
 	}
-	regionName := zone[:len(zone)-1]
+	regionName, err := azToRegion(zone)
+	if err != nil {
+		return nil, err
+	}
 
 	valid := isRegionValid(regionName)
 	if !valid {
@@ -624,6 +628,24 @@ func (aws *AWSCloud) Routes() (cloudprovider.Routes, bool) {
 
 // NodeAddresses is an implementation of Instances.NodeAddresses.
 func (aws *AWSCloud) NodeAddresses(name string) ([]api.NodeAddress, error) {
+	self, err := aws.getSelfAWSInstance()
+	if err != nil {
+		return nil, err
+	}
+	if self.nodeName == name || len(name) == 0 {
+		internalIP, err := aws.metadata.GetMetadata("local-ipv4")
+		if err != nil {
+			return nil, err
+		}
+		externalIP, err := aws.metadata.GetMetadata("public-ipv4")
+		if err != nil {
+			return nil, err
+		}
+		return []api.NodeAddress{
+			{Type: api.NodeInternalIP, Address: internalIP},
+			{Type: api.NodeExternalIP, Address: externalIP},
+		}, nil
+	}
 	instance, err := aws.getInstanceByNodeName(name)
 	if err != nil {
 		return nil, err
@@ -1032,8 +1054,9 @@ func (self *awsDisk) waitForAttachmentStatus(status string) error {
 }
 
 // Deletes the EBS disk
-func (self *awsDisk) delete() error {
-	_, err := self.ec2.DeleteVolume(self.awsID)
+func (self *awsDisk) deleteVolume() error {
+	request := &ec2.DeleteVolumeInput{VolumeId: aws.String(self.awsID)}
+	_, err := self.ec2.DeleteVolume(request)
 	if err != nil {
 		return fmt.Errorf("error delete EBS volumes: %v", err)
 	}
@@ -1088,13 +1111,13 @@ func (aws *AWSCloud) getAwsInstance(nodeName string) (*awsInstance, error) {
 }
 
 // Implements Volumes.AttachDisk
-func (aws *AWSCloud) AttachDisk(instanceName string, diskName string, readOnly bool) (string, error) {
-	disk, err := newAWSDisk(aws, diskName)
+func (c *AWSCloud) AttachDisk(instanceName string, diskName string, readOnly bool) (string, error) {
+	disk, err := newAWSDisk(c, diskName)
 	if err != nil {
 		return "", err
 	}
 
-	awsInstance, err := aws.getAwsInstance(instanceName)
+	awsInstance, err := c.getAwsInstance(instanceName)
 	if err != nil {
 		return "", err
 	}
@@ -1122,12 +1145,18 @@ func (aws *AWSCloud) AttachDisk(instanceName string, diskName string, readOnly b
 	attached := false
 	defer func() {
 		if !attached {
-			awsInstance.releaseMountDevice(disk.awsID, ec2Device)
+			awsInstance.releaseMountDevice(disk.awsID, mountpoint)
 		}
 	}()
 
 	if !alreadyAttached {
-		attachResponse, err := aws.ec2.AttachVolume(disk.awsID, awsInstance.awsID, ec2Device)
+		request := &ec2.AttachVolumeInput{
+			Device:     aws.String(ec2Device),
+			InstanceId: aws.String(awsInstance.awsID),
+			VolumeId:   aws.String(disk.awsID),
+		}
+
+		attachResponse, err := c.ec2.AttachVolume(request)
 		if err != nil {
 			// TODO: Check if the volume was concurrently attached?
 			return "", fmt.Errorf("Error attaching EBS volume: %v", err)
@@ -1170,6 +1199,24 @@ func (aws *AWSCloud) DetachDisk(instanceName string, diskName string) error {
 	if response == nil {
 		return errors.New("no response from DetachVolume")
 	}
+
+	// At this point we are waiting for the volume being detached. This
+	// releases the volume and invalidates the cache even when there is a timeout.
+	//
+	// TODO: A timeout leaves the cache in an inconsistent state. The volume is still
+	// detaching though the cache shows it as ready to be attached again. Subsequent
+	// attach operations will fail. The attach is being retried and eventually
+	// works though. An option would be to completely flush the cache upon timeouts.
+	//
+	defer func() {
+		for mountDevice, existingVolumeID := range awsInstance.deviceMappings {
+			if existingVolumeID == disk.awsID {
+				awsInstance.releaseMountDevice(disk.awsID, mountDevice)
+				return
+			}
+		}
+	}()
+
 	err = disk.waitForAttachmentStatus("detached")
 	if err != nil {
 		return err
@@ -1179,15 +1226,15 @@ func (aws *AWSCloud) DetachDisk(instanceName string, diskName string) error {
 }
 
 // Implements Volumes.CreateVolume
-func (aws *AWSCloud) CreateVolume(volumeOptions *VolumeOptions) (string, error) {
+func (s *AWSCloud) CreateVolume(volumeOptions *VolumeOptions) (string, error) {
 	// TODO: Should we tag this with the cluster id (so it gets deleted when the cluster does?)
-	// This is only used for testing right now
 
 	request := &ec2.CreateVolumeInput{}
-	request.AvailabilityZone = &aws.availabilityZone
-	volSize := (int64(volumeOptions.CapacityMB) + 1023) / 1024
+	request.AvailabilityZone = &s.availabilityZone
+	volSize := int64(volumeOptions.CapacityGB)
 	request.Size = &volSize
-	response, err := aws.ec2.CreateVolume(request)
+	request.VolumeType = aws.String(DefaultVolumeType)
+	response, err := s.ec2.CreateVolume(request)
 	if err != nil {
 		return "", err
 	}
@@ -1197,6 +1244,28 @@ func (aws *AWSCloud) CreateVolume(volumeOptions *VolumeOptions) (string, error) 
 
 	volumeName := "aws://" + az + "/" + awsID
 
+	// apply tags
+	if volumeOptions.Tags != nil {
+		tags := []*ec2.Tag{}
+		for k, v := range *volumeOptions.Tags {
+			tag := &ec2.Tag{}
+			tag.Key = aws.String(k)
+			tag.Value = aws.String(v)
+			tags = append(tags, tag)
+		}
+		tagRequest := &ec2.CreateTagsInput{}
+		tagRequest.Resources = []*string{&awsID}
+		tagRequest.Tags = tags
+		if _, err := s.createTags(tagRequest); err != nil {
+			// delete the volume and hope it succeeds
+			delerr := s.DeleteVolume(volumeName)
+			if delerr != nil {
+				// delete did not succeed, we have a stray volume!
+				return "", fmt.Errorf("error tagging volume %s, could not delete the volume: %v", volumeName, delerr)
+			}
+			return "", fmt.Errorf("error tagging volume %s: %v", volumeName, err)
+		}
+	}
 	return volumeName, nil
 }
 
@@ -1206,7 +1275,33 @@ func (aws *AWSCloud) DeleteVolume(volumeName string) error {
 	if err != nil {
 		return err
 	}
-	return awsDisk.delete()
+	return awsDisk.deleteVolume()
+}
+
+// Implements Volumes.GetVolumeLabels
+func (c *AWSCloud) GetVolumeLabels(volumeName string) (map[string]string, error) {
+	awsDisk, err := newAWSDisk(c, volumeName)
+	if err != nil {
+		return nil, err
+	}
+	info, err := awsDisk.getInfo()
+	if err != nil {
+		return nil, err
+	}
+	labels := make(map[string]string)
+	az := aws.StringValue(info.AvailabilityZone)
+	if az == "" {
+		return nil, fmt.Errorf("volume did not have AZ information: %q", info.VolumeId)
+	}
+
+	labels[unversioned.LabelZoneFailureDomain] = az
+	region, err := azToRegion(az)
+	if err != nil {
+		return nil, err
+	}
+	labels[unversioned.LabelZoneRegion] = region
+
+	return labels, nil
 }
 
 func (v *AWSCloud) Configure(name string, spec *api.NodeSpec) error {

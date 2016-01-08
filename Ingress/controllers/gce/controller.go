@@ -30,7 +30,6 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
-	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 
@@ -90,7 +89,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 	pathHandlers := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			addIng := obj.(*extensions.Ingress)
-			lbc.recorder.Eventf(addIng, "ADD", addIng.Name)
+			lbc.recorder.Eventf(addIng, "ADD", addIng.Name, fmt.Sprintf("Adding %s", addIng.Name))
 			lbc.ingQueue.enqueue(obj)
 		},
 		DeleteFunc: lbc.ingQueue.enqueue,
@@ -134,7 +133,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 	// Node watch handlers
 	lbc.nodeLister.Store, lbc.nodeController = framework.NewInformer(
 		&cache.ListWatch{
-			ListFunc: func() (runtime.Object, error) {
+			ListFunc: func(opts api.ListOptions) (runtime.Object, error) {
 				return lbc.client.Get().
 					Resource("nodes").
 					FieldsSelectorParam(fields.Everything()).
@@ -157,16 +156,15 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 	return &lbc, nil
 }
 
-func ingressListFunc(c *client.Client, ns string) func() (runtime.Object, error) {
-	return func() (runtime.Object, error) {
-		return c.Extensions().Ingress(ns).List(labels.Everything(), fields.Everything())
+func ingressListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
+	return func(opts api.ListOptions) (runtime.Object, error) {
+		return c.Extensions().Ingress(ns).List(opts)
 	}
 }
 
 func ingressWatchFunc(c *client.Client, ns string) func(options api.ListOptions) (watch.Interface, error) {
 	return func(options api.ListOptions) (watch.Interface, error) {
-		return c.Extensions().Ingress(ns).Watch(
-			labels.Everything(), fields.Everything(), options)
+		return c.Extensions().Ingress(ns).Watch(options)
 	}
 }
 
@@ -266,7 +264,7 @@ func (lbc *loadBalancerController) sync(key string) {
 			eventType += " :Quota"
 		}
 		if ingExists {
-			lbc.recorder.Eventf(obj.(*extensions.Ingress), eventType, "%v", err)
+			lbc.recorder.Eventf(obj.(*extensions.Ingress), eventType, "ERROR", err.Error())
 		} else {
 			err = fmt.Errorf("%v Error: %v", eventType, err)
 		}
@@ -288,10 +286,10 @@ func (lbc *loadBalancerController) sync(key string) {
 	if urlMap, err := lbc.tr.toUrlMap(&ing); err != nil {
 		lbc.ingQueue.requeue(key, err)
 	} else if err := l7.UpdateUrlMap(urlMap); err != nil {
-		lbc.recorder.Eventf(&ing, "UrlMap", "%v", err)
+		lbc.recorder.Eventf(&ing, "UrlMap", "ERROR", err.Error())
 		lbc.ingQueue.requeue(key, err)
 	} else if lbc.updateIngressStatus(l7, ing); err != nil {
-		lbc.recorder.Eventf(&ing, "Status", "%v", err)
+		lbc.recorder.Eventf(&ing, "Status", "ERROR", err.Error())
 		lbc.ingQueue.requeue(key, err)
 	}
 	return
@@ -355,10 +353,20 @@ func (lbc *loadBalancerController) syncNodes(key string) {
 	return
 }
 
+func nodeReady(node api.Node) bool {
+	for ix := range node.Status.Conditions {
+		condition := &node.Status.Conditions[ix]
+		if condition.Type == api.NodeReady {
+			return condition.Status == api.ConditionTrue
+		}
+	}
+	return false
+}
+
 // getReadyNodeNames returns names of schedulable, ready nodes from the node lister.
 func (lbc *loadBalancerController) getReadyNodeNames() ([]string, error) {
 	nodeNames := []string{}
-	nodes, err := lbc.nodeLister.NodeCondition(api.NodeReady, api.ConditionTrue).List()
+	nodes, err := lbc.nodeLister.NodeCondition(nodeReady).List()
 	if err != nil {
 		return nodeNames, err
 	}

@@ -41,6 +41,7 @@ import (
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 )
 
@@ -318,7 +319,7 @@ type loadBalancerController struct {
 
 // getTargetPort returns the numeric value of TargetPort
 func getTargetPort(servicePort *api.ServicePort) int {
-	return servicePort.TargetPort.IntVal
+	return int(servicePort.TargetPort.IntVal)
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -335,12 +336,12 @@ func (lbc *loadBalancerController) getEndpoints(
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
 			var targetPort int
-			switch servicePort.TargetPort.Kind {
-			case util.IntstrInt:
+			switch servicePort.TargetPort.Type {
+			case intstr.Int:
 				if epPort.Port == getTargetPort(servicePort) {
 					targetPort = epPort.Port
 				}
-			case util.IntstrString:
+			case intstr.String:
 				if epPort.Name == servicePort.TargetPort.StrVal {
 					targetPort = epPort.Port
 				}

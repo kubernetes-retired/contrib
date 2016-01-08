@@ -46,6 +46,81 @@ func TestStoreToNodeLister(t *testing.T) {
 	}
 }
 
+func TestStoreToNodeConditionLister(t *testing.T) {
+	store := NewStore(MetaNamespaceKeyFunc)
+	nodes := []*api.Node{
+		{
+			ObjectMeta: api.ObjectMeta{Name: "foo"},
+			Status: api.NodeStatus{
+				Conditions: []api.NodeCondition{
+					{
+						Type:   api.NodeReady,
+						Status: api.ConditionTrue,
+					},
+					{
+						Type:   api.NodeOutOfDisk,
+						Status: api.ConditionFalse,
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: api.ObjectMeta{Name: "bar"},
+			Status: api.NodeStatus{
+				Conditions: []api.NodeCondition{
+					{
+						Type:   api.NodeOutOfDisk,
+						Status: api.ConditionTrue,
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: api.ObjectMeta{Name: "baz"},
+			Status: api.NodeStatus{
+				Conditions: []api.NodeCondition{
+					{
+						Type:   api.NodeReady,
+						Status: api.ConditionFalse,
+					},
+					{
+						Type:   api.NodeOutOfDisk,
+						Status: api.ConditionUnknown,
+					},
+				},
+			},
+		},
+	}
+	for _, n := range nodes {
+		store.Add(n)
+	}
+
+	predicate := func(node api.Node) bool {
+		for _, cond := range node.Status.Conditions {
+			if cond.Type == api.NodeOutOfDisk && cond.Status == api.ConditionTrue {
+				return false
+			}
+		}
+		return true
+	}
+
+	snl := StoreToNodeLister{store}
+	sncl := snl.NodeCondition(predicate)
+
+	want := sets.NewString("foo", "baz")
+	gotNodes, err := sncl.List()
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	got := make([]string, len(gotNodes.Items))
+	for ix := range gotNodes.Items {
+		got[ix] = gotNodes.Items[ix].Name
+	}
+	if !want.HasAll(got...) || len(got) != len(want) {
+		t.Errorf("Expected %v, got %v", want, got)
+	}
+}
+
 func TestStoreToReplicationControllerLister(t *testing.T) {
 	store := NewStore(MetaNamespaceKeyFunc)
 	lister := StoreToReplicationControllerLister{store}
@@ -173,7 +248,8 @@ func TestStoreToDaemonSetLister(t *testing.T) {
 				{ObjectMeta: api.ObjectMeta{Name: "basic"}},
 			},
 			list: func() ([]extensions.DaemonSet, error) {
-				return lister.List()
+				list, err := lister.List()
+				return list.Items, err
 			},
 			outDaemonSetNames: sets.NewString("basic"),
 		},
@@ -185,7 +261,8 @@ func TestStoreToDaemonSetLister(t *testing.T) {
 				{ObjectMeta: api.ObjectMeta{Name: "complex2"}},
 			},
 			list: func() ([]extensions.DaemonSet, error) {
-				return lister.List()
+				list, err := lister.List()
+				return list.Items, err
 			},
 			outDaemonSetNames: sets.NewString("basic", "complex", "complex2"),
 		},
@@ -195,7 +272,7 @@ func TestStoreToDaemonSetLister(t *testing.T) {
 				{
 					ObjectMeta: api.ObjectMeta{Name: "basic", Namespace: "ns"},
 					Spec: extensions.DaemonSetSpec{
-						Selector: map[string]string{"foo": "baz"},
+						Selector: &extensions.LabelSelector{MatchLabels: map[string]string{"foo": "baz"}},
 					},
 				},
 			},
@@ -234,13 +311,13 @@ func TestStoreToDaemonSetLister(t *testing.T) {
 				{
 					ObjectMeta: api.ObjectMeta{Name: "foo"},
 					Spec: extensions.DaemonSetSpec{
-						Selector: map[string]string{"foo": "bar"},
+						Selector: &extensions.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
 					},
 				},
 				{
 					ObjectMeta: api.ObjectMeta{Name: "bar", Namespace: "ns"},
 					Spec: extensions.DaemonSetSpec{
-						Selector: map[string]string{"foo": "bar"},
+						Selector: &extensions.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
 					},
 				},
 			},
@@ -324,7 +401,7 @@ func TestStoreToJobLister(t *testing.T) {
 				{
 					ObjectMeta: api.ObjectMeta{Name: "basic", Namespace: "ns"},
 					Spec: extensions.JobSpec{
-						Selector: &extensions.PodSelector{
+						Selector: &extensions.LabelSelector{
 							MatchLabels: map[string]string{"foo": "baz"},
 						},
 					},
@@ -367,7 +444,7 @@ func TestStoreToJobLister(t *testing.T) {
 				{
 					ObjectMeta: api.ObjectMeta{Name: "foo"},
 					Spec: extensions.JobSpec{
-						Selector: &extensions.PodSelector{
+						Selector: &extensions.LabelSelector{
 							MatchLabels: map[string]string{"foo": "bar"},
 						},
 					},
@@ -375,7 +452,7 @@ func TestStoreToJobLister(t *testing.T) {
 				{
 					ObjectMeta: api.ObjectMeta{Name: "bar", Namespace: "ns"},
 					Spec: extensions.JobSpec{
-						Selector: &extensions.PodSelector{
+						Selector: &extensions.LabelSelector{
 							MatchLabels: map[string]string{"foo": "bar"},
 						},
 					},
@@ -400,7 +477,7 @@ func TestStoreToJobLister(t *testing.T) {
 				{
 					ObjectMeta: api.ObjectMeta{Name: "foo", Namespace: "foo"},
 					Spec: extensions.JobSpec{
-						Selector: &extensions.PodSelector{
+						Selector: &extensions.LabelSelector{
 							MatchLabels: map[string]string{"foo": "bar"},
 						},
 					},
@@ -408,7 +485,7 @@ func TestStoreToJobLister(t *testing.T) {
 				{
 					ObjectMeta: api.ObjectMeta{Name: "bar", Namespace: "bar"},
 					Spec: extensions.JobSpec{
-						Selector: &extensions.PodSelector{
+						Selector: &extensions.LabelSelector{
 							MatchLabels: map[string]string{"foo": "bar"},
 						},
 					},

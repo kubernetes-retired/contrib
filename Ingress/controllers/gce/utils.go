@@ -27,6 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/cache"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 
@@ -219,9 +220,9 @@ func (t *gceTranslator) getServiceNodePort(be extensions.IngressBackend, namespa
 	}
 	var nodePort int
 	for _, p := range obj.(*api.Service).Spec.Ports {
-		switch be.ServicePort.Kind {
-		case util.IntstrInt:
-			if p.Port == be.ServicePort.IntVal {
+		switch be.ServicePort.Type {
+		case intstr.Int:
+			if p.Port == int(be.ServicePort.IntVal) {
 				nodePort = p.NodePort
 				break
 			}

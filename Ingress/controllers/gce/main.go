@@ -27,6 +27,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
@@ -148,7 +149,9 @@ func main() {
 	if *proxyUrl != "" {
 		// Create proxy kubeclient
 		kubeClient = client.NewOrDie(&client.Config{
-			Host: *proxyUrl, Version: "v1"})
+			Host:         *proxyUrl,
+			GroupVersion: &unversioned.GroupVersion{Version: "v1"},
+		})
 	} else {
 		// Create kubeclient
 		if *inCluster {
