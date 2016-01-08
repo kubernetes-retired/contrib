@@ -28,7 +28,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/kubectl"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/util/editor"
@@ -46,9 +46,9 @@ const (
 	editLong = `Edit a resource from the default editor.
 
 The edit command allows you to directly edit any API resource you can retrieve via the
-command line tools. It will open the editor defined by your KUBE_EDITOR, GIT_EDITOR,
-or EDITOR environment variables, or fall back to 'vi' for Linux or 'notepad' for Windows.
-You can edit multiple objects, although changes are applied one at a time. The command 
+command line tools. It will open the editor defined by your KUBE_EDITOR, or EDITOR
+environment variables, or fall back to 'vi' for Linux or 'notepad' for Windows.
+You can edit multiple objects, although changes are applied one at a time. The command
 accepts filenames as well as command line arguments, although the files you point to must
 be previously saved versions of resources.
 
@@ -95,6 +95,7 @@ func NewCmdEdit(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd.Flags().StringP("output", "o", "yaml", "Output format. One of: yaml|json.")
 	cmd.Flags().String("output-version", "", "Output the formatted object with the given version (default api-version).")
 	cmd.Flags().Bool("windows-line-endings", runtime.GOOS == "windows", "Use Windows line-endings (default Unix line-endings)")
+	cmdutil.AddApplyAnnotationFlags(cmd)
 	return cmd
 }
 
@@ -147,11 +148,14 @@ func RunEdit(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 	}
 
 	windowsLineEndings := cmdutil.GetFlagBool(cmd, "windows-line-endings")
-	edit := editor.NewDefaultEditor()
-	defaultVersion := cmdutil.OutputVersion(cmd, clientConfig.Version)
+	edit := editor.NewDefaultEditor(f.EditorEnvs())
+	defaultVersion, err := cmdutil.OutputVersion(cmd, clientConfig.GroupVersion)
+	if err != nil {
+		return err
+	}
 	results := editResults{}
 	for {
-		objs, err := resource.AsVersionedObjects(infos, defaultVersion)
+		objs, err := resource.AsVersionedObjects(infos, defaultVersion.String())
 		if err != nil {
 			return preservedFile(err, results.file, out)
 		}
@@ -220,8 +224,12 @@ func RunEdit(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 				return fmt.Errorf("The edited file had a syntax error: %v", err)
 			}
 
-			// annotate the edited object for kubectl apply
-			if err := kubectl.UpdateApplyAnnotation(updates); err != nil {
+			// put configuration annotation in "updates"
+			if err := kubectl.CreateOrUpdateAnnotation(cmdutil.GetFlagBool(cmd, cmdutil.ApplyAnnotationsFlag), updates); err != nil {
+				return preservedFile(err, file, out)
+			}
+			// encode updates back to "edited" since we'll only generate patch from "edited"
+			if edited, err = updates.Mapping.Codec.Encode(updates.Object); err != nil {
 				return preservedFile(err, file, out)
 			}
 
@@ -351,7 +359,7 @@ type editResults struct {
 	edit      []*resource.Info
 	file      string
 
-	version string
+	version unversioned.GroupVersion
 }
 
 func (r *editResults) addError(err error, info *resource.Info) string {
@@ -361,7 +369,7 @@ func (r *editResults) addError(err error, info *resource.Info) string {
 		reason := editReason{
 			head: fmt.Sprintf("%s %s was not valid", info.Mapping.Kind, info.Name),
 		}
-		if err, ok := err.(client.APIStatus); ok {
+		if err, ok := err.(errors.APIStatus); ok {
 			if details := err.Status().Details; details != nil {
 				for _, cause := range details.Causes {
 					reason.other = append(reason.other, cause.Message)

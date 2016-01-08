@@ -93,6 +93,7 @@ func NewCmdExposeService(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 
 	usage := "Filename, directory, or URL to a file identifying the resource to expose a service"
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
+	cmdutil.AddApplyAnnotationFlags(cmd)
 	return cmd
 }
 
@@ -119,7 +120,7 @@ func RunExpose(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 	}
 	info := infos[0]
 	mapping := info.ResourceMapping()
-	if err := f.CanBeExposed(mapping.Kind); err != nil {
+	if err := f.CanBeExposed(mapping.GroupVersionKind.GroupKind()); err != nil {
 		return err
 	}
 	// Get the input object
@@ -130,7 +131,8 @@ func RunExpose(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 
 	// Get the generator, setup and validate all required parameters
 	generatorName := cmdutil.GetFlagString(cmd, "generator")
-	generator, found := f.Generator(generatorName)
+	generators := f.Generators("expose")
+	generator, found := generators[generatorName]
 	if !found {
 		return cmdutil.UsageError(cmd, fmt.Sprintf("generator %q not found.", generatorName))
 	}
@@ -178,6 +180,10 @@ func RunExpose(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 	if err = kubectl.ValidateParams(names, params); err != nil {
 		return err
 	}
+	// Check for invalid flags used against the present generator.
+	if err := kubectl.EnsureFlagsValid(cmd, generators, generatorName); err != nil {
+		return err
+	}
 
 	// Generate new object
 	object, err := generator.Generate(params)
@@ -186,7 +192,7 @@ func RunExpose(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 	}
 
 	if inline := cmdutil.GetFlagString(cmd, "overrides"); len(inline) > 0 {
-		object, err = cmdutil.Merge(object, inline, mapping.Kind)
+		object, err = cmdutil.Merge(object, inline, mapping.GroupVersionKind.Kind)
 		if err != nil {
 			return err
 		}
@@ -201,17 +207,12 @@ func RunExpose(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 	if cmdutil.GetFlagBool(cmd, "dry-run") {
 		return f.PrintObject(cmd, object, out)
 	}
-	// Serialize the configuration into an annotation.
-	if err := kubectl.UpdateApplyAnnotation(info); err != nil {
+	if err := kubectl.CreateOrUpdateAnnotation(cmdutil.GetFlagBool(cmd, cmdutil.ApplyAnnotationsFlag), info); err != nil {
 		return err
 	}
 
 	// Serialize the object with the annotation applied.
-	data, err := info.Mapping.Codec.Encode(object)
-	if err != nil {
-		return err
-	}
-	object, err = resource.NewHelper(info.Client, info.Mapping).Create(namespace, false, data)
+	object, err = resource.NewHelper(info.Client, info.Mapping).Create(namespace, false, object)
 	if err != nil {
 		return err
 	}

@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/watch"
@@ -120,7 +121,7 @@ func (f *FakeControllerSource) Change(e watch.Event, watchProbability float64) {
 }
 
 // List returns a list object, with its resource version set.
-func (f *FakeControllerSource) List() (runtime.Object, error) {
+func (f *FakeControllerSource) List(options api.ListOptions) (runtime.Object, error) {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 	list := make([]runtime.Object, 0, len(f.items))
@@ -136,7 +137,7 @@ func (f *FakeControllerSource) List() (runtime.Object, error) {
 		list = append(list, objCopy.(runtime.Object))
 	}
 	listObj := &api.List{}
-	if err := runtime.SetList(listObj, list); err != nil {
+	if err := meta.SetList(listObj, list); err != nil {
 		return nil, err
 	}
 	objMeta, err := api.ListMetaFor(listObj)

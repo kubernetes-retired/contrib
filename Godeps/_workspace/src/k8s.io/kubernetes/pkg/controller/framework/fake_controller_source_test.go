@@ -70,7 +70,7 @@ func TestRCNumber(t *testing.T) {
 	}
 	go consume(t, w, []string{"2", "3"}, wg)
 
-	list, err := source.List()
+	list, err := source.List(api.ListOptions{})
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
