@@ -33,8 +33,6 @@ import (
 	"github.com/golang/glog"
 )
 
-const ns = "default"
-
 // storeEps stores the given endpoints in a store.
 func storeEps(eps []*api.Endpoints) cache.Store {
 	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
@@ -77,7 +75,7 @@ func getEndpoints(svc *api.Service, endpointAddresses []api.EndpointAddress, end
 func getService(servicePorts []api.ServicePort) *api.Service {
 	return &api.Service{
 		ObjectMeta: api.ObjectMeta{
-			Name: string(util.NewUUID()), Namespace: ns},
+			Name: string(util.NewUUID()), Namespace: api.NamespaceDefault},
 		Spec: api.ServiceSpec{
 			Ports: servicePorts,
 		},

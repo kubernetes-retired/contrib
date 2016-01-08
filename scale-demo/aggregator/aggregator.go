@@ -111,7 +111,7 @@ func loadData() {
 	} else {
 		labelSelector = labels.Everything()
 	}
-	pods, err := c.Pods("default").List(api.ListOptions{
+	pods, err := c.Pods(api.NamespaceDefault).List(api.ListOptions{
 		LabelSelector: labelSelector,
 		FieldSelector: fields.Everything(),
 	})
