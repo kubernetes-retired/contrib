@@ -46,7 +46,7 @@ kube_master_api_port: 443
 # addresses do not need to be routable and must just be an unused block of space.
 kube_service_addresses: 10.254.0.0/16
 
-# Network implementation (flannel|opencontrail)
+# Network implementation (flannel|opencontrail|contiv)
 networking: flannel
 
 # External network
@@ -72,6 +72,12 @@ flannel_prefix: 12
 # will give to each node on your network.  With these defaults you should have
 # room for 4096 nodes with 254 pods per node.
 flannel_host_prefix: 24
+
+# Create a default Contiv network for providing connectivity among pods
+# networking: contiv must be set to use Contiv networking
+#contiv_default_network: true
+#contiv_default_subnet: 172.16.0.0/16
+#contiv_default_gw: 172.16.0.1
 
 # Set to false to disable logging with elasticsearch
 cluster_logging: true
