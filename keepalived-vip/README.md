@@ -21,7 +21,7 @@ With 2 or more instance of the pod running in the cluster is possible to provide
 
 ##### What is the difference between this and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx-alpha](https://github.com/kubernetes/contrib/tree/master/Ingress/controllers/nginx-alpha) to expose one or more services?
 
-This should be considered a complement, not a replacement for HAProxy or nginx. The goal using keepalived is to provide high availability and to bring certainty about how an exposed service can be reached. For instance keepalived can use used to expose the service-loadbalancer or nginx ingress controller in the LAN using one IP address.
+This should be considered a complement, not a replacement for HAProxy or nginx. The goal using keepalived is to provide high availability and to bring certainty about how an exposed service can be reached (beforehand we know the ip address independently of the node where is running). For instance keepalived can use used to expose the service-loadbalancer or nginx ingress controller in the LAN using one IP address.
 
 
 
@@ -97,7 +97,7 @@ NAME                  CONTAINER(S)          IMAGE(S)                         SEL
 kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.1   name in (kube-keepalived-vip)   type=worker
 ```
 
-**Note: the daemonset yaml file contains a node selector. This is not required**
+**Note: the daemonset yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**
 
 To verify if everything is working we should check if a `kube-keepalived-vip` pod is in each node of the cluster
 ```
@@ -365,7 +365,6 @@ virtual_server 10.4.0.50 80 {
 - option to choose wich IP should be used (kubernetes VIP or pod IP)
 - custom weight?
 - quorum rules
-- unicast instead multicast
 
 ## Related projects
 

@@ -20,7 +20,10 @@ spec:
               name: modules
               readOnly: true
             - mountPath: /dev
-              name: dev          
+              name: dev
+          # to use unicast
+          #args:
+          #- --use-unicast=true
       volumes:
         - name: modules
           hostPath:

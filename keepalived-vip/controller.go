@@ -156,6 +156,8 @@ func (ipvsc *ipvsControllerController) getServices() []vip {
 
 // sync all services with the loadbalancer.
 func (ipvsc *ipvsControllerController) sync() error {
+	ipvsc.reloadRateLimiter.Accept()
+
 	ipvsc.reloadLock.Lock()
 	defer ipvsc.reloadLock.Unlock()
 
@@ -164,13 +166,16 @@ func (ipvsc *ipvsControllerController) sync() error {
 		return errDeferredSync
 	}
 
-	ipvsc.keepalived.WriteCfg(ipvsc.getServices())
-	err := ipvsc.keepalived.Reload()
+	err := ipvsc.keepalived.WriteCfg(ipvsc.getServices())
 	if err != nil {
-		glog.Errorf("%v", err)
+		return err
 	}
 
-	ipvsc.reloadRateLimiter.Accept()
+	err = ipvsc.keepalived.Reload()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -188,7 +193,7 @@ func (ipvsc *ipvsControllerController) worker() {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string) *ipvsControllerController {
+func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		queue:             workqueue.New(),
@@ -206,12 +211,13 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string) *ipvsCo
 	neighbors := getNodeNeighbors(nodeInfo, clusterNodes)
 
 	ipvsc.keepalived = &keepalived{
-		iface:     nodeInfo.iface,
-		ip:        nodeInfo.ip,
-		netmask:   nodeInfo.netmask,
-		nodes:     clusterNodes,
-		neighbors: neighbors,
-		priority:  getNodePriority(nodeInfo.ip, clusterNodes),
+		iface:      nodeInfo.iface,
+		ip:         nodeInfo.ip,
+		netmask:    nodeInfo.netmask,
+		nodes:      clusterNodes,
+		neighbors:  neighbors,
+		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
+		useUnicast: useUnicast,
 	}
 
 	enqueue := func(obj interface{}) {
