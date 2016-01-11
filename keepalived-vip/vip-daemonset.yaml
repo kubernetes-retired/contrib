@@ -1,0 +1,35 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: kube-keepalived-vip
+spec:
+  template:
+    metadata:
+      labels:
+        name: kube-keepalived-vip
+    spec:
+      hostNetwork: true
+      containers:
+        - image: gcr.io/google_containers/kube-keepalived-vip:0.1
+          name: kube-keepalived-vip
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /lib/modules
+              name: modules
+              readOnly: true
+            - mountPath: /dev
+              name: dev
+          # to use unicast
+          #args:
+          #- --use-unicast=true
+      volumes:
+        - name: modules
+          hostPath:
+            path: /lib/modules
+        - name: dev
+          hostPath:
+            path: /dev
+      nodeSelector:
+        type: worker
