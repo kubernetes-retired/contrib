@@ -1,0 +1,12 @@
+# This is the ip address of the interface used for control communication within th cluster. It
+# needs to be reachable from all nodes.
+# Defaults to the address used by ansible to reach the node.
+# If using vagrant, this will need to be overriden or edited here.
+contiv_control_ip: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+
+# This is the host interface that contiv uses for all inter-host tenant traffic. Typically set
+# in the inventory file.
+#contiv_network_if: ethX
+
+# This is the path where contiv binaries are kept
+contiv_bin_path: ~/go/bin

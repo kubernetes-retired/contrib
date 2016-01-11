@@ -45,6 +45,18 @@
   tags:
     - network-service-install
 
+# install contiv netmaster
+- hosts: masters
+  sudo: yes
+  roles:
+    - { role: contiv, contiv_role: netmaster, when: networking == 'contiv' }
+
+# install contiv netplugin
+- hosts: nodes
+  sudo: yes
+  roles:
+    - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
+
 # install kube master services
 - hosts: masters
   sudo: yes

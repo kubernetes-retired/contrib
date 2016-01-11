@@ -1,0 +1,11 @@
+- include: netmaster.yml
+  when: contiv_role == "netmaster"
+
+- include: restart_netmaster.yml tags=restart
+  when: contiv_role == "netmaster"
+
+- include: netplugin.yml
+  when: contiv_role == "netagent"
+
+- include: restart_netplugin.yml tags=restart
+  when: contiv_role == "netagent"
