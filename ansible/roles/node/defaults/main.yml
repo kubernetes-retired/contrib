@@ -1,1 +1,3 @@
 localBuildOutput: ../../_output/local/go/bin
+# Specifies the number of pods allowed on a node.
+max_pods: "40"
