@@ -37,8 +37,12 @@ var (
 
 	logLevel = flags.Int("v", 1, `verbose output`)
 
+	useUnicast = flags.Bool("use-unicast", false, `use unicast instead of multicast for communication
+		with other keepalived instances`)
+
 	// sysctl changes required by keepalived
 	sysctlAdjustments = map[string]int{
+		// allows processes to bind() to non-local IP addresses
 		"net/ipv4/ip_nonlocal_bind": 1,
 	}
 )
@@ -84,7 +88,10 @@ func main() {
 	proc.StartReaper()
 
 	glog.Info("starting LVS configuration")
-	ipvsc := newIPVSController(kubeClient, namespace)
+	if *useUnicast {
+		glog.Info("keepalived will use unicast to sync the nodes")
+	}
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast)
 	go ipvsc.epController.Run(util.NeverStop)
 	go ipvsc.svcController.Run(util.NeverStop)
 	go util.Until(ipvsc.worker, time.Second, util.NeverStop)

@@ -49,6 +49,13 @@ vrrp_instance vips {
     {{ $iface }}
   }
 
+  {{ if .useUnicast }}
+  unicast_src_ip {{ .myIP }}
+  unicast_peer { {{ range .nodes }}
+    {{ . }}{{ end }}
+  }
+  {{ end }}
+
   virtual_ipaddress { {{ range $i, $svc := .svcs }}
     {{ $svc.Ip }}
   {{ end }}}    
@@ -84,12 +91,13 @@ virtual_server {{ $svc.Ip }} {{ $svc.Port }} {
 )
 
 type keepalived struct {
-	iface     string
-	ip        string
-	netmask   int
-	priority  int
-	nodes     []string
-	neighbors []string
+	iface      string
+	ip         string
+	netmask    int
+	priority   int
+	nodes      []string
+	neighbors  []string
+	useUnicast bool
 }
 
 func (k *keepalived) WriteCfg(svcs []vip) error {
@@ -111,7 +119,9 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["svcs"] = svcs
 	conf["nodes"] = k.neighbors
 	conf["priority"] = k.priority
+	// password to protect the access to the vrrp_instance group
 	conf["authPass"] = k.getSha()
+	conf["useUnicast"] = k.useUnicast
 
 	b, _ := json.Marshal(conf)
 	glog.Infof("%v", string(b))
@@ -148,7 +158,9 @@ func (k *keepalived) Reload() error {
 	return nil
 }
 
-// getSha returns a sha1 of the list of nodes in the cluster
+// getSha returns a sha1 of the list of nodes in the cluster using the IP
+// address to create a password to be used in the authentication of the
+// vrrp_instance
 func (k *keepalived) getSha() string {
 	h := sha1.New()
 	h.Write([]byte(fmt.Sprintf("%v", k.nodes)))

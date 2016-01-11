@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	invalidIfaces = []string{"lo", "docker0", "flannel.1"}
+	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
 )
 
 type nodeInfo struct {
@@ -59,7 +59,8 @@ func getNodeInfo(nodes []string) (*nodeInfo, error) {
 	}, nil
 }
 
-// myIP returns
+// myIP returns the local IP address of this node comparing the
+// local addresses with the published by the cluster nodes
 func myIP(nodes []string) (string, error) {
 	var err error
 	for _, iface := range netInterfaces() {
@@ -70,7 +71,7 @@ func myIP(nodes []string) (string, error) {
 	}
 
 	glog.Errorf("error getting local IP: %v", err)
-	return "0.0.0.0", err
+	return "", err
 }
 
 // netInterfaces returns a slice containing the local network interfaces
@@ -207,7 +208,8 @@ func loadIPVModule() error {
 	return nil
 }
 
-// changeSysctl changes the required settings for keepalived.
+// changeSysctl changes the required network setting in /proc to get
+// keepalived working in the local system.
 func changeSysctl() error {
 	for k, v := range sysctlAdjustments {
 		if err := sysctl.SetSysctl(k, v); err != nil {
