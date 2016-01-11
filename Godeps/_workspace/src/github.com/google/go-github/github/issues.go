@@ -65,7 +65,7 @@ type IssueListOptions struct {
 	Filter string `url:"filter,omitempty"`
 
 	// State filters issues based on their state.  Possible values are: open,
-	// closed.  Default is "open".
+	// closed, all.  Default is "open".
 	State string `url:"state,omitempty"`
 
 	// Labels filters issues based on their label.
@@ -76,7 +76,7 @@ type IssueListOptions struct {
 	Sort string `url:"sort,omitempty"`
 
 	// Direction in which to sort issues.  Possible values are: asc, desc.
-	// Default is "asc".
+	// Default is "desc".
 	Direction string `url:"direction,omitempty"`
 
 	// Since filters issues by time.
@@ -148,7 +148,7 @@ type IssueListByRepoOptions struct {
 	Milestone string `url:"milestone,omitempty"`
 
 	// State filters issues based on their state.  Possible values are: open,
-	// closed.  Default is "open".
+	// closed, all.  Default is "open".
 	State string `url:"state,omitempty"`
 
 	// Assignee filters issues based on their assignee.  Possible values are a
@@ -156,10 +156,10 @@ type IssueListByRepoOptions struct {
 	// any assigned user.
 	Assignee string `url:"assignee,omitempty"`
 
-	// Assignee filters issues based on their creator.
+	// Creator filters issues based on their creator.
 	Creator string `url:"creator,omitempty"`
 
-	// Assignee filters issues to those mentioned a specific user.
+	// Mentioned filters issues to those mentioned a specific user.
 	Mentioned string `url:"mentioned,omitempty"`
 
 	// Labels filters issues based on their label.
@@ -170,7 +170,7 @@ type IssueListByRepoOptions struct {
 	Sort string `url:"sort,omitempty"`
 
 	// Direction in which to sort issues.  Possible values are: asc, desc.
-	// Default is "asc".
+	// Default is "desc".
 	Direction string `url:"direction,omitempty"`
 
 	// Since filters issues by time.
