@@ -5,7 +5,7 @@
   when: contiv_role == "netmaster"
 
 - include: netplugin.yml
-  when: contiv_role == "netagent"
+  when: contiv_role == "netplugin"
 
 - include: restart_netplugin.yml tags=restart
-  when: contiv_role == "netagent"
+  when: contiv_role == "netplugin"

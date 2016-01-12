@@ -19,29 +19,32 @@
 - name: copy netplugin exec file
   copy: src={{ contiv_bin_path }}/netplugin dest=/usr/bin/netplugin mode=0755
 
-- name: copy web image
-  copy: src=/home/ladmin/Backup/web.tar dest=/tmp/web.tar mode=0755
-  tags: demo
-
-- name: copy redis image
-  copy: src=/home/ladmin/Backup/redis.tar dest=/tmp/redis.tar mode=0755
-  tags: demo
-
-#- name: ovs rpm file
-#  copy: src=openvswitch-2.3.1-1.x86_64.rpm dest=/tmp/openvswitch-2.3.1-1.x86_64.rpm
-#  when: ansible_os_family == "RedHat"
-
-#- name: install ovs
-#  yum: name=/tmp/openvswitch-2.3.1-1.x86_64.rpm state=present
-#  when: ansible_os_family == "RedHat"
-
-- name: install openstack kilo repo
-  yum: "name=https://repos.fedorapeople.org/repos/openstack/openstack-kilo/rdo-release-kilo-1.noarch.rpm"
+- name: get openstack kilo rpm
+  get_url:
+    url: https://repos.fedorapeople.org/repos/openstack/openstack-kilo/rdo-release-kilo-1.noarch.rpm
+    dest: /tmp/rdo-release-kilo-1.noarch.rpm
+    validate_certs: False
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
   when: ansible_os_family == "RedHat"
+  tags:
+       - ovs_install
+
+- name: install openstack kilo
+  yum: name=/tmp/rdo-release-kilo-1.noarch.rpm state=present
+  when: ansible_os_family == "RedHat"
+  tags:
+       - ovs_install
 
 - name: install ovs
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
   yum: name=openvswitch state=present
   when: ansible_os_family == "RedHat"
+  tags:
+       - ovs_install
 
 - name: install ntp
   yum: name=ntp state=present
