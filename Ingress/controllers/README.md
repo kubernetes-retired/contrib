@@ -29,7 +29,8 @@ http {
     resolver 127.0.0.1;
 {{ range $path := $rule.HTTP.Paths }}
     location {{$path.Path}} {
-      proxy_pass http://{{$path.Backend.ServiceName}};
+      proxy_set_header Host $host;
+      proxy_pass http://{{$path.Backend.ServiceName}}.{{$ing.Namespace}}.svc.cluster.local:{{$path.Backend.ServicePort}};
     }{{end}}
   }{{end}}{{end}}
 }`
