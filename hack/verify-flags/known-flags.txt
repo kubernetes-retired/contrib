@@ -59,4 +59,5 @@ whitelist-override-label
 configuration-name
 custom-error-service
 use-unicast
-
+ssl-ca-cert
+ssl-cert
