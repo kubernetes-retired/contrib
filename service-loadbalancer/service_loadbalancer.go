@@ -32,7 +32,6 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/openshift/origin/pkg/util/proc"
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -242,7 +241,6 @@ func newStaticPageHandler(errorPage string, defaultErrorPage string) *staticPage
 func (s *staticPageHandler) loadUrl(url string) error {
 	res, err := s.c.Get(url)
 	if err != nil {
-		glog.Errorf("%v", err)
 		return err
 	}
 	defer res.Body.Close()
@@ -285,7 +283,8 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 		conf["defLbAlgorithm"] = cfg.lbDefAlgorithm
 	}
 
-	return t.Execute(w, conf)
+	err = t.Execute(w, conf)
+	return
 }
 
 // reload reloads the loadbalancer using the reload cmd specified in the json manifest.
@@ -319,7 +318,7 @@ type loadBalancerController struct {
 
 // getTargetPort returns the numeric value of TargetPort
 func getTargetPort(servicePort *api.ServicePort) int {
-	return int(servicePort.TargetPort.IntVal)
+	return servicePort.TargetPort.IntValue()
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -453,8 +452,12 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		time.Sleep(100 * time.Millisecond)
 		return errDeferredSync
 	}
+
+	lbc.reloadRateLimiter.Accept()
+
 	httpSvc, tcpSvc := lbc.getServices()
 	if len(httpSvc) == 0 && len(tcpSvc) == 0 {
+		glog.Info("There is no available services to be used in the load balancer")
 		return nil
 	}
 	if err := lbc.cfg.write(
@@ -467,7 +470,6 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 	if dryRun {
 		return nil
 	}
-	lbc.reloadRateLimiter.Accept()
 	return lbc.cfg.reload()
 }
 
@@ -477,7 +479,7 @@ func (lbc *loadBalancerController) worker() {
 		key, _ := lbc.queue.Get()
 		glog.Infof("Sync triggered by service %v", key)
 		if err := lbc.sync(false); err != nil {
-			glog.Infof("Requeuing %v because of error: %v", key, err)
+			glog.Warningf("Requeuing %v because of error: %v", key, err)
 			lbc.queue.Add(key)
 		}
 		lbc.queue.Done(key)
@@ -485,8 +487,7 @@ func (lbc *loadBalancerController) worker() {
 }
 
 // newLoadBalancerController creates a new controller from the given config.
-func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.Client, namespace string) *loadBalancerController {
-
+func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.Client, namespace string, tcpServices map[string]int) *loadBalancerController {
 	lbc := loadBalancerController{
 		cfg:    cfg,
 		client: kubeClient,
@@ -496,22 +497,9 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 		targetService:   *targetService,
 		forwardServices: *forwardServices,
 		httpPort:        *httpPort,
-		tcpServices:     map[string]int{},
+		tcpServices:     tcpServices,
 	}
 
-	for _, service := range strings.Split(*tcpServices, ",") {
-		portSplit := strings.Split(service, ":")
-		if len(portSplit) != 2 {
-			glog.Errorf("Ignoring misconfigured TCP service %v", service)
-			continue
-		}
-		if port, err := strconv.Atoi(portSplit[1]); err != nil {
-			glog.Errorf("Ignoring misconfigured TCP service %v: %v", service, err)
-			continue
-		} else {
-			lbc.tcpServices[portSplit[0]] = port
-		}
-	}
 	enqueue := func(obj interface{}) {
 		key, err := keyFunc(obj)
 		if err != nil {
@@ -592,6 +580,26 @@ func registerHandlers(s *staticPageHandler) {
 	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", lbApiPort), nil))
 }
 
+func parseTCPServices(tcpServices string) map[string]int {
+	tcpSvcs := make(map[string]int)
+	for _, service := range strings.Split(tcpServices, ",") {
+		portSplit := strings.Split(service, ":")
+		if len(portSplit) != 2 {
+			glog.Errorf("Ignoring misconfigured TCP service %v", service)
+			continue
+		}
+		if port, err := strconv.Atoi(portSplit[1]); err != nil {
+			glog.Errorf("Ignoring misconfigured TCP service %v: %v", service, err)
+			continue
+		} else {
+			glog.Infof("Adding TCP service %v", service)
+			tcpSvcs[portSplit[0]] = port
+		}
+	}
+
+	return tcpSvcs
+}
+
 func dryRun(lbc *loadBalancerController) {
 	var err error
 	for err = lbc.sync(true); err == errDeferredSync; err = lbc.sync(true) {
@@ -605,9 +613,6 @@ func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
 	cfg := parseCfg(*config, *lbDefAlgorithm)
-	if len(*tcpServices) == 0 {
-		glog.Infof("All tcp/https services will be ignored.")
-	}
 
 	var kubeClient *unversioned.Client
 	var err error
@@ -619,7 +624,12 @@ func main() {
 
 	go registerHandlers(defErrorPage)
 
-	proc.StartReaper()
+	var tcpSvcs map[string]int
+	if *tcpServices != "" {
+		tcpSvcs = parseTCPServices(*tcpServices)
+	} else {
+		glog.Infof("No tcp/https services specified")
+	}
 
 	if *startSyslog {
 		cfg.startSyslog = true
@@ -645,11 +655,11 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 	if !specified {
-		namespace = api.NamespaceDefault
+		namespace = api.NamespaceAll
 	}
 
 	// TODO: Handle multiple namespaces
-	lbc := newLoadBalancerController(cfg, kubeClient, namespace)
+	lbc := newLoadBalancerController(cfg, kubeClient, namespace, tcpSvcs)
 	go lbc.epController.Run(util.NeverStop)
 	go lbc.svcController.Run(util.NeverStop)
 	if *dry {

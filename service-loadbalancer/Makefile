@@ -18,9 +18,9 @@ haproxy:
 	docker build -t $(HAPROXY_IMAGE):$(TAG) build
 	docker create --name $(HAPROXY_IMAGE) $(HAPROXY_IMAGE):$(TAG) true
 	# docker cp semantics changed between 1.7 and 1.8, so we cp the file to cwd and rename it.
-	docker cp $(HAPROXY_IMAGE):/work/x86_64/haproxy-1.6-r2.apk .
+	docker cp $(HAPROXY_IMAGE):/work/x86_64/haproxy-1.6-r3.apk .
 	docker rm -f $(HAPROXY_IMAGE)
-	mv haproxy-1.6-r2.apk haproxy.apk
+	mv haproxy-1.6-r3.apk haproxy.apk
 
 clean:
 	rm -f service_loadbalancer haproxy.apk
