@@ -307,6 +307,26 @@ func Convert_api_Container_To_v1_Container(in *api.Container, out *Container, s 
 	return autoConvert_api_Container_To_v1_Container(in, out, s)
 }
 
+func autoConvert_api_ContainerImage_To_v1_ContainerImage(in *api.ContainerImage, out *ContainerImage, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*api.ContainerImage))(in)
+	}
+	if in.RepoTags != nil {
+		out.RepoTags = make([]string, len(in.RepoTags))
+		for i := range in.RepoTags {
+			out.RepoTags[i] = in.RepoTags[i]
+		}
+	} else {
+		out.RepoTags = nil
+	}
+	out.Size = in.Size
+	return nil
+}
+
+func Convert_api_ContainerImage_To_v1_ContainerImage(in *api.ContainerImage, out *ContainerImage, s conversion.Scope) error {
+	return autoConvert_api_ContainerImage_To_v1_ContainerImage(in, out, s)
+}
+
 func autoConvert_api_ContainerPort_To_v1_ContainerPort(in *api.ContainerPort, out *ContainerPort, s conversion.Scope) error {
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*api.ContainerPort))(in)
@@ -1499,6 +1519,16 @@ func autoConvert_api_NodeStatus_To_v1_NodeStatus(in *api.NodeStatus, out *NodeSt
 	}
 	if err := Convert_api_NodeSystemInfo_To_v1_NodeSystemInfo(&in.NodeInfo, &out.NodeInfo, s); err != nil {
 		return err
+	}
+	if in.Images != nil {
+		out.Images = make([]ContainerImage, len(in.Images))
+		for i := range in.Images {
+			if err := Convert_api_ContainerImage_To_v1_ContainerImage(&in.Images[i], &out.Images[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Images = nil
 	}
 	return nil
 }
@@ -3466,6 +3496,26 @@ func Convert_v1_Container_To_api_Container(in *Container, out *api.Container, s 
 	return autoConvert_v1_Container_To_api_Container(in, out, s)
 }
 
+func autoConvert_v1_ContainerImage_To_api_ContainerImage(in *ContainerImage, out *api.ContainerImage, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*ContainerImage))(in)
+	}
+	if in.RepoTags != nil {
+		out.RepoTags = make([]string, len(in.RepoTags))
+		for i := range in.RepoTags {
+			out.RepoTags[i] = in.RepoTags[i]
+		}
+	} else {
+		out.RepoTags = nil
+	}
+	out.Size = in.Size
+	return nil
+}
+
+func Convert_v1_ContainerImage_To_api_ContainerImage(in *ContainerImage, out *api.ContainerImage, s conversion.Scope) error {
+	return autoConvert_v1_ContainerImage_To_api_ContainerImage(in, out, s)
+}
+
 func autoConvert_v1_ContainerPort_To_api_ContainerPort(in *ContainerPort, out *api.ContainerPort, s conversion.Scope) error {
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*ContainerPort))(in)
@@ -4203,65 +4253,20 @@ func autoConvert_v1_LimitRangeItem_To_api_LimitRangeItem(in *LimitRangeItem, out
 		defaulting.(func(*LimitRangeItem))(in)
 	}
 	out.Type = api.LimitType(in.Type)
-	if in.Max != nil {
-		out.Max = make(api.ResourceList)
-		for key, val := range in.Max {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Max[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Max = nil
+	if err := s.Convert(&in.Max, &out.Max, 0); err != nil {
+		return err
 	}
-	if in.Min != nil {
-		out.Min = make(api.ResourceList)
-		for key, val := range in.Min {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Min[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Min = nil
+	if err := s.Convert(&in.Min, &out.Min, 0); err != nil {
+		return err
 	}
-	if in.Default != nil {
-		out.Default = make(api.ResourceList)
-		for key, val := range in.Default {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Default[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Default = nil
+	if err := s.Convert(&in.Default, &out.Default, 0); err != nil {
+		return err
 	}
-	if in.DefaultRequest != nil {
-		out.DefaultRequest = make(api.ResourceList)
-		for key, val := range in.DefaultRequest {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.DefaultRequest[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.DefaultRequest = nil
+	if err := s.Convert(&in.DefaultRequest, &out.DefaultRequest, 0); err != nil {
+		return err
 	}
-	if in.MaxLimitRequestRatio != nil {
-		out.MaxLimitRequestRatio = make(api.ResourceList)
-		for key, val := range in.MaxLimitRequestRatio {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.MaxLimitRequestRatio[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.MaxLimitRequestRatio = nil
+	if err := s.Convert(&in.MaxLimitRequestRatio, &out.MaxLimitRequestRatio, 0); err != nil {
+		return err
 	}
 	return nil
 }
@@ -4624,29 +4629,11 @@ func autoConvert_v1_NodeStatus_To_api_NodeStatus(in *NodeStatus, out *api.NodeSt
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*NodeStatus))(in)
 	}
-	if in.Capacity != nil {
-		out.Capacity = make(api.ResourceList)
-		for key, val := range in.Capacity {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Capacity[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Capacity = nil
+	if err := s.Convert(&in.Capacity, &out.Capacity, 0); err != nil {
+		return err
 	}
-	if in.Allocatable != nil {
-		out.Allocatable = make(api.ResourceList)
-		for key, val := range in.Allocatable {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Allocatable[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Allocatable = nil
+	if err := s.Convert(&in.Allocatable, &out.Allocatable, 0); err != nil {
+		return err
 	}
 	out.Phase = api.NodePhase(in.Phase)
 	if in.Conditions != nil {
@@ -4674,6 +4661,16 @@ func autoConvert_v1_NodeStatus_To_api_NodeStatus(in *NodeStatus, out *api.NodeSt
 	}
 	if err := Convert_v1_NodeSystemInfo_To_api_NodeSystemInfo(&in.NodeInfo, &out.NodeInfo, s); err != nil {
 		return err
+	}
+	if in.Images != nil {
+		out.Images = make([]api.ContainerImage, len(in.Images))
+		for i := range in.Images {
+			if err := Convert_v1_ContainerImage_To_api_ContainerImage(&in.Images[i], &out.Images[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Images = nil
 	}
 	return nil
 }
@@ -4893,17 +4890,8 @@ func autoConvert_v1_PersistentVolumeClaimStatus_To_api_PersistentVolumeClaimStat
 	} else {
 		out.AccessModes = nil
 	}
-	if in.Capacity != nil {
-		out.Capacity = make(api.ResourceList)
-		for key, val := range in.Capacity {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Capacity[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Capacity = nil
+	if err := s.Convert(&in.Capacity, &out.Capacity, 0); err != nil {
+		return err
 	}
 	return nil
 }
@@ -5075,17 +5063,8 @@ func autoConvert_v1_PersistentVolumeSpec_To_api_PersistentVolumeSpec(in *Persist
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*PersistentVolumeSpec))(in)
 	}
-	if in.Capacity != nil {
-		out.Capacity = make(api.ResourceList)
-		for key, val := range in.Capacity {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Capacity[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Capacity = nil
+	if err := s.Convert(&in.Capacity, &out.Capacity, 0); err != nil {
+		return err
 	}
 	if err := Convert_v1_PersistentVolumeSource_To_api_PersistentVolumeSource(&in.PersistentVolumeSource, &out.PersistentVolumeSource, s); err != nil {
 		return err
@@ -5720,17 +5699,8 @@ func autoConvert_v1_ResourceQuotaSpec_To_api_ResourceQuotaSpec(in *ResourceQuota
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*ResourceQuotaSpec))(in)
 	}
-	if in.Hard != nil {
-		out.Hard = make(api.ResourceList)
-		for key, val := range in.Hard {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Hard[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Hard = nil
+	if err := s.Convert(&in.Hard, &out.Hard, 0); err != nil {
+		return err
 	}
 	return nil
 }
@@ -5743,29 +5713,11 @@ func autoConvert_v1_ResourceQuotaStatus_To_api_ResourceQuotaStatus(in *ResourceQ
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*ResourceQuotaStatus))(in)
 	}
-	if in.Hard != nil {
-		out.Hard = make(api.ResourceList)
-		for key, val := range in.Hard {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Hard[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Hard = nil
+	if err := s.Convert(&in.Hard, &out.Hard, 0); err != nil {
+		return err
 	}
-	if in.Used != nil {
-		out.Used = make(api.ResourceList)
-		for key, val := range in.Used {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Used[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Used = nil
+	if err := s.Convert(&in.Used, &out.Used, 0); err != nil {
+		return err
 	}
 	return nil
 }
@@ -5778,29 +5730,11 @@ func autoConvert_v1_ResourceRequirements_To_api_ResourceRequirements(in *Resourc
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*ResourceRequirements))(in)
 	}
-	if in.Limits != nil {
-		out.Limits = make(api.ResourceList)
-		for key, val := range in.Limits {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Limits[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Limits = nil
+	if err := s.Convert(&in.Limits, &out.Limits, 0); err != nil {
+		return err
 	}
-	if in.Requests != nil {
-		out.Requests = make(api.ResourceList)
-		for key, val := range in.Requests {
-			newVal := resource.Quantity{}
-			if err := api.Convert_resource_Quantity_To_resource_Quantity(&val, &newVal, s); err != nil {
-				return err
-			}
-			out.Requests[api.ResourceName(key)] = newVal
-		}
-	} else {
-		out.Requests = nil
+	if err := s.Convert(&in.Requests, &out.Requests, 0); err != nil {
+		return err
 	}
 	return nil
 }
@@ -6358,6 +6292,7 @@ func init() {
 		autoConvert_api_ComponentCondition_To_v1_ComponentCondition,
 		autoConvert_api_ComponentStatusList_To_v1_ComponentStatusList,
 		autoConvert_api_ComponentStatus_To_v1_ComponentStatus,
+		autoConvert_api_ContainerImage_To_v1_ContainerImage,
 		autoConvert_api_ContainerPort_To_v1_ContainerPort,
 		autoConvert_api_ContainerStateRunning_To_v1_ContainerStateRunning,
 		autoConvert_api_ContainerStateTerminated_To_v1_ContainerStateTerminated,
@@ -6478,6 +6413,7 @@ func init() {
 		autoConvert_v1_ComponentCondition_To_api_ComponentCondition,
 		autoConvert_v1_ComponentStatusList_To_api_ComponentStatusList,
 		autoConvert_v1_ComponentStatus_To_api_ComponentStatus,
+		autoConvert_v1_ContainerImage_To_api_ContainerImage,
 		autoConvert_v1_ContainerPort_To_api_ContainerPort,
 		autoConvert_v1_ContainerStateRunning_To_api_ContainerStateRunning,
 		autoConvert_v1_ContainerStateTerminated_To_api_ContainerStateTerminated,

@@ -179,7 +179,7 @@ type InstanceGroupInfo interface {
 	CurrentSize() (int, error)
 }
 
-// AWSCloud is an implementation of Interface, TCPLoadBalancer and Instances for Amazon Web Services.
+// AWSCloud is an implementation of Interface, LoadBalancer and Instances for Amazon Web Services.
 type AWSCloud struct {
 	ec2              EC2
 	elb              ELB
@@ -260,7 +260,7 @@ func (p *awsSDKProvider) Autoscaling(regionName string) (ASG, error) {
 }
 
 func (p *awsSDKProvider) Metadata() (EC2Metadata, error) {
-	client := ec2metadata.New(nil)
+	client := ec2metadata.New(session.New(&aws.Config{}))
 	return client, nil
 }
 
@@ -439,7 +439,9 @@ func init() {
 		creds := credentials.NewChainCredentials(
 			[]credentials.Provider{
 				&credentials.EnvProvider{},
-				&ec2rolecreds.EC2RoleProvider{},
+				&ec2rolecreds.EC2RoleProvider{
+					Client: ec2metadata.New(session.New(&aws.Config{})),
+				},
 				&credentials.SharedCredentialsProvider{},
 			})
 		aws := &awsSDKProvider{creds: creds}
@@ -606,8 +608,8 @@ func (aws *AWSCloud) ScrubDNS(nameservers, searches []string) (nsOut, srchOut []
 	return nameservers, searches
 }
 
-// TCPLoadBalancer returns an implementation of TCPLoadBalancer for Amazon Web Services.
-func (s *AWSCloud) TCPLoadBalancer() (cloudprovider.TCPLoadBalancer, bool) {
+// LoadBalancer returns an implementation of LoadBalancer for Amazon Web Services.
+func (s *AWSCloud) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
 	return s, true
 }
 
@@ -1682,8 +1684,8 @@ func (s *AWSCloud) listSubnetIDsinVPC(vpcId string) ([]string, error) {
 
 // EnsureTCPLoadBalancer implements TCPLoadBalancer.EnsureTCPLoadBalancer
 // TODO(justinsb) It is weird that these take a region.  I suspect it won't work cross-region anyway.
-func (s *AWSCloud) EnsureTCPLoadBalancer(name, region string, publicIP net.IP, ports []*api.ServicePort, hosts []string, affinity api.ServiceAffinity) (*api.LoadBalancerStatus, error) {
-	glog.V(2).Infof("EnsureTCPLoadBalancer(%v, %v, %v, %v, %v)", name, region, publicIP, ports, hosts)
+func (s *AWSCloud) EnsureLoadBalancer(name, region string, publicIP net.IP, ports []*api.ServicePort, hosts []string, affinity api.ServiceAffinity) (*api.LoadBalancerStatus, error) {
+	glog.V(2).Infof("EnsureLoadBalancer(%v, %v, %v, %v, %v)", name, region, publicIP, ports, hosts)
 
 	if region != s.region {
 		return nil, fmt.Errorf("requested load balancer region '%s' does not match cluster region '%s'", region, s.region)
@@ -1692,6 +1694,15 @@ func (s *AWSCloud) EnsureTCPLoadBalancer(name, region string, publicIP net.IP, p
 	if affinity != api.ServiceAffinityNone {
 		// ELB supports sticky sessions, but only when configured for HTTP/HTTPS
 		return nil, fmt.Errorf("unsupported load balancer affinity: %v", affinity)
+	}
+
+	if len(ports) == 0 {
+		return nil, fmt.Errorf("requested load balancer with no ports")
+	}
+
+	// The service controller verified all the protocols match on the ports, just check and use the first one
+	if ports[0].Protocol != api.ProtocolTCP {
+		return nil, fmt.Errorf("Only TCP LoadBalancer is supported for AWS ELB")
 	}
 
 	if publicIP != nil {
@@ -1799,8 +1810,8 @@ func (s *AWSCloud) EnsureTCPLoadBalancer(name, region string, publicIP net.IP, p
 	return status, nil
 }
 
-// GetTCPLoadBalancer is an implementation of TCPLoadBalancer.GetTCPLoadBalancer
-func (s *AWSCloud) GetTCPLoadBalancer(name, region string) (*api.LoadBalancerStatus, bool, error) {
+// GetLoadBalancer is an implementation of LoadBalancer.GetLoadBalancer
+func (s *AWSCloud) GetLoadBalancer(name, region string) (*api.LoadBalancerStatus, bool, error) {
 	if region != s.region {
 		return nil, false, fmt.Errorf("requested load balancer region '%s' does not match cluster region '%s'", region, s.region)
 	}
@@ -1963,8 +1974,8 @@ func (s *AWSCloud) updateInstanceSecurityGroupsForLoadBalancer(lb *elb.LoadBalan
 	return nil
 }
 
-// EnsureTCPLoadBalancerDeleted implements TCPLoadBalancer.EnsureTCPLoadBalancerDeleted.
-func (s *AWSCloud) EnsureTCPLoadBalancerDeleted(name, region string) error {
+// EnsureLoadBalancerDeleted implements LoadBalancer.EnsureLoadBalancerDeleted.
+func (s *AWSCloud) EnsureLoadBalancerDeleted(name, region string) error {
 	if region != s.region {
 		return fmt.Errorf("requested load balancer region '%s' does not match cluster region '%s'", region, s.region)
 	}
@@ -2057,8 +2068,8 @@ func (s *AWSCloud) EnsureTCPLoadBalancerDeleted(name, region string) error {
 	return nil
 }
 
-// UpdateTCPLoadBalancer implements TCPLoadBalancer.UpdateTCPLoadBalancer
-func (s *AWSCloud) UpdateTCPLoadBalancer(name, region string, hosts []string) error {
+// UpdateLoadBalancer implements LoadBalancer.UpdateLoadBalancer
+func (s *AWSCloud) UpdateLoadBalancer(name, region string, hosts []string) error {
 	if region != s.region {
 		return fmt.Errorf("requested load balancer region '%s' does not match cluster region '%s'", region, s.region)
 	}
@@ -2091,22 +2102,48 @@ func (s *AWSCloud) UpdateTCPLoadBalancer(name, region string, hosts []string) er
 }
 
 // Returns the instance with the specified ID
-func (a *AWSCloud) getInstanceById(instanceID string) (*ec2.Instance, error) {
-	request := &ec2.DescribeInstancesInput{
-		InstanceIds: []*string{&instanceID},
-	}
-
-	instances, err := a.ec2.DescribeInstances(request)
+// This function is currently unused, but seems very likely to be needed again
+func (a *AWSCloud) getInstanceByID(instanceID string) (*ec2.Instance, error) {
+	instances, err := a.getInstancesByIDs([]*string{&instanceID})
 	if err != nil {
 		return nil, err
 	}
+
 	if len(instances) == 0 {
 		return nil, fmt.Errorf("no instances found for instance: %s", instanceID)
 	}
 	if len(instances) > 1 {
 		return nil, fmt.Errorf("multiple instances found for instance: %s", instanceID)
 	}
-	return instances[0], nil
+
+	return instances[instanceID], nil
+}
+
+func (a *AWSCloud) getInstancesByIDs(instanceIDs []*string) (map[string]*ec2.Instance, error) {
+	instancesByID := make(map[string]*ec2.Instance)
+	if len(instanceIDs) == 0 {
+		return instancesByID, nil
+	}
+
+	request := &ec2.DescribeInstancesInput{
+		InstanceIds: instanceIDs,
+	}
+
+	instances, err := a.ec2.DescribeInstances(request)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, instance := range instances {
+		instanceID := orEmpty(instance.InstanceId)
+		if instanceID == "" {
+			continue
+		}
+
+		instancesByID[instanceID] = instance
+	}
+
+	return instancesByID, nil
 }
 
 // TODO: Make efficient
