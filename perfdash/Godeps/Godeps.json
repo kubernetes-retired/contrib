@@ -1,0 +1,22 @@
+{
+	"ImportPath": "k8s.io/contrib/perfdash",
+	"GoVersion": "go1.5",
+	"Packages": [
+		"./..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/golang/glog",
+			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
+		},
+		{
+			"ImportPath": "k8s.io/contrib/mungegithub/mungers/jenkins",
+			"Rev": "90a62333a0ed0a79a394a09abecab6015d8235d7"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/sets",
+			"Comment": "v1.2.0-alpha.5-690-gab6edd8",
+			"Rev": "ab6edd8170522fa775fb5054d1c54b4e0d791444"
+		}
+	]
+}
