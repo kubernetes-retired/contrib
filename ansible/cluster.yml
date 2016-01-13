@@ -51,12 +51,6 @@
   roles:
     - { role: contiv, contiv_role: netmaster, when: networking == 'contiv' }
 
-# install contiv netplugin
-- hosts: nodes
-  sudo: yes
-  roles:
-    - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
-
 # install kube master services
 - hosts: masters
   sudo: yes
@@ -91,3 +85,9 @@
     - { role: opencontrail-provision, when: networking == 'opencontrail' }
   tags:
     - network-service-config
+
+# install contiv netplugin
+- hosts: nodes
+  sudo: yes
+  roles:
+    - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
