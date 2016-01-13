@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	ResourceUsageVarianceAllowedPercent = 50
+	resourceUsageVariantAllowedPercent = 50
 	// To avoid false negatives we assume that minimal CPU usage is 5% and memory 50MB
 	minCpu = 0.05
 	minMem = int64(50 * 1024 * 1024)
@@ -41,7 +41,7 @@ type percentileUsageData struct {
 	memData []int64
 }
 
-type ViolatingDataPair struct {
+type violatingDataPair struct {
 	perc         string
 	leftCpuData  []float64
 	rightCpuData []float64
@@ -127,12 +127,12 @@ func computeAggregates(data e2e.ResourceUsageSummary) map[string][]percentileUsa
 	return aggregates
 }
 
-func compareResourceUsages(left e2e.ResourceUsageSummary, right e2e.ResourceUsageSummary) map[string]ViolatingDataPair {
+func compareResourceUsages(left e2e.ResourceUsageSummary, right e2e.ResourceUsageSummary) map[string]violatingDataPair {
 	leftAggregates := computeAggregates(left)
 	rightAggregates := computeAggregates(right)
 
-	allowedVariance := float64(100+ResourceUsageVarianceAllowedPercent) / float64(100)
-	violatingContainers := make(map[string]ViolatingDataPair)
+	allowedVariance := float64(100+resourceUsageVariantAllowedPercent) / float64(100)
+	violatingContainers := make(map[string]violatingDataPair)
 	for container := range leftAggregates {
 		if _, ok := rightAggregates[container]; !ok {
 			glog.Warningf("Missing results for container %v on right-hand side.", container)
@@ -148,7 +148,7 @@ func compareResourceUsages(left e2e.ResourceUsageSummary, right e2e.ResourceUsag
 				continue
 			}
 			if !isUsageSimilarEnough(leftAggregates[container][i], rightAggregates[container][j], allowedVariance) {
-				violatingContainers[container] = ViolatingDataPair{
+				violatingContainers[container] = violatingDataPair{
 					perc:         leftAggregates[container][i].perc,
 					leftCpuData:  leftAggregates[container][i].cpuData,
 					rightCpuData: rightAggregates[container][i].cpuData,

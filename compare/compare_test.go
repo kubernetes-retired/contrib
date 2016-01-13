@@ -141,7 +141,7 @@ func TestLogCompareFailure(t *testing.T) {
 		{Name: "kube-proxy-e2e-scalability-minion-0490/kube-proxy", Cpu: 0.001, Mem: 4420000},
 		{Name: "kube-proxy-e2e-scalability-minion-0n32/kube-proxy", Cpu: 0.001, Mem: 4440000},
 	}
-	expectedViolating := map[string]ViolatingDataPair{
+	expectedViolating := map[string]violatingDataPair{
 		"etcd": {
 			perc:         "90",
 			leftCpuData:  []float64{0.18},
