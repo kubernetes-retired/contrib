@@ -50,6 +50,8 @@ const (
 	lbApiPort                = 8081
 	lbAlgorithmKey           = "serviceloadbalancer/lb.algorithm"
 	lbHostKey                = "serviceloadbalancer/lb.host"
+	lbSslTerm                = "serviceloadbalancer/lb.sslTerm"
+	lbAclMatch               = "serviceloadbalancer/lb.aclMatch"
 	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
 )
@@ -72,22 +74,22 @@ var (
 	supportedAlgorithms = []string{"roundrobin", "leastconn", "first", "source"}
 
 	config = flags.String("cfg", "loadbalancer.json", `path to load balancer json config.
-		Note that this is *not* the path to the configuration file for the load balancer
-		itself, but rather, the path to the json configuration of how you would like the
-		load balancer to behave in the kubernetes cluster.`)
+                Note that this is *not* the path to the configuration file for the load balancer
+                itself, but rather, the path to the json configuration of how you would like the
+                load balancer to behave in the kubernetes cluster.`)
 
 	dry = flags.Bool("dry", false, `if set, a single dry run of configuration
-		parsing is executed. Results written to stdout.`)
+                parsing is executed. Results written to stdout.`)
 
 	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the built in kubernetes
-		cluster for creating the client`)
+                cluster for creating the client`)
 
 	// If you have pure tcp services or https services that need L3 routing, you
 	// must specify them by name. Note that you are responsible for:
 	// 1. Making sure there is no collision between the service ports of these services.
-	//	- You can have multiple <mysql svc name>:3306 specifications in this map, and as
-	//	  long as the service ports of your mysql service don't clash, you'll get
-	//	  loadbalancing for each one.
+	//      - You can have multiple <mysql svc name>:3306 specifications in this map, and as
+	//        long as the service ports of your mysql service don't clash, you'll get
+	//        loadbalancing for each one.
 	// 2. Exposing the service ports as node ports on a pod.
 	// 3. Adding firewall rules so these ports can ingress traffic.
 	//
@@ -95,8 +97,8 @@ var (
 	// unless TargetService dictates otherwise.
 
 	tcpServices = flags.String("tcp-services", "", `Comma separated list of tcp/https
-		serviceName:servicePort pairings. This assumes you've opened up the right
-		hostPorts for each service that serves ingress traffic.`)
+                serviceName:servicePort pairings. This assumes you've opened up the right
+                hostPorts for each service that serves ingress traffic.`)
 
 	targetService = flags.String(
 		"target-service", "", `Restrict loadbalancing to a single target service.`)
@@ -115,21 +117,25 @@ var (
 	// backend svc_p2: pod1:tp2, pod2:tp2
 
 	forwardServices = flags.Bool("forward-services", false, `Forward to service vip
-		instead of endpoints. This will use kube-proxy's inbuilt load balancing.`)
+                instead of endpoints. This will use kube-proxy's inbuilt load balancing.`)
 
 	httpPort  = flags.Int("http-port", 80, `Port to expose http services.`)
 	statsPort = flags.Int("stats-port", 1936, `Port for loadbalancer stats,
-		Used in the loadbalancer liveness probe.`)
+                Used in the loadbalancer liveness probe.`)
 
 	startSyslog = flags.Bool("syslog", false, `if set, it will start a syslog server
-		that will forward haproxy logs to stdout.`)
+                that will forward haproxy logs to stdout.`)
+
+	sslCert   = flags.String("ssl-cert", "", `if set, it will load the certificate.`)
+	sslCaCert = flags.String("ssl-ca-cert", "", `if set, it will load the certificate from which
+		to load CA certificates used to verify client's certificate.`)
 
 	errorPage = flags.String("error-page", "", `if set, it will try to load the content
-		as a web page and use the content as error page. Is required that the URL returns
-		200 as a status code`)
+                as a web page and use the content as error page. Is required that the URL returns
+                200 as a status code`)
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
-		default balance algorithm.`)
+                default balance algorithm.`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -151,6 +157,12 @@ type service struct {
 	// Host if not empty it will add a new haproxy acl to route traffic using the
 	// host header inside the http request. It only applies to http traffic.
 	Host string
+
+	// if true, terminate ssl using the loadbalancers certificates.
+	SslTerm bool
+
+	// if set use this to match the path rule
+	AclMatch string
 
 	// Algorithm
 	Algorithm string
@@ -193,6 +205,8 @@ type loadBalancerConfig struct {
 	Template       string `json:"template" description:"template for the load balancer config."`
 	Algorithm      string `json:"algorithm" description:"loadbalancing algorithm."`
 	startSyslog    bool   `description:"indicates if the load balancer uses syslog."`
+	sslCert        string `json:"sslCert" description:"PEM for ssl."`
+	sslCaCert      string `json:"sslCaCert" description:"PEM to verify client's certificate."`
 	lbDefAlgorithm string `description:"custom default load balancer algorithm".`
 }
 
@@ -216,6 +230,16 @@ func (s serviceAnnotations) getHost() (string, bool) {
 
 func (s serviceAnnotations) getCookieStickySession() (string, bool) {
 	val, ok := s[lbCookieStickySessionKey]
+	return val, ok
+}
+
+func (s serviceAnnotations) getSslTerm() (string, bool) {
+	val, ok := s[lbSslTerm]
+	return val, ok
+}
+
+func (s serviceAnnotations) getAclMatch() (string, bool) {
+	val, ok := s[lbAclMatch]
 	return val, ok
 }
 
@@ -276,6 +300,15 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 	conf := make(map[string]interface{})
 	conf["startSyslog"] = strconv.FormatBool(cfg.startSyslog)
 	conf["services"] = services
+
+	var sslConfig string
+	if cfg.sslCert != "" {
+		sslConfig = "crt " + cfg.sslCert
+	}
+	if cfg.sslCaCert != "" {
+		sslConfig += " ca-file " + cfg.sslCaCert
+	}
+	conf["sslCert"] = sslConfig
 
 	// default load balancer algorithm is roundrobin
 	conf["defLbAlgorithm"] = lbDefAlgorithm
@@ -367,7 +400,7 @@ func getServiceNameForLBRule(s *api.Service, servicePort int) string {
 }
 
 // getServices returns a list of services and their endpoints.
-func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []service) {
+func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSvc []service, tcpSvc []service) {
 	ep := []string{}
 	services, _ := lbc.svcLister.List()
 	for _, s := range services.Items {
@@ -422,6 +455,19 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				newSvc.SessionAffinity = true
 			}
 
+			// By default sslTerm is disabled
+			newSvc.SslTerm = false
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getSslTerm(); ok {
+				b, err := strconv.ParseBool(val)
+				if err == nil {
+					newSvc.SslTerm = b
+				}
+			}
+
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getAclMatch(); ok {
+				newSvc.AclMatch = val
+			}
+
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
 				newSvc.FrontendPort = servicePort.Port
 				tcpSvc = append(tcpSvc, newSvc)
@@ -434,13 +480,18 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, tcpSvc []se
 				}
 
 				newSvc.FrontendPort = lbc.httpPort
-				httpSvc = append(httpSvc, newSvc)
+				if newSvc.SslTerm == true {
+					httpsTermSvc = append(httpsTermSvc, newSvc)
+				} else {
+					httpSvc = append(httpSvc, newSvc)
+				}
 			}
 			glog.Infof("Found service: %+v", newSvc)
 		}
 	}
 
 	sort.Sort(serviceByName(httpSvc))
+	sort.Sort(serviceByName(httpsTermSvc))
 	sort.Sort(serviceByName(tcpSvc))
 
 	return
@@ -452,18 +503,15 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		time.Sleep(100 * time.Millisecond)
 		return errDeferredSync
 	}
-
-	lbc.reloadRateLimiter.Accept()
-
-	httpSvc, tcpSvc := lbc.getServices()
-	if len(httpSvc) == 0 && len(tcpSvc) == 0 {
-		glog.Info("There is no available services to be used in the load balancer")
+	httpSvc, httpsTermSvc, tcpSvc := lbc.getServices()
+	if len(httpSvc) == 0 && len(httpsTermSvc) == 0 && len(tcpSvc) == 0 {
 		return nil
 	}
 	if err := lbc.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
-			"tcp":  tcpSvc,
+			"http":      httpSvc,
+			"httpsTerm": httpsTermSvc,
+			"tcp":       tcpSvc,
 		}, dryRun); err != nil {
 		return err
 	}
@@ -533,7 +581,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 
 // parseCfg parses the given configuration file.
 // cmd line params take precedence over config directives.
-func parseCfg(configPath string, defLbAlgorithm string) *loadBalancerConfig {
+func parseCfg(configPath string, defLbAlgorithm string, sslCert string, sslCaCert string) *loadBalancerConfig {
 	jsonBlob, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		glog.Fatalf("Could not parse lb config: %v", err)
@@ -543,7 +591,8 @@ func parseCfg(configPath string, defLbAlgorithm string) *loadBalancerConfig {
 	if err != nil {
 		glog.Fatalf("Unable to unmarshal json blob: %v", string(jsonBlob))
 	}
-
+	cfg.sslCert = sslCert
+	cfg.sslCaCert = sslCaCert
 	cfg.lbDefAlgorithm = defLbAlgorithm
 	glog.Infof("Creating new loadbalancer: %+v", cfg)
 	return &cfg
@@ -612,7 +661,7 @@ func dryRun(lbc *loadBalancerController) {
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
-	cfg := parseCfg(*config, *lbDefAlgorithm)
+	cfg := parseCfg(*config, *lbDefAlgorithm, *sslCert, *sslCaCert)
 
 	var kubeClient *unversioned.Client
 	var err error
@@ -660,6 +709,7 @@ func main() {
 
 	// TODO: Handle multiple namespaces
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace, tcpSvcs)
+
 	go lbc.epController.Run(util.NeverStop)
 	go lbc.svcController.Run(util.NeverStop)
 	if *dry {
@@ -668,4 +718,5 @@ func main() {
 		lbc.cfg.reload()
 		util.Until(lbc.worker, time.Second, util.NeverStop)
 	}
+
 }

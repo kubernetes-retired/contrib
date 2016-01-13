@@ -4,3 +4,4 @@
     "config": "/etc/haproxy/haproxy.cfg",
     "template": "template.cfg"
 }
+
