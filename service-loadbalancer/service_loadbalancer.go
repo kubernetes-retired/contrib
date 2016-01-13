@@ -242,7 +242,6 @@ func newStaticPageHandler(errorPage string, defaultErrorPage string) *staticPage
 func (s *staticPageHandler) loadUrl(url string) error {
 	res, err := s.c.Get(url)
 	if err != nil {
-		glog.Errorf("%v", err)
 		return err
 	}
 	defer res.Body.Close()
@@ -285,7 +284,8 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 		conf["defLbAlgorithm"] = cfg.lbDefAlgorithm
 	}
 
-	return t.Execute(w, conf)
+	err = t.Execute(w, conf)
+	return
 }
 
 // reload reloads the loadbalancer using the reload cmd specified in the json manifest.
@@ -319,7 +319,7 @@ type loadBalancerController struct {
 
 // getTargetPort returns the numeric value of TargetPort
 func getTargetPort(servicePort *api.ServicePort) int {
-	return int(servicePort.TargetPort.IntVal)
+	return servicePort.TargetPort.IntValue()
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -453,8 +453,12 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		time.Sleep(100 * time.Millisecond)
 		return errDeferredSync
 	}
+
+	lbc.reloadRateLimiter.Accept()
+
 	httpSvc, tcpSvc := lbc.getServices()
 	if len(httpSvc) == 0 && len(tcpSvc) == 0 {
+		glog.Warning("There is no available services to be used in the load balancer")
 		return nil
 	}
 	if err := lbc.cfg.write(
@@ -467,7 +471,6 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 	if dryRun {
 		return nil
 	}
-	lbc.reloadRateLimiter.Accept()
 	return lbc.cfg.reload()
 }
 
@@ -499,19 +502,23 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 		tcpServices:     map[string]int{},
 	}
 
-	for _, service := range strings.Split(*tcpServices, ",") {
-		portSplit := strings.Split(service, ":")
-		if len(portSplit) != 2 {
-			glog.Errorf("Ignoring misconfigured TCP service %v", service)
-			continue
-		}
-		if port, err := strconv.Atoi(portSplit[1]); err != nil {
-			glog.Errorf("Ignoring misconfigured TCP service %v: %v", service, err)
-			continue
-		} else {
-			lbc.tcpServices[portSplit[0]] = port
+	if *tcpServices != "" {
+		for _, service := range strings.Split(*tcpServices, ",") {
+			portSplit := strings.Split(service, ":")
+			if len(portSplit) != 2 {
+				glog.Errorf("Ignoring misconfigured TCP service %v", service)
+				continue
+			}
+			if port, err := strconv.Atoi(portSplit[1]); err != nil {
+				glog.Errorf("Ignoring misconfigured TCP service %v: %v", service, err)
+				continue
+			} else {
+				glog.Infof("Adding TCP service %v", service)
+				lbc.tcpServices[portSplit[0]] = port
+			}
 		}
 	}
+
 	enqueue := func(obj interface{}) {
 		key, err := keyFunc(obj)
 		if err != nil {
@@ -606,7 +613,7 @@ func main() {
 	flags.Parse(os.Args)
 	cfg := parseCfg(*config, *lbDefAlgorithm)
 	if len(*tcpServices) == 0 {
-		glog.Infof("All tcp/https services will be ignored.")
+		glog.Infof("No tcp/https services specified")
 	}
 
 	var kubeClient *unversioned.Client
