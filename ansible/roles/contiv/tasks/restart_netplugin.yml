@@ -13,10 +13,10 @@
   file: path=/var/log/contivk8s.log state=absent
 
 - name: copy clean up script
-  copy: src=contiv_agent_clean.sh dest=/usr/bin/contiv_agent_clean.sh mode=0755
+  copy: src=netplugin_clean.sh dest=/usr/bin/netplugin_clean.sh mode=0755
 
 - name: clean up
-  shell: contiv_agent_clean.sh || true
+  shell: netplugin_clean.sh || true
 
 # set up services
 - name: ensure pluginDir exists
@@ -57,11 +57,11 @@
     - "tcp:127.0.0.1:6640"
     - "ptcp:6640"
 
-- name: start netplugin
-  service: name=netplugin state=started
-
 - name: start docker
   service: name=docker state=started
+
+- name: start netplugin
+  service: name=netplugin state=started
 
 - name: start kubelet
   service: name=kubelet state=started

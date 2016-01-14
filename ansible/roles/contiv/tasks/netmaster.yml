@@ -11,14 +11,6 @@
 - name: copy netmaster setup script
   copy: src=nw_setup.sh dest=/usr/bin/nw_setup.sh mode=0755
 
-- name: install ntp
-  yum: name=ntp state=present
-  when: ansible_os_family == "RedHat"
-
-- name: start ntp
-  shell: systemctl enable ntpd
-  when: ansible_os_family == "RedHat"
-
 - name: copy environment file for netmaster
   copy: src=netmaster.env dest=/etc/default/netmaster
 
