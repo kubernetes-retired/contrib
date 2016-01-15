@@ -42,16 +42,16 @@ func TestProcessSingleTestLogs(t *testing.T) {
 	scanner := bufio.NewScanner(file)
 
 	logs, resources, metrics := ProcessSingleTest(scanner, 123)
-	if resources != nil {
+	if len(resources) != 0 {
 		t.Errorf("Received non-empty resources: %v", resources)
 	}
-	if metrics != nil {
+	if len(metrics) != 0 {
 		t.Errorf("Received non-empty metrics: %v", metrics)
 	}
-	if logs == nil {
+	if len(logs) == 0 {
 		t.Error("Didn't receive any logs.")
 	} else {
-		expectedLogs := e2e.LogsSizeDataSummary{
+		expectedLogs := &e2e.LogsSizeDataSummary{
 			"104.154.36.5:22": map[string]e2e.SingleLogSummary{
 				"/var/log/kube-proxy.log": {
 					AverageGenerationRate: 700, NumberOfProbes: 2,
@@ -97,8 +97,8 @@ func TestProcessSingleTestLogs(t *testing.T) {
 				},
 			},
 		}
-		if !reflect.DeepEqual(*logs, expectedLogs) {
-			t.Errorf("Parsed logs do not match expected value:\nReceived:\n%v\nExpected:\n%v", *logs, expectedLogs)
+		if !reflect.DeepEqual(logs["Sample test"], expectedLogs) {
+			t.Errorf("Parsed logs do not match expected value:\nReceived:\n%v\nExpected:\n%v", logs["Sample test"], expectedLogs)
 		}
 	}
 }
@@ -117,16 +117,16 @@ func TestProcessSingleTestResources(t *testing.T) {
 	scanner := bufio.NewScanner(file)
 
 	logs, resources, metrics := ProcessSingleTest(scanner, 123)
-	if logs != nil {
+	if len(logs) != 0 {
 		t.Errorf("Received non-empty logs: %v", logs)
 	}
-	if metrics != nil {
+	if len(metrics) != 0 {
 		t.Errorf("Received non-empty metrics: %v", metrics)
 	}
-	if resources == nil {
+	if len(resources) == 0 {
 		t.Error("Didn't receive any resources.")
 	} else {
-		expectedResources := e2e.ResourceUsageSummary{
+		expectedResources := &e2e.ResourceUsageSummary{
 			"90": []e2e.SingleContainerSummary{
 				{
 					Name: "elasticsearch-logging-v1-qvcte/elasticsearch-logging",
@@ -202,8 +202,8 @@ func TestProcessSingleTestResources(t *testing.T) {
 				},
 			},
 		}
-		if !reflect.DeepEqual(*resources, expectedResources) {
-			t.Errorf("Parsed resources do not match expected value:\nReceived:\n%v\nExpected:\n%v", *resources, expectedResources)
+		if !reflect.DeepEqual(resources["Sample test"], expectedResources) {
+			t.Errorf("Parsed resources do not match expected value:\nReceived:\n%v\nExpected:\n%v", resources["Sample test"], expectedResources)
 		}
 	}
 }
@@ -222,13 +222,13 @@ func TestProcessSingleTestMetrics(t *testing.T) {
 	scanner := bufio.NewScanner(file)
 
 	logs, resources, metrics := ProcessSingleTest(scanner, 123)
-	if logs != nil {
+	if len(logs) != 0 {
 		t.Errorf("Received non-empty logs: %v", logs)
 	}
-	if resources != nil {
+	if len(resources) != 0 {
 		t.Errorf("Received non-empty resources: %v", resources)
 	}
-	if metrics == nil {
+	if len(metrics) == 0 {
 		t.Error("Didn't receive any metrics.")
 	} else {
 		expectedMetrics := e2e.MetricsForE2E{
@@ -360,17 +360,17 @@ func TestProcessSingleTestMetrics(t *testing.T) {
 			KubeletMetrics:           map[string]k8smetrics.KubeletMetrics{},
 			SchedulerMetrics:         k8smetrics.SchedulerMetrics{},
 		}
-		if !(*metrics).ApiServerMetrics.Equal(expectedMetrics.ApiServerMetrics) {
-			t.Errorf("Parsed APIServer metrics do not match expected value:\nReceived:\n%v\nExpected:\n%v", *metrics, expectedMetrics)
+		if !metrics["Sample test"].ApiServerMetrics.Equal(expectedMetrics.ApiServerMetrics) {
+			t.Errorf("Parsed APIServer metrics do not match expected value:\nReceived:\n%v\nExpected:\n%v", metrics["Sample test"], expectedMetrics)
 		}
-		if (*metrics).ControllerManagerMetrics != nil {
-			t.Errorf("Found unexpected ControllerManagerMetrics in the result: %v", (*metrics).ControllerManagerMetrics)
+		if metrics["Sample test"].ControllerManagerMetrics != nil {
+			t.Errorf("Found unexpected ControllerManagerMetrics in the result: %v", metrics["Sample test"].ControllerManagerMetrics)
 		}
-		if (*metrics).KubeletMetrics != nil {
-			t.Errorf("Found unexpected KubeletMetrics in the result: %v", (*metrics).KubeletMetrics)
+		if metrics["Sample test"].KubeletMetrics != nil {
+			t.Errorf("Found unexpected KubeletMetrics in the result: %v", metrics["Sample test"].KubeletMetrics)
 		}
-		if (*metrics).SchedulerMetrics != nil {
-			t.Errorf("Found unexpected SchedulerMetrics in the result: %v", (*metrics).SchedulerMetrics)
+		if metrics["Sample test"].SchedulerMetrics != nil {
+			t.Errorf("Found unexpected SchedulerMetrics in the result: %v", metrics["Sample test"].SchedulerMetrics)
 		}
 	}
 }

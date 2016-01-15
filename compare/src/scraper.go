@@ -36,35 +36,43 @@ const (
 
 // ProcessSingleTest processes single Jenkins output file, reading and parsing JSON
 // summaries embedded in it.
-func ProcessSingleTest(scanner *bufio.Scanner, buildNumber int) (*e2e.LogsSizeDataSummary, *e2e.ResourceUsageSummary, *e2e.MetricsForE2E) {
+func ProcessSingleTest(scanner *bufio.Scanner, buildNumber int) (map[string]*e2e.LogsSizeDataSummary, map[string]*e2e.ResourceUsageSummary, map[string]*e2e.MetricsForE2E) {
 	buff := &bytes.Buffer{}
-	var logSummary *e2e.LogsSizeDataSummary
-	var resourceSummary *e2e.ResourceUsageSummary
-	var metricsSummary *e2e.MetricsForE2E
+	logSummary := make(map[string]*e2e.LogsSizeDataSummary)
+	resourceSummary := make(map[string]*e2e.ResourceUsageSummary)
+	metricsSummary := make(map[string]*e2e.MetricsForE2E)
 	state := defaultState
+	testSeparator := "[It] [Performance] "
+	testName := ""
 	for scanner.Scan() {
 		line := scanner.Text()
+		if state == defaultState {
+			if strings.Contains(line, testSeparator) {
+				testName = strings.Trim(strings.Split(line, testSeparator)[1], " ")
+				buff.Reset()
+			}
+		}
 		if strings.Contains(line, "Finished") {
 			if state == readingLogs {
-				logSummary = &e2e.LogsSizeDataSummary{}
+				logSummary[testName] = &e2e.LogsSizeDataSummary{}
 				state = defaultState
-				if err := json.Unmarshal(buff.Bytes(), logSummary); err != nil {
+				if err := json.Unmarshal(buff.Bytes(), logSummary[testName]); err != nil {
 					glog.V(0).Infof("error parsing LogsSizeDataSummary JSON in build %d: %v %s\n", buildNumber, err, buff.String())
 					continue
 				}
 			}
 			if state == readingResources {
-				resourceSummary = &e2e.ResourceUsageSummary{}
+				resourceSummary[testName] = &e2e.ResourceUsageSummary{}
 				state = defaultState
-				if err := json.Unmarshal(buff.Bytes(), resourceSummary); err != nil {
+				if err := json.Unmarshal(buff.Bytes(), resourceSummary[testName]); err != nil {
 					glog.V(0).Infof("error parsing ResourceUsageSummary JSON in build %d: %v %s\n", buildNumber, err, buff.String())
 					continue
 				}
 			}
 			if state == readingMetrics {
-				metricsSummary = &e2e.MetricsForE2E{}
+				metricsSummary[testName] = &e2e.MetricsForE2E{}
 				state = defaultState
-				if err := json.Unmarshal(buff.Bytes(), metricsSummary); err != nil {
+				if err := json.Unmarshal(buff.Bytes(), metricsSummary[testName]); err != nil {
 					glog.V(0).Infof("error parsing MetricsForE2E JSON in build %d: %v %s\n", buildNumber, err, buff.String())
 					continue
 				}
