@@ -13,11 +13,11 @@ install:
   - go get github.com/tools/godep
   - go get github.com/golang/lint/golint
   - export PATH=$GOPATH/bin:$PATH
-  - godep go install ./...
+  - hack/for-go-proj.sh install
 
 script:
   - hack/verify-all.sh
-  - godep go test ./...
+  - hack/for-go-proj.sh test
 
 notifications:
   irc: "chat.freenode.net#kubernetes-dev"
