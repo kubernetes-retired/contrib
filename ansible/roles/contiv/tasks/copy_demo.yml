@@ -1,8 +1,8 @@
-- name: copy redis image
-  copy: src=/home/ladmin/Backup/redis.tar dest=/tmp/redis.tar
+#- name: copy redis image
+#  copy: src=/home/ladmin/Backup/redis.tar dest=/tmp/redis.tar
 
-- name: load redis image
-  shell: docker load --input /tmp/redis.tar
+#- name: load redis image
+#  shell: docker load --input /tmp/redis.tar
 
 - name: pull busybox image
   shell: docker pull busybox
