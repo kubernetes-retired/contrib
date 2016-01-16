@@ -4,6 +4,6 @@
 #- name: load redis image
 #  shell: docker load --input /tmp/redis.tar
 
-- name: pull busybox image
-  shell: docker pull busybox
+- name: pull busybox+netcat image
+  shell: docker pull contiv/nc-busybox
 
