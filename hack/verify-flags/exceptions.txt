@@ -1,0 +1,11 @@
+Ingress/controllers/nginx-third-party/nginx.tmpl:        require("error_page")
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 403 @custom_403;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 404 @custom_404;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 405 @custom_405;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 408 @custom_408;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 413 @custom_413;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 500 @custom_500;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 501 @custom_501;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 502 @custom_502;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 503 @custom_503;
+Ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 504 @custom_504;
