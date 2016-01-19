@@ -155,11 +155,11 @@ func TestGetServices(t *testing.T) {
 
 	flb := newFakeLoadBalancerController(endpoints, []*api.Service{svc1, svc2})
 	cfg, _ := filepath.Abs("./test-samples/loadbalancer_test.json")
-	flb.cfg = parseCfg(cfg, "roundrobin")
+	flb.cfg = parseCfg(cfg, "roundrobin", "", "")
 	flb.tcpServices = map[string]int{
 		svc1.Name: 20,
 	}
-	http, tcp := flb.getServices()
+	http, _, tcp := flb.getServices()
 	serviceURLEp := fmt.Sprintf("%v:%v", svc1.Name, 20)
 	if len(tcp) != 1 || tcp[0].Name != serviceURLEp || tcp[0].FrontendPort != 20 {
 		t.Fatalf("Unexpected tcp service %+v expected %+v", tcp, svc1.Name)
@@ -263,7 +263,7 @@ func buildTestLoadBalancer(lbDefAlgorithm string) *loadBalancerController {
 		lbDefAlgorithm = "roundrobin"
 	}
 
-	flb.cfg = parseCfg(cfg, lbDefAlgorithm)
+	flb.cfg = parseCfg(cfg, lbDefAlgorithm, "", "")
 	cfgFile, _ := filepath.Abs("test-" + string(util.NewUUID()))
 	flb.cfg.Config = cfgFile
 	flb.tcpServices = map[string]int{
@@ -291,7 +291,7 @@ func compareCfgFiles(t *testing.T, orig, template string) {
 
 func TestDefaultAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
@@ -306,7 +306,7 @@ func TestDefaultAlgorithm(t *testing.T) {
 
 func TestDefaultCustomAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("leastconn")
-	httpSvc, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
@@ -321,7 +321,7 @@ func TestDefaultCustomAlgorithm(t *testing.T) {
 
 func TestSyslog(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc := flb.getServices()
 	flb.cfg.startSyslog = true
 	if err := flb.cfg.write(
 		map[string][]service{
@@ -337,7 +337,7 @@ func TestSyslog(t *testing.T) {
 
 func TestSvcCustomAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc := flb.getServices()
 	httpSvc[0].Algorithm = "leastconn"
 	if err := flb.cfg.write(
 		map[string][]service{
@@ -353,7 +353,7 @@ func TestSvcCustomAlgorithm(t *testing.T) {
 
 func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("leastconn")
-	httpSvc, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc := flb.getServices()
 	httpSvc[0].Algorithm = "roundrobin"
 	if err := flb.cfg.write(
 		map[string][]service{
@@ -369,7 +369,7 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 
 func TestServiceAffinity(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
 	if err := flb.cfg.write(
 		map[string][]service{
@@ -385,7 +385,7 @@ func TestServiceAffinity(t *testing.T) {
 
 func TestServiceAffinityWithCookies(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
 	httpSvc[0].CookieStickySession = true
 	if err := flb.cfg.write(

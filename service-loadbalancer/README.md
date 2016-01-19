@@ -115,6 +115,56 @@ A couple of points to note:
 - The https service is accessible directly on the specified port, which matches the *service port*.
 - You need to take care of ensuring there is no collision between these service ports on the node.
 
+#### SSL Termination
+
+- Annotate a service
+
+```yaml
+metadata:
+  name: myservice
+  annotations:
+    serviceloadbalancer/lb.sslTerm: "true"
+    serviceloadbalancer/lb.aclMatch: "-i /t1 /t2"
+  labels:
+```
+
+- Create a secret with one of your favorite tool
+
+- Add secrets to your loadbalancer pod
+
+```yaml
+        ports:
+        # All http services
+        - containerPort: 80
+          hostPort: 80
+          protocol: TCP
+        # ssl term
+        - containerPort: 443
+          hostPort: 443
+          protocol: TCP       
+        # haproxy stats
+        - containerPort: 1936
+          hostPort: 1936
+          protocol: TCP
+        resources: {}     
+        volumes:
+        - name: secret-volume
+          secret:
+            secretName: my-secret
+        volumeMounts:
+        - mountPath: "/ssl"
+          name: secret-volume
+```
+
+- Add your SSL configuration to loadbalancer pod
+
+```yaml
+      args:
+      - --ssl-cert=/ssl/crt.pem
+      - --ssl-ca-cert=/ssl/ca.crt
+      - --namespace=default
+```
+
 #### TCP
 
 ```yaml
@@ -325,9 +375,8 @@ status of the services or stats about the traffic
 - Scrape :1926 and scale replica count of the loadbalancer rc from a helper pod (this is basically ELB)
 - Scrape :1936/;csv and autoscale services
 - Better https support. 3 options to handle ssl:
-  1. __Termination__: certificate lives on load balancer. All traffic to load balancer is encrypted, traffic from load balancer to service is not.
-  2. __Pass Through__: Load balancer drops down to L4 balancing and forwards TCP encrypted packets to destination.
-  3. __Redirect__: All traffic is https. HTTP connections are encrypted using load balancer certs.
+  1. __Pass Through__: Load balancer drops down to L4 balancing and forwards TCP encrypted packets to destination.
+  2. __Redirect__: All traffic is https. HTTP connections are encrypted using load balancer certs.
 
   Currently you need to trigger TCP loadbalancing for your https service by specifying it in loadbalancer.json. Support for the other 2 would be nice.
 - Multinamespace support: Currently the controller only watches a single namespace for services.
