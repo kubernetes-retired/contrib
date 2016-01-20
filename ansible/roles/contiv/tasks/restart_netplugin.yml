@@ -63,6 +63,9 @@
 - name: start netplugin
   service: name=netplugin state=started
 
+- name: wait for netplugin
+  pause: seconds=45
+
 - name: start kubelet
   service: name=kubelet state=started
 
