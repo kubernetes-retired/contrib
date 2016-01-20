@@ -5,7 +5,7 @@ language: go
 matrix:
   include:
     - go: 1.4.3
-    - go: 1.5.1
+    - go: 1.5.3
 
 install:
   - mkdir -p $HOME/gopath/src/k8s.io
