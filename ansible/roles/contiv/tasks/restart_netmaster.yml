@@ -10,9 +10,6 @@
 - name: copy netctl exec file
   copy: src={{ contiv_bin_path }}/netctl dest=/usr/bin/netctl mode=0755
 
-- name: copy contivctl exec file
-  copy: src={{ contiv_bin_path }}/contivctl dest=/usr/bin/contivctl mode=0755
-
 - name: copy n/w setup script
   copy: src=nw_setup.sh dest=/usr/bin/nw_setup.sh mode=0755
 
@@ -24,6 +21,9 @@
 
 - name: start netmaster
   service: name=netmaster state=started
+
+- name: wait for netmaster
+  pause: seconds=60
 
 - name: setup network
   shell: nw_setup.sh

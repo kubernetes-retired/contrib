@@ -34,6 +34,15 @@
     - influxdb-grafana-controller.yaml
     - influxdb-service.yaml
 
+- name: MONITORING | https://github.com/kubernetes/contrib/issues/395
+  local_action: replace
+    dest="{{ local_temp_addon_dir }}/cluster-monitoring/{{ item }}.j2"
+    regexp="is not None"
+    replace="is not none"
+  sudo: no
+  with_items:
+    - heapster-controller.yaml
+
 - name: MONITORING | Install template from converted saltfile
   template:
   args:
