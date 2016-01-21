@@ -91,7 +91,7 @@ func getLatencyData(client *jenkins.JenkinsClient, job string) (BuildLatencyData
 
 		hist := ResourceToHistogram{}
 		found := false
-		testNameSeparator := "[It] [Skipped] [Performance suite]"
+		testNameSeparator := "[It] [Feature:Performance]"
 		testName := ""
 		for scanner.Scan() {
 			line := scanner.Text()
