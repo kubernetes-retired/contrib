@@ -90,7 +90,7 @@ func (n *Namer) decorateName(name string) string {
 	if n.ClusterName == "" {
 		return name
 	}
-	return n.Trucate(fmt.Sprintf("%v%v%v", name, clusterNameDelimiter, n.ClusterName))
+	return n.Truncate(fmt.Sprintf("%v%v%v", name, clusterNameDelimiter, n.ClusterName))
 }
 
 // BeName constructs the name for a backend.
@@ -98,8 +98,8 @@ func (n *Namer) BeName(port int64) string {
 	return n.decorateName(fmt.Sprintf("%v-%d", backendPrefix, port))
 }
 
-// IgName constructs the name for an Instance Group.
-func (n *Namer) IgName(port int64) string {
+// IGName constructs the name for an Instance Group.
+func (n *Namer) IGName() string {
 	// Currently all ports are added to a single instance group.
 	return n.decorateName(igPrefix)
 }
