@@ -101,16 +101,12 @@ func (b *Backends) create(ig *compute.InstanceGroup, namedPort *compute.NamedPor
 
 // Add will get or create a Backend for the given port.
 func (b *Backends) Add(port int64) error {
-	name := b.namer.BeName(port)
-
-	// Preemptive addition of a backend to the pool is only to force instance
-	// cleanup if user runs out of quota mid-way through this function, and
-	// decides to delete Ingress. A better solutions is to have the node pool
-	// cleaup after itself.
+	// We must track the port even if creating the backend failed, because
+	// we might've created a health-check for it.
 	be := &compute.BackendService{}
 	defer func() { b.snapshotter.Add(portKey(port), be) }()
 
-	ig, namedPort, err := b.nodePool.AddInstanceGroup(name, port)
+	ig, namedPort, err := b.nodePool.AddInstanceGroup(b.namer.IGName(), port)
 	if err != nil {
 		return err
 	}
@@ -123,7 +119,6 @@ func (b *Backends) Add(port int64) error {
 			return err
 		}
 	}
-	// Both the backend and instance group might exist, but be disconnected.
 	if err := b.edgeHop(be, ig); err != nil {
 		return err
 	}
@@ -142,19 +137,13 @@ func (b *Backends) Delete(port int64) (err error) {
 			b.snapshotter.Delete(portKey(port))
 		}
 	}()
-	// Try deleting health checks and instance groups, even if a backend is
-	// not found. This guards against the case where we create one of the
-	// other 2 and run out of quota creating the backend.
+	// Try deleting health checks even if a backend is not found.
 	if err = b.cloud.DeleteBackendService(name); err != nil &&
 		!utils.IsHTTPErrorCode(err, http.StatusNotFound) {
 		return err
 	}
 	if err = b.healthChecker.Delete(port); err != nil &&
 		!utils.IsHTTPErrorCode(err, http.StatusNotFound) {
-		return err
-	}
-	glog.Infof("Deleting instance group %v", name)
-	if err = b.nodePool.DeleteInstanceGroup(name); err != nil {
 		return err
 	}
 	return nil
@@ -216,6 +205,12 @@ func (b *Backends) GC(svcNodePorts []int64) error {
 		}
 		glog.Infof("GCing backend for port %v", p)
 		if err := b.Delete(nodePort); err != nil {
+			return err
+		}
+	}
+	if len(svcNodePorts) == 0 {
+		glog.Infof("Deleting instance group %v", b.namer.IGName())
+		if err := b.nodePool.DeleteInstanceGroup(b.namer.IGName()); err != nil {
 			return err
 		}
 	}

@@ -46,7 +46,8 @@ func NewNodePool(cloud InstanceGroups) NodePool {
 	return &Instances{cloud, storage.NewInMemoryPool()}
 }
 
-// AddInstanceGroup creates or gets an instance group.
+// AddInstanceGroup creates or gets an instance group if it doesn't exist
+// and adds the given port to it.
 func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.InstanceGroup, *compute.NamedPort, error) {
 	ig, _ := i.Get(name)
 	if ig == nil {

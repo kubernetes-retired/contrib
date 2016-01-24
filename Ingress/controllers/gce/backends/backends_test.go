@@ -79,7 +79,7 @@ func TestBackendPoolAdd(t *testing.T) {
 		}
 	}
 	gotBackend, _ := f.GetBackendService(beName)
-	gotGroup, _ := fakeIGs.GetInstanceGroup(beName)
+	gotGroup, _ := fakeIGs.GetInstanceGroup(namer.IGName())
 	if gotBackend.Backends[0].Group != gotGroup.SelfLink {
 		t.Fatalf(
 			"Broken instance group link: %v %v",
