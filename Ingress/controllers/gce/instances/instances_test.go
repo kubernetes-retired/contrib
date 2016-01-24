@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package instances
 
 import (
 	"testing"
@@ -23,7 +23,7 @@ import (
 )
 
 func TestNodePoolSync(t *testing.T) {
-	f := newFakeInstanceGroups(sets.NewString(
+	f := NewFakeInstanceGroups(sets.NewString(
 		[]string{"n1", "n2"}...))
 	pool := NewNodePool(f)
 	pool.AddInstanceGroup("test", 80)
@@ -43,7 +43,7 @@ func TestNodePoolSync(t *testing.T) {
 	// GCENodes: n1
 	// Try to add n2 to the instance group.
 
-	f = newFakeInstanceGroups(sets.NewString([]string{"n1"}...))
+	f = NewFakeInstanceGroups(sets.NewString([]string{"n1"}...))
 	pool = NewNodePool(f)
 	pool.AddInstanceGroup("test", 80)
 
@@ -59,7 +59,7 @@ func TestNodePoolSync(t *testing.T) {
 	// GCENodes: n1, n2
 	// Do nothing.
 
-	f = newFakeInstanceGroups(sets.NewString([]string{"n1", "n2"}...))
+	f = NewFakeInstanceGroups(sets.NewString([]string{"n1", "n2"}...))
 	pool = NewNodePool(f)
 	pool.AddInstanceGroup("test", 80)
 
