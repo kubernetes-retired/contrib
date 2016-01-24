@@ -32,7 +32,7 @@ import (
 
 var flRepo = flag.String("repo", envString("GIT_SYNC_REPO", ""), "git repo url")
 var flBranch = flag.String("branch", envString("GIT_SYNC_BRANCH", "master"), "git branch")
-var flRev = flag.String("rev", envString("GIT_SYNC_BRANCH", "HEAD"), "git rev")
+var flRev = flag.String("rev", envString("GIT_SYNC_REV", "HEAD"), "git rev")
 var flDest = flag.String("dest", envString("GIT_SYNC_DEST", ""), "destination path")
 var flWait = flag.Int("wait", envInt("GIT_SYNC_WAIT", 0), "number of seconds to wait before exit")
 
