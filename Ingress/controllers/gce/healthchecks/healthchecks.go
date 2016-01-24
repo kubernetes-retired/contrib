@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package healthchecks
 
 import (
 	compute "google.golang.org/api/compute/v1"
 
 	"github.com/golang/glog"
+	"k8s.io/contrib/Ingress/controllers/gce/utils"
 	"net/http"
 )
 
@@ -27,19 +28,20 @@ import (
 type HealthChecks struct {
 	cloud       SingleHealthCheck
 	defaultPath string
+	namer       utils.Namer
 }
 
 // NewHealthChecker creates a new health checker.
 // cloud: the cloud object implementing SingleHealthCheck.
 // defaultHealthCheckPath: is the HTTP path to use for health checks.
-func NewHealthChecker(cloud SingleHealthCheck, defaultHealthCheckPath string) HealthChecker {
-	return &HealthChecks{cloud, defaultHealthCheckPath}
+func NewHealthChecker(cloud SingleHealthCheck, defaultHealthCheckPath string, namer utils.Namer) HealthChecker {
+	return &HealthChecks{cloud, defaultHealthCheckPath, namer}
 }
 
 // Add adds a healthcheck if one for the same port doesn't already exist.
 func (h *HealthChecks) Add(port int64, path string) error {
 	hc, _ := h.Get(port)
-	name := beName(port)
+	name := h.namer.BeName(port)
 	if path == "" {
 		path = h.defaultPath
 	}
@@ -71,10 +73,10 @@ func (h *HealthChecks) Add(port int64, path string) error {
 
 // Delete deletes the health check by port.
 func (h *HealthChecks) Delete(port int64) error {
-	name := beName(port)
+	name := h.namer.BeName(port)
 	glog.Infof("Deleting health check %v", name)
-	if err := h.cloud.DeleteHttpHealthCheck(beName(port)); err != nil {
-		if !isHTTPErrorCode(err, http.StatusNotFound) {
+	if err := h.cloud.DeleteHttpHealthCheck(h.namer.BeName(port)); err != nil {
+		if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
 			return err
 		}
 	}
@@ -83,5 +85,5 @@ func (h *HealthChecks) Delete(port int64) error {
 
 // Get returns the given health check.
 func (h *HealthChecks) Get(port int64) (*compute.HttpHealthCheck, error) {
-	return h.cloud.GetHttpHealthCheck(beName(port))
+	return h.cloud.GetHttpHealthCheck(h.namer.BeName(port))
 }
