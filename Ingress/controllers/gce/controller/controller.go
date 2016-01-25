@@ -93,7 +93,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 	pathHandlers := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			addIng := obj.(*extensions.Ingress)
-			lbc.recorder.Eventf(addIng, "ADD", addIng.Name, fmt.Sprintf("Adding %s", addIng.Name))
+			lbc.recorder.Eventf(addIng, api.EventTypeNormal, "ADD", fmt.Sprintf("%s/%s", addIng.Namespace, addIng.Name))
 			lbc.ingQueue.enqueue(obj)
 		},
 		DeleteFunc: lbc.ingQueue.enqueue,
@@ -263,14 +263,14 @@ func (lbc *LoadBalancerController) sync(key string) {
 
 	if err := lbc.CloudClusterManager.Checkpoint(lbNames, nodeNames, nodePorts); err != nil {
 		// TODO: Implement proper backoff for the queue.
-		eventType := "GCE"
+		eventMsg := "GCE"
 		if utils.IsHTTPErrorCode(err, http.StatusForbidden) {
-			eventType += " :Quota"
+			eventMsg += " :Quota"
 		}
 		if ingExists {
-			lbc.recorder.Eventf(obj.(*extensions.Ingress), eventType, "ERROR", err.Error())
+			lbc.recorder.Eventf(obj.(*extensions.Ingress), api.EventTypeWarning, eventMsg, err.Error())
 		} else {
-			err = fmt.Errorf("%v Error: %v", eventType, err)
+			err = fmt.Errorf("%v Error: %v", eventMsg, err)
 		}
 		lbc.ingQueue.requeue(key, err)
 		return
@@ -290,10 +290,10 @@ func (lbc *LoadBalancerController) sync(key string) {
 	if urlMap, err := lbc.tr.toUrlMap(&ing); err != nil {
 		lbc.ingQueue.requeue(key, err)
 	} else if err := l7.UpdateUrlMap(urlMap); err != nil {
-		lbc.recorder.Eventf(&ing, "UrlMap", "ERROR", err.Error())
+		lbc.recorder.Eventf(&ing, api.EventTypeWarning, "UrlMap", err.Error())
 		lbc.ingQueue.requeue(key, err)
 	} else if lbc.updateIngressStatus(l7, ing); err != nil {
-		lbc.recorder.Eventf(&ing, "Status", "ERROR", err.Error())
+		lbc.recorder.Eventf(&ing, api.EventTypeWarning, "Status", err.Error())
 		lbc.ingQueue.requeue(key, err)
 	}
 	return
@@ -325,7 +325,7 @@ func (lbc *LoadBalancerController) updateIngressStatus(l7 *loadbalancers.L7, ing
 		if _, err := ingClient.UpdateStatus(currIng); err != nil {
 			return err
 		}
-		lbc.recorder.Eventf(currIng, "CREATE", "ip: %v", ip)
+		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", ip)
 	}
 
 	// Update annotations through /update endpoint
