@@ -1,0 +1,22 @@
+;$ORIGIN {{ .domain }}.
+$TTL {{ .defTTL }}
+
+@ IN SOA {{ .ns.Host }}. admin.{{ .domain }}. (
+          {{ .soa.Serial }}
+          {{ .soa.Refresh }}
+          {{ .soa.Retry }}
+          {{ .soa.Expire }}
+          {{ .soa.MinTTL }}
+          )
+
+          NS      {{ .ns.Host }}.
+
+{{ range $i,$aRecord := .a }}
+{{ $aRecord.Host }}.   IN     A    {{ $aRecord.IP }}{{ end }}
+
+{{ range $i,$cRecord := .cname }}
+{{ $cRecord.Host }}.      CNAME       {{ $cRecord.Target}}{{ end }}
+
+; Service.Proto.Name    Class SRV Priority Weight Port Target
+{{ range $i,$srvRecord := .srv }}
+{{ $srvRecord.Host }}.      IN SRV {{ $srvRecord.Priority }} {{ $srvRecord.Weight }} {{ $srvRecord.Port }} {{ $srvRecord.Target }}{{ end }}

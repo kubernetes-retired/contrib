@@ -1,0 +1,13 @@
+creative.ak.fbcdn.net
+photos-d.ak.fbcdn.net
+www.bing.com
+external.ak.fbcdn.net
+www.riddleshut.com
+a.root-servers.net
+www.google.cl
+cloud.google.com
+s3-console-us-standard.console.aws.amazon.com
+www.google.nl
+api.google.com
+api.facebook.com
+api.twitter.com
