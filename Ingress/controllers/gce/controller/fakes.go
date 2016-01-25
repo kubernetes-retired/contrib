@@ -26,7 +26,10 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
-const testDefaultBeNodePort = int64(3000)
+const (
+	testDefaultBeNodePort = int64(3000)
+	defaultZone           = "default-zone"
+)
 
 var testBackendPort = intstr.IntOrString{Type: intstr.Int, IntVal: 80}
 
@@ -45,7 +48,7 @@ func NewFakeClusterManager(clusterName string) *fakeClusterManager {
 	fakeIGs := instances.NewFakeInstanceGroups(sets.NewString())
 	fakeHCs := healthchecks.NewFakeHealthChecks()
 	namer := utils.Namer{clusterName}
-	nodePool := instances.NewNodePool(fakeIGs)
+	nodePool := instances.NewNodePool(fakeIGs, defaultZone)
 	healthChecker := healthchecks.NewHealthChecker(fakeHCs, "/", namer)
 	backendPool := backends.NewBackendPool(
 		fakeBackends,
