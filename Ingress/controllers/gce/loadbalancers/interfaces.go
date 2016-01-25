@@ -28,9 +28,9 @@ import (
 type LoadBalancers interface {
 	// Forwarding Rules
 	GetGlobalForwardingRule(name string) (*compute.ForwardingRule, error)
-	CreateGlobalForwardingRule(proxy *compute.TargetHttpProxy, name string, portRange string) (*compute.ForwardingRule, error)
+	CreateGlobalForwardingRule(proxyLink, ip, name, portRange string) (*compute.ForwardingRule, error)
 	DeleteGlobalForwardingRule(name string) error
-	SetProxyForGlobalForwardingRule(fw *compute.ForwardingRule, proxy *compute.TargetHttpProxy) error
+	SetProxyForGlobalForwardingRule(fw *compute.ForwardingRule, proxy string) error
 
 	// UrlMaps
 	GetUrlMap(name string) (*compute.UrlMap, error)
@@ -43,15 +43,32 @@ type LoadBalancers interface {
 	CreateTargetHttpProxy(urlMap *compute.UrlMap, name string) (*compute.TargetHttpProxy, error)
 	DeleteTargetHttpProxy(name string) error
 	SetUrlMapForTargetHttpProxy(proxy *compute.TargetHttpProxy, urlMap *compute.UrlMap) error
+
+	// TargetHttpsProxies
+	GetTargetHttpsProxy(name string) (*compute.TargetHttpsProxy, error)
+	CreateTargetHttpsProxy(urlMap *compute.UrlMap, SSLCerts *compute.SslCertificate, name string) (*compute.TargetHttpsProxy, error)
+	DeleteTargetHttpsProxy(name string) error
+	SetUrlMapForTargetHttpsProxy(proxy *compute.TargetHttpsProxy, urlMap *compute.UrlMap) error
+	SetSslCertificateForTargetHttpsProxy(proxy *compute.TargetHttpsProxy, SSLCerts *compute.SslCertificate) error
+
+	// SslCertificates
+	GetSslCertificate(name string) (*compute.SslCertificate, error)
+	CreateSslCertificate(certs *compute.SslCertificate) (*compute.SslCertificate, error)
+	DeleteSslCertificate(name string) error
+
+	// Static IP
+	ReserveGlobalStaticIP(name, IPAddress string) (*compute.Address, error)
+	GetGlobalStaticIP(name string) (*compute.Address, error)
+	DeleteGlobalStaticIP(name string) error
 }
 
 // LoadBalancerPool is an interface to manage the cloud resources associated
 // with a gce loadbalancer.
 type LoadBalancerPool interface {
 	Get(name string) (*L7, error)
-	Add(name string) error
+	Add(ri *L7RuntimeInfo) error
 	Delete(name string) error
-	Sync(names []string) error
+	Sync(ri []*L7RuntimeInfo) error
 	GC(names []string) error
 	Shutdown() error
 }

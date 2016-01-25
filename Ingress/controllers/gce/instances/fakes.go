@@ -47,7 +47,7 @@ type FakeInstanceGroups struct {
 }
 
 // GetInstanceGroup fakes getting an instance group from the cloud.
-func (f *FakeInstanceGroups) GetInstanceGroup(name string) (*compute.InstanceGroup, error) {
+func (f *FakeInstanceGroups) GetInstanceGroup(name, zone string) (*compute.InstanceGroup, error) {
 	f.calls = append(f.calls, utils.Get)
 	for _, ig := range f.instanceGroups {
 		if ig.Name == name {
@@ -59,14 +59,14 @@ func (f *FakeInstanceGroups) GetInstanceGroup(name string) (*compute.InstanceGro
 }
 
 // CreateInstanceGroup fakes instance group creation.
-func (f *FakeInstanceGroups) CreateInstanceGroup(name string) (*compute.InstanceGroup, error) {
+func (f *FakeInstanceGroups) CreateInstanceGroup(name, zone string) (*compute.InstanceGroup, error) {
 	newGroup := &compute.InstanceGroup{Name: name, SelfLink: name}
 	f.instanceGroups = append(f.instanceGroups, newGroup)
 	return newGroup, nil
 }
 
 // DeleteInstanceGroup fakes instance group deletion.
-func (f *FakeInstanceGroups) DeleteInstanceGroup(name string) error {
+func (f *FakeInstanceGroups) DeleteInstanceGroup(name, zone string) error {
 	newGroups := []*compute.InstanceGroup{}
 	found := false
 	for _, ig := range f.instanceGroups {
@@ -84,19 +84,19 @@ func (f *FakeInstanceGroups) DeleteInstanceGroup(name string) error {
 }
 
 // ListInstancesInInstanceGroup fakes listing instances in an instance group.
-func (f *FakeInstanceGroups) ListInstancesInInstanceGroup(name string, state string) (*compute.InstanceGroupsListInstances, error) {
+func (f *FakeInstanceGroups) ListInstancesInInstanceGroup(name, zone string, state string) (*compute.InstanceGroupsListInstances, error) {
 	return f.listResult, nil
 }
 
 // AddInstancesToInstanceGroup fakes adding instances to an instance group.
-func (f *FakeInstanceGroups) AddInstancesToInstanceGroup(name string, instanceNames []string) error {
+func (f *FakeInstanceGroups) AddInstancesToInstanceGroup(name, zone string, instanceNames []string) error {
 	f.calls = append(f.calls, utils.AddInstances)
 	f.instances.Insert(instanceNames...)
 	return nil
 }
 
 // RemoveInstancesFromInstanceGroup fakes removing instances from an instance group.
-func (f *FakeInstanceGroups) RemoveInstancesFromInstanceGroup(name string, instanceNames []string) error {
+func (f *FakeInstanceGroups) RemoveInstancesFromInstanceGroup(name, zone string, instanceNames []string) error {
 	f.calls = append(f.calls, utils.RemoveInstances)
 	f.instances.Delete(instanceNames...)
 	return nil

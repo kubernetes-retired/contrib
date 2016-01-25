@@ -91,14 +91,14 @@ func (c *ClusterManager) shutdown() error {
 //   these ports must also be opened on the corresponding Instance Group.
 // If in performing the checkpoint the cluster manager runs out of quota, a
 // googleapi 403 is returned.
-func (c *ClusterManager) Checkpoint(lbNames, nodeNames []string, nodePorts []int64) error {
+func (c *ClusterManager) Checkpoint(lbs []*loadbalancers.L7RuntimeInfo, nodeNames []string, nodePorts []int64) error {
 	if err := c.backendPool.Sync(nodePorts); err != nil {
 		return err
 	}
 	if err := c.instancePool.Sync(nodeNames); err != nil {
 		return err
 	}
-	if err := c.l7Pool.Sync(lbNames); err != nil {
+	if err := c.l7Pool.Sync(lbs); err != nil {
 		return err
 	}
 	return nil
@@ -155,7 +155,11 @@ func NewClusterManager(
 	}
 	cloud := cloudInterface.(*gce.GCECloud)
 	cluster := ClusterManager{ClusterNamer: utils.Namer{name}}
-	cluster.instancePool = instances.NewNodePool(cloud)
+	zone, err := cloud.GetZone()
+	if err != nil {
+		return nil, err
+	}
+	cluster.instancePool = instances.NewNodePool(cloud, zone.FailureDomain)
 	healthChecker := healthchecks.NewHealthChecker(cloud, defaultHealthCheckPath, cluster.ClusterNamer)
 	cluster.backendPool = backends.NewBackendPool(
 		cloud, healthChecker, cluster.instancePool, cluster.ClusterNamer)

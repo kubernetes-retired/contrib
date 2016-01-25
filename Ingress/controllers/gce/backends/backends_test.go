@@ -30,7 +30,7 @@ func newBackendPool(f BackendServices, fakeIGs instances.InstanceGroups) Backend
 	return NewBackendPool(
 		f,
 		healthchecks.NewHealthChecker(healthchecks.NewFakeHealthChecks(), "/", namer),
-		instances.NewNodePool(fakeIGs), namer)
+		instances.NewNodePool(fakeIGs, "default-zone"), namer)
 }
 
 func TestBackendPoolAdd(t *testing.T) {

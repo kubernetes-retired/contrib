@@ -48,10 +48,14 @@ const (
 
 	// A single target proxy/urlmap/forwarding rule is created per loadbalancer.
 	// Tagged with the namespace/name of the Ingress.
-	targetProxyPrefix    = "k8s-tp"
-	forwardingRulePrefix = "k8s-fw"
-	urlMapPrefix         = "k8s-um"
-	defaultPortRange     = "80"
+	targetProxyPrefix         = "k8s-tp"
+	targetHTTPSProxyPrefix    = "k8s-tps"
+	sslCertPrefix             = "k8s-ssl"
+	forwardingRulePrefix      = "k8s-fw"
+	httpsForwardingRulePrefix = "k8s-fws"
+	urlMapPrefix              = "k8s-um"
+	defaultPortRange          = "80"
+	httpsDefaultPortRange     = "443"
 )
 
 // L7s implements LoadBalancerPool.
@@ -79,7 +83,7 @@ func NewLoadBalancerPool(
 	return &L7s{cloud, storage.NewInMemoryPool(), nil, defaultBackendPool, defaultBackendNodePort, namer}
 }
 
-func (l *L7s) create(name string) (*L7, error) {
+func (l *L7s) create(ri *L7RuntimeInfo) (*L7, error) {
 	// Lazily create a default backend so we don't tax users who don't care
 	// about Ingress by consuming 1 of their 3 GCE BackendServices. This
 	// BackendService is deleted when there are no more Ingresses, either
@@ -95,10 +99,12 @@ func (l *L7s) create(name string) (*L7, error) {
 		}
 	}
 	return &L7{
-		Name:               name,
+		runtimeInfo:        ri,
+		Name:               l.namer.LBName(ri.Name),
 		cloud:              l.cloud,
 		glbcDefaultBackend: l.glbcDefaultBackend,
 		namer:              l.namer,
+		sslCert:            nil,
 	}, nil
 }
 
@@ -114,13 +120,13 @@ func (l *L7s) Get(name string) (*L7, error) {
 
 // Add gets or creates a loadbalancer.
 // If the loadbalancer already exists, it checks that its edges are valid.
-func (l *L7s) Add(name string) (err error) {
-	name = l.namer.LBName(name)
+func (l *L7s) Add(ri *L7RuntimeInfo) (err error) {
+	name := l.namer.LBName(ri.Name)
 
 	lb, _ := l.Get(name)
 	if lb == nil {
 		glog.Infof("Creating l7 %v", name)
-		lb, err = l.create(name)
+		lb, err = l.create(ri)
 		if err != nil {
 			return err
 		}
@@ -148,17 +154,17 @@ func (l *L7s) Delete(name string) error {
 	if err != nil {
 		return err
 	}
-	glog.Infof("Deleting lb %v", lb.Name)
+	glog.Infof("Deleting lb %v", lb.runtimeInfo.Name)
 	if err := lb.Cleanup(); err != nil {
 		return err
 	}
-	l.snapshotter.Delete(lb.Name)
+	l.snapshotter.Delete(lb.runtimeInfo.Name)
 	return nil
 }
 
-// Sync loadbalancers with the given names.
-func (l *L7s) Sync(names []string) error {
-	glog.V(3).Infof("Creating loadbalancers %+v", names)
+// Sync loadbalancers with the given runtime info from the controller.
+func (l *L7s) Sync(lbs []*L7RuntimeInfo) error {
+	glog.V(3).Infof("Creating loadbalancers %+v", lbs)
 
 	// The default backend is completely managed by the l7 pool.
 	// This includes recreating it if it's deleted, or fixing broken links.
@@ -166,14 +172,14 @@ func (l *L7s) Sync(names []string) error {
 		return err
 	}
 	// create new loadbalancers, perform an edge hop for existing
-	for _, n := range names {
-		if err := l.Add(n); err != nil {
+	for _, ri := range lbs {
+		if err := l.Add(ri); err != nil {
 			return err
 		}
 	}
 	// Tear down the default backend when there are no more loadbalancers
 	// because the cluster could go down anytime and we'd leak it otherwise.
-	if len(names) == 0 {
+	if len(lbs) == 0 {
 		if err := l.defaultBackendPool.Delete(l.defaultBackendNodePort); err != nil {
 			return err
 		}
@@ -215,13 +221,42 @@ func (l *L7s) Shutdown() error {
 	return nil
 }
 
+// TLSCerts encapsulates .pem encoded TLS information.
+type TLSCerts struct {
+	// Key is private key
+	Key string
+	// Cert is a public key
+	Cert string
+	// Chain is a certificate chain.
+	Chain string
+}
+
+// L7RuntimeInfo is info passed to this module from the controller runtime.
+type L7RuntimeInfo struct {
+	// Name is the name of a loadbalancer
+	Name string
+	// IP is the desired ip of the loadbalancer, eg from a staticIP
+	IP string
+	// TLS are the tls certs to use in termination.
+	TLS *TLSCerts
+	// BlockHTTP will not setup :80, if TLS is nil and BlockHTTP is set,
+	// no loadbalancer is created.
+	BlockHTTP bool
+}
+
 // L7 represents a single L7 loadbalancer.
 type L7 struct {
-	Name  string
-	cloud LoadBalancers
-	um    *compute.UrlMap
-	tp    *compute.TargetHttpProxy
-	fw    *compute.ForwardingRule
+	Name        string
+	runtimeInfo *L7RuntimeInfo
+	cloud       LoadBalancers
+	um          *compute.UrlMap
+	tp          *compute.TargetHttpProxy
+	tps         *compute.TargetHttpsProxy
+	fw          *compute.ForwardingRule
+	fws         *compute.ForwardingRule
+	ip          *compute.Address
+	// TODO: Make this a custom type that contains crt+key
+	sslCert *compute.SslCertificate
 	// This is the backend to use if no path rules match
 	// TODO: Expose this to users.
 	glbcDefaultBackend *compute.BackendService
@@ -254,6 +289,10 @@ func (l *L7) checkProxy() (err error) {
 	if l.um == nil {
 		return fmt.Errorf("Cannot create proxy without urlmap.")
 	}
+	if l.runtimeInfo.BlockHTTP {
+		glog.Infof("Not setting up an HTTP Proxy for %v, BlockHTTP requested", l.Name)
+		return nil
+	}
 	proxyName := l.namer.Truncate(fmt.Sprintf("%v-%v", targetProxyPrefix, l.Name))
 	proxy, _ := l.cloud.GetTargetHttpProxy(proxyName)
 	if proxy == nil {
@@ -276,17 +315,95 @@ func (l *L7) checkProxy() (err error) {
 	return nil
 }
 
+func (l *L7) checkSSLCert() (err error) {
+	if l.runtimeInfo.TLS == nil {
+		glog.V(3).Infof("No SSL certificates for %v", l.Name)
+		return nil
+	}
+	// TODO: Currently, GCE only supports a single certificate per static IP
+	// so we don't need to bother with disambiguation. Naming the cert after
+	// the loadbalancer is a simplification.
+	certName := l.namer.Truncate(fmt.Sprintf("%v-%v", sslCertPrefix, l.Name))
+	cert, _ := l.cloud.GetSslCertificate(certName)
+	if cert == nil {
+		glog.Infof("Creating new sslCertificates %v for %v", l.Name, certName)
+		cert, err = l.cloud.CreateSslCertificates(&compute.SslCertificate{
+			Name:        certName,
+			Certificate: l.runtimeInfo.TLS.Cert,
+			PrivateKey:  l.runtimeInfo.TLS.Key,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	l.sslCert = cert
+	// TODO: V(3)
+	glog.Infof("Found ssl certificates associated with name: %v", l.sslCert.Name)
+	return nil
+}
+
+func (l *L7) checkHttpsProxy() (err error) {
+	if l.sslCert == nil {
+		glog.V(3).Infof("No SSL certificates for %v, will not create HTTPS proxy.", l.Name)
+		return nil
+	}
+	if l.um == nil {
+		return fmt.Errorf("No UrlMap for %v, will not create HTTPS proxy.", l.Name)
+	}
+	proxyName := l.namer.Truncate(fmt.Sprintf("%v-%v", targetHTTPSProxyPrefix, l.Name))
+	proxy, _ := l.cloud.GetTargetHttpsProxy(proxyName)
+	if proxy == nil {
+		glog.Infof("Creating new https proxy for urlmap %v", l.um.Name)
+		proxy, err = l.cloud.CreateTargetHttpsProxy(l.um, l.sslCert, proxyName)
+		if err != nil {
+			return err
+		}
+		l.tps = proxy
+		return nil
+	}
+	if !utils.CompareLinks(proxy.UrlMap, l.um.SelfLink) {
+		glog.Infof("Https proxy %v has the wrong url map, setting %v overwriting %v",
+			proxy.Name, l.um, proxy.UrlMap)
+		if err := l.cloud.SetUrlMapForTargetHttpsProxy(proxy, l.um); err != nil {
+			return err
+		}
+	}
+	cert := proxy.SslCertificates[0]
+	if !utils.CompareLinks(cert, l.sslCert.SelfLink) {
+		glog.Infof("Https proxy %v has the wrong ssl certs, setting %v overwriting %v",
+			proxy.Name, l.sslCert.SelfLink, cert)
+		if err := l.cloud.SetSslCertificateForTargetHttpsProxy(proxy, l.sslCert); err != nil {
+			return err
+		}
+	}
+	glog.Infof("Created target https proxy %v", proxy.Name)
+	l.tps = proxy
+	return nil
+}
+
 func (l *L7) checkForwardingRule() (err error) {
 	if l.tp == nil {
 		return fmt.Errorf("Cannot create forwarding rule without proxy.")
 	}
-
+	var address string
+	if l.ip != nil {
+		address = l.ip.Address
+	}
 	forwardingRuleName := l.namer.Truncate(fmt.Sprintf("%v-%v", forwardingRulePrefix, l.Name))
 	fw, _ := l.cloud.GetGlobalForwardingRule(forwardingRuleName)
+	if fw != nil && fw.IPAddress != address {
+		glog.Warningf("Loadbalancer IP %v is not %v")
+		if err := l.cloud.DeleteGlobalForwardingRule(forwardingRuleName); err != nil {
+			if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
+		}
+		fw = nil
+	}
 	if fw == nil {
 		glog.Infof("Creating forwarding rule for proxy %v", l.tp.Name)
 		fw, err = l.cloud.CreateGlobalForwardingRule(
-			l.tp, forwardingRuleName, defaultPortRange)
+			l.tp, address, forwardingRuleName, defaultPortRange)
 		if err != nil {
 			return err
 		}
@@ -308,6 +425,74 @@ func (l *L7) checkForwardingRule() (err error) {
 	return nil
 }
 
+func (l *L7) checkHttpsForwardingRule() (err error) {
+	if l.tps == nil {
+		glog.V(3).Infof("No https target proxy for %v, not created https forwarding rule", l.Name)
+		return nil
+	}
+	var address string
+	if l.ip != nil {
+		address = l.ip.Address
+	}
+	forwardingRuleName := l.namer.Truncate(fmt.Sprintf("%v-%v", httpsForwardingRulePrefix, l.Name))
+	fws, _ := l.cloud.GetGlobalForwardingRule(forwardingRuleName)
+	// The only way to get in this state is to delete and create the forwarding
+	// rule, since we're not allowed to update it.
+	if fws != nil && fws.IPAddress != address {
+		glog.Warningf("Loadbalancer IP %v is not %v")
+		if err := l.cloud.DeleteGlobalForwardingRule(forwardingRuleName); err != nil {
+			if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
+		}
+		fws = nil
+	}
+	if fws == nil {
+		glog.Infof("Creating forwarding rule for proxy %v", l.tps.Name)
+		fws, err = l.cloud.CreateGlobalForwardingRule(
+			&compute.TargetHttpProxy{SelfLink: l.tps.SelfLink}, address, forwardingRuleName, httpsDefaultPortRange)
+		if err != nil {
+			return err
+		}
+	}
+	// TODO: If the port range and protocol don't match, recreate the rule
+	if utils.CompareLinks(fws.Target, l.tps.SelfLink) {
+		glog.Infof("Forwarding rule %v already exists", fws.Name)
+		l.fws = fws
+		return nil
+	}
+	glog.Infof("Forwarding rule %v has the wrong proxy, setting %v overwriting %v",
+		fws.Name, fws.Target, l.tps.SelfLink)
+	if err := l.cloud.SetProxyForGlobalForwardingRule(fws, &compute.TargetHttpProxy{SelfLink: l.tps.SelfLink}); err != nil {
+		return err
+	}
+	l.fws = fws
+	return nil
+}
+
+func (l *L7) checkStaticIP() (err error) {
+	if l.fw == nil || l.fw.IPAddress == "" {
+		return fmt.Errorf("Will not create static IP without a forwarding rule.")
+	}
+	staticIPName := l.namer.Truncate(fmt.Sprintf("%v-%v", forwardingRulePrefix, l.Name))
+	ip, _ := l.cloud.GetGlobalStaticIP(staticIPName)
+	if ip == nil {
+		glog.Infof("Creating static ip %v", staticIPName)
+		ip, err = l.cloud.AllocateGlobalStaticIP(staticIPName, l.fw.IPAddress)
+		if err != nil {
+			if utils.IsHTTPErrorCode(err, http.StatusConflict) ||
+				utils.IsHTTPErrorCode(err, http.StatusBadRequest) {
+				glog.Infof("IP %v(%v) is already reserved, assuming it is OK to use.",
+					l.fw.IPAddress, staticIPName)
+				return nil
+			}
+			return err
+		}
+	}
+	l.ip = ip
+	return nil
+}
+
 func (l *L7) edgeHop() error {
 	if err := l.checkUrlMap(l.glbcDefaultBackend); err != nil {
 		return err
@@ -315,7 +500,21 @@ func (l *L7) edgeHop() error {
 	if err := l.checkProxy(); err != nil {
 		return err
 	}
+	if err := l.checkSSLCert(); err != nil {
+		return err
+	}
+	if err := l.checkHttpsProxy(); err != nil {
+		return err
+	}
+	// Ordering is important. We create the global forwarding rule
+	// promote its IP, and create the second rule with the same IP.
 	if err := l.checkForwardingRule(); err != nil {
+		return err
+	}
+	if err := l.checkStaticIP(); err != nil {
+		return err
+	}
+	if err := l.checkHttpsForwardingRule(); err != nil {
 		return err
 	}
 	return nil
@@ -463,6 +662,42 @@ func (l *L7) Cleanup() error {
 			}
 		}
 		l.fw = nil
+	}
+	if l.fws != nil {
+		glog.Infof("Deleting global forwarding rule %v", l.fws.Name)
+		if err := l.cloud.DeleteGlobalForwardingRule(l.fws.Name); err != nil {
+			if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
+			l.fws = nil
+		}
+	}
+	if l.ip != nil {
+		glog.Infof("Deleting static IP %v(%v)", l.ip.Name, l.ip.Address)
+		if err := l.cloud.DeleteGlobalStaticIP(l.ip.Name); err != nil {
+			if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
+			l.ip = nil
+		}
+	}
+	if l.tps != nil {
+		glog.Infof("Deleting target https proxy %v", l.tps.Name)
+		if err := l.cloud.DeleteTargetHttpsProxy(l.tps.Name); err != nil {
+			if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
+		}
+		l.tps = nil
+	}
+	if l.sslCert != nil {
+		glog.Infof("Deleting sslcert %v", l.sslCert.Name)
+		if err := l.cloud.DeleteSslCertificates(l.sslCert.Name); err != nil {
+			if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+				return err
+			}
+		}
+		l.sslCert = nil
 	}
 	if l.tp != nil {
 		glog.Infof("Deleting target proxy %v", l.tp.Name)

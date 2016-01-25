@@ -36,14 +36,16 @@ const (
 // Instances implements NodePool.
 type Instances struct {
 	cloud       InstanceGroups
+	zone        string
 	snapshotter storage.Snapshotter
 }
 
 // NewNodePool creates a new node pool.
 // - cloud: implements InstanceGroups, used to sync Kubernetes nodes with
 //   members of the cloud InstanceGroup.
-func NewNodePool(cloud InstanceGroups) NodePool {
-	return &Instances{cloud, storage.NewInMemoryPool()}
+func NewNodePool(cloud InstanceGroups, zone string) NodePool {
+	glog.V(3).Infof("NodePool is only aware of instances in zone %v", zone)
+	return &Instances{cloud, zone, storage.NewInMemoryPool()}
 }
 
 // AddInstanceGroup creates or gets an instance group if it doesn't exist
@@ -53,7 +55,7 @@ func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.Instance
 	if ig == nil {
 		glog.Infof("Creating instance group %v", name)
 		var err error
-		ig, err = i.cloud.CreateInstanceGroup(name)
+		ig, err = i.cloud.CreateInstanceGroup(name, i.zone)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -72,13 +74,13 @@ func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.Instance
 // DeleteInstanceGroup deletes the given IG by name.
 func (i *Instances) DeleteInstanceGroup(name string) error {
 	defer i.snapshotter.Delete(name)
-	return i.cloud.DeleteInstanceGroup(name)
+	return i.cloud.DeleteInstanceGroup(name, i.zone)
 }
 
 func (i *Instances) list(name string) (sets.String, error) {
 	nodeNames := sets.NewString()
 	instances, err := i.cloud.ListInstancesInInstanceGroup(
-		name, allInstances)
+		name, i.zone, allInstances)
 	if err != nil {
 		return nodeNames, err
 	}
@@ -93,7 +95,7 @@ func (i *Instances) list(name string) (sets.String, error) {
 
 // Get returns the Instance Group by name.
 func (i *Instances) Get(name string) (*compute.InstanceGroup, error) {
-	ig, err := i.cloud.GetInstanceGroup(name)
+	ig, err := i.cloud.GetInstanceGroup(name, i.zone)
 	if err != nil {
 		return nil, err
 	}
@@ -104,13 +106,13 @@ func (i *Instances) Get(name string) (*compute.InstanceGroup, error) {
 // Add adds the given instances to the Instance Group.
 func (i *Instances) Add(groupName string, names []string) error {
 	glog.V(3).Infof("Adding nodes %v to %v", names, groupName)
-	return i.cloud.AddInstancesToInstanceGroup(groupName, names)
+	return i.cloud.AddInstancesToInstanceGroup(groupName, i.zone, names)
 }
 
 // Remove removes the given instances from the Instance Group.
 func (i *Instances) Remove(groupName string, names []string) error {
 	glog.V(3).Infof("Removing nodes %v from %v", names, groupName)
-	return i.cloud.RemoveInstancesFromInstanceGroup(groupName, names)
+	return i.cloud.RemoveInstancesFromInstanceGroup(groupName, i.zone, names)
 }
 
 // Sync syncs kubernetes instances with the instances in the instance group.
