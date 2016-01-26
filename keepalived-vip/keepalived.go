@@ -100,6 +100,8 @@ type keepalived struct {
 	useUnicast bool
 }
 
+// WriteCfg creates a new keepalived configuration file.
+// In case of an error with the generation it returns the error
 func (k *keepalived) WriteCfg(svcs []vip) error {
 	w, err := os.Create("/etc/keepalived/keepalived.conf")
 	if err != nil {
@@ -129,6 +131,8 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	return t.Execute(w, conf)
 }
 
+// Start starts a keepalived process in foreground.
+// In case of any error it will terminate the execution with a fatal error
 func (k *keepalived) Start() {
 	cmd := exec.Command("keepalived",
 		"--dont-fork",
@@ -148,6 +152,7 @@ func (k *keepalived) Start() {
 	}
 }
 
+// Reload sends SIGHUP to keepalived to reload the configuration.
 func (k *keepalived) Reload() error {
 	glog.Info("reloading keepalived")
 	_, err := k8sexec.New().Command("killall", "-1", "keepalived").CombinedOutput()

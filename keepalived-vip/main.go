@@ -23,7 +23,6 @@ import (
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
 
-	"github.com/openshift/origin/pkg/util/proc"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util"
@@ -84,8 +83,6 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Terminating execution: %v", err)
 	}
-
-	proc.StartReaper()
 
 	glog.Info("starting LVS configuration")
 	if *useUnicast {
