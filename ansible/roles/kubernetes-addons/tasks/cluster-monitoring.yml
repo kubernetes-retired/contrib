@@ -21,11 +21,25 @@
     - influxdb-grafana-controller.yaml
     - influxdb-service.yaml
 
-- name: MONITORING | Convert pillar vars to ansible vars for monitoring files
-  local_action: replace
+- name: MONITORING | Remove instances of getting pillar dicts
+  local_action: lineinfile
     dest="{{ local_temp_addon_dir }}/cluster-monitoring/{{ item }}.j2"
-    regexp="pillar\[\'(\w*)\'\]"
-    replace="\1"
+    regexp="set\s+\w+\s+=\s+pillar\.get\("
+    state=absent
+  sudo: no
+  with_items:
+    - grafana-service.yaml
+    - heapster-controller.yaml
+    - heapster-service.yaml
+    - influxdb-grafana-controller.yaml
+    - influxdb-service.yaml
+
+- name: MONITORING | Add tests for pillar vars converted to ansible vars
+  local_action: lineinfile
+    dest="{{ local_temp_addon_dir }}/cluster-monitoring/{{ item }}.j2"
+    regexp="(.*)if\s+(\w+)\s+([<>=]+.*)"
+    line="\1if \2 is defined and \2 \3"
+    backrefs=yes
   sudo: no
   with_items:
     - grafana-service.yaml
