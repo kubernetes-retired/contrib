@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package controller
 
 import (
 	"fmt"
@@ -23,6 +23,8 @@ import (
 	"time"
 
 	compute "google.golang.org/api/compute/v1"
+	"k8s.io/contrib/Ingress/controllers/gce/loadbalancers"
+	"k8s.io/contrib/Ingress/controllers/gce/utils"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -31,8 +33,20 @@ import (
 	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
+const testClusterName = "testcluster"
+
+var (
+	testPathMap   = map[string]string{"/foo": defaultBackendName(testClusterName)}
+	testIPManager = testIP{}
+)
+
+// TODO: Use utils.Namer instead of this function.
+func defaultBackendName(clusterName string) string {
+	return fmt.Sprintf("%v-%v", backendPrefix, clusterName)
+}
+
 // newLoadBalancerController create a loadbalancer controller.
-func newLoadBalancerController(t *testing.T, cm *fakeClusterManager, masterUrl string) *loadBalancerController {
+func newLoadBalancerController(t *testing.T, cm *fakeClusterManager, masterUrl string) *LoadBalancerController {
 	client := client.NewOrDie(&client.Config{Host: masterUrl, GroupVersion: testapi.Default.GroupVersion()})
 	lb, err := NewLoadBalancerController(client, cm.ClusterManager, 1*time.Second, api.NamespaceAll)
 	if err != nil {
@@ -57,7 +71,7 @@ func toHTTPIngressPaths(pathMap map[string]string) []extensions.HTTPIngressPath 
 }
 
 // toIngressRules converts the given ingressRule map to a list of IngressRules.
-func toIngressRules(hostRules map[string]fakeIngressRuleValueMap) []extensions.IngressRule {
+func toIngressRules(hostRules map[string]utils.FakeIngressRuleValueMap) []extensions.IngressRule {
 	rules := []extensions.IngressRule{}
 	for host, pathMap := range hostRules {
 		rules = append(rules, extensions.IngressRule{
@@ -73,7 +87,7 @@ func toIngressRules(hostRules map[string]fakeIngressRuleValueMap) []extensions.I
 }
 
 // newIngress returns a new Ingress with the given path map.
-func newIngress(hostRules map[string]fakeIngressRuleValueMap) *extensions.Ingress {
+func newIngress(hostRules map[string]utils.FakeIngressRuleValueMap) *extensions.Ingress {
 	return &extensions.Ingress{
 		ObjectMeta: api.ObjectMeta{
 			Name:      fmt.Sprintf("%v", util.NewUUID()),
@@ -98,7 +112,7 @@ func newIngress(hostRules map[string]fakeIngressRuleValueMap) *extensions.Ingres
 
 // validIngress returns a valid Ingress.
 func validIngress() *extensions.Ingress {
-	return newIngress(map[string]fakeIngressRuleValueMap{
+	return newIngress(map[string]utils.FakeIngressRuleValueMap{
 		"foo.bar.com": testPathMap,
 	})
 }
@@ -118,6 +132,7 @@ type nodePortManager struct {
 	portMap map[string]int
 	start   int
 	end     int
+	namer   utils.Namer
 }
 
 // randPort generated pseudo random port numbers.
@@ -131,12 +146,12 @@ func (p *nodePortManager) getNodePort(svcName string) int {
 
 // toNodePortSvcNames converts all service names in the given map to gce node
 // port names, eg foo -> k8-be-<foo nodeport>
-func (p *nodePortManager) toNodePortSvcNames(inputMap map[string]fakeIngressRuleValueMap) map[string]fakeIngressRuleValueMap {
-	expectedMap := map[string]fakeIngressRuleValueMap{}
+func (p *nodePortManager) toNodePortSvcNames(inputMap map[string]utils.FakeIngressRuleValueMap) map[string]utils.FakeIngressRuleValueMap {
+	expectedMap := map[string]utils.FakeIngressRuleValueMap{}
 	for host, rules := range inputMap {
-		ruleMap := fakeIngressRuleValueMap{}
+		ruleMap := utils.FakeIngressRuleValueMap{}
 		for path, svc := range rules {
-			ruleMap[path] = beName(int64(p.portMap[svc]))
+			ruleMap[path] = p.namer.BeName(int64(p.portMap[svc]))
 		}
 		expectedMap[host] = ruleMap
 	}
@@ -144,13 +159,13 @@ func (p *nodePortManager) toNodePortSvcNames(inputMap map[string]fakeIngressRule
 }
 
 func newPortManager(st, end int) *nodePortManager {
-	return &nodePortManager{map[string]int{}, st, end}
+	return &nodePortManager{map[string]int{}, st, end, utils.Namer{}}
 }
 
 // addIngress adds an ingress to the loadbalancer controllers ingress store. If
 // a nodePortManager is supplied, it also adds all backends to the service store
 // with a nodePort acquired through it.
-func addIngress(lbc *loadBalancerController, ing *extensions.Ingress, pm *nodePortManager) {
+func addIngress(lbc *LoadBalancerController, ing *extensions.Ingress, pm *nodePortManager) {
 	lbc.ingLister.Store.Add(ing)
 	if pm == nil {
 		return
@@ -178,9 +193,9 @@ func addIngress(lbc *loadBalancerController, ing *extensions.Ingress, pm *nodePo
 }
 
 func TestLbCreateDelete(t *testing.T) {
-	cm := newFakeClusterManager(testClusterName)
+	cm := NewFakeClusterManager(DefaultClusterUID)
 	lbc := newLoadBalancerController(t, cm, "")
-	inputMap1 := map[string]fakeIngressRuleValueMap{
+	inputMap1 := map[string]utils.FakeIngressRuleValueMap{
 		"foo.example.com": {
 			"/foo1": "foo1svc",
 			"/foo2": "foo2svc",
@@ -190,7 +205,7 @@ func TestLbCreateDelete(t *testing.T) {
 			"/bar2": "bar2svc",
 		},
 	}
-	inputMap2 := map[string]fakeIngressRuleValueMap{
+	inputMap2 := map[string]utils.FakeIngressRuleValueMap{
 		"baz.foobar.com": {
 			"/foo": "foo1svc",
 			"/bar": "bar1svc",
@@ -198,7 +213,7 @@ func TestLbCreateDelete(t *testing.T) {
 	}
 	pm := newPortManager(1, 65536)
 	ings := []*extensions.Ingress{}
-	for _, m := range []map[string]fakeIngressRuleValueMap{inputMap1, inputMap2} {
+	for _, m := range []map[string]utils.FakeIngressRuleValueMap{inputMap1, inputMap2} {
 		newIng := newIngress(m)
 		addIngress(lbc, newIng, pm)
 		ingStoreKey := getKey(newIng, t)
@@ -207,7 +222,7 @@ func TestLbCreateDelete(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
-		cm.fakeLbs.checkUrlMap(t, l7, pm.toNodePortSvcNames(m))
+		cm.fakeLbs.CheckURLMap(t, l7, pm.toNodePortSvcNames(m))
 		ings = append(ings, newIng)
 	}
 	lbc.ingLister.Store.Delete(ings[0])
@@ -239,7 +254,7 @@ func TestLbCreateDelete(t *testing.T) {
 			t.Fatalf("Found backend %+v for port %v", be, port)
 		}
 	}
-	if len(cm.fakeLbs.fw) != 0 || len(cm.fakeLbs.um) != 0 || len(cm.fakeLbs.tp) != 0 {
+	if len(cm.fakeLbs.Fw) != 0 || len(cm.fakeLbs.Um) != 0 || len(cm.fakeLbs.Tp) != 0 {
 		t.Fatalf("Loadbalancer leaked resources")
 	}
 	for _, lbName := range []string{getKey(ings[0], t), getKey(ings[1], t)} {
@@ -250,9 +265,9 @@ func TestLbCreateDelete(t *testing.T) {
 }
 
 func TestLbFaultyUpdate(t *testing.T) {
-	cm := newFakeClusterManager(testClusterName)
+	cm := NewFakeClusterManager(DefaultClusterUID)
 	lbc := newLoadBalancerController(t, cm, "")
-	inputMap := map[string]fakeIngressRuleValueMap{
+	inputMap := map[string]utils.FakeIngressRuleValueMap{
 		"foo.example.com": {
 			"/foo1": "foo1svc",
 			"/foo2": "foo2svc",
@@ -272,25 +287,25 @@ func TestLbFaultyUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	cm.fakeLbs.checkUrlMap(t, l7, pm.toNodePortSvcNames(inputMap))
+	cm.fakeLbs.CheckURLMap(t, l7, pm.toNodePortSvcNames(inputMap))
 
 	// Change the urlmap directly through the lb pool, resync, and
 	// make sure the controller corrects it.
-	l7.UpdateUrlMap(gceUrlMap{
+	l7.UpdateUrlMap(utils.GCEURLMap{
 		"foo.example.com": {
 			"/foo1": &compute.BackendService{SelfLink: "foo2svc"},
 		},
 	})
 
 	lbc.sync(ingStoreKey)
-	cm.fakeLbs.checkUrlMap(t, l7, pm.toNodePortSvcNames(inputMap))
+	cm.fakeLbs.CheckURLMap(t, l7, pm.toNodePortSvcNames(inputMap))
 }
 
 func TestLbDefaulting(t *testing.T) {
-	cm := newFakeClusterManager(testClusterName)
+	cm := NewFakeClusterManager(DefaultClusterUID)
 	lbc := newLoadBalancerController(t, cm, "")
 	// Make sure the controller plugs in the default values accepted by GCE.
-	ing := newIngress(map[string]fakeIngressRuleValueMap{"": {"": "foo1svc"}})
+	ing := newIngress(map[string]utils.FakeIngressRuleValueMap{"": {"": "foo1svc"}})
 	pm := newPortManager(1, 65536)
 	addIngress(lbc, ing, pm)
 
@@ -300,14 +315,14 @@ func TestLbDefaulting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	expectedMap := map[string]fakeIngressRuleValueMap{defaultHost: {defaultPath: "foo1svc"}}
-	cm.fakeLbs.checkUrlMap(t, l7, pm.toNodePortSvcNames(expectedMap))
+	expectedMap := map[string]utils.FakeIngressRuleValueMap{loadbalancers.DefaultHost: {loadbalancers.DefaultPath: "foo1svc"}}
+	cm.fakeLbs.CheckURLMap(t, l7, pm.toNodePortSvcNames(expectedMap))
 }
 
 func TestLbNoService(t *testing.T) {
-	cm := newFakeClusterManager(testClusterName)
+	cm := NewFakeClusterManager(DefaultClusterUID)
 	lbc := newLoadBalancerController(t, cm, "")
-	inputMap := map[string]fakeIngressRuleValueMap{
+	inputMap := map[string]utils.FakeIngressRuleValueMap{
 		"foo.example.com": {
 			"/foo1": "foo1svc",
 		},
@@ -341,11 +356,20 @@ func TestLbNoService(t *testing.T) {
 	key, _ := lbc.ingQueue.queue.Get()
 	lbc.sync(key.(string))
 
-	inputMap[defaultBackendKey] = map[string]string{
-		defaultBackendKey: "foo1svc",
+	inputMap[utils.DefaultBackendKey] = map[string]string{
+		utils.DefaultBackendKey: "foo1svc",
 	}
 	expectedMap := pm.toNodePortSvcNames(inputMap)
-	cm.fakeLbs.checkUrlMap(t, l7, expectedMap)
+	cm.fakeLbs.CheckURLMap(t, l7, expectedMap)
+}
+
+type testIP struct {
+	start int
+}
+
+func (t *testIP) ip() string {
+	t.start++
+	return fmt.Sprintf("0.0.0.%v", t.start)
 }
 
 // TODO: Test lb status update when annotation stabilize

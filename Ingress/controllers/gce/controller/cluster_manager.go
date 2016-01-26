@@ -14,11 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package controller
 
 import (
 	"fmt"
 
+	"k8s.io/contrib/Ingress/controllers/gce/backends"
+	"k8s.io/contrib/Ingress/controllers/gce/healthchecks"
+	"k8s.io/contrib/Ingress/controllers/gce/instances"
+	"k8s.io/contrib/Ingress/controllers/gce/loadbalancers"
+	"k8s.io/contrib/Ingress/controllers/gce/utils"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	gce "k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 )
@@ -26,7 +31,6 @@ import (
 const (
 	defaultPort            = 80
 	defaultHealthCheckPath = "/"
-	defaultPortRange       = "80"
 
 	// A single instance-group is created per cluster manager.
 	// Tagged with the name of the controller.
@@ -42,12 +46,6 @@ const (
 	forwardingRulePrefix = "k8s-fw"
 	urlMapPrefix         = "k8s-um"
 
-	// The gce api uses the name of a path rule to match a host rule.
-	hostRulePrefix = "host"
-
-	// State string required by gce library to list all instances.
-	allInstances = "ALL"
-
 	// Used in the test RunServer method to denote a delete request.
 	deleteType = "del"
 
@@ -60,15 +58,15 @@ const (
 
 // ClusterManager manages cluster resource pools.
 type ClusterManager struct {
-	ClusterName            string
+	ClusterNamer           utils.Namer
 	defaultBackendNodePort int64
-	instancePool           NodePool
-	backendPool            BackendPool
-	l7Pool                 LoadBalancerPool
+	instancePool           instances.NodePool
+	backendPool            backends.BackendPool
+	l7Pool                 loadbalancers.LoadBalancerPool
 }
 
-// isHealthy returns an error if the cluster manager is unhealthy.
-func (c *ClusterManager) isHealthy() (err error) {
+// IsHealthy returns an error if the cluster manager is unhealthy.
+func (c *ClusterManager) IsHealthy() (err error) {
 	// TODO: Expand on this, for now we just want to detect when the GCE client
 	// is broken.
 	_, err = c.backendPool.List()
@@ -140,10 +138,6 @@ func defaultInstanceGroupName(clusterName string) string {
 	return fmt.Sprintf("%v-%v", instanceGroupPrefix, clusterName)
 }
 
-func defaultBackendName(clusterName string) string {
-	return fmt.Sprintf("%v-%v", backendPrefix, clusterName)
-}
-
 // NewClusterManager creates a cluster manager for shared resources.
 // - name: is the name used to tag cluster wide shared resources. This is the
 //   string passed to glbc via --gce-cluster-name.
@@ -160,16 +154,16 @@ func NewClusterManager(
 		return nil, err
 	}
 	cloud := cloudInterface.(*gce.GCECloud)
-	cluster := ClusterManager{ClusterName: name}
-	cluster.instancePool = NewNodePool(cloud)
-	healthChecker := NewHealthChecker(cloud, defaultHealthCheckPath)
-	cluster.backendPool = NewBackendPool(
-		cloud, healthChecker, cluster.instancePool)
-	defaultBackendHealthChecker := NewHealthChecker(cloud, "/healthz")
-	defaultBackendPool := NewBackendPool(
-		cloud, defaultBackendHealthChecker, cluster.instancePool)
+	cluster := ClusterManager{ClusterNamer: utils.Namer{name}}
+	cluster.instancePool = instances.NewNodePool(cloud)
+	healthChecker := healthchecks.NewHealthChecker(cloud, defaultHealthCheckPath, cluster.ClusterNamer)
+	cluster.backendPool = backends.NewBackendPool(
+		cloud, healthChecker, cluster.instancePool, cluster.ClusterNamer)
+	defaultBackendHealthChecker := healthchecks.NewHealthChecker(cloud, "/healthz", cluster.ClusterNamer)
+	defaultBackendPool := backends.NewBackendPool(
+		cloud, defaultBackendHealthChecker, cluster.instancePool, cluster.ClusterNamer)
 	cluster.defaultBackendNodePort = defaultBackendNodePort
-	cluster.l7Pool = NewLoadBalancerPool(
-		cloud, defaultBackendPool, defaultBackendNodePort)
+	cluster.l7Pool = loadbalancers.NewLoadBalancerPool(
+		cloud, defaultBackendPool, defaultBackendNodePort, cluster.ClusterNamer)
 	return &cluster, nil
 }

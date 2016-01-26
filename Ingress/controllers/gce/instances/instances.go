@@ -14,32 +14,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package instances
 
 import (
 	"net/http"
 	"strings"
 
 	compute "google.golang.org/api/compute/v1"
+	"k8s.io/contrib/Ingress/controllers/gce/storage"
+	"k8s.io/contrib/Ingress/controllers/gce/utils"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
 )
 
+const (
+	// State string required by gce library to list all instances.
+	allInstances = "ALL"
+)
+
 // Instances implements NodePool.
 type Instances struct {
-	cloud InstanceGroups
-	pool  *poolStore
+	cloud       InstanceGroups
+	snapshotter storage.Snapshotter
 }
 
 // NewNodePool creates a new node pool.
 // - cloud: implements InstanceGroups, used to sync Kubernetes nodes with
 //   members of the cloud InstanceGroup.
 func NewNodePool(cloud InstanceGroups) NodePool {
-	return &Instances{cloud, newPoolStore()}
+	return &Instances{cloud, storage.NewInMemoryPool()}
 }
 
-// AddInstanceGroup creates or gets an instance group.
+// AddInstanceGroup creates or gets an instance group if it doesn't exist
+// and adds the given port to it.
 func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.InstanceGroup, *compute.NamedPort, error) {
 	ig, _ := i.Get(name)
 	if ig == nil {
@@ -52,7 +60,7 @@ func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.Instance
 	} else {
 		glog.V(3).Infof("Instance group already exists %v", name)
 	}
-	defer i.pool.Add(name, ig)
+	defer i.snapshotter.Add(name, ig)
 	namedPort, err := i.cloud.AddPortToInstanceGroup(ig, port)
 	if err != nil {
 		return nil, nil, err
@@ -63,7 +71,7 @@ func (i *Instances) AddInstanceGroup(name string, port int64) (*compute.Instance
 
 // DeleteInstanceGroup deletes the given IG by name.
 func (i *Instances) DeleteInstanceGroup(name string) error {
-	defer i.pool.Delete(name)
+	defer i.snapshotter.Delete(name)
 	return i.cloud.DeleteInstanceGroup(name)
 }
 
@@ -89,7 +97,7 @@ func (i *Instances) Get(name string) (*compute.InstanceGroup, error) {
 	if err != nil {
 		return nil, err
 	}
-	i.pool.Add(name, ig)
+	i.snapshotter.Add(name, ig)
 	return ig, nil
 }
 
@@ -116,13 +124,13 @@ func (i *Instances) Sync(nodes []string) (err error) {
 		// this will happen because the backend pool has deleted the instance
 		// group, however if it happens because a user deletes the IG by mistake
 		// we should just wait till the backend pool fixes it.
-		if isHTTPErrorCode(err, http.StatusNotFound) {
+		if utils.IsHTTPErrorCode(err, http.StatusNotFound) {
 			glog.Infof("Node pool encountered a 404, ignoring: %v", err)
 			err = nil
 		}
 	}()
 
-	pool := i.pool.snapshot()
+	pool := i.snapshotter.Snapshot()
 	for name := range pool {
 		gceNodes := sets.NewString()
 		gceNodes, err = i.list(name)

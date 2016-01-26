@@ -14,32 +14,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package backends
 
 import (
 	"testing"
 
+	"k8s.io/contrib/Ingress/controllers/gce/healthchecks"
+	"k8s.io/contrib/Ingress/controllers/gce/instances"
+	"k8s.io/contrib/Ingress/controllers/gce/utils"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
-func newBackendPool(f BackendServices, fakeIGs InstanceGroups) BackendPool {
+func newBackendPool(f BackendServices, fakeIGs instances.InstanceGroups) BackendPool {
+	namer := utils.Namer{}
 	return NewBackendPool(
 		f,
-		NewHealthChecker(newFakeHealthChecks(), "/"),
-		NewNodePool(fakeIGs))
+		healthchecks.NewHealthChecker(healthchecks.NewFakeHealthChecks(), "/", namer),
+		instances.NewNodePool(fakeIGs), namer)
 }
 
 func TestBackendPoolAdd(t *testing.T) {
-	f := newFakeBackendServices()
-	fakeIGs := newFakeInstanceGroups(sets.NewString())
+	f := NewFakeBackendServices()
+	fakeIGs := instances.NewFakeInstanceGroups(sets.NewString())
 	pool := newBackendPool(f, fakeIGs)
+	namer := utils.Namer{}
 
 	// Add a backend for a port, then re-add the same port and
 	// make sure it corrects a broken link from the backend to
 	// the instance group.
 	nodePort := int64(8080)
 	pool.Add(nodePort)
-	beName := beName(nodePort)
+	beName := namer.BeName(nodePort)
 
 	// Check that the new backend has the right port
 	be, err := f.GetBackendService(beName)
@@ -51,7 +56,7 @@ func TestBackendPoolAdd(t *testing.T) {
 	}
 	// Check that the instance group has the new port
 	var found bool
-	for _, port := range fakeIGs.ports {
+	for _, port := range fakeIGs.Ports {
 		if port == nodePort {
 			found = true
 		}
@@ -69,12 +74,12 @@ func TestBackendPoolAdd(t *testing.T) {
 
 	pool.Add(nodePort)
 	for _, call := range f.calls {
-		if call == Create {
+		if call == utils.Create {
 			t.Fatalf("Unexpected create for existing backend service")
 		}
 	}
 	gotBackend, _ := f.GetBackendService(beName)
-	gotGroup, _ := fakeIGs.GetInstanceGroup(beName)
+	gotGroup, _ := fakeIGs.GetInstanceGroup(namer.IGName())
 	if gotBackend.Backends[0].Group != gotGroup.SelfLink {
 		t.Fatalf(
 			"Broken instance group link: %v %v",
@@ -88,8 +93,8 @@ func TestBackendPoolSync(t *testing.T) {
 	// Call sync on a backend pool with a list of ports, make sure the pool
 	// creates/deletes required ports.
 	svcNodePorts := []int64{81, 82, 83}
-	f := newFakeBackendServices()
-	fakeIGs := newFakeInstanceGroups(sets.NewString())
+	f := NewFakeBackendServices()
+	fakeIGs := instances.NewFakeInstanceGroups(sets.NewString())
 	pool := newBackendPool(f, fakeIGs)
 	pool.Add(81)
 	pool.Add(90)
@@ -107,13 +112,14 @@ func TestBackendPoolSync(t *testing.T) {
 }
 
 func TestBackendPoolShutdown(t *testing.T) {
-	f := newFakeBackendServices()
-	fakeIGs := newFakeInstanceGroups(sets.NewString())
+	f := NewFakeBackendServices()
+	fakeIGs := instances.NewFakeInstanceGroups(sets.NewString())
 	pool := newBackendPool(f, fakeIGs)
+	namer := utils.Namer{}
 
 	pool.Add(80)
 	pool.Shutdown()
-	if _, err := f.GetBackendService(beName(80)); err == nil {
+	if _, err := f.GetBackendService(namer.BeName(80)); err == nil {
 		t.Fatalf("%v", err)
 	}
 
