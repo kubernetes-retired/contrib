@@ -79,7 +79,7 @@ def file_passes(filename, refs, regexs):
         if p.search(d):
             return False
 
-    # Replace all occurrences of the regex "2015|2014" with "YEAR"
+    # Replace all occurrences of the regex "2016|2015|2014" with "YEAR"
     p = regexs["date"]
     for i, d in enumerate(data):
         (data[i], found) = p.subn('YEAR', d)
@@ -138,7 +138,7 @@ def get_regexs():
     # Search for "YEAR" which exists in the boilerplate, but shouldn't in the real thing
     regexs["year"] = re.compile( 'YEAR' )
     # dates can be 2014 or 2015, company holder names can be anything
-    regexs["date"] = re.compile( '(2014|2015)' )
+    regexs["date"] = re.compile( '(2014|2015|2016)' )
     # strip // +build \n\n build constraints
     regexs["go_build_constraints"] = re.compile(r"^(// \+build.*\n)+\n", re.MULTILINE)
     # strip #!.* from shell scripts
