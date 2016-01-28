@@ -194,7 +194,9 @@ func (sq *SubmitQueue) EachLoop() error {
 func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().StringSliceVar(&sq.JenkinsJobs, "jenkins-jobs", []string{
 		"kubernetes-e2e-gce",
+		"kubernetes-e2e-gce-serial",
 		"kubernetes-e2e-gke-ci",
+		"kubernetes-e2e-gke-serial",
 		"kubernetes-build",
 		"kubernetes-e2e-gce-parallel",
 		"kubernetes-e2e-gce-autoscaling",
