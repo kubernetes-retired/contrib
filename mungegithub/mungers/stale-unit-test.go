@@ -77,7 +77,7 @@ func (StaleUnitTestMunger) Munge(obj *github.MungeObject) {
 			return
 		}
 		if time.Since(*statusTime) > staleHours*time.Hour {
-			msgFormat := `@k8s-bot test this
+			msgFormat := `@k8s-bot test this issue: #IGNORE
 
 Tests are more than %d hours old. Re-running tests.`
 			msg := fmt.Sprintf(msgFormat, staleHours)
