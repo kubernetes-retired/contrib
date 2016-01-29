@@ -55,8 +55,8 @@ func (OkToTestMunger) Munge(obj *github.MungeObject) {
 	state := obj.GetStatusState([]string{jenkinsE2EContext, jenkinsUnitContext})
 	if state == "incomplete" {
 		glog.V(2).Infof("status is incomplete, adding ok to test")
-		msg := `@k8s-bot ok to test
-@k8s-bot test this
+		msg := `ok to test
+@k8s-bot test this issue: #IGNORE
 
 pr builder appears to be missing, activating due to 'lgtm' label.`
 		obj.WriteComment(msg)

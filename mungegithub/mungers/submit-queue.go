@@ -620,7 +620,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) {
 		return
 	}
 
-	body := "@k8s-bot test this [submit-queue is verifying that this PR is safe to merge]"
+	body := "@k8s-bot test this [submit-queue is verifying that this PR is safe to merge] issue: #IGNORE"
 	if err := obj.WriteComment(body); err != nil {
 		glog.Errorf("%d: unknown err: %v", *obj.Issue.Number, err)
 		sq.SetMergeStatus(obj, unknown, true)
