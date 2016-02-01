@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.2
+FROM alpine:3.3
 
-COPY keepalived.apk /var/cache/apk/keepalived.apk
-
-RUN apk add -U --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted \
-  bash curl ipvsadm iproute2 && \
-  apk add --allow-untrusted /var/cache/apk/keepalived.apk && \
+RUN echo "http://dl-4.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
+  apk add -U --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted \
+  bash curl ipvsadm iproute2 keepalived && \
   rm -rf /var/cache/apk/* /etc/keepalived/keepalived.conf
   
 COPY kube-keepalived-vip /kube-keepalived-vip
