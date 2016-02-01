@@ -954,7 +954,26 @@ func TestMetricCompareFailure(t *testing.T) {
 	}
 
 	violated := CompareMetrics(left, right)
-	if !reflect.DeepEqual(expected, violated) {
+	// Easiest way to ignore order in slices during comparison is to create maps from them...
+	violatedMap := make(map[string]map[ViolatingMetric]struct{})
+	expectedMap := make(map[string]map[ViolatingMetric]struct{})
+	for k, v := range violated {
+		for _, metric := range v {
+			if _, ok := violatedMap[k]; !ok {
+				violatedMap[k] = make(map[ViolatingMetric]struct{})
+			}
+			violatedMap[k][metric] = struct{}{}
+		}
+	}
+	for k, v := range expected {
+		for _, metric := range v {
+			if _, ok := expectedMap[k]; !ok {
+				expectedMap[k] = make(map[ViolatingMetric]struct{})
+			}
+			expectedMap[k][metric] = struct{}{}
+		}
+	}
+	if !reflect.DeepEqual(expectedMap, violatedMap) {
 		t.Errorf("Expected compare to return %v list, got %v.", expected, violated)
 	}
 }
