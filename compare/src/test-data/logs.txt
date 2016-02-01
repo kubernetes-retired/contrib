@@ -29,7 +29,7 @@ Jan  8 14:46:44.804: INFO: Listing nodes for easy debugging:
 Jan  8 14:46:44.804: INFO: Name: e2e-test-gmarek-minion-17cv, clusterIP: 10.240.0.5, externalIP: 104.197.56.13
 Jan  8 14:46:44.804: INFO: Name: e2e-test-gmarek-minion-8pi6, clusterIP: 10.240.0.3, externalIP: 104.197.128.82
 Jan  8 14:46:44.804: INFO: Name: e2e-test-gmarek-minion-f6xf, clusterIP: 10.240.0.4, externalIP: 104.154.36.5
-[It] [Performance] should allow starting 30 pods per node
+[It] [Performance] Sample test
   /usr/local/google/home/gmarek/go/src/k8s.io/kubernetes/_output/local/go/src/k8s.io/kubernetes/test/e2e/density.go:433
 STEP: creating replication controller density90-41575bd4-b60e-11e5-b76b-7446a0bae05f in namespace e2e-tests-density-lusrj
 Jan  8 14:46:45.079: INFO: Created replication controller with name: density90-41575bd4-b60e-11e5-b76b-7446a0bae05f, namespace: e2e-tests-density-lusrj, replica count: 90
