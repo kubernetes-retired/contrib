@@ -67,6 +67,11 @@ function _M.content(ngx)
     -- this assumes we only allow exact host matches
     local paths = config[host]
     if not paths then
+        -- in nginx terms, _ is the host that matches all hosts.
+        -- we set this 'host' in update_ingress in case no host was set in the ingress resource
+        paths = config["_"]
+    end
+    if not paths then
         ngx.log(ngx.ERR, "No server for host "..host.." returning 404")
         if custom_error then
             openCustomErrorURL(404, custom_error)
@@ -183,6 +188,12 @@ function _M.update_ingress(ngx)
         -- we do not allow default ingress backends right now.
         for _, rule in ipairs(spec.rules) do
             local host = rule.host
+            if not host then
+                -- no host was set in the Ingress resource, so we need to match all hosts.
+                -- In nginx terms, '_' means to match all hosts
+                host = "_"
+            end
+
             local paths = config[host]
             if not paths then
                 paths = trie.new()
