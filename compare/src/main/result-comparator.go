@@ -23,8 +23,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/spf13/pflag"
 	"k8s.io/contrib/compare/src"
+
+	"github.com/daviddengcn/go-colortext"
+	"github.com/spf13/pflag"
 )
 
 const (
@@ -78,7 +80,17 @@ func main() {
 				continue
 			}
 			violatingLogs := src.CompareLogGenerationSpeed(leftLogs[k], rightLogs[k])
-			fmt.Printf("Differences for test %v\n", k)
+			if len(violatingLogs) == 0 {
+				continue
+			}
+			if enableOutputColoring {
+				src.ChangeColor(ct.Cyan, os.Stdout)
+			}
+			fmt.Printf("Differences for test %v", k)
+			if enableOutputColoring {
+				src.ResetColor(os.Stdout)
+			}
+			fmt.Print("\n")
 			violatingLogs.PrintToStdout(leftBuildNumber, rightBuildNumber, enableOutputColoring)
 		}
 	}
@@ -91,7 +103,17 @@ func main() {
 				continue
 			}
 			violatingResources := src.CompareResourceUsages(leftResources[k], rightResources[k])
-			fmt.Printf("Differences for test %v\n", k)
+			if len(violatingResources) == 0 {
+				continue
+			}
+			if enableOutputColoring {
+				src.ChangeColor(ct.Cyan, os.Stdout)
+			}
+			fmt.Printf("Differences for test %v", k)
+			if enableOutputColoring {
+				src.ResetColor(os.Stdout)
+			}
+			fmt.Print("\n")
 			violatingResources.PrintToStdout(leftBuildNumber, rightBuildNumber, enableOutputColoring)
 		}
 	}
@@ -104,7 +126,17 @@ func main() {
 				continue
 			}
 			violatingMetrics := src.CompareMetrics(leftMetrics[k], rightMetrics[k])
-			fmt.Printf("Differences for test %v\n", k)
+			if len(violatingMetrics) == 0 {
+				continue
+			}
+			if enableOutputColoring {
+				src.ChangeColor(ct.Cyan, os.Stdout)
+			}
+			fmt.Printf("Differences for test %v", k)
+			if enableOutputColoring {
+				src.ResetColor(os.Stdout)
+			}
+			fmt.Print("\n")
 			violatingMetrics.PrintToStdout(leftBuildNumber, rightBuildNumber, enableOutputColoring)
 		}
 	}
