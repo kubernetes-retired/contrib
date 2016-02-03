@@ -4,7 +4,7 @@
 #
 # localBuild - requires make release to have been run to build local binaries
 # packageManager - will install packages from your distribution using yum/dnf/apt
-source_type: packageManager
+source_type: localBuild
 
 # os - docker packages will come from the default OS repositories
 # docker - will put down docker repo files in yum.repos.d and install latest
@@ -18,7 +18,7 @@ cluster_name: cluster.local
 # Account name of remote user. Ansible will use this user account to ssh into
 # the managed machines. The user must be able to use sudo without asking
 # for password unless ansible_sudo_pass is set
-#ansible_ssh_user: centos
+#ansible_ssh_user: root
 
 # password for the ansible_ssh_user. If this is unset you will need to set up
 # ssh keys so a password is not needed.
