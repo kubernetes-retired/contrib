@@ -5,3 +5,7 @@
     name: docker
     state: latest
   when: not is_atomic
+
+- name: Generic | Lay down storage config
+  copy: src=docker-storage dest=/etc/sysconfig/docker-storage
+  when: not is_atomic
