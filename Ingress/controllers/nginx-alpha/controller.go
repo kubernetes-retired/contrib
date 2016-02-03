@@ -42,6 +42,12 @@ http {
   server_names_hash_max_size 512;
   server_names_hash_bucket_size 255;
 
+  server {
+      listen 80 default_server;
+      server_name _;
+      return 404;
+  }
+
 {{range $ing := .Items}}
 {{range $rule := $ing.Spec.Rules}}
   server {
