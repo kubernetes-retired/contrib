@@ -26,6 +26,7 @@ import (
 
 	"k8s.io/kubernetes/test/e2e"
 
+	"github.com/daviddengcn/go-colortext"
 	"github.com/golang/glog"
 )
 
@@ -73,12 +74,28 @@ func writeViolatingResourceData(minCPU, maxCPU, baselineMinCPU, baselineMaxCPU, 
 func (d *ViolatingResourceUsageData) PrintToStdout(leftBuild, rightBuild int, enableOutputColoring bool) {
 	writer := tabwriter.NewWriter(os.Stdout, 1, 0, 1, ' ', 0)
 	fmt.Fprint(writer, "Percentile\tContainer\tCPU in ")
+	if enableOutputColoring {
+		ChangeColor(ct.White, writer)
+		ResetColor(writer)
+	}
 	printBuildNumber(leftBuild, writer, enableOutputColoring)
 	fmt.Fprint(writer, "\tMem in ")
+	if enableOutputColoring {
+		ChangeColor(ct.White, writer)
+		ResetColor(writer)
+	}
 	printBuildNumber(leftBuild, writer, enableOutputColoring)
 	fmt.Fprint(writer, "\tCPU in ")
+	if enableOutputColoring {
+		ChangeColor(ct.White, writer)
+		ResetColor(writer)
+	}
 	printBuildNumber(rightBuild, writer, enableOutputColoring)
 	fmt.Fprint(writer, "\tMem in ")
+	if enableOutputColoring {
+		ChangeColor(ct.White, writer)
+		ResetColor(writer)
+	}
 	printBuildNumber(rightBuild, writer, enableOutputColoring)
 	fmt.Fprint(writer, "\n")
 	allowedVariance := float64(100+ResourceUsageVarianceAllowedPercent) / float64(100)

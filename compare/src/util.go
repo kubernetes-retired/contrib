@@ -18,18 +18,19 @@ package src
 
 import (
 	"fmt"
-	"text/tabwriter"
+	"io"
 
 	"github.com/daviddengcn/go-colortext"
 	"math"
 )
 
-/* Slightly modified version of daviddengcn/go-colortext, so it'll work well with tabwriter */
-func resetColor(writer *tabwriter.Writer) {
+// ResetColor is a slightly modified version of daviddengcn/go-colortext, so it'll work well with io.Writer
+func ResetColor(writer io.Writer) {
 	fmt.Fprint(writer, "\x1b[0m")
 }
 
-func changeColor(color ct.Color, writer *tabwriter.Writer) {
+// ChangeColor is a slightly modified version of daviddengcn/go-colortext, so it'll work well with io.Writer
+func ChangeColor(color ct.Color, writer io.Writer) {
 	if color == ct.None {
 		return
 	}
@@ -42,20 +43,20 @@ func changeColor(color ct.Color, writer *tabwriter.Writer) {
 	fmt.Fprint(writer, s)
 }
 
-func changeColorFloat64AndWrite(data, baseline, allowedVariance float64, enableOutputColoring bool, writer *tabwriter.Writer) {
+func changeColorFloat64AndWrite(data, baseline, allowedVariance float64, enableOutputColoring bool, writer io.Writer) {
 	if enableOutputColoring {
 		if data > baseline*allowedVariance {
-			changeColor(ct.Red, writer)
+			ChangeColor(ct.Red, writer)
 		} else if math.IsNaN(data) {
-			changeColor(ct.Yellow, writer)
+			ChangeColor(ct.Yellow, writer)
 		} else {
 			// to keep tabwriter happy...
-			changeColor(ct.White, writer)
+			ChangeColor(ct.White, writer)
 		}
 	}
 	fmt.Fprintf(writer, "%.2f", data)
 	if enableOutputColoring {
-		resetColor(writer)
+		ResetColor(writer)
 	}
 }
 
@@ -64,12 +65,12 @@ func leq(left, right float64) bool {
 }
 
 // Prints build number injecting dummy colors to make cell align again
-func printBuildNumber(buildNumber int, writer *tabwriter.Writer, enableOutputColoring bool) {
+func printBuildNumber(buildNumber int, writer io.Writer, enableOutputColoring bool) {
 	if enableOutputColoring {
-		changeColor(ct.White, writer)
+		ChangeColor(ct.White, writer)
 	}
 	fmt.Fprintf(writer, "%v", buildNumber)
 	if enableOutputColoring {
-		resetColor(writer)
+		ResetColor(writer)
 	}
 }
