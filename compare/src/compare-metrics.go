@@ -27,6 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/metrics"
 	"k8s.io/kubernetes/test/e2e"
 
+	"github.com/daviddengcn/go-colortext"
 	"github.com/golang/glog"
 	"github.com/prometheus/common/model"
 )
@@ -67,24 +68,31 @@ type ViolatingMetricsArr map[string][]ViolatingMetric
 
 // PrintToStdout prints offending data to the Stdout in a human readable format.
 func (d *ViolatingMetricsArr) PrintToStdout(leftBuild, rightBuild int, enableOutputColoring bool) {
-	w := tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)
+	writer := tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)
 	allowedVariance := float64(100+MetricsVarianceAllowedPercent) / float64(100)
 	for metric, arr := range *d {
-		fmt.Fprintf(w, "%v\n", metric)
-		fmt.Fprint(w, "Bucket\tComponent\t")
-		printBuildNumber(leftBuild, w, enableOutputColoring)
-		fmt.Fprint(w, "\t")
-		printBuildNumber(rightBuild, w, enableOutputColoring)
-		fmt.Fprint(w, "\n")
-		for _, data := range arr {
-			fmt.Fprintf(w, "%v\t%v\t", data.labels, data.component)
-			changeColorFloat64AndWrite(data.left, data.right, allowedVariance, enableOutputColoring, w)
-			fmt.Fprint(w, "\t")
-			changeColorFloat64AndWrite(data.right, data.left, allowedVariance, enableOutputColoring, w)
-			fmt.Fprint(w, "\t\n")
+		if enableOutputColoring {
+			ChangeColor(ct.Green, writer)
 		}
+		fmt.Fprintf(writer, "%v", metric)
+		if enableOutputColoring {
+			ResetColor(writer)
+		}
+		fmt.Fprint(writer, "\nBucket\tComponent\t")
+		printBuildNumber(leftBuild, writer, enableOutputColoring)
+		fmt.Fprint(writer, "\t")
+		printBuildNumber(rightBuild, writer, enableOutputColoring)
+		fmt.Fprint(writer, "\n")
+		for _, data := range arr {
+			fmt.Fprintf(writer, "%v\t%v\t", data.labels, data.component)
+			changeColorFloat64AndWrite(data.left, data.right, allowedVariance, enableOutputColoring, writer)
+			fmt.Fprint(writer, "\t")
+			changeColorFloat64AndWrite(data.right, data.left, allowedVariance, enableOutputColoring, writer)
+			fmt.Fprint(writer, "\t\n")
+		}
+		fmt.Fprint(writer, "\n")
 	}
-	w.Flush()
+	writer.Flush()
 }
 
 func uniformizeMetric(metric model.Metric) string {
