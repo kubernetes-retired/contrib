@@ -71,6 +71,7 @@
 # install kubernetes on the nodes
 - hosts: nodes
   sudo: yes
+  serial: 5
   roles:
     - node
   tags:

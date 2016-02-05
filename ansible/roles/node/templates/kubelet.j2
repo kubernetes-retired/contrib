@@ -14,6 +14,7 @@ KUBELET_HOSTNAME="--hostname-override={{ inventory_hostname }}"
 KUBELET_API_SERVER="--api-servers=https://{{ groups['masters'][0] }}:{{ kube_master_api_port }}"
 
 {% set kubelet_options = [] -%}
+{{ kubelet_options.append('--max-pods=' + max_pods|string)|default('', true) -}}
 {% if dns_setup -%}
 {{ kubelet_options.append('--cluster-dns=' + dns_server)|default('', true) -}}
 {{ kubelet_options.append('--cluster-domain=' + dns_domain)|default('', true) -}}

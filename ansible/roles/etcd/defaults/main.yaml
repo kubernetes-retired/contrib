@@ -26,4 +26,4 @@ etcd_advertise_client_urls: "{{ etcd_url_scheme }}://{{ ansible_fqdn }}:{{ etcd_
 etcd_listen_client_urls: "{{ etcd_url_scheme }}://0.0.0.0:{{ etcd_client_port }},{{ etcd_url_scheme }}://0.0.0.0:{{ etcd_client_extra }}"
 
 etcd_data_dir: /var/lib/etcd
-
+etcd_proxy_mode: off
