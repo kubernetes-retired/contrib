@@ -38,30 +38,40 @@ var (
 	_ = fmt.Print
 )
 
-// RefreshWhitelist updates the whitelist, re-getting the list of committers.
-// called with sq.Lock() held!
-func (sq *SubmitQueue) RefreshWhitelist() {
-	config := sq.githubConfig
+// UserList contains the list of github users associated with the k8s project.
+type UserList struct {
+	// additionalUserWhitelist are non-committer users believed safe
+	additionalUserWhitelist *sets.String
+	// CommitterList are static here in case they can't be gotten dynamically;
+	// they do not need to be whitelisted.
+	committerList *sets.String
+
+	// userWhitelist is the combination of committers and additional which
+	// we actully use
+	userWhitelist *sets.String
+
+	userInfo map[string]userInfo
+}
+
+// BuildUserList builds the user list, re-getting the list of committers.
+func BuildUserList(whitelistPath, committersPath string, config *github_util.Config) *UserList {
 	info := map[string]userInfo{}
-	if sq.additionalUserWhitelist == nil {
-		users, err := loadWhitelist(sq.Whitelist)
-		if err != nil {
-			glog.Fatalf("error loading user whitelist: %v", err)
-		}
-		sq.additionalUserWhitelist = &users
+
+	// We used to cache this; it doesn't seem worth it...
+	additionalUserWhitelist, err := loadWhitelist(whitelistPath)
+	if err != nil {
+		glog.Fatalf("error loading user whitelist: %v", err)
 	}
 
-	if sq.committerList == nil {
-		committerList, err := loadWhitelist(sq.Committers)
-		if err != nil {
-			glog.Fatalf("error loading committers whitelist: %v", err)
-		}
-		sq.committerList = &committerList
+	// We used to cache this; it doesn't seem worth it...
+	committerList, err := loadWhitelist(committersPath)
+	if err != nil {
+		glog.Fatalf("error loading committers whitelist: %v", err)
 	}
 
 	// We must use the values on disk in case it has users which don't have
 	// explicit "pull" permission in the API
-	allUsers := sq.additionalUserWhitelist.Union(*sq.committerList)
+	allUsers := additionalUserWhitelist.Union(committerList)
 
 	if pushUsers, pullUsers, err := config.UsersWithAccess(); err != nil {
 		glog.Info("Falling back to static committers list.")
@@ -100,9 +110,14 @@ func (sq *SubmitQueue) RefreshWhitelist() {
 			AvatarURL: *user.AvatarURL,
 		}
 	}
-	sq.userWhitelist = &allUsers
-	sq.userInfo = info
-	return
+
+	u := &UserList{
+		additionalUserWhitelist: &additionalUserWhitelist,
+		committerList:           &committerList,
+		userWhitelist:           &allUsers,
+		userInfo:                info,
+	}
+	return u
 }
 
 func loadWhitelist(file string) (sets.String, error) {
