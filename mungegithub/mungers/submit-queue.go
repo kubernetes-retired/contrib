@@ -17,12 +17,14 @@ limitations under the License.
 package mungers
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -715,9 +717,59 @@ func (sq *SubmitQueue) serve(data []byte, res http.ResponseWriter, req *http.Req
 		res.WriteHeader(http.StatusInternalServerError)
 	} else {
 		res.Header().Set("Content-type", "application/json")
-		res.WriteHeader(http.StatusOK)
-		res.Write(data)
+
+		if !acceptsGzip(req.Header.Get("Accept-Encoding")) {
+			res.WriteHeader(http.StatusOK)
+			res.Write(data)
+		} else {
+			res.Header().Set("Content-Encoding", "gzip")
+			res.WriteHeader(http.StatusOK)
+			gz := gzip.NewWriter(res)
+			defer gz.Close()
+			gz.Write(data)
+		}
 	}
+}
+
+func acceptsGzip(acceptEncoding string) bool {
+	if acceptEncoding == "" {
+		return false
+	}
+
+	for _, s := range strings.Split(acceptEncoding, ",") {
+		s = strings.TrimSpace(s)
+
+		// This is made more complicated because we have to consider the case where the user specifies
+		// gzip;q=0 which means "not gzip"
+		// Thankfully all other q values are allowed
+		qZero := false
+		semi := strings.IndexByte(s, ';')
+		if semi != -1 {
+			suffix := s[semi+1:]
+			s = s[:semi]
+			if !strings.HasPrefix(suffix, "q=") {
+				// Malformed; assume no gzip
+				return false
+			}
+			q := suffix[2:]
+			// qvalue cannot be empty nor specified to more than 3 d.p.
+			if len(q) == 0 || len(q) > 5 {
+				// Malformed; assume no gzip
+				return false
+			}
+
+			// q must not be specified to more than 3 d.p.
+			if q[0] == '0' && (q == "0" || q == "0.0" || q == "0.00" || q == "0.000") {
+				qZero = true
+			}
+		}
+
+		if s == "gzip" {
+			return !qZero
+		}
+	}
+
+	return false
 }
 
 func (sq *SubmitQueue) serveUsers(res http.ResponseWriter, req *http.Request) {

@@ -738,3 +738,38 @@ func TestSubmitQueue(t *testing.T) {
 		}
 	}
 }
+
+func TestAcceptsGzip(t *testing.T) {
+	tests := []struct {
+		ae   string
+		gzip bool
+	}{
+		{ae: "", gzip: false},
+		{ae: "gzip, deflate, sdch", gzip: true},
+		{ae: "deflate, sdch", gzip: false},
+		{ae: "gzippy, deflate, sdch", gzip: false},
+		{ae: "deflate, gzip, sdch", gzip: true},
+		{ae: "deflate, gzip;q=0.5, sdch", gzip: true},
+		{ae: "deflate, gzip;q=1.0, sdch", gzip: true},
+		{ae: "deflate, gzip;q=1, sdch", gzip: true},
+
+		{ae: "deflate, gzip;q=0.000, sdch", gzip: false},
+		{ae: "deflate, gzip;q=0.00, sdch", gzip: false},
+		{ae: "deflate, gzip;q=0.0, sdch", gzip: false},
+		{ae: "deflate, gzip;q=0, sdch", gzip: false},
+
+		// false if malformed
+		{ae: "deflate, gzip; q=1, sdch", gzip: false},
+		{ae: "deflate, gzip;q=0.00001, sdch", gzip: false},
+		{ae: "deflate, gzip;, sdch", gzip: false},
+		{ae: "deflate, gzip;q, sdch", gzip: false},
+		{ae: "deflate, gzip;q=, sdch", gzip: false},
+	}
+	for _, test := range tests {
+		actual := acceptsGzip(test.ae)
+
+		if actual != test.gzip {
+			t.Errorf("Unexpected result for acceptsGzip for %q.  expected=%v, actual=%v", test.ae, test.gzip, actual)
+		}
+	}
+}
