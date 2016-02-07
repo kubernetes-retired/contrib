@@ -124,9 +124,11 @@ func (j *JenkinsBuilder) GetLastCompletedBuild() (*BuildResult, error) {
 		return nil, nil
 	}
 
+	url := "https://storage.cloud.google.com/kubernetes-jenkins/logs/" + j.JobName + "/" + job.ID + "/"
 	br := &BuildResult{
 		Success: job.Result == "SUCCESS",
 		BuildID: job.ID,
+		URL:     url,
 	}
 	return br, nil
 }

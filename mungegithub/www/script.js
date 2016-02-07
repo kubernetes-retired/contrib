@@ -140,6 +140,8 @@ function SQCntl(dataService, $interval, $location) {
       var obj = {
         'name': key,
         'id': job.ID,
+        'gating': job.Gating,
+        'url': job.URL,
       };
       if (job.Status == 'Stable') {
         // green check mark
@@ -148,13 +150,21 @@ function SQCntl(dataService, $interval, $location) {
       } else if (job.Status == 'Not Stable') {
         // red X mark
         obj.state = '\u2716';
-        obj.color = 'red';
-        failedBuild = true;
+        if (job.gating) {
+          obj.color = 'red';
+          failedBuild = true;
+        } else {
+          obj.color = 'orange';
+        }
       } else {
         obj.state = 'Error';
-        obj.color = 'red';
         obj.msg = job.Status;
-        failedBuild = true;
+        if (job.gating) {
+          obj.color = 'red';
+          failedBuild = true;
+        } else {
+          obj.color = 'orange';
+        }
       }
       result.push(obj);
     });

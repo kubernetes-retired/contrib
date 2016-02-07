@@ -30,6 +30,8 @@ import (
 type BuildInfo struct {
 	Status string
 	ID     string
+	URL    string
+	Gating bool
 }
 
 // E2ETester is the object which will contact a jenkins instance and get
@@ -104,10 +106,10 @@ func (e *E2ETester) GetBuildStatus() map[string]BuildInfo {
 	return out
 }
 
-func (e *E2ETester) setBuildStatus(build, status string, id string) {
+func (e *E2ETester) setBuildStatus(build string, info *BuildInfo) {
 	e.Lock()
 	defer e.Unlock()
-	e.BuildStatus[build] = BuildInfo{Status: status, ID: id}
+	e.BuildStatus[build] = *info
 }
 
 // Stable is called to make sure all of the jenkins jobs are stable
@@ -118,20 +120,26 @@ func (e *E2ETester) Stable() bool {
 	for key, builder := range e.Builders {
 		glog.V(2).Infof("Checking build stability for %s", key)
 		job, err := builder.builder.GetLastCompletedBuild()
+		info := &BuildInfo{Gating: builder.gating}
 		if err != nil {
 			glog.Errorf("Error checking build %s : %v", key, err)
-			e.setBuildStatus(key, "Error checking: "+err.Error(), "0")
+			info.Status = "Error checking: " + err.Error()
+			info.ID = "0"
+			e.setBuildStatus(key, info)
 			allStable = false
 			continue
 		}
+		info.ID = job.BuildID
+		info.URL = job.URL
 		if job.IsStable() {
-			e.setBuildStatus(key, "Stable", job.BuildID)
+			info.Status = "Stable"
 		} else {
-			e.setBuildStatus(key, "Not Stable", job.BuildID)
+			info.Status = "Not Stable"
 			if builder.gating {
 				allStable = false
 			}
 		}
+		e.setBuildStatus(key, info)
 	}
 	return allStable
 }

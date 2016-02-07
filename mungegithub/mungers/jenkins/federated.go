@@ -132,9 +132,11 @@ func (f *FederatedBuilder) readBuildResult(buildID string) (*BuildResult, error)
 		}
 	}
 
+	url := "https://storage.cloud.google.com/" + f.bucketName + "/" + f.basePath + buildID + "/"
 	br := &BuildResult{
 		Success: success,
 		BuildID: buildID,
+		URL:     url,
 	}
 
 	return br, nil

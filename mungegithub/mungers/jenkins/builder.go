@@ -20,6 +20,8 @@ package jenkins
 type BuildResult struct {
 	Success bool
 	BuildID string
+	// URL for build results (UI links to this)
+	URL string
 }
 
 // IsStable is really is success, but maybe there is a way to make it look
