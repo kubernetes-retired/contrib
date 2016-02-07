@@ -17,6 +17,8 @@ limitations under the License.
 package e2e
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 
 	"k8s.io/contrib/mungegithub/mungers/jenkins"
@@ -33,17 +35,61 @@ type BuildInfo struct {
 // E2ETester is the object which will contact a jenkins instance and get
 // information about recent jobs
 type E2ETester struct {
-	JenkinsHost string
-	JenkinsJobs []string
+	Builders map[string]*BuilderInfo
 
 	sync.Mutex
 	BuildStatus map[string]BuildInfo // protect by mutex
+}
+
+type BuilderInfo struct {
+	name    string
+	builder jenkins.Builder
+	gating  bool
 }
 
 func (e *E2ETester) locked(f func()) {
 	e.Lock()
 	defer e.Unlock()
 	f()
+}
+
+// Configure the builders that we will poll
+func (e *E2ETester) SetBuilders(jenkinsHost string, builders []string) error {
+	e.Builders = make(map[string]*BuilderInfo)
+	jenkinsClient := &jenkins.JenkinsClient{Host: jenkinsHost}
+	for _, spec := range builders {
+		b := &BuilderInfo{}
+		b.gating = true
+
+		if strings.Contains(spec, "=") {
+			tokens := strings.SplitN(spec, "=", 2)
+			if len(tokens) != 2 {
+				return fmt.Errorf("cannot parse federated builder spec: %q", spec)
+			}
+			name := tokens[0]
+			path := tokens[1]
+
+			builder, err := jenkins.NewFederatedBuilder(name, path)
+			if err != nil {
+				return fmt.Errorf("error building federated builder (%q): %v", spec, err)
+			}
+
+			b.name = name
+			b.builder = builder
+
+			// For the moment, we assume that all federated builders are non-gating
+			b.gating = false
+		} else {
+			b.name = spec
+			b.builder = &jenkins.JenkinsBuilder{
+				Client:  jenkinsClient,
+				JobName: spec,
+			}
+		}
+		e.Builders[b.name] = b
+	}
+
+	return nil
 }
 
 // GetBuildStatus returns the build status. This map is a copy and is thus safe
@@ -67,23 +113,24 @@ func (e *E2ETester) setBuildStatus(build, status string, id string) {
 // Stable is called to make sure all of the jenkins jobs are stable
 func (e *E2ETester) Stable() bool {
 	// Test if the build is stable in Jenkins
-	jenkinsClient := &jenkins.JenkinsClient{Host: e.JenkinsHost}
 
 	allStable := true
-	for _, build := range e.JenkinsJobs {
-		glog.V(2).Infof("Checking build stability for %s", build)
-		job, err := jenkinsClient.GetLastCompletedBuild(build)
+	for key, builder := range e.Builders {
+		glog.V(2).Infof("Checking build stability for %s", key)
+		job, err := builder.builder.GetLastCompletedBuild()
 		if err != nil {
-			glog.Errorf("Error checking build %v : %v", build, err)
-			e.setBuildStatus(build, "Error checking: "+err.Error(), "0")
+			glog.Errorf("Error checking build %s : %v", key, err)
+			e.setBuildStatus(key, "Error checking: "+err.Error(), "0")
 			allStable = false
 			continue
 		}
 		if job.IsStable() {
-			e.setBuildStatus(build, "Stable", job.ID)
+			e.setBuildStatus(key, "Stable", job.BuildID)
 		} else {
-			e.setBuildStatus(build, "Not Stable", job.ID)
-			allStable = false
+			e.setBuildStatus(key, "Not Stable", job.BuildID)
+			if builder.gating {
+				allStable = false
+			}
 		}
 	}
 	return allStable

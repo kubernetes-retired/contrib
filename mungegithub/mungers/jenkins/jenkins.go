@@ -31,7 +31,7 @@ type JenkinsClient struct {
 	Host string
 }
 
-// Queue has information about the last completed builg and the last stable build
+// Queue has information about the last completed build and the last stable build
 type Queue struct {
 	Builds             []Build `json:"builds"`
 	LastCompletedBuild Build   `json:"lastCompletedBuild"`
@@ -49,12 +49,6 @@ type Job struct {
 	Result    string `json:"result"`
 	ID        string `json:"id"`
 	Timestamp int    `json:"timestamp"`
-}
-
-// IsStable is really is success, but maybe there is a way to make it look
-// at multiple runs...
-func (j Job) IsStable() bool {
-	return j.Result == "SUCCESS"
 }
 
 func (j *JenkinsClient) request(path string) ([]byte, error) {
@@ -112,4 +106,27 @@ func (j *JenkinsClient) GetLastCompletedBuild(name string) (*Job, error) {
 		return nil, err
 	}
 	return job, nil
+}
+
+type JenkinsBuilder struct {
+	Client  *JenkinsClient
+	JobName string
+}
+
+var _ Builder = &JenkinsBuilder{}
+
+func (j *JenkinsBuilder) GetLastCompletedBuild() (*BuildResult, error) {
+	job, err := j.Client.GetLastCompletedBuild(j.JobName)
+	if err != nil {
+		return nil, err
+	}
+	if job == nil {
+		return nil, nil
+	}
+
+	br := &BuildResult{
+		Success: job.Result == "SUCCESS",
+		BuildID: job.ID,
+	}
+	return br, nil
 }
