@@ -113,7 +113,7 @@ type SubmitQueue struct {
 	// we actully use
 	userWhitelist *sets.String
 
-	sync.Mutex
+	sync.RWMutex
 	lastPRStatus  map[string]submitStatus
 	prStatus      map[string]submitStatus // protected by sync.Mutex
 	userInfo      map[string]userInfo     //proteted by sync.Mutex
@@ -363,14 +363,14 @@ func (sq *SubmitQueue) marshal(data interface{}) []byte {
 }
 
 func (sq *SubmitQueue) getUserInfo() []byte {
-	sq.Lock()
-	defer sq.Unlock()
+	sq.RLock()
+	defer sq.RUnlock()
 	return sq.marshal(sq.userInfo)
 }
 
 func (sq *SubmitQueue) getQueueHistory() []byte {
-	sq.Lock()
-	defer sq.Unlock()
+	sq.RLock()
+	defer sq.RUnlock()
 	return sq.marshal(sq.statusHistory)
 }
 
@@ -378,8 +378,8 @@ func (sq *SubmitQueue) getQueueHistory() []byte {
 // queue. This can be used to generate web pages about the submit queue.
 func (sq *SubmitQueue) getQueueStatus() []byte {
 	status := submitQueueStatus{}
-	sq.Lock()
-	defer sq.Unlock()
+	sq.RLock()
+	defer sq.RUnlock()
 	outputStatus := sq.lastPRStatus
 	for key, value := range sq.prStatus {
 		outputStatus[key] = value
@@ -390,8 +390,8 @@ func (sq *SubmitQueue) getQueueStatus() []byte {
 }
 
 func (sq *SubmitQueue) getGithubE2EStatus() []byte {
-	sq.Lock()
-	defer sq.Unlock()
+	sq.RLock()
+	defer sq.RUnlock()
 	status := e2eQueueStatus{
 		E2EQueue:   sq.getE2EQueueStatus(),
 		E2ERunning: objToStatusPullRequest(sq.githubE2ERunning),
@@ -400,15 +400,15 @@ func (sq *SubmitQueue) getGithubE2EStatus() []byte {
 }
 
 func (sq *SubmitQueue) getBotStats() []byte {
-	sq.Lock()
-	defer sq.Unlock()
+	sq.RLock()
+	defer sq.RUnlock()
 	stats := sq.githubConfig.GetDebugStats()
 	return sq.marshal(stats)
 }
 
 func (sq *SubmitQueue) getGoogleInternalStatus() []byte {
-	sq.Lock()
-	defer sq.Unlock()
+	sq.RLock()
+	defer sq.RUnlock()
 	return sq.marshal(sq.e2e.GetBuildStatus())
 }
 
