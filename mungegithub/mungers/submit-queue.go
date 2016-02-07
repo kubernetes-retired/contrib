@@ -19,8 +19,10 @@ package mungers
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net/http"
+	"path"
 	"sort"
 	"strconv"
 	"sync"
@@ -30,6 +32,7 @@ import (
 
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers/e2e"
+	"k8s.io/contrib/mungegithub/mungers/jenkins"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -89,11 +92,10 @@ type submitQueueStatus struct {
 //  PR must have LGTM after the last commit
 //  PR must have passed all github CI checks
 //  if user not in whitelist PR must have "ok-to-merge"
-//  The google internal jenkins instance must be passing the JenkinsJobs e2e tests
+//  The google internal jenkins instance must be passing the e2e tests
 type SubmitQueue struct {
 	githubConfig           *github.Config
-	JenkinsJobs            []string
-	JenkinsHost            string
+	BuilderConfigPath      string
 	Whitelist              string
 	WhitelistOverride      string
 	Committers             string
@@ -135,22 +137,53 @@ func init() {
 // Name is the name usable in --pr-mungers
 func (sq SubmitQueue) Name() string { return "submit-queue" }
 
+// loadBuilderConfigs loads the BuilderConfigs from the specified path
+func loadBuilderConfigs(configPath string) ([]*jenkins.BuilderConfig, error) {
+	var configs []*jenkins.BuilderConfig
+
+	files, err := ioutil.ReadDir(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("error listing config directory %q: %v", configPath, err)
+	}
+
+	for _, file := range files {
+		filename := path.Join(configPath, file.Name())
+		data, err := ioutil.ReadFile(filename)
+		if err != nil {
+			return nil, fmt.Errorf("error reading config file %q: %v", filename, err)
+		}
+		config := &jenkins.BuilderConfig{}
+		err = json.Unmarshal(data, config)
+		if err != nil {
+			return nil, fmt.Errorf("error reading config file %q: %v", filename, err)
+		}
+
+		configs = append(configs, config)
+	}
+	return configs, nil
+}
+
 // Initialize will initialize the munger
 func (sq *SubmitQueue) Initialize(config *github.Config) error {
 	sq.Lock()
 	defer sq.Unlock()
 
 	sq.githubConfig = config
-	if len(sq.JenkinsHost) == 0 {
-		glog.Fatalf("--jenkins-host is required.")
-	}
 
 	sq.lastE2EStable = true
 	e2e := &e2e.E2ETester{
-		JenkinsJobs: sq.JenkinsJobs,
-		JenkinsHost: sq.JenkinsHost,
 		BuildStatus: map[string]e2e.BuildInfo{},
 	}
+
+	configs, err := loadBuilderConfigs(sq.BuilderConfigPath)
+	if err != nil {
+		return err
+	}
+	err = e2e.LoadBuilders(configs)
+	if err != nil {
+		return err
+	}
+
 	sq.e2e = e2e
 	if len(sq.Address) > 0 {
 		if len(sq.WWWRoot) > 0 {
@@ -201,17 +234,7 @@ func (sq *SubmitQueue) EachLoop() error {
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringSliceVar(&sq.JenkinsJobs, "jenkins-jobs", []string{
-		"kubernetes-build",
-		"kubernetes-test-go",
-		"kubernetes-e2e-gce",
-		"kubernetes-e2e-gce-slow",
-		"kubernetes-e2e-gke",
-		"kubernetes-e2e-gke-slow",
-		"kubernetes-e2e-gce-scalability",
-		"kubernetes-kubemark-gce",
-	}, "Comma separated list of jobs in Jenkins to use for stability testing")
-	cmd.Flags().StringVar(&sq.JenkinsHost, "jenkins-host", "http://jenkins-master:8080", "The URL for the jenkins job to watch")
+	cmd.Flags().StringVar(&sq.BuilderConfigPath, "builders", "config/", "Path for builder configurations")
 	cmd.Flags().StringSliceVar(&sq.RequiredStatusContexts, "required-contexts", []string{}, "Comma separate list of status contexts required for a PR to be considered ok to merge")
 	cmd.Flags().StringVar(&sq.Address, "address", ":8080", "The address to listen on for HTTP Status")
 	cmd.Flags().StringVar(&sq.E2EStatusContext, "e2e-status-context", jenkinsE2EContext, "The name of the github status context for the e2e PR Builder")

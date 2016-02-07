@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"fmt"
 	"sync"
 
 	"k8s.io/contrib/mungegithub/mungers/jenkins"
@@ -33,17 +34,38 @@ type BuildInfo struct {
 // E2ETester is the object which will contact a jenkins instance and get
 // information about recent jobs
 type E2ETester struct {
-	JenkinsHost string
-	JenkinsJobs []string
+	Builders map[string]*builderInfo
 
 	sync.Mutex
 	BuildStatus map[string]BuildInfo // protect by mutex
+}
+type builderInfo struct {
+	jenkins.BuilderConfig
+	builder jenkins.Builder
 }
 
 func (e *E2ETester) locked(f func()) {
 	e.Lock()
 	defer e.Unlock()
 	f()
+}
+
+// LoadBuilders configure the builders that we will watch for build results
+func (e *E2ETester) LoadBuilders(configs []*jenkins.BuilderConfig) error {
+	e.Builders = make(map[string]*builderInfo)
+	for _, config := range configs {
+		builder, err := jenkins.NewFederatedBuilder(config)
+		if err != nil {
+			return fmt.Errorf("error building federated builder %q: %v", config.Name, err)
+		}
+
+		b := &builderInfo{BuilderConfig: *config}
+		b.builder = builder
+
+		e.Builders[b.Name] = b
+	}
+
+	return nil
 }
 
 // GetBuildStatus returns the build status. This map is a copy and is thus safe
@@ -67,23 +89,29 @@ func (e *E2ETester) setBuildStatus(build, status string, id string) {
 // Stable is called to make sure all of the jenkins jobs are stable
 func (e *E2ETester) Stable() bool {
 	// Test if the build is stable in Jenkins
-	jenkinsClient := &jenkins.JenkinsClient{Host: e.JenkinsHost}
 
 	allStable := true
-	for _, build := range e.JenkinsJobs {
-		glog.V(2).Infof("Checking build stability for %s", build)
-		job, err := jenkinsClient.GetLastCompletedBuild(build)
+	for key, builder := range e.Builders {
+		glog.V(2).Infof("Checking build stability for %s", key)
+		job, err := builder.builder.GetLastCompletedBuild()
 		if err != nil {
-			glog.Errorf("Error checking build %v : %v", build, err)
-			e.setBuildStatus(build, "Error checking: "+err.Error(), "0")
+			glog.Errorf("Error checking build %s : %v", key, err)
+			e.setBuildStatus(key, "Error checking: "+err.Error(), "0")
 			allStable = false
 			continue
 		}
-		if job.IsStable() {
-			e.setBuildStatus(build, "Stable", job.ID)
+		if job != nil && job.IsStable() {
+			e.setBuildStatus(key, "Stable", job.BuildID)
 		} else {
-			e.setBuildStatus(build, "Not Stable", job.ID)
-			allStable = false
+			if job == nil {
+				glog.Warningf("Builder does not have LastCompletedBuild: %q", key)
+				e.setBuildStatus(key, "Not Stable", "")
+			} else {
+				e.setBuildStatus(key, "Not Stable", job.BuildID)
+			}
+			if builder.Gating {
+				allStable = false
+			}
 		}
 	}
 	return allStable
