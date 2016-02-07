@@ -112,12 +112,11 @@ func TestCheckBuilds(t *testing.T) {
 			},
 		})
 		e2e := &E2ETester{
-			JenkinsHost: server.URL,
-			JenkinsJobs: []string{
-				"foo",
-				"bar",
-			},
 			BuildStatus: map[string]BuildInfo{},
+		}
+		err := e2e.SetBuilders(server.URL, []string{"foo", "bar"})
+		if err != nil {
+			t.Errorf("error setting jenkins jobs: %v", err)
 		}
 		stable := e2e.Stable()
 		if stable != test.expectStable {

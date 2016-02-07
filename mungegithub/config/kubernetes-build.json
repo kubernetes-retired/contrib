@@ -1,0 +1,5 @@
+{
+  "name": "kubernetes-build",
+  "path": "gs://kubernetes-jenkins/logs/kubernetes-build/",
+  "gating": true
+}

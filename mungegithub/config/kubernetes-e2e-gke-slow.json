@@ -1,0 +1,5 @@
+{
+  "name": "kubernetes-e2e-gke-slow",
+  "path": "gs://kubernetes-jenkins/logs/kubernetes-e2e-gke-slow/",
+  "gating": true
+}

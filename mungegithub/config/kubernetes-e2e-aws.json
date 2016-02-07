@@ -1,0 +1,5 @@
+{
+  "name": "kubernetes-e2e-aws",
+  "path": "gs://kubernetes-buildlogs-aws/logs/kubernetes-e2e-aws/",
+  "gating": false
+}

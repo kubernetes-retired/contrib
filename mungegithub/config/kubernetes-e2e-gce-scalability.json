@@ -1,0 +1,5 @@
+{
+  "name": "kubernetes-e2e-gce-scalability",
+  "path": "gs://kubernetes-jenkins/logs/kubernetes-e2e-gce-scalability/",
+  "gating": true
+}
