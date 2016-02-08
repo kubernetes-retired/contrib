@@ -34,7 +34,7 @@ import (
 
 const (
 	run_long = `Create and run a particular image, possibly replicated.
-Creates a replication controller or job to manage the created container(s).`
+Creates a deployment or job to manage the created container(s).`
 	run_example = `# Start a single instance of nginx.
 $ kubectl run nginx --image=nginx
 
@@ -50,7 +50,7 @@ $ kubectl run nginx --image=nginx --replicas=5
 # Dry run. Print the corresponding API objects without creating them.
 $ kubectl run nginx --image=nginx --dry-run
 
-# Start a single instance of nginx, but overload the spec of the replication controller with a partial set of values parsed from JSON.
+# Start a single instance of nginx, but overload the spec of the deployment with a partial set of values parsed from JSON.
 $ kubectl run nginx --image=nginx --overrides='{ "apiVersion": "v1", "spec": { ... } }'
 
 # Start a single instance of busybox and keep it in the foreground, don't restart it if it exits.
@@ -83,12 +83,12 @@ func NewCmdRun(f *cmdutil.Factory, cmdIn io.Reader, cmdOut, cmdErr io.Writer) *c
 	cmdutil.AddPrinterFlags(cmd)
 	addRunFlags(cmd)
 	cmdutil.AddApplyAnnotationFlags(cmd)
+	cmdutil.AddRecordFlag(cmd)
 	return cmd
 }
 
 func addRunFlags(cmd *cobra.Command) {
-	// TODO: Change the default to "deployment/v1beta1" (which is a valid generator) when deployment reaches beta (#15313)
-	cmd.Flags().String("generator", "", "The name of the API generator to use.  Default is 'run/v1' if --restart=Always, otherwise the default is 'job/v1beta1'.")
+	cmd.Flags().String("generator", "", "The name of the API generator to use.  Default is 'deployment/v1beta1' if --restart=Always, otherwise the default is 'job/v1beta1'.")
 	cmd.Flags().String("image", "", "The image for the container to run.")
 	cmd.MarkFlagRequired("image")
 	cmd.Flags().IntP("replicas", "r", 1, "Number of replicas to create for this container. Default is 1.")
@@ -103,7 +103,7 @@ func addRunFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("tty", false, "Allocated a TTY for each container in the pod.  Because -t is currently shorthand for --template, -t is not supported for --tty. This shorthand is deprecated and we expect to adopt -t for --tty soon.")
 	cmd.Flags().Bool("attach", false, "If true, wait for the Pod to start running, and then attach to the Pod as if 'kubectl attach ...' were called.  Default false, unless '-i/--interactive' is set, in which case the default is true.")
 	cmd.Flags().Bool("leave-stdin-open", false, "If the pod is started in interactive mode or with stdin, leave stdin open after the first attach completes. By default, stdin will be closed after the first attach completes.")
-	cmd.Flags().String("restart", "Always", "The restart policy for this Pod.  Legal values [Always, OnFailure, Never].  If set to 'Always' a replication controller is created for this pod, if set to OnFailure or Never, a job is created for this pod and --replicas must be 1.  Default 'Always'")
+	cmd.Flags().String("restart", "Always", "The restart policy for this Pod.  Legal values [Always, OnFailure, Never].  If set to 'Always' a deployment is created for this pod, if set to OnFailure or Never, a job is created for this pod and --replicas must be 1.  Default 'Always'")
 	cmd.Flags().Bool("command", false, "If true and extra arguments are present, use them as the 'command' field in the container, rather than the 'args' field which is the default.")
 	cmd.Flags().String("requests", "", "The resource requirement requests for this container.  For example, 'cpu=100m,memory=256Mi'")
 	cmd.Flags().String("limits", "", "The resource requirement limits for this container.  For example, 'cpu=200m,memory=512Mi'")
@@ -146,9 +146,8 @@ func Run(f *cmdutil.Factory, cmdIn io.Reader, cmdOut, cmdErr io.Writer, cmd *cob
 
 	generatorName := cmdutil.GetFlagString(cmd, "generator")
 	if len(generatorName) == 0 {
-		// TODO: Change the default to "deployment/v1beta1" when deployment reaches beta (#15313)
 		if restartPolicy == api.RestartPolicyAlways {
-			generatorName = "run/v1"
+			generatorName = "deployment/v1beta1"
 		} else {
 			generatorName = "job/v1beta1"
 		}
@@ -167,6 +166,11 @@ func Run(f *cmdutil.Factory, cmdIn io.Reader, cmdOut, cmdErr io.Writer, cmd *cob
 
 	params["env"] = cmdutil.GetFlagStringSlice(cmd, "env")
 
+	obj, _, mapper, mapping, err := createGeneratedObject(f, cmd, generator, names, params, cmdutil.GetFlagString(cmd, "overrides"), namespace)
+	if err != nil {
+		return err
+	}
+
 	if cmdutil.GetFlagBool(cmd, "expose") {
 		serviceGenerator := cmdutil.GetFlagString(cmd, "service-generator")
 		if len(serviceGenerator) == 0 {
@@ -175,11 +179,6 @@ func Run(f *cmdutil.Factory, cmdIn io.Reader, cmdOut, cmdErr io.Writer, cmd *cob
 		if err := generateService(f, cmd, args, serviceGenerator, params, namespace, cmdOut); err != nil {
 			return err
 		}
-	}
-
-	obj, _, mapper, mapping, err := createGeneratedObject(f, cmd, generator, names, params, cmdutil.GetFlagString(cmd, "overrides"), namespace)
-	if err != nil {
-		return err
 	}
 
 	attachFlag := cmd.Flags().Lookup("attach")
@@ -236,7 +235,7 @@ func Run(f *cmdutil.Factory, cmdIn io.Reader, cmdOut, cmdErr io.Writer, cmd *cob
 				return err
 			}
 			_, typer := f.Object()
-			r := resource.NewBuilder(mapper, typer, f.ClientMapperForCommand()).
+			r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 				ContinueOnError().
 				NamespaceParam(namespace).DefaultNamespace().
 				ResourceNames(mapping.Resource, name).
@@ -409,7 +408,8 @@ func createGeneratedObject(f *cmdutil.Factory, cmd *cobra.Command, generator kub
 	}
 
 	if len(overrides) > 0 {
-		obj, err = cmdutil.Merge(obj, overrides, groupVersionKind.Kind)
+		codec := runtime.NewCodec(f.JSONEncoder(), f.Decoder(true))
+		obj, err = cmdutil.Merge(codec, obj, overrides, groupVersionKind.Kind)
 		if err != nil {
 			return nil, "", nil, nil, err
 		}
@@ -419,20 +419,34 @@ func createGeneratedObject(f *cmdutil.Factory, cmd *cobra.Command, generator kub
 	if err != nil {
 		return nil, "", nil, nil, err
 	}
-	client, err := f.RESTClient(mapping)
+	client, err := f.ClientForMapping(mapping)
 	if err != nil {
 		return nil, "", nil, nil, err
 	}
 
+	annotations, err := mapping.MetadataAccessor.Annotations(obj)
+	if err != nil {
+		return nil, "", nil, nil, err
+	}
+	if cmdutil.GetRecordFlag(cmd) || len(annotations[kubectl.ChangeCauseAnnotation]) > 0 {
+		if err := cmdutil.RecordChangeCause(obj, f.Command()); err != nil {
+			return nil, "", nil, nil, err
+		}
+	}
 	// TODO: extract this flag to a central location, when such a location exists.
 	if !cmdutil.GetFlagBool(cmd, "dry-run") {
-		resourceMapper := &resource.Mapper{ObjectTyper: typer, RESTMapper: mapper, ClientMapper: f.ClientMapperForCommand()}
+		resourceMapper := &resource.Mapper{
+			ObjectTyper:  typer,
+			RESTMapper:   mapper,
+			ClientMapper: resource.ClientMapperFunc(f.ClientForMapping),
+			Decoder:      f.Decoder(true),
+		}
 		info, err := resourceMapper.InfoForObject(obj)
 		if err != nil {
 			return nil, "", nil, nil, err
 		}
 
-		if err := kubectl.CreateOrUpdateAnnotation(cmdutil.GetFlagBool(cmd, cmdutil.ApplyAnnotationsFlag), info); err != nil {
+		if err := kubectl.CreateOrUpdateAnnotation(cmdutil.GetFlagBool(cmd, cmdutil.ApplyAnnotationsFlag), info, f.JSONEncoder()); err != nil {
 			return nil, "", nil, nil, err
 		}
 

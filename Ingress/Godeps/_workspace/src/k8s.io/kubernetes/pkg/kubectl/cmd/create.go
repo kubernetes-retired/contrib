@@ -73,10 +73,12 @@ func NewCmdCreate(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmdutil.AddValidateFlags(cmd)
 	cmdutil.AddOutputFlagsForMutation(cmd)
 	cmdutil.AddApplyAnnotationFlags(cmd)
+	cmdutil.AddRecordFlag(cmd)
 
 	// create subcommands
 	cmd.AddCommand(NewCmdCreateNamespace(f, out))
 	cmd.AddCommand(NewCmdCreateSecret(f, out))
+	cmd.AddCommand(NewCmdCreateConfigMap(f, out))
 	return cmd
 }
 
@@ -99,7 +101,7 @@ func RunCreate(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, options *C
 	}
 
 	mapper, typer := f.Object()
-	r := resource.NewBuilder(mapper, typer, f.ClientMapperForCommand()).
+	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		Schema(schema).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -116,8 +118,14 @@ func RunCreate(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, options *C
 		if err != nil {
 			return err
 		}
-		if err := kubectl.CreateOrUpdateAnnotation(cmdutil.GetFlagBool(cmd, cmdutil.ApplyAnnotationsFlag), info); err != nil {
+		if err := kubectl.CreateOrUpdateAnnotation(cmdutil.GetFlagBool(cmd, cmdutil.ApplyAnnotationsFlag), info, f.JSONEncoder()); err != nil {
 			return cmdutil.AddSourceToErr("creating", info.Source, err)
+		}
+
+		if cmdutil.ShouldRecord(cmd, info) {
+			if err := cmdutil.RecordChangeCause(info.Object, f.Command()); err != nil {
+				return cmdutil.AddSourceToErr("creating", info.Source, err)
+			}
 		}
 
 		if err := createAndRefresh(info); err != nil {
@@ -218,16 +226,20 @@ func RunCreateSubcommand(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, 
 	if err != nil {
 		return err
 	}
-	client, err := f.RESTClient(mapping)
+	client, err := f.ClientForMapping(mapping)
 	if err != nil {
 		return err
 	}
-	resourceMapper := &resource.Mapper{ObjectTyper: typer, RESTMapper: mapper, ClientMapper: f.ClientMapperForCommand()}
+	resourceMapper := &resource.Mapper{
+		ObjectTyper:  typer,
+		RESTMapper:   mapper,
+		ClientMapper: resource.ClientMapperFunc(f.ClientForMapping),
+	}
 	info, err := resourceMapper.InfoForObject(obj)
 	if err != nil {
 		return err
 	}
-	if err := kubectl.UpdateApplyAnnotation(info); err != nil {
+	if err := kubectl.UpdateApplyAnnotation(info, f.JSONEncoder()); err != nil {
 		return err
 	}
 	if !options.DryRun {

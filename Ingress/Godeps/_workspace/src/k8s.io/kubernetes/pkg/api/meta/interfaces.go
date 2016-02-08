@@ -24,7 +24,6 @@ import (
 
 // VersionInterfaces contains the interfaces one should use for dealing with types of a particular version.
 type VersionInterfaces struct {
-	runtime.Codec
 	runtime.ObjectConvertor
 	MetadataAccessor
 }
@@ -142,7 +141,6 @@ type RESTMapping struct {
 	// Scope contains the information needed to deal with REST Resources that are in a resource hierarchy
 	Scope RESTScope
 
-	runtime.Codec
 	runtime.ObjectConvertor
 	MetadataAccessor
 }
@@ -174,7 +172,4 @@ type RESTMapper interface {
 
 	AliasesForResource(resource string) ([]string, bool)
 	ResourceSingularizer(resource string) (singular string, err error)
-
-	// ResourceIsValid takes a partial resource and returns back whether or not the resource matches at least one kind
-	ResourceIsValid(resource unversioned.GroupVersionResource) bool
 }

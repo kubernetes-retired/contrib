@@ -27,7 +27,6 @@ import (
 	"strings"
 
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -42,7 +41,7 @@ type ConversionGenerator interface {
 	AssumePrivateConversions()
 }
 
-func NewConversionGenerator(scheme *conversion.Scheme, targetPkg string) ConversionGenerator {
+func NewConversionGenerator(scheme *Scheme, targetPkg string) ConversionGenerator {
 	g := &conversionGenerator{
 		scheme: scheme,
 
@@ -50,7 +49,7 @@ func NewConversionGenerator(scheme *conversion.Scheme, targetPkg string) Convers
 		generatedNamePrefix: "auto",
 		targetPkg:           targetPkg,
 
-		publicFuncs:   make(map[typePair]string),
+		publicFuncs:   make(map[typePair]functionName),
 		convertibles:  make(map[reflect.Type]reflect.Type),
 		overridden:    make(map[reflect.Type]bool),
 		pkgOverwrites: make(map[string]string),
@@ -65,14 +64,19 @@ func NewConversionGenerator(scheme *conversion.Scheme, targetPkg string) Convers
 
 var complexTypes []reflect.Kind = []reflect.Kind{reflect.Map, reflect.Ptr, reflect.Slice, reflect.Interface, reflect.Struct}
 
+type functionName struct {
+	name        string
+	packageName string
+}
+
 type conversionGenerator struct {
-	scheme *conversion.Scheme
+	scheme *Scheme
 
 	nameFormat          string
 	generatedNamePrefix string
 	targetPkg           string
 
-	publicFuncs  map[typePair]string
+	publicFuncs  map[typePair]functionName
 	convertibles map[reflect.Type]reflect.Type
 	overridden   map[reflect.Type]bool
 	// If pkgOverwrites is set for a given package name, that package name
@@ -102,12 +106,10 @@ func (g *conversionGenerator) AddImport(pkg string) string {
 func (g *conversionGenerator) GenerateConversionsForType(gv unversioned.GroupVersion, reflection reflect.Type) error {
 	kind := reflection.Name()
 	// TODO this is equivalent to what it did before, but it needs to be fixed for the proper group
-	internalVersion, exists := g.scheme.InternalVersions[gv.Group]
-	if !exists {
-		return fmt.Errorf("no internal version for %v", gv)
-	}
+	internalVersion := gv
+	internalVersion.Version = APIVersionInternal
 
-	internalObj, err := g.scheme.NewObject(internalVersion.WithKind(kind))
+	internalObj, err := g.scheme.New(internalVersion.WithKind(kind))
 	if err != nil {
 		return fmt.Errorf("cannot create an object of type %v in internal version", kind)
 	}
@@ -249,15 +251,12 @@ func (g *conversionGenerator) rememberConversionFunction(inType, outType reflect
 			if last := strings.LastIndex(name, "."); last != -1 {
 				p = name[:last]
 				n = name[last+1:]
-				p = g.imports[p]
-				if len(p) > 0 {
-					p = p + "."
-				}
 			} else {
 				n = name
 			}
 			if isPublic(n) {
-				g.publicFuncs[typePair{inType, outType}] = p + n
+				g.AddImport(p)
+				g.publicFuncs[typePair{inType, outType}] = functionName{name: n, packageName: p}
 			} else {
 				log.Printf("WARNING: Cannot generate conversion %v -> %v, method %q is private", inType, outType, fn.Name())
 			}
@@ -265,7 +264,7 @@ func (g *conversionGenerator) rememberConversionFunction(inType, outType reflect
 			log.Printf("WARNING: Cannot generate conversion %v -> %v, method is not accessible", inType, outType)
 		}
 	} else if willGenerate {
-		g.publicFuncs[typePair{inType, outType}] = g.conversionFunctionName(inType, outType)
+		g.publicFuncs[typePair{inType, outType}] = functionName{name: g.conversionFunctionName(inType, outType)}
 	}
 }
 
@@ -576,7 +575,15 @@ func (g *conversionGenerator) conversionFunctionName(inType, outType reflect.Typ
 func (g *conversionGenerator) conversionFunctionCall(inType, outType reflect.Type, scopeName string, args ...string) string {
 	if named, ok := g.publicFuncs[typePair{inType, outType}]; ok {
 		args[len(args)-1] = scopeName
-		return fmt.Sprintf("%s(%s)", named, strings.Join(args, ", "))
+		name := named.name
+		localPackageName, ok := g.imports[named.packageName]
+		if !ok {
+			panic(fmt.Sprintf("have not defined an import for %s", named.packageName))
+		}
+		if len(named.packageName) > 0 && len(localPackageName) > 0 {
+			name = localPackageName + "." + name
+		}
+		return fmt.Sprintf("%s(%s)", name, strings.Join(args, ", "))
 	}
 	log.Printf("WARNING: Using reflection to convert %v -> %v (no public conversion)", inType, outType)
 	return fmt.Sprintf("%s.Convert(%s)", scopeName, strings.Join(args, ", "))
@@ -775,6 +782,10 @@ func (g *conversionGenerator) writeConversionForStruct(b *buffer, inType, outTyp
 			continue
 		}
 
+		if g.scheme.Converter().IsConversionIgnored(inField.Type, outField.Type) {
+			continue
+		}
+
 		existsConversion := g.scheme.Converter().HasConversionFunc(inField.Type, outField.Type)
 		_, hasPublicConversion := g.publicFuncs[typePair{inField.Type, outField.Type}]
 		// TODO: This allows a private conversion for a slice to take precedence over a public
@@ -895,12 +906,7 @@ type typePair struct {
 	outType reflect.Type
 }
 
-var defaultConversions []typePair = []typePair{
-	{reflect.TypeOf([]RawExtension{}), reflect.TypeOf([]Object{})},
-	{reflect.TypeOf([]Object{}), reflect.TypeOf([]RawExtension{})},
-	{reflect.TypeOf(RawExtension{}), reflect.TypeOf(EmbeddedObject{})},
-	{reflect.TypeOf(EmbeddedObject{}), reflect.TypeOf(RawExtension{})},
-}
+var defaultConversions []typePair = []typePair{}
 
 func (g *conversionGenerator) OverwritePackage(pkg, overwrite string) {
 	g.pkgOverwrites[pkg] = overwrite
