@@ -203,7 +203,7 @@ func (b *Backends) GC(svcNodePorts []int64) error {
 		if knownPorts.Has(portKey(nodePort)) {
 			continue
 		}
-		glog.Infof("GCing backend for port %v", p)
+		glog.V(3).Infof("GCing backend for port %v", p)
 		if err := b.Delete(nodePort); err != nil {
 			return err
 		}
