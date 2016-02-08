@@ -344,6 +344,11 @@ func (i *Instances) InstanceID(name string) (string, error) {
 	return "", nil
 }
 
+// InstanceType returns the type of the specified instance.
+func (i *Instances) InstanceType(name string) (string, error) {
+	return "", nil
+}
+
 func (i *Instances) AddSSHKeyToAllInstances(user string, keyData []byte) error {
 	return errors.New("unimplemented")
 }
@@ -367,7 +372,7 @@ func (os *Rackspace) ScrubDNS(nameservers, searches []string) (nsOut, srchOut []
 	return nameservers, searches
 }
 
-func (os *Rackspace) TCPLoadBalancer() (cloudprovider.TCPLoadBalancer, bool) {
+func (os *Rackspace) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
 	return nil, false
 }
 

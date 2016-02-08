@@ -46,6 +46,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/cloudprovider"
+	"k8s.io/kubernetes/pkg/types"
 )
 
 const ProviderName = "openstack"
@@ -352,58 +353,90 @@ func getServerByName(client *gophercloud.ServiceClient, name string) (*servers.S
 	return &serverList[0], nil
 }
 
-func findAddrs(netblob interface{}) []string {
-	// Run-time types for the win :(
-	ret := []string{}
-	list, ok := netblob.([]interface{})
-	if !ok {
-		return ret
+func getAddressesByName(client *gophercloud.ServiceClient, name string) ([]api.NodeAddress, error) {
+	srv, err := getServerByName(client, name)
+	if err != nil {
+		return nil, err
 	}
-	for _, item := range list {
-		props, ok := item.(map[string]interface{})
+
+	addrs := []api.NodeAddress{}
+
+	for network, netblob := range srv.Addresses {
+		list, ok := netblob.([]interface{})
 		if !ok {
 			continue
 		}
-		tmp, ok := props["addr"]
-		if !ok {
-			continue
+
+		for _, item := range list {
+			var addressType api.NodeAddressType
+
+			props, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			extIPType, ok := props["OS-EXT-IPS:type"]
+			if (ok && extIPType == "floating") || (!ok && network == "public") {
+				addressType = api.NodeExternalIP
+			} else {
+				addressType = api.NodeInternalIP
+			}
+
+			tmp, ok := props["addr"]
+			if !ok {
+				continue
+			}
+			addr, ok := tmp.(string)
+			if !ok {
+				continue
+			}
+
+			api.AddToNodeAddresses(&addrs,
+				api.NodeAddress{
+					Type:    addressType,
+					Address: addr,
+				},
+			)
 		}
-		addr, ok := tmp.(string)
-		if !ok {
-			continue
-		}
-		ret = append(ret, addr)
 	}
-	return ret
+
+	// AccessIPs are usually duplicates of "public" addresses.
+	if srv.AccessIPv4 != "" {
+		api.AddToNodeAddresses(&addrs,
+			api.NodeAddress{
+				Type:    api.NodeExternalIP,
+				Address: srv.AccessIPv4,
+			},
+		)
+	}
+
+	if srv.AccessIPv6 != "" {
+		api.AddToNodeAddresses(&addrs,
+			api.NodeAddress{
+				Type:    api.NodeExternalIP,
+				Address: srv.AccessIPv6,
+			},
+		)
+	}
+
+	return addrs, nil
 }
 
-func getAddressByName(api *gophercloud.ServiceClient, name string) (string, error) {
-	srv, err := getServerByName(api, name)
+func getAddressByName(client *gophercloud.ServiceClient, name string) (string, error) {
+	addrs, err := getAddressesByName(client, name)
 	if err != nil {
 		return "", err
-	}
-
-	var s string
-	if s == "" {
-		if tmp := findAddrs(srv.Addresses["private"]); len(tmp) >= 1 {
-			s = tmp[0]
-		}
-	}
-	if s == "" {
-		if tmp := findAddrs(srv.Addresses["public"]); len(tmp) >= 1 {
-			s = tmp[0]
-		}
-	}
-	if s == "" {
-		s = srv.AccessIPv4
-	}
-	if s == "" {
-		s = srv.AccessIPv6
-	}
-	if s == "" {
+	} else if len(addrs) == 0 {
 		return "", ErrNoAddressFound
 	}
-	return s, nil
+
+	for _, addr := range addrs {
+		if addr.Type == api.NodeInternalIP {
+			return addr.Address, nil
+		}
+	}
+
+	return addrs[0].Address, nil
 }
 
 // Implementation of Instances.CurrentNodeName
@@ -418,38 +451,10 @@ func (i *Instances) AddSSHKeyToAllInstances(user string, keyData []byte) error {
 func (i *Instances) NodeAddresses(name string) ([]api.NodeAddress, error) {
 	glog.V(4).Infof("NodeAddresses(%v) called", name)
 
-	srv, err := getServerByName(i.compute, name)
+	addrs, err := getAddressesByName(i.compute, name)
 	if err != nil {
 		return nil, err
 	}
-
-	addrs := []api.NodeAddress{}
-
-	for _, addr := range findAddrs(srv.Addresses["private"]) {
-		addrs = append(addrs, api.NodeAddress{
-			Type:    api.NodeInternalIP,
-			Address: addr,
-		})
-	}
-
-	for _, addr := range findAddrs(srv.Addresses["public"]) {
-		addrs = append(addrs, api.NodeAddress{
-			Type:    api.NodeExternalIP,
-			Address: addr,
-		})
-	}
-
-	// AccessIPs are usually duplicates of "public" addresses.
-	api.AddToNodeAddresses(&addrs,
-		api.NodeAddress{
-			Type:    api.NodeExternalIP,
-			Address: srv.AccessIPv6,
-		},
-		api.NodeAddress{
-			Type:    api.NodeExternalIP,
-			Address: srv.AccessIPv4,
-		},
-	)
 
 	glog.V(4).Infof("NodeAddresses(%v) => %v", name, addrs)
 	return addrs, nil
@@ -475,6 +480,11 @@ func (i *Instances) InstanceID(name string) (string, error) {
 	return "/" + srv.ID, nil
 }
 
+// InstanceType returns the type of the specified instance.
+func (i *Instances) InstanceType(name string) (string, error) {
+	return "", nil
+}
+
 func (os *OpenStack) Clusters() (cloudprovider.Clusters, bool) {
 	return nil, false
 }
@@ -495,8 +505,8 @@ type LoadBalancer struct {
 	opts    LoadBalancerOpts
 }
 
-func (os *OpenStack) TCPLoadBalancer() (cloudprovider.TCPLoadBalancer, bool) {
-	glog.V(4).Info("openstack.TCPLoadBalancer() called")
+func (os *OpenStack) LoadBalancer() (cloudprovider.LoadBalancer, bool) {
+	glog.V(4).Info("openstack.LoadBalancer() called")
 
 	// TODO: Search for and support Rackspace loadbalancer API, and others.
 	network, err := openstack.NewNetworkV2(os.provider, gophercloud.EndpointOpts{
@@ -515,7 +525,7 @@ func (os *OpenStack) TCPLoadBalancer() (cloudprovider.TCPLoadBalancer, bool) {
 		return nil, false
 	}
 
-	glog.V(1).Info("Claiming to support TCPLoadBalancer")
+	glog.V(1).Info("Claiming to support LoadBalancer")
 
 	return &LoadBalancer{network, compute, os.lbOpts}, true
 }
@@ -630,7 +640,7 @@ func getFloatingIPByPortID(client *gophercloud.ServiceClient, portID string) (*f
 	return &floatingIPList[0], nil
 }
 
-func (lb *LoadBalancer) GetTCPLoadBalancer(name, region string) (*api.LoadBalancerStatus, bool, error) {
+func (lb *LoadBalancer) GetLoadBalancer(name, region string) (*api.LoadBalancerStatus, bool, error) {
 	vip, err := getVipByName(lb.network, name)
 	if err == ErrNotFound {
 		return nil, false, nil
@@ -650,11 +660,19 @@ func (lb *LoadBalancer) GetTCPLoadBalancer(name, region string) (*api.LoadBalanc
 // a list of regions (from config) and query/create loadbalancers in
 // each region.
 
-func (lb *LoadBalancer) EnsureTCPLoadBalancer(name, region string, loadBalancerIP net.IP, ports []*api.ServicePort, hosts []string, affinity api.ServiceAffinity) (*api.LoadBalancerStatus, error) {
-	glog.V(4).Infof("EnsureTCPLoadBalancer(%v, %v, %v, %v, %v, %v)", name, region, loadBalancerIP, ports, hosts, affinity)
+func (lb *LoadBalancer) EnsureLoadBalancer(name, region string, loadBalancerIP net.IP, ports []*api.ServicePort, hosts []string, serviceName types.NamespacedName, affinity api.ServiceAffinity) (*api.LoadBalancerStatus, error) {
+	glog.V(4).Infof("EnsureLoadBalancer(%v, %v, %v, %v, %v, %v)", name, region, loadBalancerIP, ports, hosts, serviceName)
 
 	if len(ports) > 1 {
 		return nil, fmt.Errorf("multiple ports are not yet supported in openstack load balancers")
+	} else if len(ports) == 0 {
+		return nil, fmt.Errorf("no ports provided to openstack load balancer")
+	}
+
+	// The service controller verified all the protocols match on the ports, just check and use the first one
+	// TODO: Convert all error messages to use an event recorder
+	if ports[0].Protocol != api.ProtocolTCP {
+		return nil, fmt.Errorf("Only TCP LoadBalancer is supported for openstack load balancers")
 	}
 
 	var persistence *vips.SessionPersistence
@@ -667,8 +685,8 @@ func (lb *LoadBalancer) EnsureTCPLoadBalancer(name, region string, loadBalancerI
 		return nil, fmt.Errorf("unsupported load balancer affinity: %v", affinity)
 	}
 
-	glog.V(2).Info("Checking if openstack load balancer already exists: %s", name)
-	_, exists, err := lb.GetTCPLoadBalancer(name, region)
+	glog.V(2).Infof("Checking if openstack load balancer already exists: %s", name)
+	_, exists, err := lb.GetLoadBalancer(name, region)
 	if err != nil {
 		return nil, fmt.Errorf("error checking if openstack load balancer already exists: %v", err)
 	}
@@ -676,7 +694,7 @@ func (lb *LoadBalancer) EnsureTCPLoadBalancer(name, region string, loadBalancerI
 	// TODO: Implement a more efficient update strategy for common changes than delete & create
 	// In particular, if we implement hosts update, we can get rid of UpdateHosts
 	if exists {
-		err := lb.EnsureTCPLoadBalancerDeleted(name, region)
+		err := lb.EnsureLoadBalancerDeleted(name, region)
 		if err != nil {
 			return nil, fmt.Errorf("error deleting existing openstack load balancer: %v", err)
 		}
@@ -777,8 +795,8 @@ func (lb *LoadBalancer) EnsureTCPLoadBalancer(name, region string, loadBalancerI
 
 }
 
-func (lb *LoadBalancer) UpdateTCPLoadBalancer(name, region string, hosts []string) error {
-	glog.V(4).Infof("UpdateTCPLoadBalancer(%v, %v, %v)", name, region, hosts)
+func (lb *LoadBalancer) UpdateLoadBalancer(name, region string, hosts []string) error {
+	glog.V(4).Infof("UpdateLoadBalancer(%v, %v, %v)", name, region, hosts)
 
 	vip, err := getVipByName(lb.network, name)
 	if err != nil {
@@ -838,8 +856,8 @@ func (lb *LoadBalancer) UpdateTCPLoadBalancer(name, region string, hosts []strin
 	return nil
 }
 
-func (lb *LoadBalancer) EnsureTCPLoadBalancerDeleted(name, region string) error {
-	glog.V(4).Infof("EnsureTCPLoadBalancerDeleted(%v, %v)", name, region)
+func (lb *LoadBalancer) EnsureLoadBalancerDeleted(name, region string) error {
+	glog.V(4).Infof("EnsureLoadBalancerDeleted(%v, %v)", name, region)
 
 	vip, err := getVipByName(lb.network, name)
 	if err != nil && err != ErrNotFound {
@@ -1025,7 +1043,7 @@ func (os *OpenStack) getVolume(diskName string) (volumes.Volume, error) {
 }
 
 // Create a volume of given size (in GiB)
-func (os *OpenStack) CreateVolume(size int) (volumeName string, err error) {
+func (os *OpenStack) CreateVolume(name string, size int, tags *map[string]string) (volumeName string, err error) {
 
 	sClient, err := openstack.NewBlockStorageV1(os.provider, gophercloud.EndpointOpts{
 		Region: os.region,
@@ -1036,7 +1054,13 @@ func (os *OpenStack) CreateVolume(size int) (volumeName string, err error) {
 		return "", err
 	}
 
-	opts := volumes.CreateOpts{Size: size}
+	opts := volumes.CreateOpts{
+		Name: name,
+		Size: size,
+	}
+	if tags != nil {
+		opts.Metadata = *tags
+	}
 	vol, err := volumes.Create(sClient, opts).Extract()
 	if err != nil {
 		glog.Errorf("Failed to create a %d GB volume: %v", size, err)

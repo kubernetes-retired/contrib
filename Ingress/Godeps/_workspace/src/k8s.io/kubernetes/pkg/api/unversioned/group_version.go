@@ -24,6 +24,8 @@ import (
 
 // GroupResource specifies a Group and a Resource, but does not force a version.  This is useful for identifying
 // concepts during lookup stages without having partially valid types
+//
+// +protobuf.options.(gogoproto.goproto_stringer)=false
 type GroupResource struct {
 	Group    string
 	Resource string
@@ -46,10 +48,16 @@ func (gr *GroupResource) String() string {
 
 // GroupVersionResource unambiguously identifies a resource.  It doesn't anonymously include GroupVersion
 // to avoid automatic coersion.  It doesn't use a GroupVersion to avoid custom marshalling
+//
+// +protobuf.options.(gogoproto.goproto_stringer)=false
 type GroupVersionResource struct {
 	Group    string
 	Version  string
 	Resource string
+}
+
+func (gvr GroupVersionResource) IsEmpty() bool {
+	return len(gvr.Group) == 0 && len(gvr.Version) == 0 && len(gvr.Resource) == 0
 }
 
 func (gvr GroupVersionResource) GroupResource() GroupResource {
@@ -137,11 +145,13 @@ func (gv GroupVersion) String() string {
 	}
 
 	// special case of "v1" for backward compatibility
-	if gv.Group == "" && gv.Version == "v1" {
+	if len(gv.Group) == 0 && gv.Version == "v1" {
 		return gv.Version
-	} else {
+	}
+	if len(gv.Group) > 0 {
 		return gv.Group + "/" + gv.Version
 	}
+	return gv.Version
 }
 
 // ParseGroupVersion turns "group/version" string into a GroupVersion struct. It reports error
@@ -159,6 +169,8 @@ func ParseGroupVersion(gv string) (GroupVersion, error) {
 	switch {
 	case len(s) == 1 && gv == "v1":
 		return GroupVersion{"", "v1"}, nil
+	case len(s) == 1:
+		return GroupVersion{"", s[0]}, nil
 	case len(s) == 2:
 		return GroupVersion{s[0], s[1]}, nil
 	default:

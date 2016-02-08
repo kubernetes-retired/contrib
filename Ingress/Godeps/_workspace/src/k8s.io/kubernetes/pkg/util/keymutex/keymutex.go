@@ -22,9 +22,9 @@ import (
 	"sync"
 )
 
-// KeyMutex is a thread-safe interface for aquiring locks on arbitrary strings.
+// KeyMutex is a thread-safe interface for acquiring locks on arbitrary strings.
 type KeyMutex interface {
-	// Aquires a lock associated with the specified ID, creates the lock if one doesn't already exist.
+	// Acquires a lock associated with the specified ID, creates the lock if one doesn't already exist.
 	LockKey(id string)
 
 	// Releases the lock associated with the specified ID.
@@ -44,7 +44,7 @@ type keyMutex struct {
 	mutexMap map[string]*sync.Mutex
 }
 
-// Aquires a lock associated with the specified ID (creates the lock if one doesn't already exist).
+// Acquires a lock associated with the specified ID (creates the lock if one doesn't already exist).
 func (km *keyMutex) LockKey(id string) {
 	glog.V(5).Infof("LockKey(...) called for id %q\r\n", id)
 	mutex := km.getOrCreateLock(id)
