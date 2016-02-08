@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	compute "google.golang.org/api/compute/v1"
@@ -32,6 +33,24 @@ import (
 
 	"github.com/golang/glog"
 )
+
+const allowHTTPKey = "kubernetes.io/ingress.allowHTTP"
+
+// ingAnnotations represents Ingress annotations.
+type ingAnnotations map[string]string
+
+// allowHTTP returns the allowHTTP flag. True by default.
+func (ing ingAnnotations) allowHTTP() bool {
+	val, ok := ing[allowHTTPKey]
+	if !ok {
+		return true
+	}
+	v, err := strconv.ParseBool(val)
+	if err != nil {
+		return true
+	}
+	return v
+}
 
 // errorNodePortNotFound is an implementation of error.
 type errorNodePortNotFound struct {
@@ -82,7 +101,7 @@ func (t *taskQueue) worker() {
 			close(t.workerDone)
 			return
 		}
-		glog.Infof("Syncing %v", key)
+		glog.V(3).Infof("Syncing %v", key)
 		t.sync(key.(string))
 		t.queue.Done(key)
 	}

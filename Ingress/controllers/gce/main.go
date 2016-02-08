@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	go_flag "flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -56,7 +57,7 @@ const (
 	alphaNumericChar = "0"
 
 	// Current docker image version. Only used in debug logging.
-	imageVersion = "glbc_rc:0.6"
+	imageVersion = "glbc:0.6.0"
 )
 
 var (
@@ -101,6 +102,9 @@ var (
 
 	watchNamespace = flags.String("watch-namespace", api.NamespaceAll,
 		`Namespace to watch for Ingress/Services/Endpoints.`)
+
+	verbose = flags.Bool("verbose", false,
+		`If true, logs are displayed at V(4), otherwise V(2).`)
 )
 
 func registerHandlers(lbc *controller.LoadBalancerController) {
@@ -147,6 +151,11 @@ func main() {
 	flags.Parse(os.Args)
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
+	// Set glog verbosity levels
+	if *verbose {
+		go_flag.Lookup("logtostderr").Value.Set("true")
+		go_flag.Set("v", "4")
+	}
 	glog.Infof("Starting GLBC image: %v", imageVersion)
 	if *defaultSvc == "" {
 		glog.Fatalf("Please specify --default-backend")
@@ -155,8 +164,8 @@ func main() {
 	if *proxyUrl != "" {
 		// Create proxy kubeclient
 		kubeClient = client.NewOrDie(&client.Config{
-			Host:         *proxyUrl,
-			GroupVersion: &unversioned.GroupVersion{Version: "v1"},
+			Host:          *proxyUrl,
+			ContentConfig: client.ContentConfig{GroupVersion: &unversioned.GroupVersion{Version: "v1"}},
 		})
 	} else {
 		// Create kubeclient
@@ -202,7 +211,7 @@ func main() {
 		glog.Fatalf("%v", err)
 	}
 	if clusterManager.ClusterNamer.ClusterName != "" {
-		glog.Infof("Cluster name %+v", clusterManager.ClusterNamer.ClusterName)
+		glog.V(3).Infof("Cluster name %+v", clusterManager.ClusterNamer.ClusterName)
 	}
 	go registerHandlers(lbc)
 	go handleSigterm(lbc, *deleteAllOnQuit)
@@ -217,7 +226,7 @@ func main() {
 // getNodePort waits for the Service, and returns it's first node port.
 func getNodePort(client *client.Client, ns, name string) (nodePort int64, err error) {
 	var svc *api.Service
-	glog.Infof("Waiting for %v/%v", ns, name)
+	glog.V(3).Infof("Waiting for %v/%v", ns, name)
 	wait.Poll(1*time.Second, 5*time.Minute, func() (bool, error) {
 		svc, err = client.Services(ns).Get(name)
 		if err != nil {
@@ -226,7 +235,7 @@ func getNodePort(client *client.Client, ns, name string) (nodePort int64, err er
 		for _, p := range svc.Spec.Ports {
 			if p.NodePort != 0 {
 				nodePort = int64(p.NodePort)
-				glog.Infof("Node port %v", nodePort)
+				glog.V(3).Infof("Node port %v", nodePort)
 				break
 			}
 		}

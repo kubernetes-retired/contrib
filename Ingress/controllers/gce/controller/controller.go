@@ -155,7 +155,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 		&api.Node{}, 0, nodeHandlers)
 
 	lbc.tr = &GCETranslator{&lbc}
-	glog.Infof("Created new loadbalancer controller")
+	glog.V(3).Infof("Created new loadbalancer controller")
 
 	return &lbc, nil
 }
@@ -177,7 +177,7 @@ func (lbc *LoadBalancerController) enqueueIngressForService(obj interface{}) {
 	svc := obj.(*api.Service)
 	ings, err := lbc.ingLister.GetServiceIngress(svc)
 	if err != nil {
-		glog.V(3).Infof("ignoring service %v: %v", svc.Name, err)
+		glog.V(5).Infof("ignoring service %v: %v", svc.Name, err)
 		return
 	}
 	for _, ing := range ings {
@@ -357,7 +357,11 @@ func (lbc *LoadBalancerController) ListRuntimeInfo() (lbs []*loadbalancers.L7Run
 		if err != nil {
 			glog.Warningf("Cannot get certs for Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
 		}
-		lbs = append(lbs, &loadbalancers.L7RuntimeInfo{Name: k, TLS: tls})
+		lbs = append(lbs, &loadbalancers.L7RuntimeInfo{
+			Name:      k,
+			TLS:       tls,
+			AllowHTTP: ingAnnotations(ing.ObjectMeta.Annotations).allowHTTP(),
+		})
 	}
 	return lbs, nil
 }
