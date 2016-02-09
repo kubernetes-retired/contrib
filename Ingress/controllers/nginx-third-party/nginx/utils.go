@@ -37,10 +37,10 @@ func (ngx *NginxManager) SyncIngress(ingList []interface{}) error {
 	if err != nil {
 		return err
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
 		body, _ := ioutil.ReadAll(res.Body)
-		defer req.Body.Close()
 		glog.Errorf("Error: %v", string(body))
 		return fmt.Errorf("nginx status is unhealthy")
 	}
@@ -55,6 +55,7 @@ func (ngx *NginxManager) IsHealthy() error {
 	if err != nil {
 		return err
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
 		return fmt.Errorf("nginx status is unhealthy")

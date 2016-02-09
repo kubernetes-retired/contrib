@@ -266,7 +266,7 @@ func newDefaultNginxCfg() *nginxConfiguration {
 }
 
 // NewManager ...
-func NewManager(kubeClient *client.Client, defaultSvc, customErrorSvc Service, namespace string) *NginxManager {
+func NewManager(kubeClient *client.Client, defaultSvc, customErrorSvc Service) *NginxManager {
 	ngx := &NginxManager{
 		ConfigFile:      "/etc/nginx/nginx.conf",
 		defBackend:      defaultSvc,
