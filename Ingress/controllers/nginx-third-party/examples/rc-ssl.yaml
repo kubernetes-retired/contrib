@@ -23,7 +23,7 @@ spec:
         secret:
           secretName: secret-echoheaders-1
       containers:
-      - image: aledbf/nginx-third-party:0.1
+      - image: aledbf/nginx-third-party:0.2
         name: nginx-ingress-lb
         imagePullPolicy: Always
         livenessProbe:
