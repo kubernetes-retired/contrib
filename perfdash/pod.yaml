@@ -5,10 +5,10 @@ metadata:
   namespace: default
   labels:
     app: perfdash
-    version: "0.1"
+    version: "0.3"
 spec:
   containers:
-  - image: gcr.io/google_containers/perfdash:0.1
+  - image: gcr.io/google_containers/perfdash:0.3
     command:
       - /perfdash
       -   --jenkins-host=http://jenkins-master:8080
@@ -26,4 +26,11 @@ spec:
         port: 8080
       initialDelaySeconds: 10
       timeoutSeconds: 1
+    resources:
+      requests:
+        cpu: 300m
+        memory: 300Mi
+      limits:
+        cpu: 300m
+        memory: 300Mi
   restartPolicy: OnFailure
