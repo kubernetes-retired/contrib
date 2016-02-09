@@ -57,7 +57,10 @@ type TestToHistogram map[string]ResourceToHistogram
 // BuildLatencyData is a map from build number to latency data
 type BuildLatencyData map[string]ResourceToHistogram
 
-func (buildLatency *BuildLatencyData) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+// TestToBuildData is a map from test name to BuildLatencyData
+type TestToBuildData map[string]BuildLatencyData
+
+func (buildLatency *TestToBuildData) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	data, err := json.Marshal(buildLatency)
 	if err != nil {
 		res.Header().Set("Content-type", "text/html")
@@ -76,8 +79,13 @@ const (
 	processing = iota
 )
 
+var descriptionToName = map[string]string{
+	"should allow starting 30 pods per node":    "Density",
+	"should be able to handle 30 pods per node": "Load",
+}
+
 // Assumes that *resources* and *methods* are already initialized.
-func parseTestOutput(scanner *bufio.Scanner, buildNumber int, resources sets.String, methods sets.String) ResourceToHistogram {
+func parseTestOutput(scanner *bufio.Scanner, buildNumber int, resources sets.String, methods sets.String) TestToHistogram {
 	buff := &bytes.Buffer{}
 	hist := TestToHistogram{}
 	state := scanning
@@ -87,7 +95,11 @@ func parseTestOutput(scanner *bufio.Scanner, buildNumber int, resources sets.Str
 		line := scanner.Text()
 		if strings.Contains(line, testNameSeparator) {
 			state = inTest
-			testName = strings.Trim(strings.Split(line, testNameSeparator)[1], " ")
+			var ok bool
+			testName, ok = descriptionToName[strings.Trim(strings.Split(line, testNameSeparator)[1], " ")]
+			if !ok {
+				testName = "Unknown"
+			}
 			hist[testName] = make(ResourceToHistogram)
 		}
 		if state == processing {
@@ -119,11 +131,11 @@ func parseTestOutput(scanner *bufio.Scanner, buildNumber int, resources sets.Str
 			buff.WriteString(line + " ")
 		}
 	}
-	return hist["should allow starting 30 pods per node"]
+	return hist
 }
 
-func getLatencyData(client *jenkins.JenkinsClient, job string) (BuildLatencyData, sets.String, sets.String, error) {
-	buildLatency := BuildLatencyData{}
+func getLatencyData(client *jenkins.JenkinsClient, job string) (TestToBuildData, sets.String, sets.String, error) {
+	buildLatency := TestToBuildData{}
 	resources := sets.NewString()
 	methods := sets.NewString()
 
@@ -146,8 +158,11 @@ func getLatencyData(client *jenkins.JenkinsClient, job string) (BuildLatencyData
 		scanner := bufio.NewScanner(reader)
 		hist := parseTestOutput(scanner, build.Number, resources, methods)
 
-		if len(hist) > 0 {
-			buildLatency[fmt.Sprintf("%d", build.Number)] = hist
+		for k, v := range hist {
+			if _, ok := buildLatency[k]; !ok {
+				buildLatency[k] = make(BuildLatencyData)
+			}
+			buildLatency[k][fmt.Sprintf("%d", build.Number)] = v
 		}
 	}
 	return buildLatency, resources, methods, nil
@@ -217,11 +232,13 @@ func main() {
 			fmt.Printf("Failed to get data: %v\n", err)
 			os.Exit(1)
 		}
-		generateCSV(buildLatency, resources, methods, os.Stdout)
+		for _, v := range buildLatency {
+			generateCSV(v, resources, methods, os.Stdout)
+		}
 		return
 	}
 
-	buildLatency := BuildLatencyData{}
+	buildLatency := TestToBuildData{}
 	resources := sets.String{}
 	methods := sets.String{}
 	var err error
