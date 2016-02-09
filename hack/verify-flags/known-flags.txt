@@ -45,6 +45,7 @@ shame-cc
 shame-from
 shame-report-cmd
 source-file
+start-from
 stats-port
 sync-period
 tcp-services
