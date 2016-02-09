@@ -12,7 +12,8 @@
 	</a>
       </md-toolbar>
       <div id="content" class="md-whiteframe-z2" style="padding: 20px">
-	<div style="width: 200px">
+
+	<div style="width: 200px; display: inline-block;">
 	  <md-input-container>
 	    <md-select placeholder="Resource" ng-model="controller.selectedResource"  ng-change="controller.resourceChanged()">
 	      <md-option ng-value="resource" ng-repeat="resource in controller.resources">
@@ -22,11 +23,21 @@
 	  </md-input-container>
 	</div>
 
-	<div style="width: 200px">
+	<div style="width: 200px; display: inline-block;">
 	  <md-input-container>
 	    <md-select placeholder="Verb" ng-model="controller.selectedVerb"  ng-change="controller.resourceChanged()">
 	      <md-option ng-value="verb" ng-repeat="verb in controller.verbs">
 		{{verb}}
+	      </md-option>
+	    </md-select>
+	  </md-input-container>
+	</div>
+
+	<div style="width: 200px; display: inline-block;">
+	  <md-input-container>
+	    <md-select placeholder="TestName" ng-model="controller.testName"  ng-change="controller.testNameChanged()">
+	      <md-option ng-value="testName" ng-repeat="testName in controller.testNames">
+		{{testName}}
 	      </md-option>
 	    </md-select>
 	  </md-input-container>
