@@ -21,7 +21,9 @@ var PerfDashApp = function(http, scope) {
     this.scope = scope;
     this.selectedResource = "pods";
     this.selectedVerb = "GET";
+    this.testNames = [];
     this.series = [ "Perc99", "Perc90", "Perc50" ];
+    this.allData = null;
 };
 
 PerfDashApp.prototype.onClick = function(data) {
@@ -33,40 +35,47 @@ PerfDashApp.prototype.onClick = function(data) {
 PerfDashApp.prototype.refresh = function() {
     this.http.get("api")
     .success(function(data) {
-	    this.data = data;
-	    this.labels = this.getLabels();
-	    this.resources = this.getResources();
-	    this.verbs = this.getVerbs();
-	    this.resourceChanged();
-	}.bind(this))
+        this.testNames = Object.keys(data);
+        this.testName = this.testNames[0];
+        this.allData = data;
+        this.testNameChanged();
+        this.labels = this.getLabels();
+        this.resources = this.getResources();
+        this.verbs = this.getVerbs();
+    }.bind(this))
     .error(function(data) {
-            console.log("error fetching api");
-	    console.log(data);
-	});
+        console.log("error fetching api");
+        console.log(data);
+    });
 };
 
 // Update the data to graph, using the selected resource and verb
 PerfDashApp.prototype.resourceChanged = function() {
     this.seriesData = [
         this.getStream(this.getData(this.selectedResource, this.selectedVerb), "Perc99"),
-	this.getStream(this.getData(this.selectedResource, this.selectedVerb), "Perc90"),
-	this.getStream(this.getData(this.selectedResource, this.selectedVerb), "Perc50")
+        this.getStream(this.getData(this.selectedResource, this.selectedVerb), "Perc90"),
+        this.getStream(this.getData(this.selectedResource, this.selectedVerb), "Perc50")
     ];
 };
-		       
+
+// Update the data to graph, using the selected testName
+PerfDashApp.prototype.testNameChanged = function() {
+    this.data = this.allData[this.testName];
+    this.resourceChanged();
+};
 
 // Get the set of all resources (e.g. 'pods') in the data set
 PerfDashApp.prototype.getResources = function() {
     var set = {};
     angular.forEach(this.data, function(value, key) {
-	    angular.forEach(value, function(v, k) {
-		    set[k] = true;
-		})
-	});
+        angular.forEach(value, function(v, k) {
+            set[k] = true;
+        })
+    });
     var result = [];
     angular.forEach(set, function(value, key) {
-	    result.push(key);
-	})
+        result.push(key);
+    })
     return result;
 };
 
@@ -74,16 +83,16 @@ PerfDashApp.prototype.getResources = function() {
 PerfDashApp.prototype.getVerbs = function() {
     var set = {};
     angular.forEach(this.data, function(value, key) {
-	    angular.forEach(value, function(v, k) {
-		    angular.forEach(v, function(val) {
-			    set[val.verb] = true;
-			});
-		});
-	});
+        angular.forEach(value, function(v, k) {
+            angular.forEach(v, function(val) {
+                set[val.verb] = true;
+            });
+        });
+    });
     var result = [];
     angular.forEach(set, function(value, key) {
-	    result.push(key);
-	})
+        result.push(key);
+    })
     return result;
 };
 
@@ -92,8 +101,8 @@ PerfDashApp.prototype.getVerbs = function() {
 PerfDashApp.prototype.getLabels = function() {
     var result = [];
     angular.forEach(this.data, function(value, key) {
-	    result.push(key);
-	})
+        result.push(key);
+    })
     return result;
 };
 
@@ -103,13 +112,13 @@ PerfDashApp.prototype.getLabels = function() {
 PerfDashApp.prototype.getData = function(object, verb) {
     var result = [];
     angular.forEach(this.data, function(value, key) {
-	    var dataSet = value[object];
-	    angular.forEach(dataSet, function(latency) {
-		    if (latency.verb == verb) {
-			result.push(latency);
-		    }
-		});
-	});
+        var dataSet = value[object];
+        angular.forEach(dataSet, function(latency) {
+            if (latency.verb == verb) {
+                result.push(latency);
+            }
+        });
+    });
     return result;
 };
 
@@ -119,8 +128,8 @@ PerfDashApp.prototype.getData = function(object, verb) {
 PerfDashApp.prototype.getStream = function(data, stream) {
     var result = [];
     angular.forEach(data, function(value) {
-	    result.push(value.latency[stream] / 1000000);
-	});
+        result.push(value.latency[stream] / 1000000);
+    });
     return result;
 };
 
