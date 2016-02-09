@@ -116,13 +116,13 @@ func NewLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 	lbc.ingQueue = NewTaskQueue(lbc.syncIngress)
 	lbc.configQueue = NewTaskQueue(lbc.syncConfig)
 
-	lbc.ngx = nginx.NewManager(kubeClient, defaultSvc, customErrorSvc, namespace)
+	lbc.ngx = nginx.NewManager(kubeClient, defaultSvc, customErrorSvc)
 
 	// Ingress watch handlers
 	pathHandlers := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			addIng := obj.(*extensions.Ingress)
-			lbc.recorder.Eventf(addIng, "ADD", addIng.Name, fmt.Sprintf("Adding ingress %s", addIng.Name))
+			lbc.recorder.Eventf(addIng, api.EventTypeNormal, "ADD", fmt.Sprintf("Adding ingress %s/%s", addIng.Namespace, addIng.Name))
 			lbc.ingQueue.enqueue(obj)
 		},
 		DeleteFunc: lbc.ingQueue.enqueue,
@@ -210,7 +210,7 @@ func (lbc *loadBalancerController) syncIngress(key string) {
 
 	ing := *obj.(*extensions.Ingress)
 	if err := lbc.updateIngressStatus(ing); err != nil {
-		lbc.recorder.Eventf(&ing, "Status", "ERROR", err.Error())
+		lbc.recorder.Eventf(&ing, api.EventTypeWarning, "Status", err.Error())
 		lbc.ingQueue.requeue(key, err)
 	}
 	return
@@ -272,7 +272,7 @@ func (lbc *loadBalancerController) updateIngressStatus(ing extensions.Ingress) e
 	}
 
 	glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, ip)
-	lbc.recorder.Eventf(currIng, "CREATE", "ip: %v", ip)
+	lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", ip)
 	return nil
 }
 
