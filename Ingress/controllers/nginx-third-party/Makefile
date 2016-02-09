@@ -1,7 +1,7 @@
 all: push
 
 # 0.0 shouldn't clobber any release builds
-TAG = 0.1
+TAG = 0.2
 PREFIX = aledbf/nginx-third-party
 
 controller: controller.go clean
