@@ -29,7 +29,6 @@ import (
 	"time"
 
 	// TODO: move this somewhere central
-	"k8s.io/contrib/mungegithub/mungers/jenkins"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -73,10 +72,17 @@ func (buildLatency *TestToBuildData) ServeHTTP(res http.ResponseWriter, req *htt
 	res.Write(data)
 }
 
+// states of parsing machine
 const (
 	scanning   = iota
 	inTest     = iota
 	processing = iota
+)
+
+// constants to use for downloading data.
+const (
+	urlPrefix = "https://storage.googleapis.com/kubernetes-jenkins/logs/kubernetes-e2e-gce-scalability/"
+	urlSuffix = "/build-log.txt"
 )
 
 var descriptionToName = map[string]string{
@@ -107,7 +113,7 @@ func parseTestOutput(scanner *bufio.Scanner, buildNumber int, resources sets.Str
 			if strings.Contains(line, "INFO") || strings.Contains(line, "STEP") || strings.Contains(line, "Failure") || strings.Contains(line, "[AfterEach]") {
 				obj := LatencyData{}
 				if err := json.Unmarshal(buff.Bytes(), &obj); err != nil {
-					fmt.Printf("error parsing JSON in build %d: %v %s\n", buildNumber, err, buff.String())
+					fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, buff.String())
 					// reset state and try again with more input
 					state = scanning
 					continue
@@ -134,37 +140,50 @@ func parseTestOutput(scanner *bufio.Scanner, buildNumber int, resources sets.Str
 	return hist
 }
 
-func getLatencyData(client *jenkins.JenkinsClient, job string) (TestToBuildData, sets.String, sets.String, error) {
+func getLatencyDataFormGCS() (TestToBuildData, sets.String, sets.String, error) {
+	fmt.Print("Getting Data from GCS...\n")
 	buildLatency := TestToBuildData{}
 	resources := sets.NewString()
 	methods := sets.NewString()
 
-	queue, err := client.GetJob(job)
+	buildNumber := *startFrom
+	latestBuildResponse, err := http.Get(fmt.Sprintf("%vlatest-build.txt", urlPrefix))
 	if err != nil {
 		return buildLatency, resources, methods, err
 	}
+	latestBuildBody := latestBuildResponse.Body
+	defer latestBuildBody.Close()
+	latestBuildBodyScanner := bufio.NewScanner(latestBuildBody)
+	latestBuildBodyScanner.Scan()
+	var lastBuildNo int
+	fmt.Sscanf(latestBuildBodyScanner.Text(), "BUILD_NUMBER=%d", &lastBuildNo)
+	fmt.Printf("Last build no: %v\n", lastBuildNo)
+	if buildNumber < lastBuildNo-100 {
+		buildNumber = lastBuildNo - 100
+	}
 
-	for ix := range queue.Builds {
-		build := queue.Builds[ix]
-		if build.Number < *startFrom {
-			continue
-		}
-		reader, err := client.GetConsoleLog(job, build.Number)
+	for ; buildNumber <= lastBuildNo; buildNumber++ {
+		fmt.Printf("Fetching build %v...\n", buildNumber)
+		testDataResponse, err := http.Get(fmt.Sprintf("%v%v%v", urlPrefix, buildNumber, urlSuffix))
 		if err != nil {
-			fmt.Printf("error getting logs: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
 			continue
 		}
-		defer reader.Close()
-		scanner := bufio.NewScanner(reader)
-		hist := parseTestOutput(scanner, build.Number, resources, methods)
+
+		testDataBody := testDataResponse.Body
+		defer testDataBody.Close()
+		testDataScanner := bufio.NewScanner(testDataBody)
+
+		hist := parseTestOutput(testDataScanner, buildNumber, resources, methods)
 
 		for k, v := range hist {
 			if _, ok := buildLatency[k]; !ok {
 				buildLatency[k] = make(BuildLatencyData)
 			}
-			buildLatency[k][fmt.Sprintf("%d", build.Number)] = v
+			buildLatency[k][fmt.Sprintf("%d", buildNumber)] = v
 		}
 	}
+
 	return buildLatency, resources, methods, nil
 }
 
@@ -220,14 +239,11 @@ var (
 )
 
 func main() {
+	fmt.Print("Starting perfdash...\n")
 	flag.Parse()
-	job := "kubernetes-e2e-gce-scalability"
-	client := &jenkins.JenkinsClient{
-		Host: *jenkinsHost,
-	}
 
 	if !*www {
-		buildLatency, resources, methods, err := getLatencyData(client, job)
+		buildLatency, resources, methods, err := getLatencyDataFormGCS()
 		if err != nil {
 			fmt.Printf("Failed to get data: %v\n", err)
 			os.Exit(1)
@@ -244,9 +260,10 @@ func main() {
 	var err error
 	go func() {
 		for {
-			buildLatency, resources, methods, err = getLatencyData(client, job)
+			fmt.Printf("Fetching new data...\n")
+			buildLatency, resources, methods, err = getLatencyDataFormGCS()
 			if err != nil {
-				fmt.Printf("Error fetching data: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
 				time.Sleep(errorDelay)
 				continue
 			}
