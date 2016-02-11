@@ -1195,8 +1195,8 @@ func (obj *MungeObject) MergePR(who string) error {
 	return nil
 }
 
-// ListComments returns all comments for the issue/PR in question
-func (obj *MungeObject) ListComments(number int) ([]github.IssueComment, error) {
+// ListComments returns all comments for the object
+func (obj *MungeObject) ListComments() ([]github.IssueComment, error) {
 	config := obj.config
 	issueNum := *obj.Issue.Number
 	allComments := []github.IssueComment{}
