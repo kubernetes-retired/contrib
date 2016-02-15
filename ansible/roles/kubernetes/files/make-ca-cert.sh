@@ -19,8 +19,8 @@ set -o nounset
 set -o pipefail
 
 # Export proxy to ensure commands like curl could work
-export HTTP_PROXY=${HTTP_PROXY}
-export HTTPS_PROXY=${HTTPS_PROXY}
+[ ! "x${HTTP_PROXY}" == "x" ] && export HTTP_PROXY=${HTTP_PROXY}
+[ ! "x${HTTPS_PROXY}" == "x" ] && export HTTPS_PROXY=${HTTPS_PROXY}
 
 # Caller should set in the ev:
 # MASTER_IP - this may be an ip or things like "_use_gce_external_ip_"
@@ -102,7 +102,7 @@ cd easy-rsa-master/easyrsa3
 
 # Sadly, openssl is very verbose to std*err* with no option to turn it off.
 if ! (./easyrsa --batch init-pki
-      ./easyrsa --batch "--req-cn=${cert_ip}@$(date +%s)" build-ca nopass
+      ./easyrsa --batch "--req-cn=$(echo $(echo ${cert_ip} | cut -b 1-$(expr 64 - $(echo @$(date +%s) | wc -c)))@$(date +%s))" build-ca nopass
       ./easyrsa --batch --subject-alt-name="${sans}" build-server-full "${master_name}" nopass
       ./easyrsa --batch build-client-full kubelet nopass
       ./easyrsa --batch build-client-full kubecfg nopass) >/dev/null 2>&1; then
