@@ -3,7 +3,7 @@ all: push
 # See pod.yaml for the version currently running-- bump this ahead before rebuilding!
 TAG = 0.4
 
-perfdash: perfdash.go
+perfdash: perfdash.go downloader.go google-gcs-downloader.go
 	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o perfdash
 
 container: perfdash
