@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-FROM alpine:3.3
+FROM alpine:edge
 
 COPY build.sh /tmp
 
