@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 # Copyright 2015 The Kubernetes Authors All rights reserved.
 #
@@ -17,11 +17,11 @@
 
 set -eof pipefail
 
-export NGINX_VERSION=1.9.9
+export NGINX_VERSION=1.9.11
 export NDK_VERSION=0.2.19
 export VTS_VERSION=0.1.8
 export SETMISC_VERSION=0.29
-export LUA_VERSION=0.10.0rc0
+export LUA_VERSION=0.10.1rc0 
 export LUA_CJSON_VERSION=f79aa68af865ae84b36c7e794beedd87fef2ed54
 export LUA_RESTY_HTTP_VERSION=0.06
 export LUA_UPSTREAM_VERSION=0.04
@@ -29,7 +29,8 @@ export MORE_HEADERS_VERSION=0.29
 
 export BUILD_PATH=/tmp/build
 
-function get_src {
+get_src()
+{
   hash="$1"
   url="$2"
   f=$(basename "$url")
@@ -45,6 +46,7 @@ cd "$BUILD_PATH"
 
 # install required packages to build
 apk add --update-cache \
+  bash \
   build-base \
   curl \
   geoip \
@@ -64,7 +66,7 @@ apk add --update-cache \
   linux-headers
 
 # download, verify and extract the source files
-get_src de66bb2b11c82533aa5cb5ccc27cbce736ab87c9f2c761e5237cda0b00068d73 \
+get_src 6a5c72f4afaf57a6db064bba0965d72335f127481c5d4e64ee8714e7b368a51f \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
@@ -76,7 +78,7 @@ get_src 8d280fc083420afb41dbe10df9a8ceec98f1d391bd2caa42ebae67d5bc9295d8 \
 get_src 6bb9a36d8d70302d691c49557313fb7262cafd942a961d11a2730d9a5d9f70e0 \
         "https://github.com/vozlt/nginx-module-vts/archive/v$VTS_VERSION.tar.gz"
 
-get_src 3d04c36a447948d27648af6303f58b2ef6b8b43ad886c4186b3c080b9b16ab58 \
+get_src 1bae94d2a0fd4fad39f2544a2f8eaf71335ea512a6f0027af190b46562224c68 \
         "https://github.com/openresty/lua-nginx-module/archive/v$LUA_VERSION.tar.gz"
 
 get_src 2c451368a9e1a6fc01ed196cd6bd1602ee29f4b264df9263816e4dce17bca2c0 \
@@ -90,8 +92,6 @@ get_src 0a5f3003b5851373b03c542723eb5e7da44a01bf4c4c5f20b4de53f355a28d33 \
 
 get_src eec4bbb40fd14e12179fd536a029e2fe82a7f29340ed357879d0b02b65302913 \
         "https://github.com/openresty/lua-upstream-nginx-module/archive/v$LUA_UPSTREAM_VERSION.tar.gz"
-
-
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
@@ -157,7 +157,8 @@ apk del --purge \
   openssl-dev \
   zlib-dev \
   pcre-dev \
-  openssl-dev \
+  luajit-dev \
+  libaio-dev \
   linux-headers
 
 mkdir -p /var/lib/nginx/body /usr/share/nginx/html
