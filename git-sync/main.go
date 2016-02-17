@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -34,11 +35,28 @@ var flRepo = flag.String("repo", envString("GIT_SYNC_REPO", ""), "git repo url")
 var flBranch = flag.String("branch", envString("GIT_SYNC_BRANCH", "master"), "git branch")
 var flRev = flag.String("rev", envString("GIT_SYNC_REV", "HEAD"), "git rev")
 var flDest = flag.String("dest", envString("GIT_SYNC_DEST", ""), "destination path")
-var flWait = flag.Int("wait", envInt("GIT_SYNC_WAIT", 0), "number of seconds to wait before exit")
+var flWait = flag.Int("wait", envInt("GIT_SYNC_WAIT", 0), "number of seconds to wait before next sync")
+var flOneTime = flag.Bool("one-time", envBool("GIT_SYNC_ONE_TIME", false), "exit after the initial checkout")
+var flDepth = flag.Int("depth", envInt("GIT_SYNC_DEPTH", 0), "shallow clone with a history truncated to the specified number of commits")
+
+var flUsername = flag.String("username", envString("GIT_SYNC_USERNAME", ""), "username")
+var flPassword = flag.String("password", envString("GIT_SYNC_PASSWORD", ""), "password")
 
 func envString(key, def string) string {
 	if env := os.Getenv(key); env != "" {
 		return env
+	}
+	return def
+}
+
+func envBool(key string, def bool) bool {
+	if env := os.Getenv(key); env != "" {
+		res, err := strconv.ParseBool(env)
+		if err != nil {
+			return def
+		}
+
+		return res
 	}
 	return def
 }
@@ -55,7 +73,7 @@ func envInt(key string, def int) int {
 	return def
 }
 
-const usage = "usage: GIT_SYNC_REPO= GIT_SYNC_DEST= [GIT_SYNC_BRANCH= GIT_SYNC_WAIT=] git-sync -repo GIT_REPO_URL -dest PATH [-branch -wait]"
+const usage = "usage: GIT_SYNC_REPO= GIT_SYNC_DEST= [GIT_SYNC_BRANCH= GIT_SYNC_WAIT= GIT_SYNC_DEPTH= GIT_SYNC_USERNAME= GIT_SYNC_PASSWORD= GIT_SYNC_ONE_TIME=] git-sync -repo GIT_REPO_URL -dest PATH [-branch -wait -username -password -depth -one-time]"
 
 func main() {
 	flag.Parse()
@@ -66,8 +84,24 @@ func main() {
 	if _, err := exec.LookPath("git"); err != nil {
 		log.Fatalf("required git executable not found: %v", err)
 	}
+
+	if *flUsername != "" && *flPassword != "" {
+		log.Println("creating .netrc file (required for https authentication)")
+		if err := createNetrcFile(*flUsername, *flPassword, *flRepo); err != nil {
+			log.Fatalf("error creating .netrc file: %v", err)
+		}
+	}
+
+	if *flOneTime {
+		if err := syncRepo(*flRepo, *flDest, *flBranch, *flRev, *flDepth); err != nil {
+			log.Fatalf("error syncing repo: %v", err)
+		}
+
+		os.Exit(0)
+	}
+
 	for {
-		if err := syncRepo(*flRepo, *flDest, *flBranch, *flRev); err != nil {
+		if err := syncRepo(*flRepo, *flDest, *flBranch, *flRev, *flDepth); err != nil {
 			log.Fatalf("error syncing repo: %v", err)
 		}
 		log.Printf("wait %d seconds", *flWait)
@@ -77,13 +111,20 @@ func main() {
 }
 
 // syncRepo syncs the branch of a given repository to the destination at the given rev.
-func syncRepo(repo, dest, branch, rev string) error {
+func syncRepo(repo, dest, branch, rev string, depth int) error {
 	gitRepoPath := path.Join(dest, ".git")
 	_, err := os.Stat(gitRepoPath)
 	switch {
 	case os.IsNotExist(err):
 		// clone repo
-		cmd := exec.Command("git", "clone", "--no-checkout", "-b", branch, repo, dest)
+		args := []string{"clone", "--no-checkout", "-b", branch}
+		if depth != 0 {
+			args = append(args, "-depth")
+			args = append(args, string(depth))
+		}
+		args = append(args, repo)
+		args = append(args, dest)
+		cmd := exec.Command("git", args...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("error cloning repo %q: %v: %s", strings.Join(cmd.Args, " "), err, string(output))
@@ -119,5 +160,26 @@ func syncRepo(repo, dest, branch, rev string) error {
 		return fmt.Errorf("error running command %q : %v: %s", strings.Join(cmd.Args, " "), err, string(output))
 	}
 
+	return nil
+}
+
+// https://www.kernel.org/pub/software/scm/git/docs/howto/setup-git-server-over-http.txt
+// Step 3: setup the client
+func createNetrcFile(username, password, gitURL string) error {
+	home := os.Getenv("HOME")
+	netrc, err := os.Create(fmt.Sprintf("%v/.netrc", home))
+	if err != nil {
+		return err
+	}
+	defer netrc.Close()
+
+	url, err := url.Parse(gitURL)
+	if err != nil {
+		return err
+	}
+
+	netrc.WriteString(fmt.Sprintf("machine %v\n", url.Host))
+	netrc.WriteString(fmt.Sprintf("login %v\n", username))
+	netrc.WriteString(fmt.Sprintf("password %v\n", password))
 	return nil
 }
