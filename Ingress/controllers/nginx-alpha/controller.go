@@ -43,9 +43,14 @@ http {
   server_names_hash_bucket_size 255;
 
   server {
-      listen 80 default_server;
-      server_name _;
-      return 404;
+    listen 80 default_server;
+    server_name _;
+    return 404;
+
+    location /health {
+      access_log off;
+      return 200;
+    }
   }
 
 {{range $ing := .Items}}
