@@ -32,7 +32,6 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 )
@@ -55,7 +54,7 @@ type taskQueue struct {
 }
 
 func (t *taskQueue) run(period time.Duration, stopCh <-chan struct{}) {
-	util.Until(t.worker, period, stopCh)
+	wait.Until(t.worker, period, stopCh)
 }
 
 // enqueue enqueues ns/name of the given api object in the task queue.
