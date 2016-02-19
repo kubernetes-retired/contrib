@@ -1,0 +1,3 @@
+# The directory where scripts used for bootstrapping CoreOS
+# reside.
+bootstrap_script_dir: /opt/bin

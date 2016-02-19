@@ -3,7 +3,7 @@
   command: systemctl --system daemon-reload
   notify:
     - restart daemons
-  when: not (ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15)
+  when: not (ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15) or (ansible_lsb.id == "CoreOS")
 
 - name: restart daemons
   command: /bin/true

@@ -32,6 +32,3 @@
 
 - name: Create upstart script
   copy: src=etcd.upstart dest=/etc/init/etcd.conf
-
-- name: Create config directory
-  file: path="/etc/etcd" state=directory

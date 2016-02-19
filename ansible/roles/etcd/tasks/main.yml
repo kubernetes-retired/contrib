@@ -6,21 +6,25 @@
         state: latest
   notify:
     - restart etcd
-  when: not is_atomic and ansible_distribution != "Ubuntu"
+  when: not is_atomic and ansible_distribution != "Ubuntu" and ansible_lsb.id != "CoreOS"
 
 - name: Force etcd_source_type to github when packages are not available
   set_fact:
     etcd_source_type: "github-release"
   when: ansible_distribution == "Ubuntu"
 
-- name: Install from github
+- name: Install etcd from github
   include: github-release.yml
   when: etcd_source_type == "github-release"
+
+- name: Create etcd config directory
+  file: path={{ etcd_conf_dir }} state=directory
 
 - name: Write etcd config file
   template: src=etcd.conf.j2 dest=/etc/etcd/etcd.conf
   notify:
     - restart etcd
+  when: ansible_lsb.id != "CoreOS"
 
 - name: Write etcd systemd unit file for Debian
   copy: src=etcd.service dest=/etc/systemd/system
@@ -31,10 +35,15 @@
 
 - name: Enable etcd
   service: name=etcd enabled=yes
+  when: ansible_lsb.id != "CoreOS"
 
 - name: Start etcd
   service: name=etcd state=started
   register: etcd_started
+  when: ansible_lsb.id != "CoreOS"
+
+- include: coreos.yml
+  when: ansible_lsb.id == "CoreOS"
 
 - include: firewalld.yml
   when: has_firewalld

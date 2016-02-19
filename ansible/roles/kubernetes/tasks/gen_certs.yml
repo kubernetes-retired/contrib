@@ -7,7 +7,7 @@
   with_items:
     - openssl
     - curl
-  when: not is_atomic
+  when: not is_atomic and ansible_lsb.id != "CoreOS"
 
 #- name: Get create ca cert script from Kubernetes
 #  get_url:

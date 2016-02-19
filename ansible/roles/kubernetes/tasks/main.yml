@@ -7,16 +7,28 @@
     kube_script_dir: "/usr/local/libexec/kubernetes"
   when: is_atomic and kube_script_dir == "/usr/libexec/kubernetes"
 
+- name: Update Kubernetes directories if this is CoreOS
+  set_fact:
+    bin_dir: "/opt/bin"
+    kube_script_dir: "/opt/bin/kubernetes"
+  when: ansible_lsb.id == "CoreOS" and kube_script_dir == "/usr/libexec/kubernetes"
+
 - name: Create kubernetes config directory
   file: path={{ kube_config_dir }} state=directory
 
 - name: Create kubernetes script directory
   file: path={{ kube_script_dir }} state=directory
 
+- name: Create bin dir
+  file: path={{ bin_dir }} state=directory
+
 - name: write the global config file
   template: src=config.j2 dest={{ kube_config_dir }}/config
   notify:
     - restart daemons
+
+- include: download_bins.yml
+  when: ansible_lsb.id == "CoreOS"
 
 - include: secrets.yml
   tags:

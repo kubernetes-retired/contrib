@@ -1,9 +1,14 @@
 ---
+- name: Set python_bin fact for CoreOS
+  set_fact:
+    python_bin: "/opt/bin/python"
+  when: ansible_lsb.id == "CoreOS"
+
 - name: Assures addons dir exists
   file: path={{ kube_addons_dir }} state=directory
 
 - include: generic-install.yml
-  when: not is_atomic
+  when: not is_atomic and ansible_lsb.id != "CoreOS"
 
 - name: Assures local addon dir exists
   local_action: file

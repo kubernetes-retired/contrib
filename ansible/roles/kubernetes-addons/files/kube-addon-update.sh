@@ -44,6 +44,7 @@
 
 
 # global config
+PYTHON_BIN=${PYTHON_BIN:-python}
 KUBECTL=${TEST_KUBECTL:-}   # substitute for tests
 KUBECTL=${KUBECTL:-${KUBECTL_BIN:-}}
 KUBECTL=${KUBECTL:-/usr/local/bin/kubectl}
@@ -98,7 +99,7 @@ function log() {
 function get-object-kind-from-file() {
     # prints to stdout, so log cannot be used
     #WARNING: only yaml is supported
-    cat $1 | python -c '''
+    cat $1 | ${PYTHON_BIN} -c '''
 try:
         import pipes,sys,yaml
         y = yaml.load(sys.stdin)
@@ -120,7 +121,7 @@ function get-object-nsname-from-file() {
     # prints to stdout, so log cannot be used
     #WARNING: only yaml is supported
     #addons that do not specify a namespace are assumed to be in "default".
-    cat $1 | python -c '''
+    cat $1 | ${PYTHON_BIN} -c '''
 try:
         import pipes,sys,yaml
         y = yaml.load(sys.stdin)

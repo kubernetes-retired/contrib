@@ -27,6 +27,11 @@ cluster_name: cluster.local
 insecure_registrys:
 #  - "gcr.io"
 
+# Required for CoreOS. CoreOS does not include a Python interpreter. The
+# pre-ansible role installs a python interpreter to /opt/bin/. For more
+# information see https://coreos.com/blog/managing-coreos-with-ansible.html
+#ansible_python_interpreter: "PATH=/opt/bin:$PATH python"
+
 # If you need a proxy for the docker daemon define these here
 #http_proxy: "http://proxy.example.com:3128"
 #https_proxy: "http://proxy.example.com:3128"

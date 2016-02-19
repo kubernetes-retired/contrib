@@ -6,8 +6,10 @@
   when: ansible_distribution == "Ubuntu"
 
 - include: generic-install.yml
-  when: ansible_distribution != "Debian" and ansible_distribution != "Ubuntu"
+  when: ansible_distribution != "Debian" and ansible_distribution != "Ubuntu" and ansible_lsb.id != "CoreOS"
 
+- include: coreos.yml
+  when: ansible_lsb.id == "CoreOS"
 #
 # systemd service configuration uses EnvironmentFile (docker and docker-network)
 # upstart service configuration sources docker_config_dir / docker
