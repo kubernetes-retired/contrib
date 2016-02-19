@@ -25,7 +25,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 var (
@@ -89,9 +89,9 @@ func main() {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
 	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast)
-	go ipvsc.epController.Run(util.NeverStop)
-	go ipvsc.svcController.Run(util.NeverStop)
-	go util.Until(ipvsc.worker, time.Second, util.NeverStop)
+	go ipvsc.epController.Run(wait.NeverStop)
+	go ipvsc.svcController.Run(wait.NeverStop)
+	go wait.Until(ipvsc.worker, time.Second, wait.NeverStop)
 
 	time.Sleep(5 * time.Second)
 	glog.Info("starting keepalived to announce VIPs")
