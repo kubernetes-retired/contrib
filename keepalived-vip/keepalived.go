@@ -122,7 +122,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["nodes"] = k.neighbors
 	conf["priority"] = k.priority
 	// password to protect the access to the vrrp_instance group
-	conf["authPass"] = k.getSha()
+	conf["authPass"] = k.getSha()[0:8]
 	conf["useUnicast"] = k.useUnicast
 
 	b, _ := json.Marshal(conf)
