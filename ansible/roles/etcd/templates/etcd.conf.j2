@@ -1,9 +1,9 @@
 {% macro initial_cluster() -%}
 {% for host in groups[etcd_peers_group] -%}
 {% if loop.last -%}
-{{ hostvars[host]['ansible_hostname'] }}={{ etcd_peer_url_scheme }}://{{ hostvars[host]['ansible_fqdn'] }}:{{ etcd_peer_port }}
+{{ hostvars[host]['ansible_hostname'] }}={{ etcd_peer_url_scheme }}://{{ hostvars[host]['ansible_default_ipv4.address'] }}:{{ etcd_peer_port }}
 {%- else -%}
-{{ hostvars[host]['ansible_hostname'] }}={{ etcd_peer_url_scheme }}://{{ hostvars[host]['ansible_fqdn'] }}:{{ etcd_peer_port }},
+{{ hostvars[host]['ansible_hostname'] }}={{ etcd_peer_url_scheme }}://{{ hostvars[host]['ansible_default_ipv4.address'] }}:{{ etcd_peer_port }},
 {%- endif -%}
 {% endfor -%}
 {% endmacro -%}
