@@ -219,3 +219,12 @@ func changeSysctl() error {
 
 	return nil
 }
+
+func appendIfMissing(slice []string, item string) []string {
+	for _, elem := range slice {
+		if elem == item {
+			return slice
+		}
+	}
+	return append(slice, item)
+}
