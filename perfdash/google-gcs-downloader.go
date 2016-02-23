@@ -59,7 +59,7 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, sets.String, sets.Stri
 	latestBuildBodyScanner := bufio.NewScanner(latestBuildBody)
 	latestBuildBodyScanner.Scan()
 	var lastBuildNo int
-	fmt.Sscanf(latestBuildBodyScanner.Text(), "BUILD_NUMBER=%d", &lastBuildNo)
+	fmt.Sscanf(latestBuildBodyScanner.Text(), "%d", &lastBuildNo)
 	fmt.Printf("Last build no: %v\n", lastBuildNo)
 	if buildNumber < lastBuildNo-100 {
 		buildNumber = lastBuildNo - 100
