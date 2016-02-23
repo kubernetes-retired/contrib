@@ -17,12 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"os"
 	"time"
 
-	flag "github.com/spf13/pflag"
-
 	"github.com/golang/glog"
+	"github.com/spf13/pflag"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	flags = flag.NewFlagSet("", flag.ContinueOnError)
+	flags = pflag.NewFlagSet("", pflag.ExitOnError)
 
 	defaultSvc = flags.String("default-backend-service", "",
 		`Service used to serve a 404 page for the default backend. Takes the form
@@ -55,6 +55,7 @@ var (
 )
 
 func main() {
+	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
 
 	if *defaultSvc == "" {
