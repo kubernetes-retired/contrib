@@ -28,61 +28,14 @@ import (
 	"strings"
 	"time"
 
-	// TODO: move this somewhere central
 	"k8s.io/kubernetes/pkg/util/sets"
 )
-
-// LatencyData represents the latency data for a set of RESTful API calls
-type LatencyData struct {
-	APICalls []APICallLatency `json:"apicalls"`
-}
-
-// APICallLatency represents the latency data for a (resource, verb) tuple
-type APICallLatency struct {
-	Latency  Histogram `json:"latency"`
-	Resource string    `json:"resource"`
-	Verb     string    `json:"verb"`
-}
-
-// Histogram is a map from bucket to latency (e.g. "Perc90" -> 23.5)
-type Histogram map[string]float64
-
-// ResourceToHistogram is a map from resource names (e.g. "pods") to the relevant latency data
-type ResourceToHistogram map[string][]APICallLatency
-
-// TestToHistogram is a map from test name to ResourceToHistogram
-type TestToHistogram map[string]ResourceToHistogram
-
-// BuildLatencyData is a map from build number to latency data
-type BuildLatencyData map[string]ResourceToHistogram
-
-// TestToBuildData is a map from test name to BuildLatencyData
-type TestToBuildData map[string]BuildLatencyData
-
-func (buildLatency *TestToBuildData) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	data, err := json.Marshal(buildLatency)
-	if err != nil {
-		res.Header().Set("Content-type", "text/html")
-		res.WriteHeader(http.StatusInternalServerError)
-		res.Write([]byte(fmt.Sprintf("<h3>Internal Error</h3><p>%v", err)))
-		return
-	}
-	res.Header().Set("Content-type", "application/json")
-	res.WriteHeader(http.StatusOK)
-	res.Write(data)
-}
 
 // states of parsing machine
 const (
 	scanning   = iota
 	inTest     = iota
 	processing = iota
-)
-
-// constants to use for downloading data.
-const (
-	urlPrefix = "https://storage.googleapis.com/kubernetes-jenkins/logs/kubernetes-e2e-gce-scalability/"
-	urlSuffix = "/build-log.txt"
 )
 
 var descriptionToName = map[string]string{
@@ -140,51 +93,17 @@ func parseTestOutput(scanner *bufio.Scanner, buildNumber int, resources sets.Str
 	return hist
 }
 
-func getLatencyDataFormGCS() (TestToBuildData, sets.String, sets.String, error) {
-	fmt.Print("Getting Data from GCS...\n")
-	buildLatency := TestToBuildData{}
-	resources := sets.NewString()
-	methods := sets.NewString()
-
-	buildNumber := *startFrom
-	latestBuildResponse, err := http.Get(fmt.Sprintf("%vlatest-build.txt", urlPrefix))
+func (buildLatency *TestToBuildData) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	data, err := json.Marshal(buildLatency)
 	if err != nil {
-		return buildLatency, resources, methods, err
+		res.Header().Set("Content-type", "text/html")
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write([]byte(fmt.Sprintf("<h3>Internal Error</h3><p>%v", err)))
+		return
 	}
-	latestBuildBody := latestBuildResponse.Body
-	defer latestBuildBody.Close()
-	latestBuildBodyScanner := bufio.NewScanner(latestBuildBody)
-	latestBuildBodyScanner.Scan()
-	var lastBuildNo int
-	fmt.Sscanf(latestBuildBodyScanner.Text(), "BUILD_NUMBER=%d", &lastBuildNo)
-	fmt.Printf("Last build no: %v\n", lastBuildNo)
-	if buildNumber < lastBuildNo-100 {
-		buildNumber = lastBuildNo - 100
-	}
-
-	for ; buildNumber <= lastBuildNo; buildNumber++ {
-		fmt.Printf("Fetching build %v...\n", buildNumber)
-		testDataResponse, err := http.Get(fmt.Sprintf("%v%v%v", urlPrefix, buildNumber, urlSuffix))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
-			continue
-		}
-
-		testDataBody := testDataResponse.Body
-		defer testDataBody.Close()
-		testDataScanner := bufio.NewScanner(testDataBody)
-
-		hist := parseTestOutput(testDataScanner, buildNumber, resources, methods)
-
-		for k, v := range hist {
-			if _, ok := buildLatency[k]; !ok {
-				buildLatency[k] = make(BuildLatencyData)
-			}
-			buildLatency[k][fmt.Sprintf("%d", buildNumber)] = v
-		}
-	}
-
-	return buildLatency, resources, methods, nil
+	res.Header().Set("Content-type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write(data)
 }
 
 func generateCSV(buildLatency BuildLatencyData, resources, methods sets.String, out io.Writer) error {
@@ -242,8 +161,11 @@ func main() {
 	fmt.Print("Starting perfdash...\n")
 	flag.Parse()
 
+	var downloader Downloader
+	downloader = NewGoogleGCSDownloader(*startFrom)
+
 	if !*www {
-		buildLatency, resources, methods, err := getLatencyDataFormGCS()
+		buildLatency, resources, methods, err := downloader.getData()
 		if err != nil {
 			fmt.Printf("Failed to get data: %v\n", err)
 			os.Exit(1)
@@ -261,7 +183,7 @@ func main() {
 	go func() {
 		for {
 			fmt.Printf("Fetching new data...\n")
-			buildLatency, resources, methods, err = getLatencyDataFormGCS()
+			buildLatency, resources, methods, err = downloader.getData()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
 				time.Sleep(errorDelay)
