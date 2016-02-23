@@ -110,21 +110,6 @@ func (ipvsc *ipvsControllerController) getEndpoints(
 	return
 }
 
-// getVIPs returns list of virtual IPs to expose.
-func (ipvsc *ipvsControllerController) getVIPs() []string {
-	vips := []string{}
-
-	services, _ := ipvsc.svcLister.List()
-	for _, s := range services.Items {
-		if externalIP, ok := s.GetAnnotations()[ipvsPublicVIP]; ok {
-			glog.Infof("Service %v contains public-vip annotation", s.Name)
-			vips = append(vips, externalIP)
-		}
-	}
-
-	return vips
-}
-
 // getServices returns a list of services and their endpoints.
 func (ipvsc *ipvsControllerController) getServices() []vip {
 	svcs := []vip{}
@@ -146,7 +131,7 @@ func (ipvsc *ipvsControllerController) getServices() []vip {
 					Backends: ep,
 					Protocol: fmt.Sprintf("%v", servicePort.Protocol),
 				})
-				glog.Infof("Found service: %v", s.Name)
+				glog.Infof("Found service: %v:%v", s.Name, servicePort.Port)
 			}
 		}
 	}
@@ -193,7 +178,7 @@ func (ipvsc *ipvsControllerController) worker() {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool) *ipvsControllerController {
+func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, password string) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		queue:             workqueue.New(),
@@ -218,6 +203,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		neighbors:  neighbors,
 		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
 		useUnicast: useUnicast,
+		password:   password,
 	}
 
 	enqueue := func(obj interface{}) {

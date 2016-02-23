@@ -33,8 +33,6 @@ type Helper struct {
 	Resource string
 	// A RESTClient capable of mutating this resource.
 	RESTClient RESTClient
-	// A codec for decoding and encoding objects of this resource type.
-	Codec runtime.Codec
 	// An interface for reading or writing the resource version of this
 	// type.
 	Versioner runtime.ResourceVersioner
@@ -45,9 +43,8 @@ type Helper struct {
 // NewHelper creates a Helper from a ResourceMapping
 func NewHelper(client RESTClient, mapping *meta.RESTMapping) *Helper {
 	return &Helper{
-		RESTClient:      client,
 		Resource:        mapping.Resource,
-		Codec:           mapping.Codec,
+		RESTClient:      client,
 		Versioner:       mapping.MetadataAccessor,
 		NamespaceScoped: mapping.Scope.Name() == meta.RESTScopeNameNamespace,
 	}
@@ -147,7 +144,7 @@ func (m *Helper) Replace(namespace, name string, overwrite bool, obj runtime.Obj
 	}
 	if version == "" && overwrite {
 		// Retrieve the current version of the object to overwrite the server object
-		serverObj, err := c.Get().Namespace(namespace).Resource(m.Resource).Name(name).Do().Get()
+		serverObj, err := c.Get().NamespaceIfScoped(namespace, m.NamespaceScoped).Resource(m.Resource).Name(name).Do().Get()
 		if err != nil {
 			// The object does not exist, but we want it to be created
 			return m.replaceResource(c, m.Resource, namespace, name, obj)

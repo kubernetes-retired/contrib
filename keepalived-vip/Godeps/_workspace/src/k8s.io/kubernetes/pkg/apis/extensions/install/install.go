@@ -24,10 +24,10 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/latest"
 	"k8s.io/kubernetes/pkg/api/meta"
-	"k8s.io/kubernetes/pkg/api/registered"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/apimachinery"
+	"k8s.io/kubernetes/pkg/apimachinery/registered"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -42,8 +42,7 @@ var accessor = meta.NewAccessor()
 var availableVersions = []unversioned.GroupVersion{v1beta1.SchemeGroupVersion}
 
 func init() {
-	registered.RegisterVersions(availableVersions...)
-
+	registered.RegisterVersions(availableVersions)
 	externalVersions := []unversioned.GroupVersion{}
 	for _, v := range availableVersions {
 		if registered.IsAllowedVersion(v) {
@@ -54,6 +53,7 @@ func init() {
 		glog.V(4).Infof("No version is registered for group %v", extensions.GroupName)
 		return
 	}
+
 	if err := registered.EnableVersions(externalVersions...); err != nil {
 		glog.V(4).Infof("%v", err)
 		return
@@ -66,20 +66,21 @@ func init() {
 
 // TODO: enableVersions should be centralized rather than spread in each API
 // group.
+// We can combine registered.RegisterVersions, registered.EnableVersions and
+// registered.RegisterGroup once we have moved enableVersions there.
 func enableVersions(externalVersions []unversioned.GroupVersion) error {
 	addVersionsToScheme(externalVersions...)
 	preferredExternalVersion := externalVersions[0]
 
-	groupMeta := latest.GroupMeta{
+	groupMeta := apimachinery.GroupMeta{
 		GroupVersion:  preferredExternalVersion,
 		GroupVersions: externalVersions,
-		Codec:         runtime.CodecFor(api.Scheme, preferredExternalVersion),
 		RESTMapper:    newRESTMapper(externalVersions),
 		SelfLinker:    runtime.SelfLinker(accessor),
 		InterfacesFor: interfacesFor,
 	}
 
-	if err := latest.RegisterGroup(groupMeta); err != nil {
+	if err := registered.RegisterGroup(groupMeta); err != nil {
 		return err
 	}
 	api.RegisterRESTMapper(groupMeta.RESTMapper)
@@ -87,18 +88,15 @@ func enableVersions(externalVersions []unversioned.GroupVersion) error {
 }
 
 func newRESTMapper(externalVersions []unversioned.GroupVersion) meta.RESTMapper {
-	worstToBestGroupVersions := []unversioned.GroupVersion{}
-	for i := len(externalVersions) - 1; i >= 0; i-- {
-		worstToBestGroupVersions = append(worstToBestGroupVersions, externalVersions[i])
-	}
-
 	// the list of kinds that are scoped at the root of the api hierarchy
 	// if a kind is not enumerated here, it is assumed to have a namespace scope
-	rootScoped := sets.NewString()
+	rootScoped := sets.NewString(
+		"PodSecurityPolicy",
+	)
 
 	ignoredKinds := sets.NewString()
 
-	return api.NewDefaultRESTMapper(worstToBestGroupVersions, interfacesFor, importPrefix, ignoredKinds, rootScoped)
+	return api.NewDefaultRESTMapper(externalVersions, interfacesFor, importPrefix, ignoredKinds, rootScoped)
 }
 
 // interfacesFor returns the default Codec and ResourceVersioner for a given version
@@ -107,12 +105,11 @@ func interfacesFor(version unversioned.GroupVersion) (*meta.VersionInterfaces, e
 	switch version {
 	case v1beta1.SchemeGroupVersion:
 		return &meta.VersionInterfaces{
-			Codec:            v1beta1.Codec,
 			ObjectConvertor:  api.Scheme,
 			MetadataAccessor: accessor,
 		}, nil
 	default:
-		g, _ := latest.Group(extensions.GroupName)
+		g, _ := registered.Group(extensions.GroupName)
 		return nil, fmt.Errorf("unsupported storage version: %s (valid: %v)", version, g.GroupVersions)
 	}
 }
