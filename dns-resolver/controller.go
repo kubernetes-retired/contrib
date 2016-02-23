@@ -29,7 +29,7 @@ import (
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	kframework "k8s.io/kubernetes/pkg/controller/framework"
 	kselector "k8s.io/kubernetes/pkg/fields"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 const (
@@ -320,7 +320,7 @@ func watchForServices(kubeClient *kclient.Client, ks *kube2dns) kcache.Store {
 			UpdateFunc: ks.updateService,
 		},
 	)
-	go serviceController.Run(util.NeverStop)
+	go serviceController.Run(wait.NeverStop)
 	return serviceStore
 }
 
@@ -338,7 +338,7 @@ func watchEndpoints(kubeClient *kclient.Client, ks *kube2dns) kcache.Store {
 		},
 	)
 
-	go eController.Run(util.NeverStop)
+	go eController.Run(wait.NeverStop)
 	return eStore
 }
 
@@ -356,7 +356,7 @@ func watchPods(kubeClient *kclient.Client, ks *kube2dns) kcache.Store {
 		},
 	)
 
-	go eController.Run(util.NeverStop)
+	go eController.Run(wait.NeverStop)
 	return eStore
 }
 

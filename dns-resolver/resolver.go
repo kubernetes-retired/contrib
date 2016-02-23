@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	confFile = "/etc/unbound/unbound.conf"
+	confFile = "/etc/unbound/unbound.conf.d/kubernetes.conf"
 )
 
 type forward struct {
@@ -73,7 +73,7 @@ func (r resolver) IsHealthy() bool {
 }
 
 func (r resolver) FlushDomain(name string) error {
-	glog.Infof("removing domain %v from unbound cache", name)
+	glog.V(2).Infof("removing domain %v from unbound cache", name)
 	cmd := exec.Command("unbound-control", "flush_zone", name)
 	if err := cmd.Run(); err != nil {
 		return err
@@ -82,7 +82,7 @@ func (r resolver) FlushDomain(name string) error {
 }
 
 func (r resolver) FlushHost(hostname string) error {
-	glog.Infof("removing host %v from unbound cache", hostname)
+	glog.V(2).Infof("removing host %v from unbound cache", hostname)
 	cmd := exec.Command("unbound-control", "flush", hostname)
 	if err := cmd.Run(); err != nil {
 		return err

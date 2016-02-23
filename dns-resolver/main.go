@@ -18,13 +18,14 @@ package main
 
 import (
 	// "io/ioutil"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/golang/glog"
-	flag "github.com/spf13/pflag"
+	"github.com/spf13/pflag"
 
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -36,7 +37,7 @@ const (
 )
 
 var (
-	flags = flag.NewFlagSet("", flag.ContinueOnError)
+	flags = pflag.NewFlagSet("", pflag.ContinueOnError)
 
 	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the
 		built in kubernetes cluster for creating the client`)
@@ -54,6 +55,7 @@ var (
 )
 
 func main() {
+	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
@@ -70,6 +72,9 @@ func main() {
 			glog.Fatalf("error connecting to the client: %v", err)
 		}
 		kubeClient, err = unversioned.New(config)
+		if err != nil {
+			glog.Fatalf("error connecting to the client: %v", err)
+		}
 	}
 
 	if *clusterDNS == "" {
@@ -155,7 +160,7 @@ func parseForwards(input string) []forward {
 	forwards := []forward{}
 	domains := strings.Split(input, ",")
 	for _, domain := range domains {
-		domainPort := strings.Split(string(domain), ":")
+		domainPort := strings.Split(domain, ":")
 		if len(domainPort) == 2 {
 			forwards = append(forwards, forward{
 				Name: domainPort[0],

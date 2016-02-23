@@ -11,18 +11,10 @@ server:
   # port to answer queries from
   port: 53
 
-  # Enable IPv4, "yes" or "no".
   do-ip4: yes
-
-  # Enable IPv6, "yes" or "no".
-  do-ip6: yes
-
-  # Enable UDP, "yes" or "no".
+  #do-ip6: yes
   do-udp: yes
-
-  # Enable TCP, "yes" or "no". If TCP is not needed, Unbound is actually
-  # quicker to resolve as the functions related to TCP checks are not done
-  do-tcp: yes
+  #do-tcp: yes
 
   # Read  the  root  hints from this file. Default is nothing, using built in
   # hints for the IN class. The file has the format of  zone files,  with  root
@@ -64,10 +56,10 @@ server:
   # the number of slabs to use for cache and must be a power of 2 times the
   # number of num-threads set above. more slabs reduce lock contention, but
   # fragment memory usage.
-  msg-cache-slabs: 1
-  rrset-cache-slabs: 1
-  infra-cache-slabs: 1
-  key-cache-slabs: 1
+  msg-cache-slabs: 8
+  rrset-cache-slabs: 8
+  infra-cache-slabs: 8
+  key-cache-slabs: 8
 
   # Increase the memory size of the cache. Use roughly twice as much rrset cache
   # memory as you use msg cache memory. Due to malloc overhead, the total memory
@@ -105,8 +97,8 @@ server:
   # Faster UDP with multithreading
   so-reuseport: yes
  
-  outgoing-range: 950
-  num-queries-per-thread: 512
+  outgoing-range: 8192
+  num-queries-per-thread: 4096
 
   statistics-interval: 0
   extended-statistics: yes
@@ -123,7 +115,7 @@ server:
 remote-control:
   control-enable: yes
   control-use-cert: no
-  control-interface: /var/run/unbound/unbound.sock
+  control-interface: /var/run/unbound.sock
 
 forward-zone:
   name: "{{ .domain }}."
@@ -131,10 +123,9 @@ forward-zone:
 
 {{ range $i,$domain := .customForward }}
 forward-zone:
-  name: "{{ $domain.Name }}"
+  name: "{{ $domain.Name }}."
   forward-addr: {{ $domain.IP }}
 {{ end }}
-
 
 forward-zone:
   name: "."

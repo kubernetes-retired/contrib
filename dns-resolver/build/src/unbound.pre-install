@@ -1,6 +1,0 @@
-#!/bin/sh
-
-addgroup -S unbound 2>/dev/null
-adduser -S -s /sbin/nologin -D -H -h /etc/unbound -G unbound \
-  -g "Unbound user" unbound 2>/dev/null
-exit 0
