@@ -29,7 +29,7 @@ func AddToScheme(scheme *runtime.Scheme) {
 const GroupName = "componentconfig"
 
 // SchemeGroupVersion is group version used to register these objects
-var SchemeGroupVersion = unversioned.GroupVersion{Group: GroupName, Version: ""}
+var SchemeGroupVersion = unversioned.GroupVersion{Group: GroupName, Version: runtime.APIVersionInternal}
 
 // Kind takes an unqualified kind and returns back a Group qualified GroupKind
 func Kind(kind string) unversioned.GroupKind {
@@ -45,7 +45,9 @@ func addKnownTypes(scheme *runtime.Scheme) {
 	// TODO this will get cleaned up with the scheme types are fixed
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&KubeProxyConfiguration{},
+		&KubeSchedulerConfiguration{},
 	)
 }
 
-func (obj *KubeProxyConfiguration) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
+func (obj *KubeProxyConfiguration) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }
+func (obj *KubeSchedulerConfiguration) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }

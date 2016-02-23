@@ -25,12 +25,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ghodss/yaml"
 	"github.com/golang/glog"
 	"github.com/imdario/mergo"
 
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 	clientcmdlatest "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api/latest"
+	"k8s.io/kubernetes/pkg/runtime"
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
 )
 
@@ -116,23 +117,41 @@ func (rules *ClientConfigLoadingRules) Load() (*clientcmdapi.Config, error) {
 
 	} else {
 		kubeConfigFiles = append(kubeConfigFiles, rules.Precedence...)
+	}
 
+	kubeconfigs := []*clientcmdapi.Config{}
+	// read and cache the config files so that we only look at them once
+	for _, filename := range kubeConfigFiles {
+		if len(filename) == 0 {
+			// no work to do
+			continue
+		}
+
+		config, err := LoadFromFile(filename)
+		if os.IsNotExist(err) {
+			// skip missing files
+			continue
+		}
+		if err != nil {
+			errlist = append(errlist, fmt.Errorf("Error loading config file \"%s\": %v", filename, err))
+			continue
+		}
+
+		kubeconfigs = append(kubeconfigs, config)
 	}
 
 	// first merge all of our maps
 	mapConfig := clientcmdapi.NewConfig()
-	for _, file := range kubeConfigFiles {
-		if err := mergeConfigWithFile(mapConfig, file); err != nil {
-			errlist = append(errlist, err)
-		}
+	for _, kubeconfig := range kubeconfigs {
+		mergo.Merge(mapConfig, kubeconfig)
 	}
 
 	// merge all of the struct values in the reverse order so that priority is given correctly
 	// errors are not added to the list the second time
 	nonMapConfig := clientcmdapi.NewConfig()
-	for i := len(kubeConfigFiles) - 1; i >= 0; i-- {
-		file := kubeConfigFiles[i]
-		mergeConfigWithFile(nonMapConfig, file)
+	for i := len(kubeconfigs) - 1; i >= 0; i-- {
+		kubeconfig := kubeconfigs[i]
+		mergo.Merge(nonMapConfig, kubeconfig)
 	}
 
 	// since values are overwritten, but maps values are not, we can merge the non-map config on top of the map config and
@@ -197,25 +216,6 @@ func (rules *ClientConfigLoadingRules) Migrate() error {
 	return nil
 }
 
-func mergeConfigWithFile(startingConfig *clientcmdapi.Config, filename string) error {
-	if len(filename) == 0 {
-		// no work to do
-		return nil
-	}
-
-	config, err := LoadFromFile(filename)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("Error loading config file \"%s\": %v", filename, err)
-	}
-
-	mergo.Merge(startingConfig, config)
-
-	return nil
-}
-
 // LoadFromFile takes a filename and deserializes the contents into Config object
 func LoadFromFile(filename string) (*clientcmdapi.Config, error) {
 	kubeconfigBytes, err := ioutil.ReadFile(filename)
@@ -226,7 +226,7 @@ func LoadFromFile(filename string) (*clientcmdapi.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	glog.V(3).Infoln("Config loaded from file", filename)
+	glog.V(6).Infoln("Config loaded from file", filename)
 
 	// set LocationOfOrigin on every Cluster, User, and Context
 	for key, obj := range config.AuthInfos {
@@ -263,11 +263,11 @@ func Load(data []byte) (*clientcmdapi.Config, error) {
 	if len(data) == 0 {
 		return config, nil
 	}
-
-	if err := clientcmdlatest.Codec.DecodeInto(data, config); err != nil {
+	decoded, _, err := clientcmdlatest.Codec.Decode(data, &unversioned.GroupVersionKind{Version: clientcmdlatest.Version, Kind: "Config"}, config)
+	if err != nil {
 		return nil, err
 	}
-	return config, nil
+	return decoded.(*clientcmdapi.Config), nil
 }
 
 // WriteToFile serializes the config to yaml and writes it out to a file.  If not present, it creates the file with the mode 0600.  If it is present
@@ -292,15 +292,7 @@ func WriteToFile(config clientcmdapi.Config, filename string) error {
 // Write serializes the config to yaml.
 // Encapsulates serialization without assuming the destination is a file.
 func Write(config clientcmdapi.Config) ([]byte, error) {
-	json, err := clientcmdlatest.Codec.Encode(&config)
-	if err != nil {
-		return nil, err
-	}
-	content, err := yaml.JSONToYAML(json)
-	if err != nil {
-		return nil, err
-	}
-	return content, nil
+	return runtime.Encode(clientcmdlatest.Codec, &config)
 }
 
 func (rules ClientConfigLoadingRules) ResolvePaths() bool {
