@@ -30,6 +30,7 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util/integer"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/wait"
 )
@@ -208,13 +209,20 @@ func (r *RollingUpdater) Update(config *RollingUpdaterConfig) error {
 	if err != nil {
 		return err
 	}
-	// Further validation.
-	if maxUnavailable == 0 && maxSurge == 0 {
+	// Validate maximums.
+	if desired > 0 && maxUnavailable == 0 && maxSurge == 0 {
 		return fmt.Errorf("one of maxSurge or maxUnavailable must be specified")
 	}
 	// The minumum pods which must remain available througout the update
 	// calculated for internal convenience.
-	minAvailable := original - maxUnavailable
+	minAvailable := integer.IntMax(0, desired-maxUnavailable)
+	// If the desired new scale is 0, then the max unavailable is necessarily
+	// the effective scale of the old RC regardless of the configuration
+	// (equivalent to 100% maxUnavailable).
+	if desired == 0 {
+		maxUnavailable = original
+		minAvailable = 0
+	}
 
 	fmt.Fprintf(out, "Scaling up %s from %d to %d, scaling down %s from %d to 0 (keep %d pods available, don't exceed %d pods)\n",
 		newRc.Name, newRc.Spec.Replicas, desired, oldRc.Name, oldRc.Spec.Replicas, minAvailable, original+maxSurge)
@@ -405,7 +413,7 @@ func (r *RollingUpdater) getOrCreateTargetControllerWithClient(controller *api.R
 			return nil, false, err
 		}
 		if controller.Spec.Replicas <= 0 {
-			return nil, false, fmt.Errorf("Invalid controller spec for %s; required: > 0 replicas, actual: %d\n", controller.Name, controller.Spec)
+			return nil, false, fmt.Errorf("Invalid controller spec for %s; required: > 0 replicas, actual: %d\n", controller.Name, controller.Spec.Replicas)
 		}
 		// The controller wasn't found, so create it.
 		if controller.Annotations == nil {

@@ -36,19 +36,25 @@ import (
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/client/metrics"
-	"k8s.io/kubernetes/pkg/conversion/queryparams"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/net"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/watch"
 	watchjson "k8s.io/kubernetes/pkg/watch/json"
 )
 
-// specialParams lists parameters that are handled specially and which users of Request
-// are therefore not allowed to set manually.
-var specialParams = sets.NewString("timeout")
+var (
+	// specialParams lists parameters that are handled specially and which users of Request
+	// are therefore not allowed to set manually.
+	specialParams = sets.NewString("timeout")
+
+	// longThrottleLatency defines threshold for logging requests. All requests being
+	// throttle for more than longThrottleLatency will be logged.
+	longThrottleLatency = 50 * time.Millisecond
+)
 
 func init() {
 	metrics.Register()
@@ -81,16 +87,17 @@ func (r *RequestConstructionError) Error() string {
 // check once.
 type Request struct {
 	// required
-	client  HTTPClient
-	verb    string
+	client HTTPClient
+	verb   string
+
 	baseURL *url.URL
-	codec   runtime.Codec
+	content ContentConfig
 
 	// generic components accessible via method setters
-	path    string
-	subpath string
-	params  url.Values
-	headers http.Header
+	pathPrefix string
+	subpath    string
+	params     url.Values
+	headers    http.Header
 
 	// structural elements of the request that are part of the Kubernetes API conventions
 	namespace    string
@@ -101,8 +108,6 @@ type Request struct {
 	selector     labels.Selector
 	timeout      time.Duration
 
-	groupVersion unversioned.GroupVersion
-
 	// output
 	err  error
 	body io.Reader
@@ -112,24 +117,33 @@ type Request struct {
 	resp *http.Response
 
 	backoffMgr BackoffManager
+	throttle   util.RateLimiter
 }
 
 // NewRequest creates a new request helper object for accessing runtime.Objects on a server.
-func NewRequest(client HTTPClient, verb string, baseURL *url.URL, groupVersion unversioned.GroupVersion, codec runtime.Codec, backoff BackoffManager) *Request {
+func NewRequest(client HTTPClient, verb string, baseURL *url.URL, versionedAPIPath string, content ContentConfig, backoff BackoffManager, throttle util.RateLimiter) *Request {
 	if backoff == nil {
 		glog.V(2).Infof("Not implementing request backoff strategy.")
 		backoff = &NoBackoff{}
 	}
-	metrics.Register()
-	return &Request{
-		client:       client,
-		verb:         verb,
-		baseURL:      baseURL,
-		path:         baseURL.Path,
-		groupVersion: groupVersion,
-		codec:        codec,
-		backoffMgr:   backoff,
+
+	pathPrefix := "/"
+	if baseURL != nil {
+		pathPrefix = path.Join(pathPrefix, baseURL.Path)
 	}
+	r := &Request{
+		client:     client,
+		verb:       verb,
+		baseURL:    baseURL,
+		pathPrefix: path.Join(pathPrefix, versionedAPIPath),
+		content:    content,
+		backoffMgr: backoff,
+		throttle:   throttle,
+	}
+	if len(content.ContentType) > 0 {
+		r.SetHeader("Accept", content.ContentType+", */*")
+	}
+	return r
 }
 
 // Prefix adds segments to the relative beginning to the request path. These
@@ -139,7 +153,7 @@ func (r *Request) Prefix(segments ...string) *Request {
 	if r.err != nil {
 		return r
 	}
-	r.path = path.Join(r.path, path.Join(segments...))
+	r.pathPrefix = path.Join(r.pathPrefix, path.Join(segments...))
 	return r
 }
 
@@ -244,11 +258,10 @@ func (r *Request) AbsPath(segments ...string) *Request {
 	if r.err != nil {
 		return r
 	}
-	if len(segments) == 1 {
+	r.pathPrefix = path.Join(r.baseURL.Path, path.Join(segments...))
+	if len(segments) == 1 && (len(r.baseURL.Path) > 1 || len(segments[0]) > 1) && strings.HasSuffix(segments[0], "/") {
 		// preserve any trailing slashes for legacy behavior
-		r.path = segments[0]
-	} else {
-		r.path = path.Join(segments...)
+		r.pathPrefix += "/"
 	}
 	return r
 }
@@ -264,7 +277,7 @@ func (r *Request) RequestURI(uri string) *Request {
 		r.err = err
 		return r
 	}
-	r.path = locator.Path
+	r.pathPrefix = locator.Path
 	if len(locator.Query()) > 0 {
 		if r.params == nil {
 			r.params = make(url.Values)
@@ -319,8 +332,8 @@ func (r resourceTypeToFieldMapping) filterField(resourceType, field, value strin
 
 type versionToResourceToFieldMapping map[unversioned.GroupVersion]resourceTypeToFieldMapping
 
-func (v versionToResourceToFieldMapping) filterField(groupVersion unversioned.GroupVersion, resourceType, field, value string) (newField, newValue string, err error) {
-	rMapping, ok := v[groupVersion]
+func (v versionToResourceToFieldMapping) filterField(groupVersion *unversioned.GroupVersion, resourceType, field, value string) (newField, newValue string, err error) {
+	rMapping, ok := v[*groupVersion]
 	if !ok {
 		glog.Warningf("Field selector: %v - %v - %v - %v: need to check if this is versioned correctly.", groupVersion, resourceType, field, value)
 		return field, value, nil
@@ -357,6 +370,7 @@ var fieldMappings = versionToResourceToFieldMapping{
 			ObjectNameField:              ObjectNameField,
 			EventReason:                  EventReason,
 			EventSource:                  EventSource,
+			EventType:                    EventType,
 			EventInvolvedKind:            EventInvolvedKind,
 			EventInvolvedNamespace:       EventInvolvedNamespace,
 			EventInvolvedName:            EventInvolvedName,
@@ -380,13 +394,13 @@ func (r *Request) FieldsSelectorParam(s fields.Selector) *Request {
 		return r
 	}
 	s2, err := s.Transform(func(field, value string) (newField, newValue string, err error) {
-		return fieldMappings.filterField(r.groupVersion, r.resource, field, value)
+		return fieldMappings.filterField(r.content.GroupVersion, r.resource, field, value)
 	})
 	if err != nil {
 		r.err = err
 		return r
 	}
-	return r.setParam(unversioned.FieldSelectorQueryParam(r.groupVersion.String()), s2.String())
+	return r.setParam(unversioned.FieldSelectorQueryParam(r.content.GroupVersion.String()), s2.String())
 }
 
 // LabelsSelectorParam adds the given selector as a query parameter
@@ -400,7 +414,7 @@ func (r *Request) LabelsSelectorParam(s labels.Selector) *Request {
 	if s.Empty() {
 		return r
 	}
-	return r.setParam(unversioned.LabelSelectorQueryParam(r.groupVersion.String()), s.String())
+	return r.setParam(unversioned.LabelSelectorQueryParam(r.content.GroupVersion.String()), s.String())
 }
 
 // UintParam creates a query parameter with the given value.
@@ -420,18 +434,13 @@ func (r *Request) Param(paramName, s string) *Request {
 }
 
 // VersionedParams will take the provided object, serialize it to a map[string][]string using the
-// implicit RESTClient API version and the provided object convertor, and then add those as parameters
+// implicit RESTClient API version and the default parameter codec, and then add those as parameters
 // to the request. Use this to provide versioned query parameters from client libraries.
-func (r *Request) VersionedParams(obj runtime.Object, convertor runtime.ObjectConvertor) *Request {
+func (r *Request) VersionedParams(obj runtime.Object, codec runtime.ParameterCodec) *Request {
 	if r.err != nil {
 		return r
 	}
-	versioned, err := convertor.ConvertToVersion(obj, r.groupVersion.String())
-	if err != nil {
-		r.err = err
-		return r
-	}
-	params, err := queryparams.Convert(versioned)
+	params, err := codec.EncodeParameters(obj, *r.content.GroupVersion)
 	if err != nil {
 		r.err = err
 		return r
@@ -440,15 +449,15 @@ func (r *Request) VersionedParams(obj runtime.Object, convertor runtime.ObjectCo
 		for _, value := range v {
 			// TODO: Move it to setParam method, once we get rid of
 			// FieldSelectorParam & LabelSelectorParam methods.
-			if k == unversioned.LabelSelectorQueryParam(r.groupVersion.String()) && value == "" {
+			if k == unversioned.LabelSelectorQueryParam(r.content.GroupVersion.String()) && value == "" {
 				// Don't set an empty selector for backward compatibility.
 				// Since there is no way to get the difference between empty
 				// and unspecified string, we don't set it to avoid having
 				// labelSelector= param in every request.
 				continue
 			}
-			if k == unversioned.FieldSelectorQueryParam(r.groupVersion.String()) {
-				if value == "" {
+			if k == unversioned.FieldSelectorQueryParam(r.content.GroupVersion.String()) {
+				if len(value) == 0 {
 					// Don't set an empty selector for backward compatibility.
 					// Since there is no way to get the difference between empty
 					// and unspecified string, we don't set it to avoid having
@@ -463,7 +472,7 @@ func (r *Request) VersionedParams(obj runtime.Object, convertor runtime.ObjectCo
 				}
 				filteredSelector, err := selector.Transform(
 					func(field, value string) (newField, newValue string, err error) {
-						return fieldMappings.filterField(r.groupVersion, r.resource, field, value)
+						return fieldMappings.filterField(r.content.GroupVersion, r.resource, field, value)
 					})
 				if err != nil {
 					r.err = fmt.Errorf("untransformable field selector: %v", err)
@@ -538,14 +547,14 @@ func (r *Request) Body(obj interface{}) *Request {
 		if reflect.ValueOf(t).IsNil() {
 			return r
 		}
-		data, err := runtime.Encode(r.codec, t)
+		data, err := runtime.Encode(r.content.Codec, t)
 		if err != nil {
 			r.err = err
 			return r
 		}
 		glog.V(8).Infof("Request Body: %s", string(data))
 		r.body = bytes.NewBuffer(data)
-		r.SetHeader("Content-Type", "application/json")
+		r.SetHeader("Content-Type", r.content.ContentType)
 	default:
 		r.err = fmt.Errorf("unknown type used for body: %+v", obj)
 	}
@@ -554,14 +563,14 @@ func (r *Request) Body(obj interface{}) *Request {
 
 // URL returns the current working URL.
 func (r *Request) URL() *url.URL {
-	p := r.path
+	p := r.pathPrefix
 	if r.namespaceSet && len(r.namespace) > 0 {
 		p = path.Join(p, "namespaces", r.namespace)
 	}
 	if len(r.resource) != 0 {
 		p = path.Join(p, strings.ToLower(r.resource))
 	}
-	// Join trims trailing slashes, so preserve r.path's trailing slash for backwards compat if nothing was changed
+	// Join trims trailing slashes, so preserve r.pathPrefix's trailing slash for backwards compat if nothing was changed
 	if len(r.resourceName) != 0 || len(r.subpath) != 0 || len(r.subresource) != 0 {
 		p = path.Join(p, r.resourceName, r.subresource, r.subpath)
 	}
@@ -609,9 +618,21 @@ func (r Request) finalURLTemplate() string {
 	return r.URL().String()
 }
 
+func (r *Request) tryThrottle() {
+	now := time.Now()
+	if r.throttle != nil {
+		r.throttle.Accept()
+	}
+	if latency := time.Since(now); latency > longThrottleLatency {
+		glog.Warningf("Throttling request took %v, request: %s", latency, r.URL().String())
+	}
+}
+
 // Watch attempts to begin watching the requested location.
 // Returns a watch.Interface, or an error.
 func (r *Request) Watch() (watch.Interface, error) {
+	// We specifically don't want to rate limit watches, so we
+	// don't use r.throttle here.
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -637,18 +658,19 @@ func (r *Request) Watch() (watch.Interface, error) {
 	if err != nil {
 		// The watch stream mechanism handles many common partial data errors, so closed
 		// connections can be retried in many cases.
-		if util.IsProbableEOF(err) {
+		if net.IsProbableEOF(err) {
 			return watch.NewEmptyWatch(), nil
 		}
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
 		if result := r.transformResponse(resp, req); result.err != nil {
 			return nil, result.err
 		}
 		return nil, fmt.Errorf("for request '%+v', got status: %v", url, resp.StatusCode)
 	}
-	return watch.NewStreamWatcher(watchjson.NewDecoder(resp.Body, r.codec)), nil
+	return watch.NewStreamWatcher(watchjson.NewDecoder(resp.Body, r.content.Codec)), nil
 }
 
 // updateURLMetrics is a convenience function for pushing metrics.
@@ -676,6 +698,9 @@ func (r *Request) Stream() (io.ReadCloser, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
+
+	r.tryThrottle()
+
 	url := r.URL().String()
 	req, err := http.NewRequest(r.verb, url, nil)
 	if err != nil {
@@ -713,7 +738,7 @@ func (r *Request) Stream() (io.ReadCloser, error) {
 			return nil, fmt.Errorf("%v while accessing %v", resp.Status, url)
 		}
 
-		if runtimeObject, err := r.codec.Decode(bodyBytes); err == nil {
+		if runtimeObject, err := runtime.Decode(r.content.Codec, bodyBytes); err == nil {
 			statusError := errors.FromObject(runtimeObject)
 
 			if _, ok := statusError.(errors.APIStatus); ok {
@@ -808,6 +833,8 @@ func (r *Request) request(fn func(*http.Request, *http.Response)) error {
 //  * If the server responds with a status: *errors.StatusError or *errors.UnexpectedObjectError
 //  * http.Client.Do errors are returned directly.
 func (r *Request) Do() Result {
+	r.tryThrottle()
+
 	var result Result
 	err := r.request(func(req *http.Request, resp *http.Response) {
 		result = r.transformResponse(resp, req)
@@ -820,6 +847,8 @@ func (r *Request) Do() Result {
 
 // DoRaw executes the request but does not process the response body.
 func (r *Request) DoRaw() ([]byte, error) {
+	r.tryThrottle()
+
 	var result Result
 	err := r.request(func(req *http.Request, resp *http.Response) {
 		result.body, result.err = ioutil.ReadAll(resp.Body)
@@ -842,8 +871,13 @@ func (r *Request) transformResponse(resp *http.Response, req *http.Request) Resu
 
 	// Did the server give us a status response?
 	isStatusResponse := false
-	var status unversioned.Status
-	if err := r.codec.DecodeInto(body, &status); err == nil && status.Status != "" {
+	// Because release-1.1 server returns Status with empty APIVersion at paths
+	// to the Extensions resources, we need to use DecodeInto here to provide
+	// default groupVersion, otherwise a status response won't be correctly
+	// decoded.
+	status := &unversioned.Status{}
+	err := runtime.DecodeInto(r.content.Codec, body, status)
+	if err == nil && len(status.Status) > 0 {
 		isStatusResponse = true
 	}
 
@@ -854,20 +888,21 @@ func (r *Request) transformResponse(resp *http.Response, req *http.Request) Resu
 		if !isStatusResponse {
 			return Result{err: r.transformUnstructuredResponseError(resp, req, body)}
 		}
-		return Result{err: errors.FromObject(&status)}
+		return Result{err: errors.FromObject(status)}
 	}
 
 	// If the server gave us a status back, look at what it was.
 	success := resp.StatusCode >= http.StatusOK && resp.StatusCode <= http.StatusPartialContent
 	if isStatusResponse && (status.Status != unversioned.StatusSuccess && !success) {
 		// "Failed" requests are clearly just an error and it makes sense to return them as such.
-		return Result{err: errors.FromObject(&status)}
+		return Result{err: errors.FromObject(status)}
 	}
 
 	return Result{
-		body:       body,
-		statusCode: resp.StatusCode,
-		codec:      r.codec,
+		body:        body,
+		contentType: resp.Header.Get("Content-Type"),
+		statusCode:  resp.StatusCode,
+		decoder:     r.content.Codec,
 	}
 }
 
@@ -902,7 +937,18 @@ func (r *Request) transformUnstructuredResponseError(resp *http.Response, req *h
 		message = strings.TrimSpace(string(body))
 	}
 	retryAfter, _ := retryAfterSeconds(resp)
-	return errors.NewGenericServerResponse(resp.StatusCode, req.Method, unversioned.GroupResource{Group: r.groupVersion.Group, Resource: r.resource}, r.resourceName, message, retryAfter, true)
+	return errors.NewGenericServerResponse(
+		resp.StatusCode,
+		req.Method,
+		unversioned.GroupResource{
+			Group:    r.content.GroupVersion.Group,
+			Resource: r.resource,
+		},
+		r.resourceName,
+		message,
+		retryAfter,
+		true,
+	)
 }
 
 // isTextResponse returns true if the response appears to be a textual media type.
@@ -944,11 +990,12 @@ func retryAfterSeconds(resp *http.Response) (int, bool) {
 
 // Result contains the result of calling Request.Do().
 type Result struct {
-	body       []byte
-	err        error
-	statusCode int
+	body        []byte
+	contentType string
+	err         error
+	statusCode  int
 
-	codec runtime.Codec
+	decoder runtime.Decoder
 }
 
 // Raw returns the raw result.
@@ -961,7 +1008,7 @@ func (r Result) Get() (runtime.Object, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	return r.codec.Decode(r.body)
+	return runtime.Decode(r.decoder, r.body)
 }
 
 // StatusCode returns the HTTP status code of the request. (Only valid if no
@@ -971,12 +1018,12 @@ func (r Result) StatusCode(statusCode *int) Result {
 	return r
 }
 
-// Into stores the result into obj, if possible.
+// Into stores the result into obj, if possible. If obj is nil it is ignored.
 func (r Result) Into(obj runtime.Object) error {
 	if r.err != nil {
 		return r.err
 	}
-	return r.codec.DecodeInto(r.body, obj)
+	return runtime.DecodeInto(r.decoder, r.body, obj)
 }
 
 // WasCreated updates the provided bool pointer to whether the server returned
