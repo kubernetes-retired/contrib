@@ -35,7 +35,8 @@ import (
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
+	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/watch"
 )
 
@@ -82,7 +83,7 @@ var (
 	// TCP connection.
 	minWatchTimeout = 5 * time.Minute
 	// If we are within 'forceResyncThreshold' from the next planned resync
-	// and are just before issueing Watch(), resync will be forced now.
+	// and are just before issuing Watch(), resync will be forced now.
 	forceResyncThreshold = 3 * time.Second
 	// We try to set timeouts for Watch() so that we will finish about
 	// than 'timeoutThreshold' from next planned periodic resync.
@@ -156,13 +157,13 @@ outer:
 // Run starts a watch and handles watch events. Will restart the watch if it is closed.
 // Run starts a goroutine and returns immediately.
 func (r *Reflector) Run() {
-	go util.Until(func() { r.ListAndWatch(util.NeverStop) }, r.period, util.NeverStop)
+	go wait.Until(func() { r.ListAndWatch(wait.NeverStop) }, r.period, wait.NeverStop)
 }
 
 // RunUntil starts a watch and handles watch events. Will restart the watch if it is closed.
 // RunUntil starts a goroutine and returns immediately. It will exit when stopCh is closed.
 func (r *Reflector) RunUntil(stopCh <-chan struct{}) {
-	go util.Until(func() { r.ListAndWatch(stopCh) }, r.period, stopCh)
+	go wait.Until(func() { r.ListAndWatch(stopCh) }, r.period, stopCh)
 }
 
 var (
@@ -222,7 +223,9 @@ func (r *Reflector) canForceResyncNow() bool {
 	return r.now().Add(forceResyncThreshold).After(r.nextResync)
 }
 
-// Returns error if ListAndWatch didn't even tried to initialize watch.
+// ListAndWatch first lists all items and get the resource version at the moment of call,
+// and then use the resource version to watch.
+// It returns error if ListAndWatch didn't even try to initialize watch.
 func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 	var resourceVersion string
 	resyncCh, cleanup := r.resyncChan()
@@ -265,7 +268,7 @@ func (r *Reflector) ListAndWatch(stopCh <-chan struct{}) error {
 			case io.ErrUnexpectedEOF:
 				glog.V(1).Infof("%s: Watch for %v closed with unexpected EOF: %v", r.name, r.expectedType, err)
 			default:
-				util.HandleError(fmt.Errorf("%s: Failed to watch %v: %v", r.name, r.expectedType, err))
+				utilruntime.HandleError(fmt.Errorf("%s: Failed to watch %v: %v", r.name, r.expectedType, err))
 			}
 			// If this is "connection refused" error, it means that most likely apiserver is not responsive.
 			// It doesn't make sense to re-list all objects because most likely we will be able to restart
@@ -327,12 +330,12 @@ loop:
 				return apierrs.FromObject(event.Object)
 			}
 			if e, a := r.expectedType, reflect.TypeOf(event.Object); e != nil && e != a {
-				util.HandleError(fmt.Errorf("%s: expected type %v, but watch event object had type %v", r.name, e, a))
+				utilruntime.HandleError(fmt.Errorf("%s: expected type %v, but watch event object had type %v", r.name, e, a))
 				continue
 			}
 			meta, err := meta.Accessor(event.Object)
 			if err != nil {
-				util.HandleError(fmt.Errorf("%s: unable to understand watch event %#v", r.name, event))
+				utilruntime.HandleError(fmt.Errorf("%s: unable to understand watch event %#v", r.name, event))
 				continue
 			}
 			newResourceVersion := meta.GetResourceVersion()
@@ -347,7 +350,7 @@ loop:
 				// to change this.
 				r.store.Delete(event.Object)
 			default:
-				util.HandleError(fmt.Errorf("%s: unable to understand watch event %#v", r.name, event))
+				utilruntime.HandleError(fmt.Errorf("%s: unable to understand watch event %#v", r.name, event))
 			}
 			*resourceVersion = newResourceVersion
 			r.setLastSyncResourceVersion(newResourceVersion)

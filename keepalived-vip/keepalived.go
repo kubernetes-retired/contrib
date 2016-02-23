@@ -171,7 +171,7 @@ func (k *keepalived) Start() {
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, syscall.SIGTERM)
 	go func() {
-		for _ = range c {
+		for range c {
 			glog.Warning("TERM signal received. removing vips")
 			for _, vip := range k.vips {
 				k.removeVIP(vip)
