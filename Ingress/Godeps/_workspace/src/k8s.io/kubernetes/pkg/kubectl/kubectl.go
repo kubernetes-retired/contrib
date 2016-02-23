@@ -18,6 +18,9 @@ limitations under the License.
 package kubectl
 
 import (
+	"errors"
+	"fmt"
+	"path"
 	"strings"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -86,12 +89,6 @@ func (e ShortcutExpander) KindFor(resource unversioned.GroupVersionResource) (un
 	return e.RESTMapper.KindFor(resource)
 }
 
-// ResourceIsValid takes a string (kind) and checks if it's a valid resource.
-// It expands the resource first, then invokes the wrapped mapper.
-func (e ShortcutExpander) ResourceIsValid(resource unversioned.GroupVersionResource) bool {
-	return e.RESTMapper.ResourceIsValid(expandResourceShortcut(resource))
-}
-
 // ResourceSingularizer expands the named resource and then singularizes it.
 func (e ShortcutExpander) ResourceSingularizer(resource string) (string, error) {
 	return e.RESTMapper.ResourceSingularizer(expandResourceShortcut(unversioned.GroupVersionResource{Resource: resource}).Resource)
@@ -113,14 +110,49 @@ func expandResourceShortcut(resource unversioned.GroupVersionResource) unversion
 		"no":     api.SchemeGroupVersion.WithResource("nodes"),
 		"ns":     api.SchemeGroupVersion.WithResource("namespaces"),
 		"po":     api.SchemeGroupVersion.WithResource("pods"),
+		"psp":    api.SchemeGroupVersion.WithResource("podSecurityPolicies"),
 		"pvc":    api.SchemeGroupVersion.WithResource("persistentvolumeclaims"),
 		"pv":     api.SchemeGroupVersion.WithResource("persistentvolumes"),
 		"quota":  api.SchemeGroupVersion.WithResource("resourcequotas"),
 		"rc":     api.SchemeGroupVersion.WithResource("replicationcontrollers"),
+		"rs":     extensions.SchemeGroupVersion.WithResource("replicasets"),
 		"svc":    api.SchemeGroupVersion.WithResource("services"),
 	}
 	if expanded, ok := shortForms[resource.Resource]; ok {
 		return expanded
 	}
 	return resource
+}
+
+// parseFileSource parses the source given. Acceptable formats include:
+//
+// 1.  source-path: the basename will become the key name
+// 2.  source-name=source-path: the source-name will become the key name and source-path is the path to the key file
+//
+// Key names cannot include '='.
+func parseFileSource(source string) (keyName, filePath string, err error) {
+	numSeparators := strings.Count(source, "=")
+	switch {
+	case numSeparators == 0:
+		return path.Base(source), source, nil
+	case numSeparators == 1 && strings.HasPrefix(source, "="):
+		return "", "", fmt.Errorf("key name for file path %v missing.", strings.TrimPrefix(source, "="))
+	case numSeparators == 1 && strings.HasSuffix(source, "="):
+		return "", "", fmt.Errorf("file path for key name %v missing.", strings.TrimSuffix(source, "="))
+	case numSeparators > 1:
+		return "", "", errors.New("Key names or file paths cannot contain '='.")
+	default:
+		components := strings.Split(source, "=")
+		return components[0], components[1], nil
+	}
+}
+
+// parseLiteralSource parses the source key=val pair
+func parseLiteralSource(source string) (keyName, value string, err error) {
+	items := strings.Split(source, "=")
+	if len(items) != 2 {
+		return "", "", fmt.Errorf("invalid literal source %v, expected key=value", source)
+	}
+
+	return items[0], items[1], nil
 }
