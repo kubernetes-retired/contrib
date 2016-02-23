@@ -23,6 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
+	"speter.net/go/exp/math/dec/inf"
 )
 
 const (
@@ -44,10 +45,36 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 		Convert_v1_PodSpec_To_api_PodSpec,
 		Convert_v1_ReplicationControllerSpec_To_api_ReplicationControllerSpec,
 		Convert_v1_ServiceSpec_To_api_ServiceSpec,
+		Convert_v1_ResourceList_To_api_ResourceList,
 	)
 	if err != nil {
 		// If one of the conversion functions is malformed, detect it immediately.
 		panic(err)
+	}
+
+	// Add field label conversions for kinds having selectable nothing but ObjectMeta fields.
+	for _, kind := range []string{
+		"Endpoints",
+		"ResourceQuota",
+		"PersistentVolumeClaim",
+		"Service",
+		"ServiceAccount",
+		"ConfigMap",
+	} {
+		err = api.Scheme.AddFieldLabelConversionFunc("v1", kind,
+			func(label, value string) (string, string, error) {
+				switch label {
+				case "metadata.namespace",
+					"metadata.name":
+					return label, value, nil
+				default:
+					return "", "", fmt.Errorf("field label %q not supported for %q", label, kind)
+				}
+			})
+		if err != nil {
+			// If one of the conversion functions is malformed, detect it immediately.
+			panic(err)
+		}
 	}
 
 	// Add field conversion funcs.
@@ -60,7 +87,8 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 				"metadata.annotations",
 				"status.phase",
 				"status.podIP",
-				"spec.nodeName":
+				"spec.nodeName",
+				"spec.restartPolicy":
 				return label, value, nil
 				// This is for backwards compatibility with old v1 clients which send spec.host
 			case "spec.host":
@@ -141,53 +169,24 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 		// If one of the conversion functions is malformed, detect it immediately.
 		panic(err)
 	}
+	err = api.Scheme.AddFieldLabelConversionFunc("v1", "PersistentVolume",
+		func(label, value string) (string, string, error) {
+			switch label {
+			case "metadata.name":
+				return label, value, nil
+			default:
+				return "", "", fmt.Errorf("field label not supported: %s", label)
+			}
+		})
+	if err != nil {
+		// If one of the conversion functions is malformed, detect it immediately.
+		panic(err)
+	}
 	err = api.Scheme.AddFieldLabelConversionFunc("v1", "Secret",
 		func(label, value string) (string, string, error) {
 			switch label {
 			case "type",
 				"metadata.namespace",
-				"metadata.name":
-				return label, value, nil
-			default:
-				return "", "", fmt.Errorf("field label not supported: %s", label)
-			}
-		})
-	if err != nil {
-		// If one of the conversion functions is malformed, detect it immediately.
-		panic(err)
-	}
-	err = api.Scheme.AddFieldLabelConversionFunc("v1", "ServiceAccount",
-		func(label, value string) (string, string, error) {
-			switch label {
-			case "metadata.name",
-				"metadata.namespace":
-				return label, value, nil
-			default:
-				return "", "", fmt.Errorf("field label not supported: %s", label)
-			}
-		})
-	if err != nil {
-		// If one of the conversion functions is malformed, detect it immediately.
-		panic(err)
-	}
-	err = api.Scheme.AddFieldLabelConversionFunc("v1", "Endpoints",
-		func(label, value string) (string, string, error) {
-			switch label {
-			case "metadata.namespace",
-				"metadata.name":
-				return label, value, nil
-			default:
-				return "", "", fmt.Errorf("field label not supported: %s", label)
-			}
-		})
-	if err != nil {
-		// If one of the conversion functions is malformed, detect it immediately.
-		panic(err)
-	}
-	err = api.Scheme.AddFieldLabelConversionFunc("v1", "Service",
-		func(label, value string) (string, string, error) {
-			switch label {
-			case "metadata.namespace",
 				"metadata.name":
 				return label, value, nil
 			default:
@@ -323,7 +322,7 @@ func Convert_api_PodSpec_To_v1_PodSpec(in *api.PodSpec, out *PodSpec, s conversi
 			return err
 		}
 
-		// the host namespace fields have to be handled here for backward compatibilty
+		// the host namespace fields have to be handled here for backward compatibility
 		// with v1.0.0
 		out.HostPID = in.SecurityContext.HostPID
 		out.HostNetwork = in.SecurityContext.HostNetwork
@@ -538,5 +537,29 @@ func Convert_v1_PodSecurityContext_To_api_PodSecurityContext(in *PodSecurityCont
 	} else {
 		out.FSGroup = nil
 	}
+	return nil
+}
+
+func Convert_v1_ResourceList_To_api_ResourceList(in *ResourceList, out *api.ResourceList, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*ResourceList))(in)
+	}
+	if *in == nil {
+		return nil
+	}
+
+	converted := make(api.ResourceList)
+	for key, val := range *in {
+		value := val.Copy()
+
+		// TODO(#18538): We round up resource values to milli scale to maintain API compatibility.
+		// In the future, we should instead reject values that need rounding.
+		const milliScale = 3
+		value.Amount.Round(value.Amount, milliScale, inf.RoundUp)
+
+		converted[api.ResourceName(key)] = *value
+	}
+
+	*out = converted
 	return nil
 }

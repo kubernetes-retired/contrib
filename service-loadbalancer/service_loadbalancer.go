@@ -41,6 +41,7 @@ import (
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/intstr"
+	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 )
 
@@ -710,13 +711,13 @@ func main() {
 	// TODO: Handle multiple namespaces
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace, tcpSvcs)
 
-	go lbc.epController.Run(util.NeverStop)
-	go lbc.svcController.Run(util.NeverStop)
+	go lbc.epController.Run(wait.NeverStop)
+	go lbc.svcController.Run(wait.NeverStop)
 	if *dry {
 		dryRun(lbc)
 	} else {
 		lbc.cfg.reload()
-		util.Until(lbc.worker, time.Second, util.NeverStop)
+		wait.Until(lbc.worker, time.Second, wait.NeverStop)
 	}
 
 }

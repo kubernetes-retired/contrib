@@ -30,13 +30,14 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/api/latest"
+	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
+	"k8s.io/kubernetes/pkg/util/strategicpatch"
 
 	"github.com/evanphx/json-patch"
 	"github.com/golang/glog"
@@ -76,6 +77,12 @@ func BehaviorOnFatal(f func(string)) {
 	fatalErrHandler = f
 }
 
+// DefaultBehaviorOnFatal allows you to undo any previous override.  Useful in
+// tests.
+func DefaultBehaviorOnFatal() {
+	fatalErrHandler = fatal
+}
+
 // fatal prints the message and then exits. If V(2) or greater, glog.Fatal
 // is invoked for extended information.
 func fatal(msg string) {
@@ -112,6 +119,22 @@ func checkErr(err error, handleErr func(string)) {
 		handleErr(MultilineError(prefix, errs))
 	}
 
+	if meta.IsNoResourceMatchError(err) {
+		noMatch := err.(*meta.NoResourceMatchError)
+
+		switch {
+		case len(noMatch.PartialResource.Group) > 0 && len(noMatch.PartialResource.Version) > 0:
+			handleErr(fmt.Sprintf("the server doesn't have a resource type %q in group %q and version %q", noMatch.PartialResource.Resource, noMatch.PartialResource.Group, noMatch.PartialResource.Version))
+		case len(noMatch.PartialResource.Group) > 0:
+			handleErr(fmt.Sprintf("the server doesn't have a resource type %q in group %q", noMatch.PartialResource.Resource, noMatch.PartialResource.Group))
+		case len(noMatch.PartialResource.Version) > 0:
+			handleErr(fmt.Sprintf("the server doesn't have a resource type %q in version %q", noMatch.PartialResource.Resource, noMatch.PartialResource.Version))
+		default:
+			handleErr(fmt.Sprintf("the server doesn't have a resource type %q", noMatch.PartialResource.Resource))
+		}
+		return
+	}
+
 	// handle multiline errors
 	if clientcmd.IsConfigurationInvalid(err) {
 		handleErr(MultilineError("Error in configuration: ", err))
@@ -122,7 +145,10 @@ func checkErr(err error, handleErr func(string)) {
 
 	msg, ok := StandardErrorMessage(err)
 	if !ok {
-		msg = fmt.Sprintf("error: %s", err.Error())
+		msg = err.Error()
+		if !strings.HasPrefix(msg, "error: ") {
+			msg = fmt.Sprintf("error: %s", msg)
+		}
 	}
 	handleErr(msg)
 }
@@ -309,8 +335,6 @@ func AddApplyAnnotationFlags(cmd *cobra.Command) {
 func AddGeneratorFlags(cmd *cobra.Command, defaultGenerator string) {
 	cmd.Flags().String("generator", defaultGenerator, "The name of the API generator to use.")
 	cmd.Flags().Bool("dry-run", false, "If true, only print the object that would be sent, without sending it.")
-	cmd.Flags().StringP("output", "o", "", "Output format. One of: json|yaml|wide|name|go-template=...|go-template-file=...|jsonpath=...|jsonpath-file=... See golang template [http://golang.org/pkg/text/template/#pkg-overview] and jsonpath template [http://releases.k8s.io/HEAD/docs/user-guide/jsonpath.md].")
-	cmd.Flags().String("output-version", "", "Output the formatted object with the given version (default api-version).")
 }
 
 func ReadConfigDataFromReader(reader io.Reader, source string) ([]byte, error) {
@@ -326,7 +350,7 @@ func ReadConfigDataFromReader(reader io.Reader, source string) ([]byte, error) {
 	return data, nil
 }
 
-// ReadConfigData reads the bytes from the specified filesytem or network
+// ReadConfigData reads the bytes from the specified filesystem or network
 // location or from stdin if location == "-".
 // TODO: replace with resource.Builder
 func ReadConfigData(location string) ([]byte, error) {
@@ -365,38 +389,11 @@ func ReadConfigDataFromLocation(location string) ([]byte, error) {
 	}
 }
 
-func Merge(dst runtime.Object, fragment, kind string) (runtime.Object, error) {
-	// Ok, this is a little hairy, we'd rather not force the user to specify a kind for their JSON
-	// So we pull it into a map, add the Kind field, and then reserialize.
-	// We also pull the apiVersion for proper parsing
-	var intermediate interface{}
-	if err := json.Unmarshal([]byte(fragment), &intermediate); err != nil {
-		return nil, err
-	}
-	dataMap, ok := intermediate.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("Expected a map, found something else: %s", fragment)
-	}
-	version, found := dataMap["apiVersion"]
-	if !found {
-		return nil, fmt.Errorf("Inline JSON requires an apiVersion field")
-	}
-	versionString, ok := version.(string)
-	if !ok {
-		return nil, fmt.Errorf("apiVersion must be a string")
-	}
-	groupVersion, err := unversioned.ParseGroupVersion(versionString)
-	if err != nil {
-		return nil, err
-	}
-
-	i, err := latest.GroupOrDie(api.GroupName).InterfacesFor(groupVersion)
-	if err != nil {
-		return nil, err
-	}
-
+// Merge requires JSON serialization
+// TODO: merge assumes JSON serialization, and does not properly abstract API retrieval
+func Merge(codec runtime.Codec, dst runtime.Object, fragment, kind string) (runtime.Object, error) {
 	// encode dst into versioned json and apply fragment directly too it
-	target, err := i.Codec.Encode(dst)
+	target, err := runtime.Encode(codec, dst)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +401,7 @@ func Merge(dst runtime.Object, fragment, kind string) (runtime.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	out, err := i.Codec.Decode(patched)
+	out, err := runtime.Decode(codec, patched)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +434,7 @@ func DumpReaderToFile(reader io.Reader, filename string) error {
 }
 
 // UpdateObject updates resource object with updateFn
-func UpdateObject(info *resource.Info, updateFn func(runtime.Object) error) (runtime.Object, error) {
+func UpdateObject(info *resource.Info, codec runtime.Codec, updateFn func(runtime.Object) error) (runtime.Object, error) {
 	helper := resource.NewHelper(info.Client, info.Mapping)
 
 	if err := updateFn(info.Object); err != nil {
@@ -445,7 +442,7 @@ func UpdateObject(info *resource.Info, updateFn func(runtime.Object) error) (run
 	}
 
 	// Update the annotation used by kubectl apply
-	if err := kubectl.UpdateApplyAnnotation(info); err != nil {
+	if err := kubectl.UpdateApplyAnnotation(info, codec); err != nil {
 		return nil, err
 	}
 
@@ -454,4 +451,57 @@ func UpdateObject(info *resource.Info, updateFn func(runtime.Object) error) (run
 	}
 
 	return info.Object, nil
+}
+
+// AddCmdRecordFlag adds --record flag to command
+func AddRecordFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("record", false, "Record current kubectl command in the resource annotation.")
+}
+
+func GetRecordFlag(cmd *cobra.Command) bool {
+	return GetFlagBool(cmd, "record")
+}
+
+// RecordChangeCause annotate change-cause to input runtime object.
+func RecordChangeCause(obj runtime.Object, changeCause string) error {
+	meta, err := api.ObjectMetaFor(obj)
+	if err != nil {
+		return err
+	}
+	if meta.Annotations == nil {
+		meta.Annotations = make(map[string]string)
+	}
+	meta.Annotations[kubectl.ChangeCauseAnnotation] = changeCause
+	return nil
+}
+
+// ChangeResourcePatch creates a strategic merge patch between the origin input resource info
+// and the annotated with change-cause input resource info.
+func ChangeResourcePatch(info *resource.Info, changeCause string) ([]byte, error) {
+	oldData, err := json.Marshal(info.Object)
+	if err != nil {
+		return nil, err
+	}
+	if err := RecordChangeCause(info.Object, changeCause); err != nil {
+		return nil, err
+	}
+	newData, err := json.Marshal(info.Object)
+	if err != nil {
+		return nil, err
+	}
+	return strategicpatch.CreateTwoWayMergePatch(oldData, newData, info.Object)
+}
+
+// containsChangeCause checks if input resource info contains change-cause annotation.
+func ContainsChangeCause(info *resource.Info) bool {
+	annotations, err := info.Mapping.MetadataAccessor.Annotations(info.Object)
+	if err != nil {
+		return false
+	}
+	return len(annotations[kubectl.ChangeCauseAnnotation]) > 0
+}
+
+// ShouldRecord checks if we should record current change cause
+func ShouldRecord(cmd *cobra.Command, info *resource.Info) bool {
+	return GetRecordFlag(cmd) || ContainsChangeCause(info)
 }
