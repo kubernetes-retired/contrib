@@ -20,16 +20,27 @@ import (
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/runtime/serializer"
 )
 
 // Scheme is the default instance of runtime.Scheme to which types in the Kubernetes API are already registered.
 var Scheme = runtime.NewScheme()
 
+// Codecs provides access to encoding and decoding for the scheme
+var Codecs = serializer.NewCodecFactory(Scheme)
+
 // GroupName is the group name use in this package
 const GroupName = ""
 
 // SchemeGroupVersion is group version used to register these objects
-var SchemeGroupVersion = unversioned.GroupVersion{Group: GroupName, Version: ""}
+var SchemeGroupVersion = unversioned.GroupVersion{Group: GroupName, Version: runtime.APIVersionInternal}
+
+// Unversiond is group version for unversioned API objects
+// TODO: this should be v1 probably
+var Unversioned = unversioned.GroupVersion{Group: "", Version: "v1"}
+
+// ParameterCodec handles versioning of objects that are converted to query parameters.
+var ParameterCodec = runtime.NewParameterCodec(Scheme)
 
 // Kind takes an unqualified kind and returns back a Group qualified GroupKind
 func Kind(kind string) unversioned.GroupKind {
@@ -42,6 +53,9 @@ func Resource(resource string) unversioned.GroupResource {
 }
 
 func AddToScheme(scheme *runtime.Scheme) {
+	if err := Scheme.AddIgnoredConversionType(&unversioned.TypeMeta{}, &unversioned.TypeMeta{}); err != nil {
+		panic(err)
+	}
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&Pod{},
 		&PodList{},
@@ -52,8 +66,10 @@ func AddToScheme(scheme *runtime.Scheme) {
 		&ReplicationController{},
 		&ServiceList{},
 		&Service{},
+		&ServiceProxyOptions{},
 		&NodeList{},
 		&Node{},
+		&NodeProxyOptions{},
 		&Endpoints{},
 		&EndpointsList{},
 		&Binding{},
@@ -84,16 +100,19 @@ func AddToScheme(scheme *runtime.Scheme) {
 		&ComponentStatusList{},
 		&SerializedReference{},
 		&RangeAllocation{},
+		&ConfigMap{},
+		&ConfigMapList{},
 	)
 
-	// Add the Unversioned types to scheme.
-	// TODO this should not be done here
-	scheme.AddKnownTypes(SchemeGroupVersion, &unversioned.ExportOptions{})
-	scheme.AddKnownTypes(SchemeGroupVersion, &unversioned.Status{})
-	scheme.AddKnownTypes(SchemeGroupVersion, &unversioned.APIVersions{})
-	scheme.AddKnownTypes(SchemeGroupVersion, &unversioned.APIGroupList{})
-	scheme.AddKnownTypes(SchemeGroupVersion, &unversioned.APIGroup{})
-	scheme.AddKnownTypes(SchemeGroupVersion, &unversioned.APIResourceList{})
+	// Register Unversioned types under their own special group
+	Scheme.AddUnversionedTypes(Unversioned,
+		&unversioned.ExportOptions{},
+		&unversioned.Status{},
+		&unversioned.APIVersions{},
+		&unversioned.APIGroupList{},
+		&unversioned.APIGroup{},
+		&unversioned.APIResourceList{},
+	)
 }
 
 func (obj *Pod) GetObjectMeta() meta.Object                                  { return &obj.ObjectMeta }
@@ -116,6 +135,7 @@ func (obj *EndpointsList) GetObjectKind() unversioned.ObjectKind             { r
 func (obj *Node) GetObjectMeta() meta.Object                                 { return &obj.ObjectMeta }
 func (obj *Node) GetObjectKind() unversioned.ObjectKind                      { return &obj.TypeMeta }
 func (obj *NodeList) GetObjectKind() unversioned.ObjectKind                  { return &obj.TypeMeta }
+func (obj *NodeProxyOptions) GetObjectKind() unversioned.ObjectKind          { return &obj.TypeMeta }
 func (obj *Binding) GetObjectMeta() meta.Object                              { return &obj.ObjectMeta }
 func (obj *Binding) GetObjectKind() unversioned.ObjectKind                   { return &obj.TypeMeta }
 func (obj *Event) GetObjectMeta() meta.Object                                { return &obj.ObjectMeta }
@@ -149,6 +169,7 @@ func (obj *PodAttachOptions) GetObjectKind() unversioned.ObjectKind          { r
 func (obj *PodLogOptions) GetObjectKind() unversioned.ObjectKind             { return &obj.TypeMeta }
 func (obj *PodExecOptions) GetObjectKind() unversioned.ObjectKind            { return &obj.TypeMeta }
 func (obj *PodProxyOptions) GetObjectKind() unversioned.ObjectKind           { return &obj.TypeMeta }
+func (obj *ServiceProxyOptions) GetObjectKind() unversioned.ObjectKind       { return &obj.TypeMeta }
 func (obj *ComponentStatus) GetObjectMeta() meta.Object                      { return &obj.ObjectMeta }
 func (obj *ComponentStatus) GetObjectKind() unversioned.ObjectKind           { return &obj.TypeMeta }
 func (obj *ComponentStatusList) GetObjectKind() unversioned.ObjectKind       { return &obj.TypeMeta }
@@ -157,3 +178,6 @@ func (obj *RangeAllocation) GetObjectMeta() meta.Object                      { r
 func (obj *RangeAllocation) GetObjectKind() unversioned.ObjectKind           { return &obj.TypeMeta }
 func (obj *ObjectReference) GetObjectKind() unversioned.ObjectKind           { return obj }
 func (obj *ExportOptions) GetObjectKind() unversioned.ObjectKind             { return &obj.TypeMeta }
+func (obj *ConfigMap) GetObjectMeta() meta.Object                            { return &obj.ObjectMeta }
+func (obj *ConfigMap) GetObjectKind() unversioned.ObjectKind                 { return &obj.TypeMeta }
+func (obj *ConfigMapList) GetObjectKind() unversioned.ObjectKind             { return &obj.TypeMeta }

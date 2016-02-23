@@ -13,13 +13,10 @@
 # limitations under the License.
 
 
-FROM alpine:3.2
+FROM alpine:edge
 MAINTAINER Prashanth B <beeps@google.com>
 
-COPY haproxy.apk /var/cache/apk/haproxy.apk
-
-RUN apk add -U pcre bash curl socat lua5.3 && \
-  apk add --allow-untrusted /var/cache/apk/haproxy.apk && \
+RUN apk add -U bash curl socat haproxy && \
   rm -rf /var/cache/apk/*
 
 RUN mkdir -p /etc/haproxy/errors /var/state/haproxy
