@@ -8,7 +8,7 @@
     "containers": [
       {
         "name": "healthz",
-        "image": "gcr.io/google_containers/exechealthz:1.0",
+        "image": "gcr.io/google_containers/exechealthz:1.1",
         "args": [
           "-cmd=nslookup localhost"
         ],

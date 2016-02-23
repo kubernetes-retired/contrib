@@ -8,7 +8,7 @@ container:
 	docker build -t $(PREFIX):$(TAG) .
 
 push: container
-	docker push $(PREFIX):$(TAG)
+	gcloud docker push $(PREFIX):$(TAG)
 
 clean:
 	docker rmi -f $(PREFIX):$(TAG) || true
