@@ -19,10 +19,11 @@ limitations under the License.
 package main // import "k8s.io/contrib/git-sync"
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
-	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -41,6 +42,9 @@ var flDepth = flag.Int("depth", envInt("GIT_SYNC_DEPTH", 0), "shallow clone with
 
 var flUsername = flag.String("username", envString("GIT_SYNC_USERNAME", ""), "username")
 var flPassword = flag.String("password", envString("GIT_SYNC_PASSWORD", ""), "password")
+
+var flChmod = flag.Int("change-permissions", envInt("GIT_SYNC_PERMISSIONS", 0), `If set it will change the permissions of the directory 
+		that contains the git repository. Example: 744`)
 
 func envString(key, def string) string {
 	if env := os.Getenv(key); env != "" {
@@ -86,24 +90,20 @@ func main() {
 	}
 
 	if *flUsername != "" && *flPassword != "" {
-		log.Println("creating .netrc file (required for https authentication)")
-		if err := createNetrcFile(*flUsername, *flPassword, *flRepo); err != nil {
+		if err := setupGitAuth(*flUsername, *flPassword, *flRepo); err != nil {
 			log.Fatalf("error creating .netrc file: %v", err)
 		}
-	}
-
-	if *flOneTime {
-		if err := syncRepo(*flRepo, *flDest, *flBranch, *flRev, *flDepth); err != nil {
-			log.Fatalf("error syncing repo: %v", err)
-		}
-
-		os.Exit(0)
 	}
 
 	for {
 		if err := syncRepo(*flRepo, *flDest, *flBranch, *flRev, *flDepth); err != nil {
 			log.Fatalf("error syncing repo: %v", err)
 		}
+
+		if *flOneTime {
+			os.Exit(0)
+		}
+
 		log.Printf("wait %d seconds", *flWait)
 		time.Sleep(time.Duration(*flWait) * time.Second)
 		log.Println("done")
@@ -124,62 +124,76 @@ func syncRepo(repo, dest, branch, rev string, depth int) error {
 		}
 		args = append(args, repo)
 		args = append(args, dest)
-		cmd := exec.Command("git", args...)
-		output, err := cmd.CombinedOutput()
+		output, err := runCommand("git", "", args)
 		if err != nil {
-			return fmt.Errorf("error cloning repo %q: %v: %s", strings.Join(cmd.Args, " "), err, string(output))
+			return err
 		}
+
 		log.Printf("clone %q: %s", repo, string(output))
 	case err != nil:
 		return fmt.Errorf("error checking if repo exist %q: %v", gitRepoPath, err)
 	}
 
 	// fetch branch
-	cmd := exec.Command("git", "fetch", "origin", branch)
-	cmd.Dir = dest
-	output, err := cmd.CombinedOutput()
+	output, err := runCommand("git", dest, []string{"pull", "origin", branch})
 	if err != nil {
-		return fmt.Errorf("error running command %q: %v: %s", strings.Join(cmd.Args, " "), err, string(output))
+		return err
 	}
+
 	log.Printf("fetch %q: %s", branch, string(output))
 
 	// reset working copy
-	cmd = exec.Command("git", "reset", "--hard", rev)
-	cmd.Dir = dest
-	output, err = cmd.CombinedOutput()
+	output, err = runCommand("git", dest, []string{"reset", "--hard", rev})
 	if err != nil {
-		return fmt.Errorf("error running command %q : %v: %s", strings.Join(cmd.Args, " "), err, string(output))
+		return err
 	}
+
 	log.Printf("reset %q: %v", rev, string(output))
 
-	// set file permissions
-	cmd = exec.Command("chmod", "-R", "744", dest)
-	cmd.Dir = dest
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error running command %q : %v: %s", strings.Join(cmd.Args, " "), err, string(output))
+	if *flChmod != 0 {
+		// set file permissions
+		_, err = runCommand("chmod", "", []string{"-R", string(*flChmod), dest})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// https://www.kernel.org/pub/software/scm/git/docs/howto/setup-git-server-over-http.txt
-// Step 3: setup the client
-func createNetrcFile(username, password, gitURL string) error {
-	home := os.Getenv("HOME")
-	netrc, err := os.Create(fmt.Sprintf("%v/.netrc", home))
+func runCommand(command, cwd string, args []string) ([]byte, error) {
+	cmd := exec.Command(command, args...)
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return []byte{}, fmt.Errorf("error running command %q : %v: %s", strings.Join(cmd.Args, " "), err, string(output))
+	}
+
+	return output, nil
+}
+
+func setupGitAuth(username, password, gitURL string) error {
+	log.Println("setting up the git credential cache")
+	cmd := exec.Command("git", "config", "--global", "credential.helper", "cache")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error setting up git credentials %v: %s", err, string(output))
+	}
+
+	cmd = exec.Command("git", "credential", "approve")
+	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
 	}
-	defer netrc.Close()
-
-	url, err := url.Parse(gitURL)
+	creds := fmt.Sprintf("url=%v\nusername=%v\npassword=%v\n", gitURL, username, password)
+	io.Copy(stdin, bytes.NewBufferString(creds))
+	stdin.Close()
+	output, err = cmd.CombinedOutput()
 	if err != nil {
-		return err
+		return fmt.Errorf("error setting up git credentials %v: %s", err, string(output))
 	}
 
-	netrc.WriteString(fmt.Sprintf("machine %v\n", url.Host))
-	netrc.WriteString(fmt.Sprintf("login %v\n", username))
-	netrc.WriteString(fmt.Sprintf("password %v\n", password))
 	return nil
 }

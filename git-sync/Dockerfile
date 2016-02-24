@@ -1,14 +1,16 @@
-FROM alpine:edge
+FROM ubuntu:15.10
 
 ENV GIT_SYNC_DEST /git
-
-RUN apk add -U bash git && \
-  rm -rf /var/cache/apk/*
-
 VOLUME ["/git"]
 
-COPY git-sync /git-sync
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update && \
+  apt-get dist-upgrade -y && \
+  apt-get install -y git ca-certificates --no-install-recommends && \
+  apt-get clean -y && \
+  rm -Rf /usr/share/man /usr/share/doc && \
+  rm -rf /var/lib/apt/lists/*
 
-RUN touch /.netrc && chmod 777 /.netrc
+COPY git-sync /git-sync
 
 ENTRYPOINT ["/git-sync"]
