@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -35,9 +36,11 @@ import (
 )
 
 const (
-	reloadQPS     = 10.0
-	resyncPeriod  = 10 * time.Second
-	ipvsPublicVIP = "k8s.io/public-vip"
+	reloadQPS            = 10.0
+	resyncPeriod         = 10 * time.Second
+	ipvsPublicVIP        = "k8s.io/public-vip"
+	ipvsPublicVIPNetmask = "k8s.io/public-vip-netmask"
+	ipvsPublicVIPRoute   = "k8s.io/public-vip-route"
 )
 
 var (
@@ -46,23 +49,41 @@ var (
 
 	// Error used to indicate that a sync is deferred because the controller isn't ready yet
 	errDeferredSync = fmt.Errorf("deferring sync till endpoints controller has synced")
+
+	// Define keepalived interface by its ip
+	keepalivedIP = flags.String("keepalived-ip", "", `Use given external IP`)
 )
 
-type service struct {
-	Ip   string
+type endpoint struct {
+	IP   string
 	Port int
 }
 
-type vip struct {
-	Name     string
-	Ip       string
+type vport struct {
 	Port     int
 	Protocol string
-	Backends []service
+	Backends []endpoint
+}
+
+type service struct {
+	Name      string
+	IP        string
+	Netmask   int
+	Route     string
+	ClusterIP string
+	Ports     []vport
+}
+
+type vroute struct {
+	Network string
+	Netmask int
+	Route   string
+	Table   int
+	IPs     []string
 }
 
 // ipvsControllerController watches the kubernetes api and adds/removes
-// services from LVS throgh ipvsadmin.
+// services from LVS through ipvsadmin.
 type ipvsControllerController struct {
 	queue             *workqueue.Type
 	client            *unversioned.Client
@@ -77,7 +98,7 @@ type ipvsControllerController struct {
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
 func (ipvsc *ipvsControllerController) getEndpoints(
-	s *api.Service, servicePort *api.ServicePort) (endpoints []service) {
+	s *api.Service, servicePort *api.ServicePort) (endpoints []endpoint) {
 	ep, err := ipvsc.epLister.GetServiceEndpoints(s)
 	if err != nil {
 		return
@@ -103,7 +124,7 @@ func (ipvsc *ipvsControllerController) getEndpoints(
 				continue
 			}
 			for _, epAddress := range ss.Addresses {
-				endpoints = append(endpoints, service{Ip: epAddress.IP, Port: targetPort})
+				endpoints = append(endpoints, endpoint{IP: epAddress.IP, Port: targetPort})
 			}
 		}
 	}
@@ -111,32 +132,122 @@ func (ipvsc *ipvsControllerController) getEndpoints(
 }
 
 // getServices returns a list of services and their endpoints.
-func (ipvsc *ipvsControllerController) getServices() []vip {
-	svcs := []vip{}
+func (ipvsc *ipvsControllerController) getServices() []service {
+	svcs := []service{}
 
 	services, _ := ipvsc.svcLister.List()
 	for _, s := range services.Items {
-		if externalIP, ok := s.GetAnnotations()[ipvsPublicVIP]; ok {
+		annotations := s.GetAnnotations()
+
+		if externalIP, ok := annotations[ipvsPublicVIP]; ok {
+			var externalRoute string = ""
+			var externalRouteSubnet = 32
+
+			if externalRoute, ok = annotations[ipvsPublicVIPRoute]; ok {
+				glog.Infof("Route %v for service %v", externalRoute, s.Name)
+			}
+
+			if externalRouteSubnetString, ok := annotations[ipvsPublicVIPNetmask]; ok {
+				var err error
+				externalRouteSubnet, err = strconv.Atoi(externalRouteSubnetString)
+				if err != nil {
+					glog.Infof("Cannot parse netmask %v for service %v: %v",
+						externalRouteSubnetString, s.Name, err)
+					continue
+				}
+			}
+
+			glog.Infof("Found service: %v", s.Name)
+
+			vports := []vport{}
+
 			for _, servicePort := range s.Spec.Ports {
+				glog.Infof("Found service port %v %v", servicePort.Protocol, servicePort.Port)
+
 				ep := ipvsc.getEndpoints(&s, &servicePort)
 				if len(ep) == 0 {
-					glog.Infof("No endpoints found for service %v, port %+v", s.Name, servicePort)
+					glog.Infof("No endpoints found for service %v, port %+v",
+						s.Name, servicePort)
 					continue
 				}
 
-				svcs = append(svcs, vip{
-					Name:     fmt.Sprintf("%v/%v", s.Namespace, s.Name),
-					Ip:       externalIP,
-					Port:     servicePort.Port,
+				glog.Infof("Endpoints %v", ep)
+
+				vport := vport{
 					Backends: ep,
+					Port:     servicePort.Port,
 					Protocol: fmt.Sprintf("%v", servicePort.Protocol),
-				})
-				glog.Infof("Found service: %v:%v", s.Name, servicePort.Port)
+				}
+
+				vports = append(vports, vport)
 			}
+
+			vip := service{
+				Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
+				IP:        externalIP,
+				Netmask:   externalRouteSubnet,
+				Route:     externalRoute,
+				ClusterIP: s.Spec.ClusterIP,
+				Ports:     vports,
+			}
+			svcs = append(svcs, vip)
 		}
 	}
 
 	return svcs
+}
+
+// getRoutes returns a list of routes.
+func (ipvsc *ipvsControllerController) getRoutes(svcs []service) []vroute {
+	routes := []vroute{}
+
+	for _, s := range svcs {
+		var currentRoute *vroute = nil
+
+		for _, r := range routes {
+			if r.Route != s.Route {
+				continue
+			}
+
+			currentRoute = &r
+
+			if r.Netmask < s.Netmask {
+				r.Netmask = s.Netmask
+				network, err := calculateNetwork(s.IP, s.Netmask)
+
+				if err != nil {
+					glog.Infof("Cannot calculate network for service %v: %v",
+						s.Name, err)
+					continue
+				}
+
+				r.Network = network
+			}
+		}
+
+		if currentRoute == nil {
+			if len(s.Route) > 0 {
+				network, err := calculateNetwork(s.IP, s.Netmask)
+				if err != nil {
+					glog.Infof("Cannot calculate network for service %v: %v",
+						s.Name, err)
+					continue
+				}
+
+				routes = append(routes, vroute{
+					Network: network,
+					Netmask: s.Netmask,
+					Route:   s.Route,
+					Table:   len(routes) + 1,
+					IPs:     []string{s.IP},
+				})
+			}
+		} else {
+			currentRoute.IPs = append(currentRoute.IPs, s.IP)
+		}
+	}
+
+	return routes
 }
 
 // sync all services with the loadbalancer.
@@ -151,7 +262,8 @@ func (ipvsc *ipvsControllerController) sync() error {
 		return errDeferredSync
 	}
 
-	err := ipvsc.keepalived.WriteCfg(ipvsc.getServices())
+	services := ipvsc.getServices()
+	err := ipvsc.keepalived.WriteCfg(services, ipvsc.getRoutes(services))
 	if err != nil {
 		return err
 	}
@@ -188,7 +300,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 
 	clusterNodes := getClusterNodesIP(kubeClient)
 
-	nodeInfo, err := getNodeInfo(clusterNodes)
+	nodeInfo, err := getNodeInfo(clusterNodes, *keepalivedIP)
 	if err != nil {
 		glog.Fatalf("Error getting local IP from nodes in the cluster: %v", err)
 	}

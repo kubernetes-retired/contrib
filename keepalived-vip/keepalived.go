@@ -68,54 +68,73 @@ vrrp_instance vips {
   }
 }
 
-{{ range $i, $svc := .svcs }}
-virtual_server {{ $svc.Ip }} {{ $svc.Port }} {
+{{ range $i, $svc := .svcs }}# Start {{$svc.Name}}
+{{ range $j, $port := $svc.Ports }}# Start {{$port.Port}} {{$port.Protocol}}
+virtual_server {{ $svc.IP }} {{ $port.Port }} {
   delay_loop 5
   lvs_sched wlc
   lvs_method NAT
   persistence_timeout 1800
-  protocol TCP
+  protocol {{ $port.Protocol }}
 
-  {{ range $j, $backend := $svc.Backends }}
-  real_server {{ $backend.Ip }} {{ $backend.Port }} {
+  {{ range $k, $backend := $port.Backends }}
+  real_server {{ $backend.IP }} {{ $backend.Port }} {
     weight 1
     TCP_CHECK {
       connect_port {{ $backend.Port }}
       connect_timeout 3
     }
   }
-{{ end }}
-}    
+  {{ end }}
+}
+# End {{$port.Port}} {{$port.Protocol}}
+{{ end }}# End {{$svc.Name}}
 {{ end }}
 `
 )
 
 type keepalived struct {
-	iface      string
-	ip         string
-	netmask    int
-	priority   int
-	nodes      []string
-	neighbors  []string
-	useUnicast bool
-	password   string
-	started    bool
-	vips       []string
+	iface          string
+	ip             string
+	netmask        int
+	priority       int
+	nodes          []string
+	neighbors      []string
+	useUnicast     bool
+	password       string
+	vips           []string
+	keepalivedTmpl *template.Template
+	cmd            *exec.Cmd
 }
+
+var (
+	keepalivedPath = flags.String("keepalived", "keepalived",
+		`Path to keepalived`)
+	keepalivedTemplateFilename = flags.String("keepalivedconftemplate",
+		"/etc/keepalived/keepalived.conf.template", `Path to keepalived.conf.template`)
+	keepalivedConfFilename = flags.String("keepalivedconf", "/etc/keepalived/keepalived.conf",
+		`Path to keepalived.conf`)
+	keepalivedPidFilename = flags.String("keepalivedpid", "/run/keepalived.pid",
+		`Path to keepalived.conf`)
+	debugKeeplivedConf = flags.Bool("debug-keepalived-conf", false,
+		`debug keepalived.conf generation`)
+)
 
 // WriteCfg creates a new keepalived configuration file.
 // In case of an error with the generation it returns the error
-func (k *keepalived) WriteCfg(svcs []vip) error {
-	w, err := os.Create("/etc/keepalived/keepalived.conf")
+func (k *keepalived) WriteCfg(svcs []service, routes []vroute) error {
+	if k.keepalivedTmpl == nil {
+		err := k.loadTemplate()
+		if err != nil {
+			return err
+		}
+	}
+
+	w, err := os.Create(*keepalivedConfFilename)
 	if err != nil {
 		return err
 	}
 	defer w.Close()
-
-	t, err := template.New("keepalived").Parse(keepalivedTmpl)
-	if err != nil {
-		return err
-	}
 
 	k.vips = getVIPs(svcs)
 
@@ -124,13 +143,15 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["myIP"] = k.ip
 	conf["netmask"] = k.netmask
 	conf["svcs"] = svcs
-	conf["vips"] = getVIPs(svcs)
+	conf["vips"] = k.vips
+	conf["routes"] = routes
 	conf["nodes"] = k.neighbors
 	conf["priority"] = k.priority
 	// password to protect the access to the vrrp_instance group
-	conf["authPass"] = k.getSha()[0:8]
 	if k.password != "" {
 		conf["authPass"] = k.password[0:8]
+	} else {
+		conf["authPass"] = k.getSha()[0:8]
 	}
 	conf["useUnicast"] = k.useUnicast
 
@@ -139,15 +160,15 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 		glog.Infof("%v", string(b))
 	}
 
-	return t.Execute(w, conf)
+	return k.keepalivedTmpl.Execute(w, conf)
 }
 
 // getVIPs returns a list of the virtual IP addresses to be used in keepalived
 // without duplicates (a service can use more than one port)
-func getVIPs(svcs []vip) []string {
+func getVIPs(svcs []service) []string {
 	result := []string{}
 	for _, svc := range svcs {
-		result = appendIfMissing(result, svc.Ip)
+		result = appendIfMissing(result, svc.IP)
 	}
 
 	return result
@@ -155,17 +176,22 @@ func getVIPs(svcs []vip) []string {
 
 // Start starts a keepalived process in foreground.
 // In case of any error it will terminate the execution with a fatal error
-func (k *keepalived) Start() {
-	cmd := exec.Command("keepalived",
+func (k *keepalived) Start() error {
+	if *debugKeeplivedConf {
+		return nil
+	}
+	glog.Info("starting keepalived to announce VIPs")
+
+	k.cmd = exec.Command(*keepalivedPath,
 		"--dont-fork",
 		"--log-console",
 		"--release-vips",
-		"--pid", "/keepalived.pid")
+		"-D",
+		"--pid", *keepalivedPidFilename,
+		"--use-file", *keepalivedConfFilename)
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	k.started = true
+	k.cmd.Stdout = os.Stdout
+	k.cmd.Stderr = os.Stderr
 
 	// in case the pod is terminated we need to check that the vips are removed
 	c := make(chan os.Signal, 2)
@@ -179,27 +205,32 @@ func (k *keepalived) Start() {
 		}
 	}()
 
-	if err := cmd.Start(); err != nil {
+	if err := k.cmd.Start(); err != nil {
 		glog.Errorf("keepalived error: %v", err)
+		return err
 	}
 
-	if err := cmd.Wait(); err != nil {
+	/*
+	if err := k.cmd.Wait(); err != nil {
 		glog.Fatalf("keepalived error: %v", err)
+		return err
 	}
+	*/
+	return nil
 }
 
 // Reload sends SIGHUP to keepalived to reload the configuration.
 func (k *keepalived) Reload() error {
-	if !k.started {
+	if k.cmd == nil {
 		// TODO: add a warning indicating that keepalived is not started?
 		return nil
 	}
 
 	glog.Info("reloading keepalived")
-	out, err := k8sexec.New().Command("killall", "-1", "keepalived").CombinedOutput()
+	err := syscall.Kill(k.cmd.Process.Pid, syscall.SIGHUP)
 
 	if err != nil {
-		return fmt.Errorf("error reloading keepalived: %v\n%s", err, out)
+		return fmt.Errorf("error reloading keepalived: %v\n", err)
 	}
 
 	return nil
@@ -214,6 +245,7 @@ func (k *keepalived) getSha() string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// Reset virtual ips
 func resetIPVS() error {
 	glog.Info("cleaning ipvs configuration")
 	_, err := k8sexec.New().Command("ipvsadm", "-C").CombinedOutput()
@@ -224,11 +256,31 @@ func resetIPVS() error {
 	return nil
 }
 
+// Remove virtual ips
 func (k *keepalived) removeVIP(vip string) error {
 	glog.Infof("removing configred VIP %v", vip)
-	out, err := k8sexec.New().Command("ip", "add", "del", vip+"/32", "dev", k.iface).CombinedOutput()
+	out, err := k8sexec.New().Command("ip", "addr", "del", vip+"/32", "dev", k.iface).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error reloading keepalived: %v\n%s", err, out)
+	}
+	return nil
+}
+
+// Initialize template from file or constant
+func (k *keepalived) loadTemplate() error {
+	if _, err := os.Stat(*keepalivedTemplateFilename); os.IsNotExist(err) {
+		k.keepalivedTmpl, err = template.New("keepalived").Parse(keepalivedTmpl)
+		if err != nil {
+			return err
+		}
+	} else {
+		k.keepalivedTmpl, err = template.ParseFiles(*keepalivedTemplateFilename)
+
+		if err != nil {
+			glog.Fatalf("cannot read keepalived.conf template at %v: %v",
+				*keepalivedTemplateFilename, err)
+			return err
+		}
 	}
 	return nil
 }

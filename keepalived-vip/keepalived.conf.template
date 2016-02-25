@@ -1,0 +1,68 @@
+{{ $iface := .iface }}{{ $netmask := .netmask }}
+vrrp_sync_group VG_1 {
+  group {
+    vips
+  }
+}
+
+vrrp_instance vips {
+  state BACKUP
+  interface {{ $iface }}
+  virtual_router_id 50
+  priority {{ .priority }}
+  accept
+  nopreempt
+  advert_int 1
+
+  track_interface {
+    {{ $iface }}
+  }
+
+  {{ if .useUnicast }}
+  unicast_src_ip {{ .myIP }}
+  unicast_peer { {{ range .nodes }}
+    {{ . }}{{ end }}
+  }
+  {{ end }}
+
+  virtual_ipaddress { {{ range $i, $svc := .svcs }}
+    {{ $svc.IP }}/{{ $svc.Netmask }}{{ end }}
+  }
+
+  {{ if .routes }}virtual_routes { {{ range $i, $route := .routes }}
+    default via {{ $route.Route }} dev {{ $iface }} table {{ $route.Table }}{{ end }}
+  }
+
+  virtual_rules { {{ range $i, $route := .routes }}
+    from {{ $route.Network }}/{{ $route.Netmask }} table {{ $route.Table }}{{ end }}
+  }{{ end }}
+
+  authentication {
+    auth_type AH
+    auth_pass {{ .authPass }}
+  }
+}
+
+{{ range $i, $svc := .svcs }}# Start {{$svc.Name}}
+{{ range $j, $port := $svc.Ports }}# Start {{$port.Port}} {{$port.Protocol}}
+virtual_server {{ $svc.IP }} {{ $port.Port }} {
+  delay_loop 5
+  lvs_sched wlc
+  lvs_method NAT
+  persistence_timeout 1800
+  protocol {{ $port.Protocol }}
+  alpha
+
+  {{ range $k, $backend := $port.Backends }}
+  real_server {{ $backend.IP }} {{ $backend.Port }} {
+    weight 1
+    TCP_CHECK {
+      connect_port {{ $backend.Port }}
+      connect_timeout 3
+    }
+  }
+  {{ end }}
+}
+# End {{$port.Port}} {{$port.Protocol}}
+{{ end }}# End {{$svc.Name}}
+{{ end }}

@@ -24,6 +24,7 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	kapi "k8s.io/kubernetes/pkg/api"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util/wait"
 )
@@ -39,8 +40,11 @@ var (
 	useUnicast = flags.Bool("use-unicast", false, `use unicast instead of multicast for communication
 		with other keepalived instances`)
 
-	password = flags.String("vrrp-password", "", `If set it will use it as keepalived password instead of the 
+	password = flags.String("vrrp-password", "", `If set it will use it as keepalived password instead of the
 		generated one using information about the nodes`)
+
+	enableIPVSConntrack = flags.Bool("enable-ipvs-conntrack", false,
+		`enable ipvs conntrack in net/ipv4/vs/conntrack`)
 
 	// sysctl changes required by keepalived
 	sysctlAdjustments = map[string]int{
@@ -49,11 +53,22 @@ var (
 		// enable connection tracking for LVS connections
 		"net/ipv4/vs/conntrack": 1,
 	}
+
+	// kernel modules to load and proc files to check
+	kernelModules = map[string]string{
+		// Linux ip virtual server
+		"ip_vs": "/proc/net/ip_vs",
+	}
 )
 
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
+
+	if enableIPVSConntrack != nil && *enableIPVSConntrack {
+		// enables ipvs connection tracking using nf_conntrack
+		sysctlAdjustments["net/ipv4/vs/conntrack"] = 1
+	}
 
 	var err error
 	var kubeClient *unversioned.Client
@@ -76,17 +91,19 @@ func main() {
 	}
 
 	if !specified {
-		namespace = ""
+		namespace = kapi.NamespaceAll
 	}
 
-	err = loadIPVModule()
-	if err != nil {
-		glog.Fatalf("Terminating execution: %v", err)
-	}
+	if !*debugKeeplivedConf {
+		err = loadKernelModules()
+		if err != nil {
+			glog.Fatalf("Terminating execution: %v", err)
+		}
 
-	err = changeSysctl()
-	if err != nil {
-		glog.Fatalf("Terminating execution: %v", err)
+		err = changeSysctl()
+		if err != nil {
+			glog.Fatalf("Terminating execution: %v", err)
+		}
 	}
 
 	err = resetIPVS()
@@ -104,6 +121,6 @@ func main() {
 	go wait.Until(ipvsc.worker, time.Second, wait.NeverStop)
 
 	time.Sleep(5 * time.Second)
-	glog.Info("starting keepalived to announce VIPs")
+
 	ipvsc.keepalived.Start()
 }
