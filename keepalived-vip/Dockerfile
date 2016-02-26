@@ -22,4 +22,4 @@ RUN echo "http://dl-4.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositor
 #COPY keepalived.conf.template /etc/keepalived/keepalived.conf.template
 COPY kube-keepalived-vip /kube-keepalived-vip
 
-ENTRYPOINT ["/kube-keepalived-vip", ""]
+ENTRYPOINT ["/kube-keepalived-vip", "--keepalivedPidFilename=/keepalived.pid"]
