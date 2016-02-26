@@ -110,11 +110,11 @@ type keepalived struct {
 var (
 	keepalivedPath = flags.String("keepalived", "keepalived",
 		`Path to keepalived`)
-	keepalivedTemplateFilename = flags.String("keepalivedconftemplate",
+	keepalivedTemplateFilename = flags.String("keepalived-conf-template",
 		"/etc/keepalived/keepalived.conf.template", `Path to keepalived.conf.template`)
-	keepalivedConfFilename = flags.String("keepalivedconf", "/etc/keepalived/keepalived.conf",
+	keepalivedConfFilename = flags.String("keepalived-conf", "/etc/keepalived/keepalived.conf",
 		`Path to keepalived.conf`)
-	keepalivedPidFilename = flags.String("keepalivedpid", "/run/keepalived.pid",
+	keepalivedPidFilename = flags.String("keepalived-pid", "/run/keepalived.pid",
 		`Path to keepalived.conf`)
 	debugKeeplivedConf = flags.Bool("debug-keepalived-conf", false,
 		`debug keepalived.conf generation`)
@@ -211,10 +211,10 @@ func (k *keepalived) Start() error {
 	}
 
 	/*
-	if err := k.cmd.Wait(); err != nil {
-		glog.Fatalf("keepalived error: %v", err)
-		return err
-	}
+		if err := k.cmd.Wait(); err != nil {
+			glog.Fatalf("keepalived error: %v", err)
+			return err
+		}
 	*/
 	return nil
 }
