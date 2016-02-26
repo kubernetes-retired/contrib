@@ -43,15 +43,13 @@ var (
 	password = flags.String("vrrp-password", "", `If set it will use it as keepalived password instead of the
 		generated one using information about the nodes`)
 
-	enableIPVSConntrack = flags.Bool("enable-ipvs-conntrack", false,
+	enableIPVSConntrack = flags.Bool("enable-ipvs-conntrack", true,
 		`enable ipvs conntrack in net/ipv4/vs/conntrack`)
 
 	// sysctl changes required by keepalived
 	sysctlAdjustments = map[string]int{
 		// allows processes to bind() to non-local IP addresses
 		"net/ipv4/ip_nonlocal_bind": 1,
-		// enable connection tracking for LVS connections
-		"net/ipv4/vs/conntrack": 1,
 	}
 
 	// kernel modules to load and proc files to check
@@ -66,7 +64,7 @@ func main() {
 	flags.Parse(os.Args)
 
 	if enableIPVSConntrack != nil && *enableIPVSConntrack {
-		// enables ipvs connection tracking using nf_conntrack
+		// enable connection tracking for LVS connections using nf_conntrack
 		sysctlAdjustments["net/ipv4/vs/conntrack"] = 1
 	}
 
