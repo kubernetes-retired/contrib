@@ -65,10 +65,9 @@ func getNodeInfo(nodes []string, forcedIP string) (*nodeInfo, error) {
 func getEffectiveIP(nodes []string, forcedIP string) (string, error) {
 	if len(forcedIP) > 0 {
 		return forcedIP, nil
-	} else {
-		ip, err := myIP(nodes)
-		return ip, err
 	}
+	ip, err := myIP(nodes)
+	return ip, err
 }
 
 // myIP returns the local IP address of this node comparing the

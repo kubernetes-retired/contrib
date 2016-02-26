@@ -140,7 +140,7 @@ func (ipvsc *ipvsControllerController) getServices() []service {
 		annotations := s.GetAnnotations()
 
 		if externalIP, ok := annotations[ipvsPublicVIP]; ok {
-			var externalRoute string = ""
+			var externalRoute string
 			var externalRouteSubnet = 32
 
 			if externalRoute, ok = annotations[ipvsPublicVIPRoute]; ok {
@@ -202,7 +202,7 @@ func (ipvsc *ipvsControllerController) getRoutes(svcs []service) []vroute {
 	routes := []vroute{}
 
 	for _, s := range svcs {
-		var currentRoute *vroute = nil
+		var currentRoute *vroute
 
 		for _, r := range routes {
 			if r.Route != s.Route {
