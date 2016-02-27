@@ -27,8 +27,9 @@ import (
 
 // BuildInfo tells the build ID and the build success
 type BuildInfo struct {
-	Status string
-	ID     string
+	Status   string
+	ID       string
+	Failures []string `json:"Failures,omitempty"`
 }
 
 // E2ETester is the object which will contact a jenkins instance and get
@@ -80,10 +81,10 @@ func (e *E2ETester) GetBuildStatus() map[string]BuildInfo {
 	return out
 }
 
-func (e *E2ETester) setBuildStatus(build, status string, id string) {
+func (e *E2ETester) setBuildStatus(build, status string, id string, failures []string) {
 	e.Lock()
 	defer e.Unlock()
-	e.BuildStatus[build] = BuildInfo{Status: status, ID: id}
+	e.BuildStatus[build] = BuildInfo{Status: status, ID: id, Failures: failures}
 }
 
 // Stable is called to make sure all of the jenkins jobs are stable
@@ -96,19 +97,20 @@ func (e *E2ETester) Stable() bool {
 		job, err := builder.builder.GetLastCompletedBuild()
 		if err != nil {
 			glog.Errorf("Error checking build %s : %v", key, err)
-			e.setBuildStatus(key, "Error checking: "+err.Error(), "0")
+			e.setBuildStatus(key, "Error checking: "+err.Error(), "0", nil)
 			allStable = false
 			continue
 		}
-		if job != nil && job.IsStable() {
-			e.setBuildStatus(key, "Stable", job.BuildID)
+		if job == nil {
+			glog.Warningf("Builder does not have LastCompletedBuild: %q", key)
+			e.setBuildStatus(key, "No last-build found", "0", nil)
+		}
+
+		failures := job.Failures()
+		if job.IsStable() {
+			e.setBuildStatus(key, "Stable", job.BuildID, failures)
 		} else {
-			if job == nil {
-				glog.Warningf("Builder does not have LastCompletedBuild: %q", key)
-				e.setBuildStatus(key, "Not Stable", "")
-			} else {
-				e.setBuildStatus(key, "Not Stable", job.BuildID)
-			}
+			e.setBuildStatus(key, "Not Stable", job.BuildID, failures)
 			if builder.Gating {
 				allStable = false
 			}

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
+	"path"
 	"strings"
 
 	"golang.org/x/net/context"
@@ -102,9 +103,8 @@ func (f *FederatedBuilder) Close() error {
 	return nil
 }
 
-// Read a file from google cloud storage; relativePath is relative to basePath
-func (f *FederatedBuilder) readObject(relativePath string) ([]byte, error) {
-	path := f.basePath + relativePath
+// Read a file from google cloud storage; path is absolute
+func (f *FederatedBuilder) readAbsolute(path string) ([]byte, error) {
 	glog.V(3).Infof("Fetching object %q in bucket %q", path, f.bucketName)
 	rc, err := f.bucket.Object(path).NewReader(f.ctx)
 	if err != nil {
@@ -112,6 +112,37 @@ func (f *FederatedBuilder) readObject(relativePath string) ([]byte, error) {
 	}
 	defer rc.Close()
 	return ioutil.ReadAll(rc)
+}
+
+// Read a file from google cloud storage; relativePath is relative to basePath
+func (f *FederatedBuilder) readObject(relativePath string) ([]byte, error) {
+	path := f.basePath + relativePath
+	return f.readAbsolute(path)
+}
+
+// List all the objects in a bucket under the prefix (relative to basePath)
+func (f *FederatedBuilder) listObjects(prefix string) ([]*storage.ObjectAttrs, error) {
+	var objects []*storage.ObjectAttrs
+
+	query := &storage.Query{}
+	query.Delimiter = "/"
+	query.Prefix = f.basePath + prefix
+
+	for {
+		objectList, err := f.bucket.List(f.ctx, query)
+		if err != nil {
+			return nil, fmt.Errorf("error listing objects in bucket: %v", err)
+		}
+		for _, object := range objectList.Results {
+			objects = append(objects, object)
+		}
+		query = objectList.Next
+		if query == nil {
+			break
+		}
+	}
+
+	return objects, nil
 }
 
 // buildResultFile is the format of finished.json, as uploaded by the builders.
@@ -148,7 +179,78 @@ func (f *FederatedBuilder) readBuildResult(buildID string) (*BuildResult, error)
 		BuildID: buildID,
 	}
 
+	testResults, err := f.readJUnitTestResults(buildID)
+	if err != nil {
+		glog.Warningf("error reading junit test results for build %q: %v", buildID, err)
+	} else {
+		combined := CombineJUnitTestResults(testResults)
+		failures := combined.Failures()
+		if len(failures) != 0 {
+			glog.Infof("Detected failures for %v", f.name)
+			for _, failure := range failures {
+				glog.Infof("\t%s", failure.Name)
+			}
+		}
+
+		br.TestResults = combined
+	}
+
 	return br, nil
+}
+
+// Parses the JUnit test results for a build
+func (f *FederatedBuilder) readJUnitTestResults(buildID string) (map[string]*JUnitTestResult, error) {
+	objects, err := f.listObjects(buildID + "/artifacts/junit_")
+	if err != nil {
+		return nil, err
+	}
+
+	results := make(map[string]*JUnitTestResult)
+
+	for _, object := range objects {
+		name := object.Name
+		extension := path.Ext(name)
+		if extension != ".xml" {
+			continue
+		}
+
+		data, err := f.readAbsolute(name)
+		if err != nil {
+			return nil, err
+		}
+
+		glog.V(8).Infof("Got junit test result: %s", string(data))
+
+		parsed, err := ParseJUnitTestResult(data)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing junit test file %q: %v", name, err)
+		}
+		/*
+			for _, result := range parsed.Results {
+				if result.Failures == 0 {
+					continue
+				}
+				glog.Infof("Results: %v %d/%d", result.Name, result.Failures, result.Tests)
+				for _, testcase := range result.TestCases {
+					human := ""
+					if testcase.Skipped() {
+						human = "skipped"
+					} else if testcase.Failure != nil {
+						human = "FAILED"
+					} else {
+						human = "?"
+					}
+					glog.Infof("\t%s\t%s", testcase.Name, human)
+					if testcase.Failure != nil {
+						glog.Infof("\t\t%s\t%s", testcase.Failure.Type, testcase.Failure.Message)
+					}
+				}
+			}
+		*/
+		results[name] = parsed
+	}
+
+	return results, nil
 }
 
 // GetLastCompletedBuild does just that

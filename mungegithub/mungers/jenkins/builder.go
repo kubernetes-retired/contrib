@@ -18,14 +18,25 @@ package jenkins
 
 // BuildResult is the result of an individual build (typically a test run)
 type BuildResult struct {
-	Success bool
-	BuildID string
+	Success     bool
+	BuildID     string
+	TestResults *JUnitTestResult
 }
 
 // IsStable is really is success, but maybe there is a way to make it look
 // at multiple runs...
 func (r BuildResult) IsStable() bool {
 	return r.Success
+}
+
+func (r *BuildResult) Failures() []string {
+	var failures []string
+	if r.TestResults != nil {
+		for _, failure := range r.TestResults.Failures() {
+			failures = append(failures, failure.Name)
+		}
+	}
+	return failures
 }
 
 // Builder represents something that runs builds and reports results
