@@ -1,9 +1,8 @@
-FROM ubuntu:15.10
+FROM gcr.io/google_containers/ubuntu-slim:0.1
 
 ENV GIT_SYNC_DEST /git
 VOLUME ["/git"]
 
-ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && \
   apt-get install -y git ca-certificates --no-install-recommends && \
   apt-get clean -y && \
