@@ -147,10 +147,13 @@ func (sq *SubmitQueue) Initialize(config *github.Config) error {
 
 	sq.lastE2EStable = true
 	e2e := &e2e.E2ETester{
-		JenkinsJobs: sq.JenkinsJobs,
-		JenkinsHost: sq.JenkinsHost,
 		BuildStatus: map[string]e2e.BuildInfo{},
 	}
+	err := e2e.SetBuilders(sq.JenkinsHost, sq.JenkinsJobs)
+	if err != nil {
+		return err
+	}
+
 	sq.e2e = e2e
 	if len(sq.Address) > 0 {
 		if len(sq.WWWRoot) > 0 {
