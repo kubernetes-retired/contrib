@@ -1,5 +1,9 @@
 api-token
-balance-algorithm
+etcd-servers
+etcd-secure
+etcd-certfile
+etcd-keyfile
+etcd-cafile
 blunderbuss-config
 blunderbuss-reassign
 cluster-uid

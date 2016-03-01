@@ -31,20 +31,25 @@ import (
 	etcdutil "k8s.io/kubernetes/pkg/storage/etcd/util"
 
 	etcd "github.com/coreos/etcd/client"
+	"github.com/coreos/etcd/pkg/transport"
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 	"golang.org/x/net/context"
 )
 
 type config struct {
-	etcdServers []string
-	key         string
-	whoami      string
-	ttl         uint64
-	src         string
-	dest        string
-	sleep       time.Duration
-	lastLease   time.Time
+	etcdServers  []string
+	etcdSecure   bool
+	etcdCertfile string
+	etcdCafile   string
+	etcdKeyfile  string
+	key          string
+	whoami       string
+	ttl          uint64
+	src          string
+	dest         string
+	sleep        time.Duration
+	lastLease    time.Time
 }
 
 // runs the election loop. never returns.
@@ -165,6 +170,10 @@ func copyFile(src, dest string) error {
 
 func initFlags(c *config) {
 	pflag.StringSliceVar(&c.etcdServers, "etcd-servers", []string{}, "The comma-seprated list of etcd servers to use")
+	pflag.BoolVar(&c.etcdSecure, "etcd-secure", false, "Set to true if etcd has https")
+	pflag.StringVar(&c.etcdCertfile, "etcd-certfile", "", "Etcd TLS cert file, needed if etcd-secure")
+	pflag.StringVar(&c.etcdKeyfile, "etcd-keyfile", "", "Etcd TLS key file, needed if etcd-secure")
+	pflag.StringVar(&c.etcdCafile, "etcd-cafile", "", "Etcd CA file, needed if etcd-secure")
 	pflag.StringVar(&c.key, "key", "", "The key to use for the lock")
 	pflag.StringVar(&c.whoami, "whoami", "", "The name to use for the reservation.  If empty use os.Hostname")
 	pflag.Uint64Var(&c.ttl, "ttl-secs", 30, "The time to live for the lock.")
@@ -176,6 +185,11 @@ func initFlags(c *config) {
 func validateFlags(c *config) {
 	if len(c.etcdServers) == 0 {
 		glog.Fatalf("--etcd-servers=<server-list> is required")
+	}
+	if c.etcdSecure == true {
+		if len(c.etcdCertfile) == 0 || len(c.etcdKeyfile) == 0 || len(c.etcdCafile) == 0 {
+			glog.Fatalf("If --etcd-secure, then --etcd-certfile, --etcd-keyfile and --etcd-cafile are required")
+		}
 	}
 	if len(c.key) == 0 {
 		glog.Fatalf("--key=<some-key> is required")
@@ -202,9 +216,30 @@ func main() {
 	pflag.Parse()
 	validateFlags(&c)
 
-	cfg := etcd.Config{
-		Endpoints: c.etcdServers,
+	cfg := etcd.Config{}
+
+	if c.etcdSecure == true {
+		tlsinfo := transport.TLSInfo{
+			CertFile: c.etcdCertfile,
+			KeyFile: c.etcdKeyfile,
+			CAFile: c.etcdCafile,
+			TrustedCAFile: c.etcdCafile,
+			ClientCertAuth: true,
+		}
+		trans, err := transport.NewTransport(tlsinfo)
+		if err != nil {
+			glog.Fatalf("misconfigured TLSInfo in transport: %v", err)
+		}
+		cfg = etcd.Config{
+			Endpoints: c.etcdServers,
+			Transport: trans,
+		}
+	} else {
+		cfg = etcd.Config{
+			Endpoints: c.etcdServers,
+		}
 	}
+
 	etcdClient, err := etcd.New(cfg)
 	if err != nil {
 		glog.Fatalf("misconfigured etcd: %v", err)
