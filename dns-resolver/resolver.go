@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	confFile = "/etc/unbound/unbound.conf.d/kubernetes.conf"
+	confFile = "/etc/unbound/unbound.conf"
 )
 
 type forward struct {
@@ -51,7 +51,7 @@ func (r *resolver) Start() {
 		glog.Errorf("unbound error: %v", err)
 	}
 
-	cmd := exec.Command("unbound", "-c", confFile)
+	cmd := exec.Command("unbound")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
