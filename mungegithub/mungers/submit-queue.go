@@ -26,8 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/kubernetes/pkg/util/sets"
-
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers/e2e"
 
@@ -103,20 +101,10 @@ type SubmitQueue struct {
 	RequiredStatusContexts []string
 	WWWRoot                string
 
-	// additionalUserWhitelist are non-committer users believed safe
-	additionalUserWhitelist *sets.String
-	// CommitterList are static here in case they can't be gotten dynamically;
-	// they do not need to be whitelisted.
-	committerList *sets.String
-
-	// userWhitelist is the combination of committers and additional which
-	// we actully use
-	userWhitelist *sets.String
-
 	sync.Mutex
+	users         *UserList
 	lastPRStatus  map[string]submitStatus
 	prStatus      map[string]submitStatus // protected by sync.Mutex
-	userInfo      map[string]userInfo     //proteted by sync.Mutex
 	statusHistory []submitStatus          // protected by sync.Mutex
 
 	// Every time a PR is added to githubE2EQueue also notify the channel
@@ -191,9 +179,10 @@ func (sq *SubmitQueue) Initialize(config *github.Config) error {
 
 // EachLoop is called at the start of every munge loop
 func (sq *SubmitQueue) EachLoop() error {
+	users := BuildUserList(sq.Whitelist, sq.Committers, sq.githubConfig)
 	sq.Lock()
 	defer sq.Unlock()
-	sq.RefreshWhitelist()
+	sq.users = users
 	sq.lastPRStatus = sq.prStatus
 	sq.prStatus = map[string]submitStatus{}
 	return nil
@@ -362,10 +351,13 @@ func (sq *SubmitQueue) marshal(data interface{}) []byte {
 	return b
 }
 
-func (sq *SubmitQueue) getUserInfo() []byte {
+func (sq *SubmitQueue) getUserInfo() ([]byte, error) {
 	sq.Lock()
 	defer sq.Unlock()
-	return sq.marshal(sq.userInfo)
+	if sq.users == nil {
+		return nil, fmt.Errorf("users not yet populated")
+	}
+	return sq.marshal(sq.users.userInfo), nil
 }
 
 func (sq *SubmitQueue) getQueueHistory() []byte {
@@ -441,13 +433,31 @@ func (sq *SubmitQueue) requiredStatusContexts(obj *github.MungeObject) []string 
 	return contexts
 }
 
+// waitForUsers gets the UserList, waiting if it is not set
+// We use polling for simplicity
+func (sq *SubmitQueue) waitForUsers() *UserList {
+	for {
+		sq.Lock()
+		users := sq.users
+		sq.Unlock()
+
+		if users != nil {
+			return users
+		}
+
+		glog.Infof("User querying not yet complete; will sleep before retry")
+		time.Sleep(10 * time.Second)
+	}
+}
+
 // Munge is the workhorse the will actually make updates to the PR
 func (sq *SubmitQueue) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
 		return
 	}
 
-	userSet := sq.userWhitelist
+	users := sq.waitForUsers()
+	userSet := users.userWhitelist
 
 	if !obj.HasLabels([]string{claYes}) && !obj.HasLabels([]string{claHuman}) {
 		sq.SetMergeStatus(obj, noCLA, false)
@@ -721,8 +731,13 @@ func (sq *SubmitQueue) serve(data []byte, res http.ResponseWriter, req *http.Req
 }
 
 func (sq *SubmitQueue) serveUsers(res http.ResponseWriter, req *http.Request) {
-	data := sq.getUserInfo()
-	sq.serve(data, res, req)
+	data, err := sq.getUserInfo()
+	if err != nil {
+		glog.Infof("error serving list of users: %v", err)
+		http.Error(res, "Internal error", 500)
+	} else {
+		sq.serve(data, res, req)
+	}
 }
 
 func (sq *SubmitQueue) serveHistory(res http.ResponseWriter, req *http.Request) {
