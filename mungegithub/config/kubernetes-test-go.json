@@ -1,0 +1,5 @@
+{
+  "name": "kubernetes-test-go",
+  "path": "gs://kubernetes-jenkins/logs/kubernetes-test-go/",
+  "gating": true
+}

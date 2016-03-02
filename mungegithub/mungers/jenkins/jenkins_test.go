@@ -91,7 +91,20 @@ func TestGetLatestCompletedBuild(t *testing.T) {
 		if !reflect.DeepEqual(job, test.obj) {
 			t.Errorf("expected:\n%#v\nsaw:%#v\n", test.obj, job)
 		}
-		stable := job.IsStable()
+
+		builder := &JenkinsBuilder{Client: client, JobName: test.name}
+		result, err := builder.GetLastCompletedBuild()
+		if test.expectErr {
+			if err == nil {
+				t.Errorf("unexpected non-error")
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+
+		stable := result.IsStable()
 		if stable != test.stable {
 			t.Errorf("expected stable=%v but got %v", test.stable, stable)
 		}
