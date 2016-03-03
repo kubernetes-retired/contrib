@@ -1,5 +1,6 @@
 api-token
 balance-algorithm
+block-path-config
 blunderbuss-config
 blunderbuss-reassign
 cluster-uid
