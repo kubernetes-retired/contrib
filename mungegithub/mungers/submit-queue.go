@@ -41,6 +41,7 @@ const (
 	doNotAutoMergeLabel = "do-not-auto-merge"
 	claYes              = "cla: yes"
 	claHuman            = "cla: human-approved"
+	dependenciesLabel   = "unmerged-dependencies"
 
 	jenkinsE2EContext  = "Jenkins GCE e2e"
 	jenkinsUnitContext = "Jenkins unit/integration"
@@ -421,6 +422,7 @@ const (
 	needsok                 = "PR does not have 'ok-to-merge' label"
 	lgtmEarly               = "The PR was changed after the LGTM label was added."
 	unmergeable             = "PR is unable to be automatically merged. Needs rebase."
+	hasDependencies         = "PR has unmerged dependencies"
 	undeterminedMergability = "Unable to determine is PR is mergeable. Will try again later."
 	noAutoMerge             = "Will not auto merge because " + doNotAutoMergeLabel + " is present"
 	ciFailure               = "Github CI tests are not green."
@@ -489,6 +491,11 @@ func (sq *SubmitQueue) Munge(obj *github.MungeObject) {
 
 	if !obj.HasLabels([]string{"lgtm"}) {
 		sq.SetMergeStatus(obj, noLGTM, false)
+		return
+	}
+
+	if obj.HasLabels([]string{dependenciesLabel}) {
+		sq.SetMergeStatus(obj, hasDependencies, false)
 		return
 	}
 
