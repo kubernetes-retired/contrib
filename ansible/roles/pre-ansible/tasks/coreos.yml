@@ -9,4 +9,5 @@
     BOOTSTRAP_SCRIPT_DIR: "{{ bootstrap_script_dir }}"
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
   when: need_bootstrap | failed

@@ -27,6 +27,7 @@
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
 
 - name: CoreOS | Create dropin directories for Kubernetes Node services
   file: path=/etc/systemd/system/{{ item }}.service.d state=directory mode=0755
