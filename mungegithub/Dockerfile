@@ -25,6 +25,8 @@ ADD whitelist.txt /whitelist.txt
 # Submit queue web interface
 ADD www /www
 ADD mungegithub /mungegithub
+# Config files controller through git
+ADD config/ /config/
 EXPOSE 8080
 ENTRYPOINT ["/mungegithub"]
 CMD ["--dry-run", "--token-file=/token"]
