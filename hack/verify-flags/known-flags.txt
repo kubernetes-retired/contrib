@@ -28,6 +28,7 @@ issue-mungers
 issue-reports
 jenkins-host
 jenkins-jobs
+kubernetes-dir
 last-release-pr
 left-build-number
 max-pr-number
