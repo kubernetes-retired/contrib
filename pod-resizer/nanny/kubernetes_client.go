@@ -30,12 +30,12 @@ type KubernetesClient interface {
 	UpdateDeployment(resources *apiv1.ResourceRequirements) error
 }
 
-type k8s_client_impl struct {
+type kubernetesClient struct {
 	namespace, deployment, pod, container string
 	clientset                             *release_1_2.Clientset
 }
 
-func (k *k8s_client_impl) CountNodes() (uint64, error) {
+func (k *kubernetesClient) CountNodes() (uint64, error) {
 	opt := api.ListOptions{Watch: false}
 
 	nodes, err := k.clientset.CoreClient.Nodes().List(opt)
@@ -45,22 +45,21 @@ func (k *k8s_client_impl) CountNodes() (uint64, error) {
 	return uint64(len(nodes.Items)), nil
 }
 
-func (k *k8s_client_impl) ContainerResources() (*apiv1.ResourceRequirements, error) {
+func (k *kubernetesClient) ContainerResources() (*apiv1.ResourceRequirements, error) {
 	pod, err := k.clientset.CoreClient.Pods(k.namespace).Get(k.pod)
 
 	if err != nil {
 		return nil, err
 	}
 	for _, container := range pod.Spec.Containers {
-		if container.Name != k.container {
-			continue
+		if container.Name == k.container {
+			return &container.Resources, nil
 		}
-		return &container.Resources, nil
 	}
 	return nil, fmt.Errorf("Container %s was not found in deployment %s in namespace %s.", k.container, k.deployment, k.namespace)
 }
 
-func (k *k8s_client_impl) UpdateDeployment(resources *apiv1.ResourceRequirements) error {
+func (k *kubernetesClient) UpdateDeployment(resources *apiv1.ResourceRequirements) error {
 	// First, get the Deployment.
 	dep, err := k.clientset.Extensions().Deployments(k.namespace).Get(k.deployment)
 	if err != nil {
@@ -77,11 +76,11 @@ func (k *k8s_client_impl) UpdateDeployment(resources *apiv1.ResourceRequirements
 		}
 	}
 
-	return fmt.Errorf("Container %s wasn't found in the deployment %d in namespace %d.", k.container, k.deployment, k.namespace)
+	return fmt.Errorf("Container %s was not found in the deployment %s in namespace %s.", k.container, k.deployment, k.namespace)
 }
 
 func NewKubernetesClient(namespace, deployment, pod, container string, clientset *release_1_2.Clientset) KubernetesClient {
-	return &k8s_client_impl{
+	return &kubernetesClient{
 		namespace:  namespace,
 		deployment: deployment,
 		pod:        pod,

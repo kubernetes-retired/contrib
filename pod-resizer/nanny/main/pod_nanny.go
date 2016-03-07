@@ -42,11 +42,11 @@ var (
 	storagePerNode = flag.String("extra_storage", "0Gi", "The amount of storage to add per node.")
 	threshold      = flag.Int("threshold", 0, "A number between 0-100. The dependent's resources are rewritten when they deviate from expected by more than threshold.")
 	// Flags to identify the container to nanny.
-	podNamespace  = flag.String("namespace", os.Getenv("MY_POD_NAMESPACE"), "The namespace of the ward. This defaults to the nanny's own pod.")
+	podNamespace  = flag.String("namespace", os.Getenv("MY_POD_NAMESPACE"), "The namespace of the ward. This defaults to the nanny pod's own namespace.")
 	deployment    = flag.String("deployment", "", "The name of the deployment being monitored. This is required.")
 	podName       = flag.String("pod", os.Getenv("MY_POD_NAME"), "The name of the pod to watch. This defaults to the nanny's own pod.")
 	containerName = flag.String("container", "pod-nanny", "The name of the container to watch. This defaults to the nanny itself.")
-	// The poll period, in ms, to check the dependent container.
+	// Flags to control runtime behavior.
 	pollPeriod = time.Millisecond * time.Duration(*flag.Int("poll_period", 10000, "The time, in milliseconds, to poll the dependent container."))
 )
 

@@ -1,8 +1,9 @@
 # pod-resizer
 
-This container image watches over another container, and vertically scales the
-dependent container up and down. Currently the only option is to scale it
-linearly based on the number of nodes, and it only works for a singleton.
+This container image watches over another container in a deployment, and
+vertically scales the dependent container up and down. Currently the only
+option is to scale it linearly based on the number of nodes, and it only works
+for a singleton.
 
 ## Nanny program and arguments
 

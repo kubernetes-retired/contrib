@@ -23,10 +23,8 @@ package nanny
 import (
 	"time"
 
-	api "k8s.io/kubernetes/pkg/api/v1"
-
 	log "github.com/golang/glog"
-
+	api "k8s.io/kubernetes/pkg/api/v1"
 	inf "speter.net/go/exp/math/dec/inf"
 )
 
@@ -61,6 +59,9 @@ func shouldOverwriteResources(threshold int64, limits, reqs, expLimits, expReqs 
 		checkResource(threshold, reqs, expReqs, api.ResourceStorage)
 }
 
+// PollApiServer periodically counts the number of nodes, estimates the expected
+// ResourceRequirements, compares them to the actual ResourceRequirements, and
+// updates the deployment with the expected ResourceRequirements if necessary.
 func PollApiServer(k8s KubernetesClient, est ResourceEstimator, contName string, pollPeriod time.Duration, threshold uint64) {
 	for i := 0; true; i++ {
 		if i != 0 {
