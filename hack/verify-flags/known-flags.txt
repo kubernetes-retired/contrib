@@ -68,3 +68,9 @@ use-unicast
 ssl-ca-cert
 ssl-cert
 vrrp-password
+debug-keepalived-conf
+enable-ipvs-conntrack
+keepalived-ip
+keepalived-conf
+keepalived-conf-template
+keepalived-pid

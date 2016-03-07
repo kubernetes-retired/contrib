@@ -15,10 +15,11 @@
 FROM alpine:3.3
 
 RUN echo "http://dl-4.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
-  apk add -U --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted \
+  apk add -U --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted --no-cache \
   bash curl ipvsadm iproute2 keepalived && \
   rm -rf /var/cache/apk/* /etc/keepalived/keepalived.conf
   
+#COPY keepalived.conf.template /etc/keepalived/keepalived.conf.template
 COPY kube-keepalived-vip /kube-keepalived-vip
 
-ENTRYPOINT ["/kube-keepalived-vip"]
+ENTRYPOINT ["/kube-keepalived-vip", "--keepalivedPidFilename=/keepalived.pid"]

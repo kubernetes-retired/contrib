@@ -22,6 +22,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
@@ -46,8 +47,8 @@ type nodeInfo struct {
 }
 
 // getNodeInfo returns information of the node where the pod is running
-func getNodeInfo(nodes []string) (*nodeInfo, error) {
-	ip, err := myIP(nodes)
+func getNodeInfo(nodes []string, forcedIP string) (*nodeInfo, error) {
+	ip, err := getEffectiveIP(nodes, forcedIP)
 	if err != nil {
 		return &nodeInfo{}, err
 	}
@@ -57,6 +58,16 @@ func getNodeInfo(nodes []string) (*nodeInfo, error) {
 		ip:      ip,
 		netmask: maskForLocalIP(ip),
 	}, nil
+}
+
+// getEffectiveIP returns the forcedIP if it was given on the cmdline.
+// If forcedIP is not set it will return the node address
+func getEffectiveIP(nodes []string, forcedIP string) (string, error) {
+	if len(forcedIP) > 0 {
+		return forcedIP, nil
+	}
+	ip, err := myIP(nodes)
+	return ip, err
 }
 
 // myIP returns the local IP address of this node comparing the
@@ -193,16 +204,20 @@ func getNodePriority(ip string, nodes []string) int {
 }
 
 // loadIPVModule load module require to use keepalived
-func loadIPVModule() error {
-	out, err := k8sexec.New().Command("modprobe", "ip_vs").CombinedOutput()
-	if err != nil {
-		glog.V(2).Infof("Error loading ip_vip: %s, %v", string(out), err)
-		return err
-	}
+func loadKernelModules() error {
+	for k, v := range kernelModules {
+		out, err := k8sexec.New().Command("modprobe", k).CombinedOutput()
+		if err != nil {
+			glog.V(2).Infof("Error loading %s: %s, %v", k, string(out), err)
+			return err
+		}
 
-	_, err = os.Stat("/proc/net/ip_vs")
-	if err != nil {
-		return err
+		if len(v) > 0 {
+			_, err := os.Stat(v)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -227,4 +242,14 @@ func appendIfMissing(slice []string, item string) []string {
 		}
 	}
 	return append(slice, item)
+}
+
+func calculateNetwork(ip string, netmask int) (string, error) {
+	_, parsedNet, err := net.ParseCIDR(ip + "/" + strconv.FormatInt(int64(netmask), 10))
+
+	if err != nil {
+		return "", err
+	}
+
+	return parsedNet.IP.String(), nil
 }
