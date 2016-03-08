@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-FROM gcr.io/google_containers/haproxy:0.2
+FROM gcr.io/google_containers/haproxy:0.3
 MAINTAINER Prashanth B <beeps@google.com>
 
 RUN mkdir -p /etc/haproxy/errors /var/state/haproxy

@@ -19,12 +19,12 @@ set -e
 
 export NGINX_VERSION=1.9.12
 export NDK_VERSION=0.2.19
-export VTS_VERSION=0.1.8
+export VTS_VERSION=0.1.9
 export SETMISC_VERSION=0.29
-export LUA_VERSION=0.10.1rc0 
-export LUA_CJSON_VERSION=f79aa68af865ae84b36c7e794beedd87fef2ed54
+export LUA_VERSION=0.10.2
+export LUA_CJSON_VERSION=e1ebda146f63276093970f1bec36e51f952b3dba
 export LUA_RESTY_HTTP_VERSION=0.07
-export LUA_UPSTREAM_VERSION=0.04
+export LUA_UPSTREAM_VERSION=0.05
 export MORE_HEADERS_VERSION=0.29
 
 export BUILD_PATH=/tmp/build
@@ -74,13 +74,13 @@ get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
 get_src 8d280fc083420afb41dbe10df9a8ceec98f1d391bd2caa42ebae67d5bc9295d8 \
         "https://github.com/openresty/set-misc-nginx-module/archive/v$SETMISC_VERSION.tar.gz"
 
-get_src 6bb9a36d8d70302d691c49557313fb7262cafd942a961d11a2730d9a5d9f70e0 \
+get_src ddd297a5f894d966cae19f112c79f99ec9fa13612c3d324c19533247c4953980 \
         "https://github.com/vozlt/nginx-module-vts/archive/v$VTS_VERSION.tar.gz"
 
-get_src 1bae94d2a0fd4fad39f2544a2f8eaf71335ea512a6f0027af190b46562224c68 \
+get_src 155feeff08a0b2efaf980705b9ef83d0b341e6d011adad8e2679ea4105668134 \
         "https://github.com/openresty/lua-nginx-module/archive/v$LUA_VERSION.tar.gz"
 
-get_src 2c451368a9e1a6fc01ed196cd6bd1602ee29f4b264df9263816e4dce17bca2c0 \
+get_src ec2a5ab856ad0168e840abfe394b9e6765fd7d209187c5599054b7f2768f2468 \
         "https://github.com/openresty/lua-cjson/archive/$LUA_CJSON_VERSION.tar.gz"
 
 get_src 1c6aa06c9955397c94e9c3e0c0fba4e2704e85bee77b4512fb54ae7c25d58d86 \
@@ -89,7 +89,7 @@ get_src 1c6aa06c9955397c94e9c3e0c0fba4e2704e85bee77b4512fb54ae7c25d58d86 \
 get_src 0a5f3003b5851373b03c542723eb5e7da44a01bf4c4c5f20b4de53f355a28d33 \
         "https://github.com/openresty/headers-more-nginx-module/archive/v$MORE_HEADERS_VERSION.tar.gz"
 
-get_src eec4bbb40fd14e12179fd536a029e2fe82a7f29340ed357879d0b02b65302913 \
+get_src 0fdfb17083598e674680d8babe944f48a9ccd2af9f982eda030c446c93cfe72b \
         "https://github.com/openresty/lua-upstream-nginx-module/archive/v$LUA_UPSTREAM_VERSION.tar.gz"
 
 # build nginx
