@@ -141,12 +141,12 @@ metadata:
         # ssl term
         - containerPort: 443
           hostPort: 443
-          protocol: TCP       
+          protocol: TCP
         # haproxy stats
         - containerPort: 1936
           hostPort: 1936
           protocol: TCP
-        resources: {}     
+        resources: {}
         volumes:
         - name: secret-volume
           secret:
@@ -293,7 +293,7 @@ spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: gcr.io/google_containers/servicelb:0.1
+      - image: gcr.io/google_containers/servicelb:0.4
         imagePullPolicy: Always
         livenessProbe:
           httpGet:

@@ -68,3 +68,4 @@ use-unicast
 ssl-ca-cert
 ssl-cert
 vrrp-password
+default-return-code
