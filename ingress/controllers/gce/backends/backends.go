@@ -45,8 +45,10 @@ func portKey(port int64) string {
 }
 
 // NewBackendPool returns a new backend pool.
-// - cloud: implements BackendServices and syncs backends with a cloud provider
+// - cloud: implements BackendServices and syncs backends with a cloud provider.
+// - healthChecker: Interface to manage addition/deletion of health checks.
 // - nodePool: implements NodePool, used to create/delete new instance groups.
+// - namer: cluster namer.
 func NewBackendPool(
 	cloud BackendServices,
 	healthChecker healthchecks.HealthChecker,
