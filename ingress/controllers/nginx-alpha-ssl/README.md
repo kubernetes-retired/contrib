@@ -14,6 +14,7 @@ A valid access token is available at the following location:
 
 An example for creating this as a kubernetes secret is shown below.
 
+```yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -21,9 +22,11 @@ metadata:
   name: ingress-token
 data:
   ingress-read-only: %%TOKEN%%
+```
 
 where %%TOKEN%% is an access token for a policy with read access to secret/ssl in Vault:
 
+```yaml
 # For Ingress controller- ssl key access
 path "sys/*" {
   policy = "deny"
@@ -32,6 +35,7 @@ path "sys/*" {
 path "secret/ssl/*" {
   policy = "read"
 }
+```
 
 The key contents themselves should already have been written to Vault as follows:
 
@@ -39,7 +43,9 @@ Key: secrets/ssl/<hostname> crt and key
 
 where "crt" contains the x509 public certificate and key contains the x509 private key.
 
+```
 vault write www.example.com key="-----BEGIN PRIVATE KEY-----..." crt="-----BEGIN CERTIFICATE-----..."
+```
 
 ## Deploying the controller
 
