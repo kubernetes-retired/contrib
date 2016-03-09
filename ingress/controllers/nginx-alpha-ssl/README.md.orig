@@ -3,6 +3,7 @@
 This is a simple nginx Ingress controller. Expect it to grow up. See [Ingress controller documentation](../README.md) for details on how it works.
 
 This version includes SSL support, integrated with HashiCorp Vault and access and error logs, which go to the container stdout/stderr by default.
+<<<<<<< HEAD
 
 ## Installation
 
@@ -11,6 +12,8 @@ go build controller.go && docker rmi devlm/nginx-ingress:latest; docker build -t
 ```
 
 replacing devlm/nginx-ingress with a repo of your choice. There is a pre-built container at devlm/nginx-ingress on docker hub if required.
+=======
+>>>>>>> Readme
 
 Access to Vault is predicated on the following:
 
@@ -22,7 +25,10 @@ A valid access token is available at the following location:
 
 An example for creating this as a kubernetes secret is shown below.
 
+<<<<<<< HEAD
 ```yaml
+=======
+>>>>>>> Readme
 apiVersion: v1
 kind: Secret
 metadata:
@@ -30,11 +36,17 @@ metadata:
   name: ingress-token
 data:
   ingress-read-only: %%TOKEN%%
+<<<<<<< HEAD
 ```
 
 where %%TOKEN%% is an access token for a policy with read access to secret/ssl in Vault:
 
 ```yaml
+=======
+
+where %%TOKEN%% is an access token for a policy with read access to secret/ssl in Vault:
+
+>>>>>>> Readme
 # For Ingress controller- ssl key access
 path "sys/*" {
   policy = "deny"
@@ -43,24 +55,33 @@ path "sys/*" {
 path "secret/ssl/*" {
   policy = "read"
 }
+<<<<<<< HEAD
 ```
 
 The key contents themselves should already have been written to Vault as follows:
 
+=======
+
+The key contents themselves should already have been written to Vault as follows:
+
+>>>>>>> Readme
 Key: secrets/ssl/<hostname> crt and key
 
 where "crt" contains the x509 public certificate and key contains the x509 private key.
 
+<<<<<<< HEAD
 ```
 vault write www.example.com key="-----BEGIN PRIVATE KEY-----..." crt="-----BEGIN CERTIFICATE-----..."
 ```
+=======
+vault write www.example.com key="-----BEGIN PRIVATE KEY-----..." crt="-----BEGIN CERTIFICATE-----..."
+>>>>>>> Readme
 
 ## Deploying the controller
 
 Deploying the controller is as easy as creating the RC in this directory. Having done so you can test it with the following echoheaders application:
 
 ```yaml
-# 3 Services for the 3 endpoints of the Ingress
 apiVersion: v1
 kind: ReplicationController
 metadata:
@@ -124,7 +145,6 @@ spec:
           servicePort: 8080
         path: /
 ```
-You should be able to access the Services on the public IP of the node the nginx pod lands on.
 
 Note the `ssl: true` label.
 

@@ -1,0 +1,19 @@
+# A very simple nginx configuration file that forces nginx to start as a daemon.
+events {}
+<<<<<<< HEAD
+http {
+  # http://nginx.org/en/docs/http/ngx_http_core_module.html
+  types_hash_max_size 2048;
+  server_names_hash_max_size 512;
+  server_names_hash_bucket_size 64;
+
+  log_format default '$host $remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\"';
+  error_log /dev/stdout info;
+  access_log /dev/stdout default;
+
+}
+
+=======
+http {}
+>>>>>>> Vault-enabled SSL ingress controller based on nginx-alpha
+daemon on;
