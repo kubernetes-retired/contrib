@@ -1,5 +1,5 @@
 ---
-- name: Download tar file
+- name: CoreOS | Download Kubernetes tar file
   get_url:
     url: "{{ kube_download_url }}"
     dest: "{{ ansible_temp_dir }}"
@@ -8,14 +8,21 @@
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
 
-- name: Extract tar file
+- name: CoreOS | Extract Kubernetes tar file
   unarchive:
     src: "{{ ansible_temp_dir }}/kubernetes.tar.gz"
     dest: "{{ ansible_temp_dir }}"
     copy: no
 
-- name: Extract 2nd tar file
+- name: CoreOS | Extract 2nd Kubernetes tar file
   unarchive:
     src: "{{ ansible_temp_dir }}/kubernetes/server/kubernetes-server-linux-amd64.tar.gz"
     dest: "{{ bin_dir }}"
     copy: no
+
+- name: CoreOS | Manage Kubernetes internal networkd file
+  template: src=kube_internal_networkd.j2 dest=/etc/systemd/network/{{ kube_internal_interface }}.network
+  notify:
+    - restart systemd-networkd
+    - restart systemd-resolved
+  when: manage_internal_kube_network

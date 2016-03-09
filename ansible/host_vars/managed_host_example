@@ -1,0 +1,15 @@
+# Change managed_host_example to the IP/DNS name of the
+# Kubernetes masters or nodes that you would like to manage
+# a seperate interface for an internal network.
+# Suported on CoreOS deployments. Make sure to set the
+# following in group_vars/all.yml:
+# manage_internal_kube_network: true
+---
+# Interface name for the internal network
+kube_internal_interface: eth1
+
+# IP address assigned to kube_internal_interface
+kube_internal_ip: 10.10.10.10
+
+# Network mask in cidr notation of kube_internal_ip
+kube_internal_cidr: /24
