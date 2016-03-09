@@ -4,6 +4,14 @@ This is a simple nginx Ingress controller. Expect it to grow up. See [Ingress co
 
 This version includes SSL support, integrated with HashiCorp Vault and access and error logs, which go to the container stdout/stderr by default.
 
+## Installation
+
+```
+go build controller.go && docker rmi devlm/nginx-ingress:latest; docker build -t devlm/nginx-ingress:latest . && docker push devlm/nginx-ingress:latest
+```
+
+replacing devlm/nginx-ingress with a repo of your choice. There is a pre-built container at devlm/nginx-ingress on docker hub if required.
+
 Access to Vault is predicated on the following:
 
 Vault is running in the local environment.
