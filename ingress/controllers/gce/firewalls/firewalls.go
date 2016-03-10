@@ -38,10 +38,15 @@ func NewFirewallPool(cloud Firewall, namer utils.Namer) SingleFirewallPool {
 	return &FirewallRules{cloud: cloud, namer: namer}
 }
 
-func (fr *FirewallRules) Sync(nodePorts []int64, nodeNames []string) error {
+func (fr *FirewallRules) Sync(nodePorts []int64, defaultBackendNodePort int64, nodeNames []string) error {
 	if len(nodePorts) == 0 {
-		return nil
+		// Delete the firewall rule if there are no Service NodePorts.
+		// Note that this will also cutoff the deault backend, but we can't
+		// leave the firewall rule because the controller could get killed
+		// at anytime and we'd end up leaking the rule.
+		return fr.Shutdown()
 	}
+	nodePorts = append(nodePorts, defaultBackendNodePort)
 	// Firewall rule prefix must match that inserted by the gce library.
 	suffix := fr.namer.FrSuffix()
 	// TODO: Fix upstream gce cloudprovider lib so GET also takes the suffix
@@ -52,7 +57,7 @@ func (fr *FirewallRules) Sync(nodePorts []int64, nodeNames []string) error {
 		glog.Infof("Creating global l7 firewall rule %v", name)
 		return fr.cloud.CreateFirewall(suffix, "GCE L7 firewall rule", l7SrcRange, nodePorts, nodeNames)
 	}
-	glog.Infof("Firewall rule already %v exists, verifying for nodeports %v", name, nodePorts)
+	glog.V(3).Infof("Firewall rule %v already exists, verifying for nodeports %v", name, nodePorts)
 	return fr.cloud.UpdateFirewall(suffix, "GCE L7 firewall rule", l7SrcRange, nodePorts, nodeNames)
 }
 

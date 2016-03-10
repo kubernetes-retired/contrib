@@ -120,7 +120,7 @@ func (c *ClusterManager) Checkpoint(lbs []*loadbalancers.L7RuntimeInfo, nodeName
 	// TODO: Manage default backend and its firewall rule in a centralized way.
 	// DefaultBackend is managed in l7 pool, which doesn't understand instances,
 	// which the firewall rule requires.
-	if err := c.firewallPool.Sync(append(nodePorts, c.defaultBackendNodePort), nodeNames); err != nil {
+	if err := c.firewallPool.Sync(nodePorts, c.defaultBackendNodePort, nodeNames); err != nil {
 		return err
 	}
 	return nil

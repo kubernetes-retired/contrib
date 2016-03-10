@@ -23,7 +23,7 @@ import (
 // SingleFirewallPool syncs the firewall rule for L7 traffic.
 type SingleFirewallPool interface {
 	// TODO: Take a list of node ports for the firewall.
-	Sync(nodePorts []int64, nodeNames []string) error
+	Sync(nodePorts []int64, defaultBackendPort int64, nodeNames []string) error
 	Shutdown() error
 }
 
