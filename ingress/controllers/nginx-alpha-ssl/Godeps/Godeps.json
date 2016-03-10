@@ -1,6 +1,9 @@
 {
 	"ImportPath": "github.com/devlinmr/contrib/ingress/controllers/nginx-alpha-ssl",
 	"GoVersion": "go1.6",
+	"Packages": [
+		"./..."
+	],
 	"Deps": [
 		{
 			"ImportPath": "bitbucket.org/ww/goautoneg",
