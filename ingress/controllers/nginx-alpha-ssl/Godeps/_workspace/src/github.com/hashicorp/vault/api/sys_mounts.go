@@ -20,6 +20,10 @@ func (c *Sys) ListMounts() (map[string]*MountOutput, error) {
 }
 
 func (c *Sys) Mount(path string, mountInfo *MountInput) error {
+	if err := c.checkMountPath(path); err != nil {
+		return err
+	}
+
 	body := structs.Map(mountInfo)
 
 	r := c.c.NewRequest("POST", fmt.Sprintf("/v1/sys/mounts/%s", path))
@@ -37,6 +41,10 @@ func (c *Sys) Mount(path string, mountInfo *MountInput) error {
 }
 
 func (c *Sys) Unmount(path string) error {
+	if err := c.checkMountPath(path); err != nil {
+		return err
+	}
+
 	r := c.c.NewRequest("DELETE", fmt.Sprintf("/v1/sys/mounts/%s", path))
 	resp, err := c.c.RawRequest(r)
 	if err == nil {
@@ -46,6 +54,13 @@ func (c *Sys) Unmount(path string) error {
 }
 
 func (c *Sys) Remount(from, to string) error {
+	if err := c.checkMountPath(from); err != nil {
+		return err
+	}
+	if err := c.checkMountPath(to); err != nil {
+		return err
+	}
+
 	body := map[string]interface{}{
 		"from": from,
 		"to":   to,
@@ -64,6 +79,10 @@ func (c *Sys) Remount(from, to string) error {
 }
 
 func (c *Sys) TuneMount(path string, config MountConfigInput) error {
+	if err := c.checkMountPath(path); err != nil {
+		return err
+	}
+
 	body := structs.Map(config)
 	r := c.c.NewRequest("POST", fmt.Sprintf("/v1/sys/mounts/%s/tune", path))
 	if err := r.SetJSONBody(body); err != nil {
@@ -78,6 +97,10 @@ func (c *Sys) TuneMount(path string, config MountConfigInput) error {
 }
 
 func (c *Sys) MountConfig(path string) (*MountConfigOutput, error) {
+	if err := c.checkMountPath(path); err != nil {
+		return nil, err
+	}
+
 	r := c.c.NewRequest("GET", fmt.Sprintf("/v1/sys/mounts/%s/tune", path))
 
 	resp, err := c.c.RawRequest(r)
@@ -88,6 +111,14 @@ func (c *Sys) MountConfig(path string) (*MountConfigOutput, error) {
 	var result MountConfigOutput
 	err = resp.DecodeJSON(&result)
 	return &result, err
+}
+
+func (c *Sys) checkMountPath(path string) error {
+	if path[0] == '/' {
+		return fmt.Errorf("path must not start with /: %s", path)
+	}
+
+	return nil
 }
 
 type MountInput struct {
