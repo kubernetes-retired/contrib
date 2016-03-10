@@ -1,0 +1,7 @@
+--- /dev/null
++++ Godeps/_workspace/src/github.com/hashicorp/vault/vendor/github.com/hashicorp/hcl/test-fixtures/basic.json
+@@ -0,0 +1,4 @@
++{
++	"foo": "bar",
++    "bar": "${file(\"bing/bong.txt\")}"
++}
