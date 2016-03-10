@@ -1,5 +1,5 @@
 {
-	"ImportPath": "github.com/devlinmr/contrib/ingress/controllers/nginx-alpha-ssl",
+	"ImportPath": "k8s.io/contrib/ingress/controllers/nginx-alpha-ssl",
 	"GoVersion": "go1.6",
 	"Packages": [
 		"./..."
