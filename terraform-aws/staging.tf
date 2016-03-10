@@ -1,5 +1,9 @@
 variable "access_key" {}
 variable "secret_key" {}
+variable "region" {}
+variable "master_ip" {}
+variable "worker_ip" {}
+variable "aws_key_name" {}
 
 provider "aws" {
   access_key = "${var.access_key}"
@@ -51,9 +55,9 @@ resource "aws_instance" "staging_master" {
   ami = "ami-9db652f2"
   instance_type = "t2.small"
   user_data = "${file("master/cloud-config")}"
-  private_ip = "172.31.29.111"
+  private_ip = "${vars.master_ip}"
   vpc_security_group_ids = ["${aws_security_group.master.id}"]
-  key_name = "Arve's MacBook"
+  key_name = "${vars.aws_key_name}"
   iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
 
   tags {
@@ -289,9 +293,9 @@ resource "aws_security_group" "worker" {
 resource "aws_instance" "staging_worker" {
   ami = "ami-9db652f2"
   instance_type = "t2.micro"
-  private_ip = "172.31.29.110"
+  private_ip = "${vars.worker_ip}"
   vpc_security_group_ids  = ["${aws_security_group.worker.id}"]
-  key_name = "Arve's MacBook"
+  key_name = "${vars.aws_key_name}"
   iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
 
   tags {
