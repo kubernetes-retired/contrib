@@ -8,7 +8,7 @@ metadata:
     version: v12
     kubernetes.io/cluster-service: "true"
 spec:
-  replicas: {{ pillar['dns_replicas'] }}
+  replicas: 1
   selector:
     k8s-app: kube-dns
     version: v12
@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: unbound
-        image: aledbf/dns-resolver:0.4
+        image: aledbf/dns-resolver:0.20
         ports:
         - containerPort: 53
           name: dns
@@ -29,6 +29,12 @@ spec:
         - containerPort: 53
           name: dns-tcp
           protocol: TCP
+        - containerPort: 8081
+          name: health-dump
+          protocol: TCP
+        - containerPort: 54
+          name: dns2
+          protocol: UDP
         livenessProbe:
           httpGet:
             path: /healthz
@@ -44,8 +50,9 @@ spec:
           initialDelaySeconds: 1
           timeoutSeconds: 5
         args:
-        - --cluster-dns={{ pillar['dns_service_ip'] }}
-        - --domain={{ pillar['dns_domain'] }}
+        - --cluster-dns=10.3.0.10
+        - --domain=cluster.local
+        - --v=4
       - name: healthz
         image: gcr.io/google_containers/exechealthz:1.0
         resources:
@@ -57,7 +64,7 @@ spec:
             cpu: 10m
             memory: 20Mi
         args:
-        - -cmd=nslookup kubernetes.default.svc.{{ pillar['dns_domain'] }} 127.0.0.1 >/dev/null
+        - -cmd=nslookup kubernetes.default.svc.cluster.local 127.0.0.1 >/dev/null
         - -port=8080
         ports:
         - containerPort: 8080

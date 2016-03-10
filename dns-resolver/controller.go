@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"hash/fnv"
+	"reflect"
 	"strings"
 	"time"
 
@@ -41,21 +42,6 @@ const (
 	podSubdomain = "pod"
 )
 
-type backend interface {
-	AddHost(fqdn, ip string) error
-	AddCname(alias, fqdn string) error
-	AddSrv(fqdn, target string, port int) error
-	RemoveHost(fqdn, ip string) error
-	Remove(fqdn string) error
-	IsHealthy() bool
-	Start()
-}
-
-type nameNamespace struct {
-	name      string
-	namespace string
-}
-
 type kube2dns struct {
 	// DNS domain name.
 	domain string
@@ -67,8 +53,8 @@ type kube2dns struct {
 	servicesStore kcache.Store
 	// A cache that contains all the pods in the system.
 	podsStore kcache.Store
-	// Backend to use
-	backend backend
+	// dns server
+	backend nameserver
 	// DNS cache resolver
 	resolver resolverControl
 }
@@ -108,21 +94,14 @@ func (ks *kube2dns) newHeadlessService(subdomain string, service *kapi.Service) 
 func (ks *kube2dns) generateRecordsForHeadlessService(fqdn string, e *kapi.Endpoints, svc *kapi.Service) error {
 	for idx := range e.Subsets {
 		for subIdx := range e.Subsets[idx].Addresses {
-			err := ks.backend.AddHost(fqdn, e.Subsets[idx].Addresses[subIdx].IP)
-			if err != nil {
-				return err
-			}
-
+			ks.backend.Add(aRecord(fqdn, e.Subsets[idx].Addresses[subIdx].IP, 0))
 			for portIdx := range e.Subsets[idx].Ports {
 				endpointPort := &e.Subsets[idx].Ports[portIdx]
 				portSegment := buildPortSegmentString(endpointPort.Name, endpointPort.Protocol)
 				if portSegment != "" {
 					// auto-generated-name.my-svc.my-namespace.svc.cluster.local
 					randomName := buildDNSNameString(fqdn, getHash(fqdn+"-"+e.Subsets[idx].Addresses[subIdx].IP))
-					err := ks.generateSRVRecord(fqdn, portSegment, randomName, endpointPort.Port)
-					if err != nil {
-						return err
-					}
+					ks.generateSRVRecord(fqdn, portSegment, randomName, endpointPort.Port)
 				}
 			}
 		}
@@ -160,9 +139,8 @@ func (ks *kube2dns) addDNSUsingEndpoints(subdomain string, e *kapi.Endpoints) er
 		return nil
 	}
 	// Remove existing DNS entry.
-	if err := ks.backend.Remove(subdomain); err != nil {
-		return err
-	}
+	ks.backend.Remove(subdomain)
+
 	return ks.generateRecordsForHeadlessService(subdomain, e, svc)
 }
 
@@ -178,7 +156,7 @@ func (ks *kube2dns) handlePodCreate(obj interface{}) {
 		// If the pod ip is not yet available, do not attempt to create.
 		if e.Status.PodIP != "" {
 			fqdn := buildDNSNameString(ks.domain, podSubdomain, e.Namespace, santizeIP(e.Status.PodIP))
-			ks.backend.AddHost(fqdn, e.Status.PodIP)
+			ks.backend.Add(aRecord(fqdn, e.Status.PodIP, 0))
 		}
 	}
 }
@@ -204,24 +182,20 @@ func (ks *kube2dns) handlePodDelete(obj interface{}) {
 	if e, ok := obj.(*kapi.Pod); ok {
 		if e.Status.PodIP != "" {
 			fqdn := buildDNSNameString(ks.domain, podSubdomain, e.Namespace, santizeIP(e.Status.PodIP))
-			ks.backend.RemoveHost(fqdn, e.Status.PodIP)
+			ks.backend.Remove(fqdn)
 			ks.resolver.FlushHost(fqdn)
 		}
 	}
 }
 
 func (ks *kube2dns) generateRecordsForPortalService(fqdn string, service *kapi.Service) error {
-	if err := ks.backend.AddHost(fqdn, service.Spec.ClusterIP); err != nil {
-		return err
-	}
+	ks.backend.Add(aRecord(fqdn, service.Spec.ClusterIP, 0))
 	// Generate SRV Records
 	for i := range service.Spec.Ports {
 		port := &service.Spec.Ports[i]
 		portSegment := buildPortSegmentString(port.Name, port.Protocol)
 		if portSegment != "" {
-			if err := ks.generateSRVRecord(fqdn, portSegment, fqdn, port.Port); err != nil {
-				return err
-			}
+			ks.generateSRVRecord(fqdn, portSegment, fqdn, port.Port)
 		}
 	}
 	return nil
@@ -245,9 +219,9 @@ func buildPortSegmentString(portName string, portProtocol kapi.Protocol) string 
 	return fmt.Sprintf("_%s._%s", portName, strings.ToLower(string(portProtocol)))
 }
 
-func (ks *kube2dns) generateSRVRecord(subdomain, portSegment, cName string, portNumber int) error {
+func (ks *kube2dns) generateSRVRecord(subdomain, portSegment, cName string, portNumber int) {
 	recordKey := buildDNSNameString(subdomain, portSegment)
-	return ks.backend.AddSrv(recordKey, cName, portNumber)
+	ks.backend.Add(srvRecord(recordKey, cName, portNumber, 0))
 }
 
 func (ks *kube2dns) addDNS(fqdn string, service *kapi.Service) error {
@@ -299,14 +273,16 @@ func (ks *kube2dns) removeService(obj interface{}) {
 	if s, ok := obj.(*kapi.Service); ok {
 		fqdn := buildDNSNameString(ks.domain, serviceSubdomain, s.Namespace, s.Name)
 		ks.backend.Remove(fqdn)
+
 		ks.resolver.FlushHost(fqdn)
 	}
 }
 
 func (ks *kube2dns) updateService(oldObj, newObj interface{}) {
-	// TODO: Avoid unwanted updates.
-	ks.removeService(oldObj)
-	ks.newService(newObj)
+	if !reflect.DeepEqual(oldObj, newObj) {
+		ks.removeService(oldObj)
+		ks.newService(newObj)
+	}
 }
 
 func watchForServices(kubeClient *kclient.Client, ks *kube2dns) kcache.Store {

@@ -14,19 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -eof pipefail
-
-# Installing required dependencies to build/install/run unbound and dnsperf
-# After the installation some packages are removed
-# (build-base musl-dev linux-headers libcap-dev)
-apk add -U \
-  expat-dev pcre-dev openssl-dev \
-  libxml2-dev musl musl-dev zlib-dev \
-  libcap libcap-dev \
-  bind bind-dev bind-libs bind-tools \
-  build-base \
-  unbound \
-  curl
+apt-get update && apt-get install \
+  libbind-dev \
+  libkrb5-dev \
+  libssl-dev \
+  libcap-dev \
+  libxml2-dev \
+  bind9utils \
+  make
 
 cd /tmp
 # Installing dnsperf
@@ -38,13 +33,3 @@ make
 make install
 
 cd /
-
-# Cleanup
-apk del --purge \
-  build-base \
-  musl-dev \
-  linux-headers \
-  libcap-dev \
-  perl-dev
-
-rm -rf /var/cache/apk/* /tmp/* /root/.cpan /usr/share/man

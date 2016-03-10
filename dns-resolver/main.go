@@ -17,12 +17,10 @@ limitations under the License.
 package main
 
 import (
-	// "io/ioutil"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
@@ -32,8 +30,7 @@ import (
 )
 
 const (
-	resolverConfig = "/etc/resolv.conf"
-	healthzPort    = 8081
+	healthzPort = 8081
 )
 
 var (
@@ -46,7 +43,7 @@ var (
 
 	clusterDNS = flags.String("cluster-dns", "", "IP address for a cluster DNS server")
 
-	backendName = flags.String("backend", "nsd", "DNS server to use as backend")
+	defDNSServer = flags.String("default-resolver", "8.8.8.8", "Default dns server to resolv external hosts")
 
 	customForwards = flags.String("custom-forwards", "", `Custom domain forwards separated by comma. 
 		Each domain must indicate the IP address to wich the queries must be forwarded. If the dns port
@@ -57,6 +54,7 @@ var (
 func main() {
 	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
+
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
 	var err error
@@ -82,12 +80,9 @@ func main() {
 	}
 
 	ks := newController(*domain, *clusterDNS)
-
-	switch *backendName {
-	case "nsd":
-		ks.backend = newNsdBackend(*domain, *clusterDNS)
-	default:
-		glog.Fatalf("invalid backend name (%v)", backendName)
+	ks.backend, err = makeNameserver(*domain, *clusterDNS)
+	if err != nil {
+		glog.Fatalf("error starting local dns server: %v", err)
 	}
 
 	ks.endpointsStore = watchEndpoints(kubeClient, ks)
@@ -96,12 +91,11 @@ func main() {
 
 	dnsResolver := &resolver{
 		domain:  *domain,
-		ns:      parseResolvConf(),
+		ns:      parseServers(*defDNSServer),
 		forward: parseForwards(*customForwards),
 	}
 	ks.resolver = dnsResolver
 
-	go ks.backend.Start()
 	go registerHandlers(ks, dnsResolver)
 
 	dnsResolver.Start()
@@ -109,7 +103,7 @@ func main() {
 
 func registerHandlers(k2dns *kube2dns, cache *resolver) {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		if cache.IsHealthy() && k2dns.backend.IsHealthy() {
+		if cache.IsHealthy() {
 			w.WriteHeader(200)
 			w.Write([]byte("ok"))
 			return
@@ -119,56 +113,10 @@ func registerHandlers(k2dns *kube2dns, cache *resolver) {
 		w.Write([]byte("unhealthy"))
 	})
 
+	http.HandleFunc("/dump", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte(k2dns.backend.Dump()))
+	})
+
 	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", healthzPort), nil))
-}
-
-func parseResolvConf() []string {
-	// default server to use in case of errors reading /etc/resolv.conf
-	// TODO: return the default only if
-	return []string{"8.8.8.8"}
-
-	// f, err := os.Open(resolverConfig)
-	// if err != nil {
-	// 	return defSearch
-	// }
-
-	// file, err := ioutil.ReadAll(f)
-	// if err != nil {
-	// 	return defSearch
-	// }
-
-	// nameservers := []string{}
-	// lines := strings.Split(string(file), "\n")
-	// for l := range lines {
-	// 	trimmed := strings.TrimSpace(lines[l])
-	// 	if strings.HasPrefix(trimmed, "#") {
-	// 		continue
-	// 	}
-	// 	fields := strings.Fields(trimmed)
-	// 	if len(fields) == 0 {
-	// 		continue
-	// 	}
-	// 	if fields[0] == "nameserver" {
-	// 		nameservers = append(nameservers, fields[1:]...)
-	// 	}
-	// }
-
-	// return nameservers
-}
-
-func parseForwards(input string) []forward {
-	forwards := []forward{}
-	domains := strings.Split(input, ",")
-	for _, domain := range domains {
-		domainPort := strings.Split(domain, ":")
-		if len(domainPort) == 2 {
-			forwards = append(forwards, forward{
-				Name: domainPort[0],
-				IP:   domainPort[1],
-			})
-		} else {
-			glog.V(2).Infof("invalid forward format (%v)", domainPort)
-		}
-	}
-	return forwards
 }
