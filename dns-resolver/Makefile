@@ -3,7 +3,7 @@
 
 .PHONY: all container push
 
-TAG = 0.20
+TAG = 0.3
 PREFIX = aledbf
 
 all: container push

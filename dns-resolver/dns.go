@@ -166,6 +166,7 @@ func nsRecord(fqdn, ip string, cttl int) dns.RR {
 		ttl = cttl
 	}
 
+	// ns fqdn. ttl IN NS fqdn
 	r, _ := dns.NewRR(fmt.Sprintf("%v. %v IN NS %v", host, ttl, ip))
 	return r
 }

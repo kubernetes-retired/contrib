@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: unbound
-        image: aledbf/dns-resolver:0.20
+        image: aledbf/dns-resolver:0.3
         ports:
         - containerPort: 53
           name: dns
