@@ -61,7 +61,7 @@ func main() {
 	}
 
 	if *threshold < 0 || *threshold > 100 {
-		log.Fatal("Threshold must be between 0 and 100 inclusively, was %d.", threshold)
+		log.Fatalf("Threshold must be between 0 and 100 inclusively, was %d.", threshold)
 	}
 
 	log.Infof("Watching namespace: %s, pod: %s, container: %s.", *podNamespace, *podName, *containerName)

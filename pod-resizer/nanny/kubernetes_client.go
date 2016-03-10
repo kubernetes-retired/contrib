@@ -24,12 +24,6 @@ import (
 	"k8s.io/kubernetes/pkg/client/clientset_generated/release_1_2"
 )
 
-type KubernetesClient interface {
-	CountNodes() (uint64, error)
-	ContainerResources() (*apiv1.ResourceRequirements, error)
-	UpdateDeployment(resources *apiv1.ResourceRequirements) error
-}
-
 type kubernetesClient struct {
 	namespace, deployment, pod, container string
 	clientset                             *release_1_2.Clientset

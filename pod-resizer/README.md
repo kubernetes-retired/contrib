@@ -27,3 +27,59 @@ Usage of pod_nanny:
       --storage="MISSING": The base storage resource requirement.
       --threshold=0: A number between 0-100. The dependent's resources are rewritten when they deviate from expected by more than threshold.
 ```
+
+## Example deployment file
+
+The following yaml is an example deployment where the nanny watches and resizes itself.
+
+```yaml
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: nanny-v1
+  namespace: default
+  labels:
+    k8s-app: nanny
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: nanny
+      version: v1
+  template:
+    metadata:
+      labels:
+        k8s-app: nanny
+        version: v1
+        kubernetes.io/cluster-service: "true"
+    spec:
+      containers:
+        - image: gcr.io/google_containers/pod-resizer:1.0
+          imagePullPolicy: Always
+          name: pod-nanny
+          resources:
+            limits:
+              cpu: 300m
+              memory: 200Mi
+            requests:
+              cpu: 300m
+              memory: 200Mi
+          env:
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - /pod_nanny
+            - --cpu=300m
+            - --extra_cpu=20m
+            - --memory=200Mi
+            - --extra_memory=10Mi
+            - --threshold=5
+            - --deployment=nanny-v1
+```
