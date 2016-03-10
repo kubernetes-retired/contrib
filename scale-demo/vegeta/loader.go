@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,9 +30,8 @@ import (
 )
 
 var (
-	urlList = flag.String("url-list", "", "The list of URLs to aggregate")
-
 	host     = flag.String("host", "", "The host to load test")
+	paths    = flag.String("paths", "/", "A comma separated list of URL paths to load test")
 	rate     = flag.Int("rate", 0, "The QPS to send")
 	duration = flag.Duration("duration", 10*time.Second, "The duration of the load test")
 	addr     = flag.String("address", "localhost:8080", "The address to serve on")
@@ -87,10 +87,15 @@ func main() {
 		os.Exit(2)
 	}
 
-	targeter := vegeta.NewStaticTargeter(vegeta.Target{
-		Method: "GET",
-		URL:    "http://" + serviceIP + "/",
-	})
+	var targets []vegeta.Target
+	for _, path := range strings.Split(*paths, ",") {
+		path = strings.TrimPrefix(path, "/")
+		targets = append(targets, vegeta.Target{
+			Method: "GET",
+			URL:    fmt.Sprintf("http://%s/%s", serviceIP, path),
+		})
+	}
+	targeter := vegeta.NewStaticTargeter(targets...)
 	attacker := vegeta.NewAttacker(vegeta.Workers(uint64(*workers)))
 
 	reporter := &HTTPReporter{}
