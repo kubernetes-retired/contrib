@@ -1,4 +1,4 @@
-# pod-resizer
+# addon-resizer
 
 This container image watches over another container in a deployment, and
 vertically scales the dependent container up and down. Currently the only
@@ -55,7 +55,7 @@ spec:
         kubernetes.io/cluster-service: "true"
     spec:
       containers:
-        - image: gcr.io/google_containers/pod-resizer:1.0
+        - image: gcr.io/google_containers/addon-resizer:1.0
           imagePullPolicy: Always
           name: pod-nanny
           resources:

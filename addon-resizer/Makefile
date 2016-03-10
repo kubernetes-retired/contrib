@@ -15,15 +15,15 @@
 # Procedure for change:
 # 1. Bump the tag number.
 # 2. Create an image for the kubernetes user on Dockerhub and push there: make build push
-# 3. Temporarily adjust any config files etc. that reference gcr.io/google_containers/pod-resizer:$(TAG)
-#    to use kubernetes/pod-resizer:$(TAG) instead.
+# 3. Temporarily adjust any config files etc. that reference gcr.io/google_containers/addon-resizer:$(TAG)
+#    to use kubernetes/addon-resizer:$(TAG) instead.
 # 4. Test etc.
 # 5. Issue PR.
 # 6. When PR is approved make the gcr.io version of the image: make build push
-# 7. Revert the references to kubernetes/pod-resizer:$(TAG) to gcr.io/google_containers/pod-resizer:$(TAG) 
+# 7. Revert the references to kubernetes/addon-resizer:$(TAG) to gcr.io/google_containers/addon-resizer:$(TAG) 
 
 OUT_DIR = build
-PACKAGE = k8s.io/contrib/pod-resizer
+PACKAGE = k8s.io/contrib/addon-resizer
 PREFIX = gcr.io/google_containers
 TAG = 1.0
 
@@ -44,9 +44,9 @@ clean:
 	rm -rf build
 
 build: go
-	docker build -t ${PREFIX}/pod-resizer:$(TAG) .
+	docker build -t ${PREFIX}/addon-resizer:$(TAG) .
 
 docker: build
 
 push: docker
-	gcloud docker push ${PREFIX}/pod-resizer:$(TAG)
+	gcloud docker push ${PREFIX}/addon-resizer:$(TAG)
