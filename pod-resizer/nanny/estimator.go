@@ -23,10 +23,6 @@ import (
 	inf "speter.net/go/exp/math/dec/inf"
 )
 
-type ResourceEstimator interface {
-	scaleWithNodes(numNodes uint64) *api.ResourceRequirements
-}
-
 type Resource struct {
 	Base, ExtraPerNode resource.Quantity
 	Name               api.ResourceName

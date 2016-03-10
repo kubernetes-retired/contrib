@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:edge
+FROM busybox
 MAINTAINER Quintin Lee "qlee@google.com"
 
 ADD build/pod_nanny pod_nanny

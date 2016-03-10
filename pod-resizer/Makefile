@@ -24,7 +24,7 @@
 
 OUT_DIR = build
 PACKAGE = k8s.io/contrib/pod-resizer
-#PREFIX = gcr.io/qlee_experiment
+PREFIX = gcr.io/google_containers
 TAG = 1.0
 
 # Rules for building the real image for deployment to gcr.io

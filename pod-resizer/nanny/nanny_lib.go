@@ -59,6 +59,16 @@ func shouldOverwriteResources(threshold int64, limits, reqs, expLimits, expReqs 
 		checkResource(threshold, reqs, expReqs, api.ResourceStorage)
 }
 
+type KubernetesClient interface {
+	CountNodes() (uint64, error)
+	ContainerResources() (*api.ResourceRequirements, error)
+	UpdateDeployment(resources *api.ResourceRequirements) error
+}
+
+type ResourceEstimator interface {
+	scaleWithNodes(numNodes uint64) *api.ResourceRequirements
+}
+
 // PollApiServer periodically counts the number of nodes, estimates the expected
 // ResourceRequirements, compares them to the actual ResourceRequirements, and
 // updates the deployment with the expected ResourceRequirements if necessary.
