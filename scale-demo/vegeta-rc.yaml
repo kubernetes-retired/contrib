@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
       - name: vegeta
-        image: gcr.io/google_containers/loader:0.4
+        image: gcr.io/google_containers/loader:0.5
         resources:
           requests:
             cpu: 100m
