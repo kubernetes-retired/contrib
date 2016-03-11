@@ -17,6 +17,9 @@ error-page
 etcd-prefix
 etcd-server
 etcd-servers
+extra-cpu
+extra-memory
+extra-storage
 forward-services
 generated-files-config
 health-check-path
