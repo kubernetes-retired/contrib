@@ -363,8 +363,13 @@ spec:
             scheme: HTTP
           initialDelaySeconds: 60
           timeoutSeconds: 5
-          successThreshold: 1
-          failureThreshold: 5
+        volumeMounts:
+        - name: kubernetes-etc
+          mountPath: /etc/kubernetes
+          readOnly: true
+        - name: etcd-ssl
+          mountPath: /etc/ssl/etcd
+          readOnly: true
         readinessProbe:
           httpGet:
             path: /readiness
@@ -424,5 +429,11 @@ spec:
       volumes:
       - name: etcd-storage
         emptyDir: {}
+      - name: kubernetes-etc
+        hostPath:
+          path: /etc/kubernetes
+      - name: etcd-ssl
+        hostPath:
+          path: /etc/ssl/etcd
       dnsPolicy: Default  # Don't use cluster DNS.
 """)
