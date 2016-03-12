@@ -17,9 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
-	"reflect"
-	"sync"
+	"io"
+	"os"
+	"sort"
 	"time"
 
 	"github.com/golang/glog"
@@ -31,7 +34,6 @@ import (
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/intstr"
-	"k8s.io/kubernetes/pkg/util/workqueue"
 )
 
 const (
@@ -40,31 +42,60 @@ const (
 	ipvsPublicVIP = "k8s.io/public-vip"
 )
 
-var (
-	// keyFunc for endpoints and services.
-	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
-
-	// Error used to indicate that a sync is deferred because the controller isn't ready yet
-	errDeferredSync = fmt.Errorf("deferring sync till endpoints controller has synced")
-)
-
 type service struct {
-	Ip   string
+	IP   string
 	Port int
+}
+
+type serviceByIPPort []service
+
+func (c serviceByIPPort) Len() int      { return len(c) }
+func (c serviceByIPPort) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+func (c serviceByIPPort) Less(i, j int) bool {
+	iIP := c[i].IP
+	jIP := c[j].IP
+	if iIP != jIP {
+		return iIP < jIP
+	}
+
+	iPort := c[i].Port
+	jPort := c[j].Port
+	return iPort < jPort
 }
 
 type vip struct {
 	Name     string
-	Ip       string
+	IP       string
 	Port     int
 	Protocol string
 	Backends []service
 }
 
+type vipByNameIPPort []vip
+
+func (c vipByNameIPPort) Len() int      { return len(c) }
+func (c vipByNameIPPort) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+func (c vipByNameIPPort) Less(i, j int) bool {
+	iName := c[i].Name
+	jName := c[j].Name
+	if iName != jName {
+		return iName < jName
+	}
+
+	iIP := c[i].IP
+	jIP := c[j].IP
+	if iIP != jIP {
+		return iIP < jIP
+	}
+
+	iPort := c[i].Port
+	jPort := c[j].Port
+	return iPort < jPort
+}
+
 // ipvsControllerController watches the kubernetes api and adds/removes
 // services from LVS throgh ipvsadmin.
 type ipvsControllerController struct {
-	queue             *workqueue.Type
 	client            *unversioned.Client
 	epController      *framework.Controller
 	svcController     *framework.Controller
@@ -72,7 +103,8 @@ type ipvsControllerController struct {
 	epLister          cache.StoreToEndpointsLister
 	reloadRateLimiter util.RateLimiter
 	keepalived        *keepalived
-	reloadLock        *sync.Mutex
+	ruCfg             []vip
+	ruMD5             string
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -103,7 +135,7 @@ func (ipvsc *ipvsControllerController) getEndpoints(
 				continue
 			}
 			for _, epAddress := range ss.Addresses {
-				endpoints = append(endpoints, service{Ip: epAddress.IP, Port: targetPort})
+				endpoints = append(endpoints, service{IP: epAddress.IP, Port: targetPort})
 			}
 		}
 	}
@@ -120,70 +152,65 @@ func (ipvsc *ipvsControllerController) getServices() []vip {
 			for _, servicePort := range s.Spec.Ports {
 				ep := ipvsc.getEndpoints(&s, &servicePort)
 				if len(ep) == 0 {
-					glog.Infof("No endpoints found for service %v, port %+v", s.Name, servicePort)
+					glog.Warningf("No endpoints found for service %v, port %+v", s.Name, servicePort)
 					continue
 				}
 
+				sort.Sort(serviceByIPPort(ep))
+
 				svcs = append(svcs, vip{
 					Name:     fmt.Sprintf("%v/%v", s.Namespace, s.Name),
-					Ip:       externalIP,
+					IP:       externalIP,
 					Port:     servicePort.Port,
 					Backends: ep,
 					Protocol: fmt.Sprintf("%v", servicePort.Protocol),
 				})
-				glog.Infof("Found service: %v:%v", s.Name, servicePort.Port)
+				glog.V(2).Infof("Found service: %v:%v", s.Name, servicePort.Port)
 			}
 		}
 	}
 
+	sort.Sort(vipByNameIPPort(svcs))
+
 	return svcs
 }
 
-// sync all services with the loadbalancer.
-func (ipvsc *ipvsControllerController) sync() error {
+// sync all services with the
+func (ipvsc *ipvsControllerController) sync() {
 	ipvsc.reloadRateLimiter.Accept()
-
-	ipvsc.reloadLock.Lock()
-	defer ipvsc.reloadLock.Unlock()
 
 	if !ipvsc.epController.HasSynced() || !ipvsc.svcController.HasSynced() {
 		time.Sleep(100 * time.Millisecond)
-		return errDeferredSync
+		return
 	}
 
-	err := ipvsc.keepalived.WriteCfg(ipvsc.getServices())
+	svc := ipvsc.getServices()
+	ipvsc.ruCfg = svc
+
+	err := ipvsc.keepalived.WriteCfg(svc)
 	if err != nil {
-		return err
+		return
+	}
+	glog.V(2).Infof("services: %v", svc)
+
+	md5, err := checksum(keepalivedCfg)
+	if err == nil && md5 == ipvsc.ruMD5 {
+		return
 	}
 
+	ipvsc.ruMD5 = md5
 	err = ipvsc.keepalived.Reload()
 	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// worker handles the work queue.
-func (ipvsc *ipvsControllerController) worker() {
-	for {
-		key, _ := ipvsc.queue.Get()
-		glog.Infof("Sync triggered by service %v", key)
-		if err := ipvsc.sync(); err != nil {
-			glog.Infof("Requeuing %v because of error: %v", key, err)
-			ipvsc.queue.Add(key)
-		}
-		ipvsc.queue.Done(key)
+		glog.Errorf("error reloading keepalived: %v", err)
 	}
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, password string) *ipvsControllerController {
+func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
-		queue:             workqueue.New(),
 		reloadRateLimiter: util.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
-		reloadLock:        &sync.Mutex{},
+		ruCfg:             []vip{},
 	}
 
 	clusterNodes := getClusterNodesIP(kubeClient)
@@ -203,28 +230,9 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		neighbors:  neighbors,
 		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
 		useUnicast: useUnicast,
-		password:   password,
 	}
 
-	enqueue := func(obj interface{}) {
-		key, err := keyFunc(obj)
-		if err != nil {
-			glog.Infof("Couldn't get key for object %+v: %v", obj, err)
-			return
-		}
-
-		ipvsc.queue.Add(key)
-	}
-
-	eventHandlers := framework.ResourceEventHandlerFuncs{
-		AddFunc:    enqueue,
-		DeleteFunc: enqueue,
-		UpdateFunc: func(old, cur interface{}) {
-			if !reflect.DeepEqual(old, cur) {
-				enqueue(cur)
-			}
-		},
-	}
+	eventHandlers := framework.ResourceEventHandlerFuncs{}
 
 	ipvsc.svcLister.Store, ipvsc.svcController = framework.NewInformer(
 		cache.NewListWatchFromClient(
@@ -237,4 +245,20 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		&api.Endpoints{}, resyncPeriod, eventHandlers)
 
 	return &ipvsc
+}
+
+func checksum(filename string) (string, error) {
+	var result []byte
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := md5.New()
+	_, err = io.Copy(hash, file)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(result)), nil
 }

@@ -17,11 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"os"
 	"time"
 
 	"github.com/golang/glog"
-	flag "github.com/spf13/pflag"
+	"github.com/spf13/pflag"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
@@ -30,18 +31,13 @@ import (
 )
 
 var (
-	flags = flag.NewFlagSet("", flag.ContinueOnError)
+	flags = pflag.NewFlagSet("", pflag.ContinueOnError)
 
 	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the built in kubernetes
         cluster for creating the client`)
 
-	logLevel = flags.Int("v", 1, `verbose output`)
-
 	useUnicast = flags.Bool("use-unicast", false, `use unicast instead of multicast for communication
 		with other keepalived instances`)
-
-	password = flags.String("vrrp-password", "", `If set it will use it as keepalived password instead of the 
-		generated one using information about the nodes`)
 
 	// sysctl changes required by keepalived
 	sysctlAdjustments = map[string]int{
@@ -54,6 +50,8 @@ var (
 
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
+
+	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
 
 	var err error
@@ -69,6 +67,9 @@ func main() {
 			glog.Fatalf("error connecting to the client: %v", err)
 		}
 		kubeClient, err = unversioned.New(config)
+		if err != nil {
+			glog.Fatalf("error connecting to the client: %v", err)
+		}
 	}
 
 	namespace, specified, err := clientConfig.Namespace()
@@ -99,10 +100,11 @@ func main() {
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *password)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
-	go wait.Until(ipvsc.worker, time.Second, wait.NeverStop)
+
+	go wait.Until(ipvsc.sync, 10*time.Second, wait.NeverStop)
 
 	time.Sleep(5 * time.Second)
 	glog.Info("starting keepalived to announce VIPs")
