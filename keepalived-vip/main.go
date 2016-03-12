@@ -27,12 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util/iptables"
 	"k8s.io/kubernetes/pkg/util/wait"
-)
-
-const (
-	iptablesChain = "KEEPALIVED_VIP"
 )
 
 var (
@@ -101,14 +96,6 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 
-	ae, err := iptables.EnsureChain(iptables.TableNAT, iptables.Chain(iptablesChain))
-	if err != nil {
-		glog.Fatalf("unexpected error: %v", err)
-	}
-	if ae && glog.V(2) {
-		glog.Infof("chain %v already existed", iptablesChain)
-	}
-
 	glog.Info("starting LVS configuration")
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
@@ -119,7 +106,6 @@ func main() {
 
 	go wait.Until(ipvsc.sync, 10*time.Second, wait.NeverStop)
 
-	time.Sleep(5 * time.Second)
 	glog.Info("starting keepalived to announce VIPs")
 	ipvsc.keepalived.Start()
 }

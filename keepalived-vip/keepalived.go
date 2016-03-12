@@ -17,8 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -29,14 +27,17 @@ import (
 
 	"github.com/golang/glog"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
+	"k8s.io/kubernetes/pkg/util/iptables"
 )
 
 const (
+	iptablesChain  = "KUBE-KEEPALIVED-VIP"
+	keepalivedCfg  = "/etc/keepalived/keepalived.conf"
 	keepalivedTmpl = `{{ $iface := .iface }}{{ $netmask := .netmask }}
-vrrp_sync_group VG_1 
-  group {
-    vips
-  }
+
+global_defs {
+  vrrp_version 3
+  vrrp_iptables {{ .iptablesChain }}
 }
 
 vrrp_instance vips {
@@ -61,15 +62,11 @@ vrrp_instance vips {
   virtual_ipaddress { {{ range .vips }}
     {{ . }}{{ end }}
   }
-
-  authentication {
-    auth_type AH
-    auth_pass {{ .authPass }}
-  }
 }
 
 {{ range $i, $svc := .svcs }}
-virtual_server {{ $svc.Ip }} {{ $svc.Port }} {
+# Service: {{ $svc.Name }}
+virtual_server {{ $svc.IP }} {{ $svc.Port }} {
   delay_loop 5
   lvs_sched wlc
   lvs_method NAT
@@ -77,7 +74,7 @@ virtual_server {{ $svc.Ip }} {{ $svc.Port }} {
   protocol TCP
 
   {{ range $j, $backend := $svc.Backends }}
-  real_server {{ $backend.Ip }} {{ $backend.Port }} {
+  real_server {{ $backend.IP }} {{ $backend.Port }} {
     weight 1
     TCP_CHECK {
       connect_port {{ $backend.Port }}
@@ -98,15 +95,16 @@ type keepalived struct {
 	nodes      []string
 	neighbors  []string
 	useUnicast bool
-	password   string
 	started    bool
 	vips       []string
+	cmd        *exec.Cmd
+	ipt        iptables.Interface
 }
 
 // WriteCfg creates a new keepalived configuration file.
 // In case of an error with the generation it returns the error
 func (k *keepalived) WriteCfg(svcs []vip) error {
-	w, err := os.Create("/etc/keepalived/keepalived.conf")
+	w, err := os.Create(keepalivedCfg)
 	if err != nil {
 		return err
 	}
@@ -120,6 +118,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	k.vips = getVIPs(svcs)
 
 	conf := make(map[string]interface{})
+	conf["iptablesChain"] = iptablesChain
 	conf["iface"] = k.iface
 	conf["myIP"] = k.ip
 	conf["netmask"] = k.netmask
@@ -127,11 +126,6 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["vips"] = getVIPs(svcs)
 	conf["nodes"] = k.neighbors
 	conf["priority"] = k.priority
-	// password to protect the access to the vrrp_instance group
-	conf["authPass"] = k.getSha()[0:8]
-	if k.password != "" {
-		conf["authPass"] = k.password[0:8]
-	}
 	conf["useUnicast"] = k.useUnicast
 
 	if glog.V(2) {
@@ -147,7 +141,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 func getVIPs(svcs []vip) []string {
 	result := []string{}
 	for _, svc := range svcs {
-		result = appendIfMissing(result, svc.Ip)
+		result = appendIfMissing(result, svc.IP)
 	}
 
 	return result
@@ -156,24 +150,44 @@ func getVIPs(svcs []vip) []string {
 // Start starts a keepalived process in foreground.
 // In case of any error it will terminate the execution with a fatal error
 func (k *keepalived) Start() {
-	cmd := exec.Command("keepalived",
+	ae, err := k.ipt.EnsureChain(iptables.TableFilter, iptables.Chain(iptablesChain))
+	if err != nil {
+		glog.Fatalf("unexpected error: %v", err)
+	}
+	if ae {
+		glog.V(2).Infof("chain %v already existed", iptablesChain)
+	}
+
+	k.cmd = exec.Command("keepalived",
 		"--dont-fork",
 		"--log-console",
 		"--release-vips",
 		"--pid", "/keepalived.pid")
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	k.cmd.Stdout = os.Stdout
+	k.cmd.Stderr = os.Stderr
 
 	k.started = true
 
-	k.setupSignalHandlers()
+	// in case the pod is terminated we need to check that the vips are removed
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, syscall.SIGTERM)
+	go func() {
+		for range c {
+			glog.Warning("TERM signal received. removing vips")
+			for _, vip := range k.vips {
+				k.removeVIP(vip)
+			}
 
-	if err := cmd.Start(); err != nil {
+			k.ipt.FlushChain(iptables.TableFilter, iptables.Chain(iptablesChain))
+		}
+	}()
+
+	if err := k.cmd.Start(); err != nil {
 		glog.Errorf("keepalived error: %v", err)
 	}
 
-	if err := cmd.Wait(); err != nil {
+	if err := k.cmd.Wait(); err != nil {
 		glog.Fatalf("keepalived error: %v", err)
 	}
 }
@@ -186,22 +200,12 @@ func (k *keepalived) Reload() error {
 	}
 
 	glog.Info("reloading keepalived")
-	out, err := k8sexec.New().Command("killall", "-1", "keepalived").CombinedOutput()
-
+	err := syscall.Kill(k.cmd.Process.Pid, syscall.SIGHUP)
 	if err != nil {
-		return fmt.Errorf("error reloading keepalived: %v\n%s", err, out)
+		return fmt.Errorf("error reloading keepalived: %v", err)
 	}
 
 	return nil
-}
-
-// getSha returns a sha1 of the list of nodes in the cluster using the IP
-// address to create a password to be used in the authentication of the
-// vrrp_instance
-func (k *keepalived) getSha() string {
-	h := sha1.New()
-	h.Write([]byte(fmt.Sprintf("%v", k.nodes)))
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 func resetIPVS() error {
@@ -215,7 +219,7 @@ func resetIPVS() error {
 }
 
 func (k *keepalived) removeVIP(vip string) error {
-	glog.Infof("removing configred VIP %v", vip)
+	glog.Infof("removing configured VIP %v", vip)
 	out, err := k8sexec.New().Command("ip", "addr", "del", vip+"/32", "dev", k.iface).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error reloading keepalived: %v\n%s", err, out)

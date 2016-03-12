@@ -33,7 +33,10 @@ import (
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/util"
+	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/intstr"
+	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 )
 
 const (
@@ -222,6 +225,10 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 
 	neighbors := getNodeNeighbors(nodeInfo, clusterNodes)
 
+	execer := exec.New()
+	dbus := utildbus.New()
+	iptInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
+
 	ipvsc.keepalived = &keepalived{
 		iface:      nodeInfo.iface,
 		ip:         nodeInfo.ip,
@@ -230,6 +237,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		neighbors:  neighbors,
 		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
 		useUnicast: useUnicast,
+		ipt:        iptInterface,
 	}
 
 	eventHandlers := framework.ResourceEventHandlerFuncs{}
