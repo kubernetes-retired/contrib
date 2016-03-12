@@ -91,6 +91,7 @@ spec:
     - --master=https://127.0.0.1:443
     - --proxy-mode=iptables
     - --kubeconfig=/etc/kubernetes/kube.conf
+    - --v=2
     securityContext:
       privileged: true
     volumeMounts:

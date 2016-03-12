@@ -62,9 +62,10 @@ spec:
     command:
     - /hyperkube
     - proxy
-    - --master={}
+    - --master=https://{}
     - --kubeconfig=/etc/kubernetes/kube.conf
     - --proxy-mode=iptables
+    - --v=2
     securityContext:
       privileged: true
     volumeMounts:
