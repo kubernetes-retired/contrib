@@ -62,7 +62,6 @@ spec:
     command:
     - /hyperkube
     - proxy
-    - --master=https://{}
     - --kubeconfig=/etc/kubernetes/kube.conf
     - --proxy-mode=iptables
     - --v=2
@@ -87,7 +86,7 @@ spec:
     - name: "etc-kube-ssl"
       hostPath:
         path: "/etc/ssl/etcd"
-""".format(args.master_private_ip))
+""")
 _write_asset('kube.conf', """apiVersion: v1
 kind: Config
 clusters:
