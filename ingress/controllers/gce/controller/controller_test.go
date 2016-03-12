@@ -23,6 +23,7 @@ import (
 	"time"
 
 	compute "google.golang.org/api/compute/v1"
+	"k8s.io/contrib/ingress/controllers/gce/firewalls"
 	"k8s.io/contrib/ingress/controllers/gce/loadbalancers"
 	"k8s.io/contrib/ingress/controllers/gce/utils"
 	"k8s.io/kubernetes/pkg/api"
@@ -31,6 +32,7 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/intstr"
+	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 const testClusterName = "testcluster"
@@ -233,10 +235,25 @@ func TestLbCreateDelete(t *testing.T) {
 	// we shouldn't pull shared backends out from existing loadbalancers.
 	unexpected := []int{pm.portMap["foo2svc"], pm.portMap["bar2svc"]}
 	expected := []int{pm.portMap["foo1svc"], pm.portMap["bar1svc"]}
+	firewallPorts := sets.NewString()
+
+	if firewallRule, err := cm.firewallPool.(*firewalls.FirewallRules).GetFirewall(pm.namer.FrName(pm.namer.FrSuffix())); err != nil {
+		t.Fatalf("%v", err)
+	} else {
+		if len(firewallRule.Allowed) != 1 {
+			t.Fatalf("Expected a single firewall rule")
+		}
+		for _, p := range firewallRule.Allowed[0].Ports {
+			firewallPorts.Insert(p)
+		}
+	}
 
 	for _, port := range expected {
 		if _, err := cm.backendPool.Get(int64(port)); err != nil {
 			t.Fatalf("%v", err)
+		}
+		if !firewallPorts.Has(fmt.Sprintf("%v", port)) {
+			t.Fatalf("Expected a firewall rule for port %v", port)
 		}
 	}
 	for _, port := range unexpected {

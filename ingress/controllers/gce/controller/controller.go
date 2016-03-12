@@ -357,10 +357,12 @@ func (lbc *LoadBalancerController) ListRuntimeInfo() (lbs []*loadbalancers.L7Run
 		if err != nil {
 			glog.Warningf("Cannot get certs for Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
 		}
+		annotations := ingAnnotations(ing.ObjectMeta.Annotations)
 		lbs = append(lbs, &loadbalancers.L7RuntimeInfo{
-			Name:      k,
-			TLS:       tls,
-			AllowHTTP: ingAnnotations(ing.ObjectMeta.Annotations).allowHTTP(),
+			Name:         k,
+			TLS:          tls,
+			AllowHTTP:    annotations.allowHTTP(),
+			StaticIPName: annotations.staticIPName(),
 		})
 	}
 	return lbs, nil
