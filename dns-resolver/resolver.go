@@ -105,5 +105,6 @@ func (r *resolver) createConf(domain string, dnsServers []string, customForward 
 	conf["dnsServers"] = dnsServers
 	conf["customForward"] = customForward
 	conf["cpus"] = runtime.NumCPU()
+	conf["p2tCPU"] = runtime.NumCPU() * 2
 	return mergeTemplate("/unbound.tmpl", confFile, conf)
 }

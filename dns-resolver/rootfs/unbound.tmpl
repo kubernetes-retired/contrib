@@ -1,7 +1,7 @@
 server:
   interface: 0.0.0.0
   access-control: 0.0.0.0/0 allow
-  verbosity: 0
+  verbosity: 1
 
   do-daemonize: no
   
@@ -23,18 +23,10 @@ server:
   # file.  get one from ftp://FTP.INTERNIC.NET/domain/named.cache
   # root-hints: "/var/unbound/etc/root.hints"
 
-  # Use 0x20-encoded random bits in the query to foil spoof attempts.
-  # http://tools.ietf.org/html/draft-vixie-dnsext-dns0x20-00
-  # While upper and lower case letters are allowed in domain names, no significance
-  # is attached to the case. That is, two names with the same spelling but
-  # different case are to be treated as if identical. This means calomel.org is the
-  # same as CaLoMeL.Org which is the same as CALOMEL.ORG.
-  use-caps-for-id: yes
-
   # the time to live (TTL) value lower bound, in seconds. Default 0.
   # If more than an hour could easily give trouble due to stale data.
   # 0 preserves the TTL returned from the server.
-  cache-min-ttl: 0
+  cache-min-ttl: 180
 
   # the time to live (TTL) value cap for RRsets and messages in the
   # cache. Items are not cached for longer. In seconds.
@@ -56,10 +48,10 @@ server:
   # the number of slabs to use for cache and must be a power of 2 times the
   # number of num-threads set above. more slabs reduce lock contention, but
   # fragment memory usage.
-  msg-cache-slabs: 8
-  rrset-cache-slabs: 8
-  infra-cache-slabs: 8
-  key-cache-slabs: 8
+  msg-cache-slabs: {{ .p2tCPU }}
+  rrset-cache-slabs: {{ .p2tCPU }}
+  infra-cache-slabs: {{ .p2tCPU }}
+  key-cache-slabs: {{ .p2tCPU }}
 
   # Increase the memory size of the cache. Use roughly twice as much rrset cache
   # memory as you use msg cache memory. Due to malloc overhead, the total memory
@@ -81,18 +73,7 @@ server:
   # 0 (turned off).
   unwanted-reply-threshold: 10000000
 
-  # IMPORTANT FOR TESTING: If you are testing and setup NSD or BIND  on
-  # localhost you will want to allow the resolver to send queries to localhost.
-  # Make sure to set do-not-query-localhost: yes . If yes, the above default
-  # do-not-query-address entries are present.  if no, localhost can be queried
-  # (for testing and debugging). 
   do-not-query-localhost: no
-
-  # Should additional section of secure message also be kept clean of unsecure
-  # data. Useful to shield the users of this validator from potential bogus
-  # data in the additional section. All unsigned data in the additional section
-  # is removed from secure messages.
-  val-clean-additional: yes
 
   # Faster UDP with multithreading
   so-reuseport: yes
@@ -105,7 +86,6 @@ server:
   # set to yes if graphing tool needs it
   statistics-cumulative: no 
 
-  harden-short-bufsize: yes
   harden-large-queries: yes
   harden-glue: yes
   harden-dnssec-stripped: yes

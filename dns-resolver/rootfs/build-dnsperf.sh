@@ -14,13 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apt-get update && apt-get install \
+apt-get update && apt-get install -y --no-install-recommends \
   libbind-dev \
   libkrb5-dev \
   libssl-dev \
   libcap-dev \
   libxml2-dev \
   bind9utils \
+  curl \
   make
 
 cd /tmp

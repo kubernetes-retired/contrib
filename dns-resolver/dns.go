@@ -34,7 +34,7 @@ type nameserver interface {
 }
 
 const (
-	defTTL = 30
+	defTTL = 60
 )
 
 var _ nameserver = &inMemoryDNS{}
