@@ -10,13 +10,14 @@
 			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
 		},
 		{
-			"ImportPath": "k8s.io/contrib/mungegithub/mungers/jenkins",
-			"Rev": "90a62333a0ed0a79a394a09abecab6015d8235d7"
+			"ImportPath": "k8s.io/contrib/test-utils/utils",
+			"Comment": "0.6.0-209-g1bf781d",
+			"Rev": "1bf781d5bbe738786f9a57bdbe9d52dda4b20393"
 		},
 		{
-			"ImportPath": "k8s.io/kubernetes/pkg/util/sets",
-			"Comment": "v1.2.0-alpha.5-690-gab6edd8",
-			"Rev": "ab6edd8170522fa775fb5054d1c54b4e0d791444"
+			"ImportPath": "k8s.io/kubernetes/test/e2e/perftype",
+			"Comment": "v1.3.0-alpha.0-427-gdac367f",
+			"Rev": "dac367f5eaeb9f703d6658f09fb6255a6df20e52"
 		}
 	]
 }
