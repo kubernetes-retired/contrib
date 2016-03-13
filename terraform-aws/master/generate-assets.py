@@ -383,6 +383,7 @@ spec:
         args:
         # command = "/kube2sky"
         - --domain=cluster.local.
+        - --kubecfg-file=/etc/kubernetes/kube.conf
       - name: skydns
         image: gcr.io/google_containers/skydns:2015-10-13-8c72f8c
         resources:
