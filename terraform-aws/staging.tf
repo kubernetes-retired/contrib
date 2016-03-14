@@ -125,6 +125,7 @@ resource "aws_instance" "staging_master" {
     destination = "/srv/kubernetes/manifests/kube-scheduler.yaml"
   }
 
+  /*TODO: Make conditional*/
   provisioner "file" {
     source = "common/assets/fluentd-es.yaml"
     destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
@@ -348,6 +349,7 @@ resource "aws_instance" "staging_worker" {
     destination = "/etc/kubernetes/manifests/kube-proxy.yaml"
   }
 
+  /*TODO: Make conditional*/
   provisioner "file" {
     source = "common/assets/fluentd-es.yaml"
     destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
