@@ -126,6 +126,11 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "file" {
+    source = "common/assets/fluentd-es.yaml"
+    destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
+  }
+
+  provisioner "file" {
     source = "master/assets/etcd.client.conf"
     destination = "/etc/kubernetes/etcd.client.conf"
   }
@@ -341,6 +346,11 @@ resource "aws_instance" "staging_worker" {
   provisioner "file" {
     source = "worker/assets/kube-proxy.yaml"
     destination = "/etc/kubernetes/manifests/kube-proxy.yaml"
+  }
+
+  provisioner "file" {
+    source = "common/assets/fluentd-es.yaml"
+    destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
   }
 
   provisioner "file" {
