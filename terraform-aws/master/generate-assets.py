@@ -12,10 +12,14 @@ def _write_asset(filename, content):
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 cl_parser = argparse.ArgumentParser()
+cl_parser.add_argument('dns_address', help='Specify DNS address')
+cl_parser.add_argument('region', help='Specify AWS region')
 cl_parser.add_argument('private_ip', help='Specify private IP')
 args = cl_parser.parse_args()
 
-subprocess.check_call(['./generate-certs.py', args.private_ip])
+subprocess.check_call(
+    ['./generate-certs.py', args.dns_address, args.region, args.private_ip]
+)
 
 _write_asset('options.env', """FLANNELD_IFACE={0}
 FLANNELD_ETCD_ENDPOINTS=https://{0}:2379

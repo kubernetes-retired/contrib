@@ -1,8 +1,9 @@
 {
-  "CN": "master1.staging.realtimemusic.com",
+  "CN": "master1.staging.realtime-music.com",
   "hosts": [
     "172.31.29.111",
     "ip-172-31-29-111.eu-central-1.compute.internal",
+    "10.3.0.1",
     "127.0.0.1"
   ],
   "key": {

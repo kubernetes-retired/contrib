@@ -6,6 +6,8 @@ import shutil
 
 
 cl_parser = argparse.ArgumentParser()
+cl_parser.add_argument('dns_address', help='Specify app\'s DNS address')
+cl_parser.add_argument('region', help='Specify AWS region')
 cl_parser.add_argument('private_ip', help='Specify node private IP')
 args = cl_parser.parse_args()
 
@@ -15,10 +17,11 @@ os.chdir('assets/certificates')
 
 with file('master1-master.json', 'wt') as f:
     f.write("""{{
-  "CN": "master1.staging.realtimemusic.com",
+  "CN": "master1.{0}",
   "hosts": [
-    "{0}",
-    "ip-{1}.eu-central-1.compute.internal",
+    "{1}",
+    "ip-{2}.{3}.compute.internal",
+    "10.3.0.1",
     "127.0.0.1"
   ],
   "key": {{
@@ -33,7 +36,11 @@ with file('master1-master.json', 'wt') as f:
     }}
   ]
 }}
-""".format(args.private_ip, args.private_ip.replace('.', '-')))
+""".format(
+            args.dns_address, args.private_ip,
+            args.private_ip.replace('.', '-'),
+            args.region
+            ))
 
 subprocess.check_call(
     'cfssl gencert -initca=true ca-csr.json | cfssljson -bare ca -',
