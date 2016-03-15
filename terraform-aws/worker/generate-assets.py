@@ -103,6 +103,4 @@ contexts:
 - context:
     cluster: local
     user: kubelet
-  name: kubelet-context
-current-context: kubelet-context
 """.format(args.master_private_ip))

@@ -294,8 +294,8 @@ users:
     client-key: /etc/ssl/etcd/master-client-key.pem
 contexts:
 - context:
-  cluster: kube
-  user: kubelet
+    cluster: kube
+    user: kubelet
 """)
 _write_asset('dns-addon.yaml', """apiVersion: v1
 kind: ReplicationController
