@@ -9,7 +9,7 @@ create_namespace() {
     then
       wait="false"
     else
-      echo Waiting...
+      echo Waiting for API server to come up...
       sleep 1
     fi
   done
