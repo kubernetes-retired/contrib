@@ -4,6 +4,7 @@ variable "region" {}
 variable "master_ip" {}
 variable "worker_ip" {}
 variable "aws_key_name" {}
+variable "dns_address" {}
 
 provider "aws" {
   access_key = "${var.access_key}"
@@ -54,11 +55,15 @@ EOF
 resource "aws_instance" "staging_master" {
   ami = "ami-9db652f2"
   instance_type = "t2.small"
-  user_data = "${file("master/cloud-config")}"
-  private_ip = "${vars.master_ip}"
+  user_data = "${file("master/assets/cloud-config")}"
+  private_ip = "${var.master_ip}"
   vpc_security_group_ids = ["${aws_security_group.master.id}"]
-  key_name = "${vars.aws_key_name}"
+  key_name = "${var.aws_key_name}"
   iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
+
+  root_block_device {
+    volume_size = 20
+  }
 
   tags {
     Name = "Staging Master"
@@ -67,7 +72,7 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "local-exec" {
-    command = "./master/generate-assets.py ${aws_instance.staging_master.private_ip}"
+    command = "./master/generate-assets.py ${var.dns_address} ${var.region} ${aws_instance.staging_master.private_ip}"
   }
 
   connection {
@@ -192,7 +197,7 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "file" {
-    source = "master/kubectl-1.1.2"
+    source = "master/kubectl-1.1.8"
     destination = ".local/bin/kubectl"
   }
 
@@ -298,11 +303,16 @@ resource "aws_security_group" "worker" {
 
 resource "aws_instance" "staging_worker" {
   ami = "ami-9db652f2"
-  instance_type = "t2.micro"
-  private_ip = "${vars.worker_ip}"
+  instance_type = "t2.small"
+  user_data = "${file("master/assets/cloud-config")}"
+  private_ip = "${var.worker_ip}"
   vpc_security_group_ids  = ["${aws_security_group.worker.id}"]
-  key_name = "${vars.aws_key_name}"
+  key_name = "${var.aws_key_name}"
   iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
+
+  root_block_device {
+    volume_size = 20
+  }
 
   tags {
     Name = "Staging Worker"
