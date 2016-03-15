@@ -14,11 +14,13 @@ os.chdir(os.path.abspath(os.path.dirname(__file__)))
 cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument('dns_address', help='Specify DNS address')
 cl_parser.add_argument('region', help='Specify AWS region')
+cl_parser.add_argument('public_ip', help='Specify public IP')
 cl_parser.add_argument('private_ip', help='Specify private IP')
 args = cl_parser.parse_args()
 
 subprocess.check_call(
-    ['./generate-certs.py', args.dns_address, args.region, args.private_ip]
+    ['./generate-certs.py', args.dns_address, args.region, args.public_ip,
+     args.private_ip, ]
 )
 
 _write_asset('options.env', """FLANNELD_IFACE={0}
@@ -466,3 +468,13 @@ spec:
     port: 53
     protocol: TCP
 """)
+# _write_asset('nginx-secret.yaml', """apiVersion: "v1"
+# kind: "Secret"
+# metadata:
+#   name: "ssl-proxy-secret"
+#   namespace: "default"
+# data:
+#   proxycert: "{}"
+#   proxykey: "{}"
+#   dhparam: "{}"
+# """.format(b64_cert, b64_key, b64_dhparam))

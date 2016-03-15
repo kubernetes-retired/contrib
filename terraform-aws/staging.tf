@@ -5,6 +5,7 @@ variable "master_ip" {}
 variable "worker_ip" {}
 variable "aws_key_name" {}
 variable "dns_address" {}
+variable "public_ip" {}
 
 provider "aws" {
   access_key = "${var.access_key}"
@@ -53,7 +54,7 @@ EOF
 }
 
 resource "aws_instance" "staging_master" {
-  ami = "ami-9db652f2"
+  ami = "ami-1807e377"
   instance_type = "t2.small"
   user_data = "${file("master/assets/cloud-config")}"
   private_ip = "${var.master_ip}"
@@ -72,7 +73,7 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "local-exec" {
-    command = "./master/generate-assets.py ${var.dns_address} ${var.region} ${aws_instance.staging_master.private_ip}"
+    command = "./master/generate-assets.py ${var.dns_address} ${var.region} ${var.public_ip} ${aws_instance.staging_master.private_ip}"
   }
 
   connection {
@@ -147,13 +148,18 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/"
-    destination = "/etc/kubernetes/ssl"
+    source = "master/assets/certificates/ca.pem"
+    destination = "/etc/kubernetes/ssl/ca.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/"
-    destination = "/etc/ssl/etcd"
+    source = "master/assets/certificates/ca.pem"
+    destination = "/etc/ssl/etcd/ca.pem"
+  }
+
+  provisioner "file" {
+    source = "master/assets/certificates/master1-master-client.pem"
+    destination = "/etc/kubernetes/ssl/master-client.pem"
   }
 
   provisioner "file" {
@@ -163,7 +169,17 @@ resource "aws_instance" "staging_master" {
 
   provisioner "file" {
     source = "master/assets/certificates/master1-master-client-key.pem"
+    destination = "/etc/kubernetes/ssl/master-client-key.pem"
+  }
+
+  provisioner "file" {
+    source = "master/assets/certificates/master1-master-client-key.pem"
     destination = "/etc/ssl/etcd/master-client-key.pem"
+  }
+
+  provisioner "file" {
+    source = "master/assets/certificates/master1-master-peer.pem"
+    destination = "/etc/kubernetes/ssl/master-peer.pem"
   }
 
   provisioner "file" {
@@ -173,27 +189,12 @@ resource "aws_instance" "staging_master" {
 
   provisioner "file" {
     source = "master/assets/certificates/master1-master-peer-key.pem"
-    destination = "/etc/ssl/etcd/master-peer-key.pem"
-  }
-
-  provisioner "file" {
-    source = "master/assets/certificates/master1-master-client.pem"
-    destination = "/etc/kubernetes/ssl/master-client.pem"
-  }
-
-  provisioner "file" {
-    source = "master/assets/certificates/master1-master-client-key.pem"
-    destination = "/etc/kubernetes/ssl/master-client-key.pem"
-  }
-
-  provisioner "file" {
-    source = "master/assets/certificates/master1-master-peer.pem"
-    destination = "/etc/kubernetes/ssl/master-peer.pem"
+    destination = "/etc/kubernetes/ssl/master-peer-key.pem"
   }
 
   provisioner "file" {
     source = "master/assets/certificates/master1-master-peer-key.pem"
-    destination = "/etc/kubernetes/ssl/master-peer-key.pem"
+    destination = "/etc/ssl/etcd/master-peer-key.pem"
   }
 
   provisioner "file" {
@@ -298,7 +299,7 @@ resource "aws_security_group" "worker" {
 }
 
 resource "aws_instance" "staging_worker" {
-  ami = "ami-9db652f2"
+  ami = "ami-1807e377"
   instance_type = "t2.small"
   user_data = "${file("master/assets/cloud-config")}"
   private_ip = "${var.worker_ip}"
