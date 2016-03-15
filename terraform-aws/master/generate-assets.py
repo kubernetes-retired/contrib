@@ -59,6 +59,7 @@ ExecStart=/usr/bin/docker run \\
 -v /etc/ssl/etcd:/etc/ssl/etcd:ro \\
 gcr.io/google_containers/hyperkube:v1.1.2 \\
 /hyperkube apiserver \\
+--cloud-provider=aws \\
 --bind-address=0.0.0.0 \\
 --insecure-bind-address=127.0.0.1 \\
 --etcd-config=/etc/kubernetes/etcd.client.conf \\
@@ -197,6 +198,7 @@ spec:
     command:
     - /hyperkube
     - controller-manager
+    - --cloud-provider=aws
     - --service-account-private-key-file=/etc/kubernetes/ssl/\
 master-client-key.pem
     - --kubeconfig=/etc/kubernetes/kube.conf
