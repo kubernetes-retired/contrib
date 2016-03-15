@@ -206,14 +206,10 @@ resource "aws_instance" "staging_master" {
     destination = "/tmp/dns-addon.yaml"
   }
 
+  /*TODO: Parameterize somehow!*/
   provisioner "file" {
     source = "quay-io-secret.yaml"
     destination = "/tmp/quay-io-secret.yaml"
-  }
-
-  provisioner "file" {
-    source = "podspecs/"
-    destination = "/tmp/"
   }
 
   provisioner "remote-exec" {
