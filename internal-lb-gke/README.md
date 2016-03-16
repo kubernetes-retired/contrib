@@ -7,11 +7,6 @@ GKE Internal Load-Balancer is a tool that bootstraps a HAProxy VM, following the
 How to use it:
 ---
 
-- Run the command below:
-
-```
-$ git clone https://github.com/rimusz/gke-internal-lb
-```
 - Update `settings` file shown below with your GCE project and zone, and any other settings you want to change:
 
 ```
