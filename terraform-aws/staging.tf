@@ -137,6 +137,30 @@ resource "aws_instance" "staging_master" {
     destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
   }
 
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "common/assets/es-controller.yaml"
+    destination = "/etc/kubernetes/manifests/es-controller.yaml"
+  }
+
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "common/assets/es-service.yaml"
+    destination = "/etc/kubernetes/manifests/es-service.yaml"
+  }
+
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "common/assets/kibana-controller.yaml"
+    destination = "/etc/kubernetes/manifests/kibana-controller.yaml"
+  }
+
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "common/assets/kibana-service.yaml"
+    destination = "/etc/kubernetes/manifests/kibana-service.yaml"
+  }
+
   provisioner "file" {
     source = "master/assets/etcd.client.conf"
     destination = "/etc/kubernetes/etcd.client.conf"
