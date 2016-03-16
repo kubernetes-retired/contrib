@@ -15,7 +15,7 @@ make_dir /etc/flannel && \
 make_dir /etc/systemd/system && \
 make_dir /etc/systemd/system/flanneld.service.d && \
 make_dir /etc/systemd/system/docker.service.d && \
-sudo fallocate -l 1024m /swap && \
+sudo fallocate -l 2048m /swap && \
 sudo chmod 600 /swap && \
 sudo chattr +C /swap && \
 sudo mkswap /swap
