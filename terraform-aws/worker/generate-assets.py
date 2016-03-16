@@ -71,8 +71,8 @@ spec:
     volumeMounts:
       - mountPath: /etc/ssl/certs
         name: "ssl-certs"
-      - mountPath: /etc/kubernetes/kube.conf
-        name: "kubeconfig"
+      - mountPath: /etc/kubernetes
+        name: "kubernetes-etc"
         readOnly: true
       - mountPath: /etc/ssl/etcd
         name: "etc-kube-ssl"
@@ -81,9 +81,9 @@ spec:
     - name: "ssl-certs"
       hostPath:
         path: "/usr/share/ca-certificates"
-    - name: "kubeconfig"
+    - name: "kubernetes-etc"
       hostPath:
-        path: "/etc/kubernetes/kube.conf"
+        path: "/etc/kubernetes"
     - name: "etc-kube-ssl"
       hostPath:
         path: "/etc/ssl/etcd"
