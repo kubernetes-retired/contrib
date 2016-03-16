@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# GC project will be filled in by create_internal_lb.sh
+PROJECT=_PROJECT_
+
+# GKE cluster VM's name will be filled in by create_internal_lb.sh
+SERVERS=_SERVERS_
+
+#
+gcloud=/usr/local/bin/gcloud
+
+#
+sudo cp -f /opt/haproxy/haproxy.cfg.template /opt/haproxy/haproxy.cfg
+
+for machine in $($gcloud compute instances list --project=$PROJECT | grep -v grep | grep $SERVERS | grep -v 'int-lb' | awk {'print $4'}); do
+    sudo echo "    server node-$machine $machine:80 check" >> /opt/haproxy/haproxy.cfg
+done
+
+# check if config files do not match
+if [ "$(diff /etc/haproxy/haproxy.cfg /opt/haproxy/haproxy.cfg | tr -d '\n' | cut -c1-4 )" != "" ]
+then
+  echo "Updating /etc/haproxy/haproxy.cfg !!!"
+  sudo cp -fr /opt/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg
+  echo "Restarting haproxy !!!"
+  sudo systemctl restart haproxy.service
+fi

@@ -1,0 +1,19 @@
+# Settings file
+# please update with your settings
+##############################################################################
+# GC settings
+
+# your project
+PROJECT=_YOUR_PROJECT_
+# your GKE cluster zone or which ever zone you want to put the internal LB VM
+ZONE=_YOUR_ZONE_
+#
+
+# GKE cluster VM name without all those e.g -364478-node-sa5c
+SERVERS=gke-cluster-1
+
+# static IP for the internal LB VM
+STATIC_IP=10.200.252.10
+
+# VM type
+MACHINE_TYPE=g1-small
