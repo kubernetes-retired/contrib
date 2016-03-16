@@ -1,6 +1,9 @@
 # A very simple nginx configuration file that forces nginx to start as a daemon.
 events {}
 <<<<<<< HEAD
+=======
+}
+>>>>>>> Fix issue with restarts under load and logging to stdout with -s reload
 http {
   # http://nginx.org/en/docs/http/ngx_http_core_module.html
   types_hash_max_size 2048;
@@ -13,7 +16,4 @@ http {
 
 }
 
-=======
-http {}
->>>>>>> Vault-enabled SSL ingress controller based on nginx-alpha
 daemon on;
