@@ -291,12 +291,12 @@ clusters:
 - name: kube
   cluster:
     server: https://127.0.0.1:443
-    certificate-authority: /etc/ssl/etcd/ca.pem
+    certificate-authority: /etc/kubernetes/ssl/ca.pem
 users:
 - name: kubelet
   user:
-    client-certificate: /etc/ssl/etcd/master-client.pem
-    client-key: /etc/ssl/etcd/master-client-key.pem
+    client-certificate: /etc/kubernetes/ssl/master-client.pem
+    client-key: /etc/kubernetes/ssl/master-client-key.pem
 contexts:
 - context:
     cluster: kube

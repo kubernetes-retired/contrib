@@ -93,13 +93,13 @@ kind: Config
 clusters:
 - name: local
   cluster:
-    certificate-authority: /etc/ssl/etcd/ca.pem
+    certificate-authority: /etc/kubernetes/ssl/ca.pem
     server: https://{}:443
 users:
 - name: kubelet
   user:
-    client-certificate: /etc/ssl/etcd/worker.pem
-    client-key: /etc/ssl/etcd/worker-key.pem
+    client-certificate: /etc/kubernetes/ssl/worker.pem
+    client-key: /etc/kubernetes/ssl/worker-key.pem
 contexts:
 - context:
     cluster: local
