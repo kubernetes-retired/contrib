@@ -31,12 +31,12 @@ coreos:
             [Service]
             # Client Env Vars
             Environment=ETCD_TRUSTED_CA_FILE=/etc/kubernetes/ssl/ca.pem
-            Environment=ETCD_CERT_FILE=/etc/kubernetes/ssl/master1-master-client.pem
-            Environment=ETCD_KEY_FILE=/etc/kubernetes/ssl/master1-master-client-key.pem
+            Environment=ETCD_CERT_FILE=/etc/kubernetes/ssl/master-client.pem
+            Environment=ETCD_KEY_FILE=/etc/kubernetes/ssl/master-client-key.pem
             # Peer Env Vars
             Environment=ETCD_PEER_TRUSTED_CA_FILE=/etc/kubernetes/ssl/ca.pem
-            Environment=ETCD_PEER_CERT_FILE=/etc/kubernetes/ssl/master1-master-peer.pem
-            Environment=ETCD_PEER_KEY_FILE=/etc/kubernetes/ssl/master1-master-peer-key.pem
+            Environment=ETCD_PEER_CERT_FILE=/etc/kubernetes/ssl/master-peer.pem
+            Environment=ETCD_PEER_KEY_FILE=/etc/kubernetes/ssl/master-peer-key.pem
     - name: fleet.service
       command: start
     - name: swap.service

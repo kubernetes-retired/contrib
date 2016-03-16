@@ -301,7 +301,7 @@ resource "aws_security_group" "worker" {
 resource "aws_instance" "staging_worker" {
   ami = "ami-1807e377"
   instance_type = "t2.small"
-  user_data = "${file("master/assets/cloud-config")}"
+  user_data = "${file("worker/assets/cloud-config")}"
   private_ip = "${var.worker_ip}"
   vpc_security_group_ids  = ["${aws_security_group.worker.id}"]
   key_name = "${var.aws_key_name}"
