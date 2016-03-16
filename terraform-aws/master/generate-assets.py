@@ -45,8 +45,8 @@ ExecStart=/usr/lib/coreos/kubelet-wrapper \\
 --allow-privileged=true \\
 --kubeconfig=/etc/kubernetes/kube.conf \\
 --config=/etc/kubernetes/manifests \\
---tls-cert-file=/etc/ssl/etcd/master-client.pem \\
---tls-private-key-file=/etc/ssl/etcd/master-client-key.pem \\
+--tls-cert-file=/etc/kubernetes/ssl/master-client.pem \\
+--tls-private-key-file=/etc/kubernetes/ssl/master-client-key.pem \\
 --cluster-dns=10.3.0.10 \\
 --cluster-domain=cluster.local \\
 --hostname-override={0}
@@ -59,7 +59,7 @@ _write_asset('kube-apiserver.service', """[Service]
 ExecStart=/usr/bin/docker run \\
 -p 443:443 \\
 -v /etc/kubernetes:/etc/kubernetes:ro \\
--v /etc/ssl/etcd:/etc/ssl/etcd:ro \\
+-v /etc/kubernetes/ssl:/etc/ssl/etcd:ro \\
 gcr.io/google_containers/hyperkube:v1.1.2 \\
 /hyperkube apiserver \\
 --cloud-provider=aws \\
@@ -120,7 +120,7 @@ spec:
       path: /etc/kubernetes
     name: kubernetes
   - hostPath:
-      path: /etc/ssl/etcd
+      path: /etc/kubernetes/ssl
     name: kubernetes-certs
 """)
 _write_asset('kube-podmaster.yaml', """apiVersion: v1
@@ -185,7 +185,7 @@ spec:
       path: /etc/kubernetes
     name: kubernetes
   - hostPath:
-      path: /etc/ssl/etcd
+      path: /etc/kubernetes/ssl
     name: secrets
 """.format(args.private_ip))
 _write_asset('kube-controller-manager.yaml', """apiVersion: v1
@@ -272,7 +272,7 @@ spec:
       path: /etc/kubernetes
     name: kubernetes
   - hostPath:
-      path: /etc/ssl/etcd
+      path: /etc/kubernetes/ssl
     name: etcd-certs
 """)
 _write_asset('etcd.client.conf', """{{
@@ -445,7 +445,7 @@ spec:
           path: /etc/kubernetes
       - name: etcd-ssl
         hostPath:
-          path: /etc/ssl/etcd
+          path: /etc/kubernetes/ssl
       dnsPolicy: Default  # Don't use cluster DNS.
 ---
 apiVersion: v1

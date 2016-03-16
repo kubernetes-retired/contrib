@@ -54,7 +54,7 @@ EOF
 }
 
 resource "aws_instance" "staging_master" {
-  ami = "ami-1807e377"
+  ami = "ami-ec46a283"
   instance_type = "t2.small"
   user_data = "${file("master/assets/cloud-config")}"
   private_ip = "${var.master_ip}"
@@ -299,7 +299,7 @@ resource "aws_security_group" "worker" {
 }
 
 resource "aws_instance" "staging_worker" {
-  ami = "ami-1807e377"
+  ami = "ami-ec46a283"
   instance_type = "t2.small"
   user_data = "${file("worker/assets/cloud-config")}"
   private_ip = "${var.worker_ip}"
@@ -368,13 +368,8 @@ resource "aws_instance" "staging_worker" {
   }
 
   provisioner "file" {
-    source = "worker/assets/certificates/"
-    destination = "/etc/kubernetes/ssl"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/certificates/"
-    destination = "/etc/ssl/etcd"
+    source = "worker/assets/certificates/ca.pem"
+    destination = "/etc/ssl/etcd/ca.pem"
   }
 
   provisioner "file" {
@@ -385,6 +380,11 @@ resource "aws_instance" "staging_worker" {
   provisioner "file" {
     source = "worker/assets/certificates/worker1-worker-client-key.pem"
     destination = "/etc/ssl/etcd/worker-key.pem"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/certificates/ca.pem"
+    destination = "/etc/kubernetes/ssl/ca.pem"
   }
 
   provisioner "file" {
