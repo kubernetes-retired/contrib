@@ -1,0 +1,13 @@
+--- /dev/null
++++ Godeps/_workspace/src/github.com/hashicorp/vault/vendor/github.com/hashicorp/hcl/test-fixtures/structure2.json
+@@ -0,0 +1,10 @@
++{
++	"foo": [{
++		"baz": {
++			"key": 7,
++			"foo": "bar"
++		}
++    }, {
++		"key": 7
++	}]
++}

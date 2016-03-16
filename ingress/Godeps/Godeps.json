@@ -1,6 +1,6 @@
 {
 	"ImportPath": "k8s.io/contrib/ingress",
-	"GoVersion": "go1.5.3",
+	"GoVersion": "go1.6",
 	"Packages": [
 		"./..."
 	],
@@ -21,7 +21,7 @@
 		},
 		{
 			"ImportPath": "github.com/cpuguy83/go-md2man/md2man",
-			"Comment": "v1.0.3-2-g71acacd",
+			"Comment": "v1.0.4",
 			"Rev": "71acacd42f85e5e82f70a55327789582a5200a90"
 		},
 		{
@@ -84,6 +84,41 @@
 		{
 			"ImportPath": "github.com/google/gofuzz",
 			"Rev": "bbcb9da2d746f8bdbd6a936686a0a6067ada0ec5"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/vault/api",
+			"Comment": "v0.5.1-160-ga389a3c",
+			"Rev": "a389a3cd1024f525555b21d06ba7873e597bf186"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/fatih/structs",
+			"Comment": "v0.5.1-160-ga389a3c",
+			"Rev": "a389a3cd1024f525555b21d06ba7873e597bf186"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/hashicorp/errwrap",
+			"Comment": "v0.5.1-160-ga389a3c",
+			"Rev": "a389a3cd1024f525555b21d06ba7873e597bf186"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/hashicorp/go-cleanhttp",
+			"Comment": "v0.5.1-160-ga389a3c",
+			"Rev": "a389a3cd1024f525555b21d06ba7873e597bf186"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/hashicorp/go-multierror",
+			"Comment": "v0.5.1-160-ga389a3c",
+			"Rev": "a389a3cd1024f525555b21d06ba7873e597bf186"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/hashicorp/hcl",
+			"Comment": "v0.5.1-160-ga389a3c",
+			"Rev": "a389a3cd1024f525555b21d06ba7873e597bf186"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/mitchellh/mapstructure",
+			"Comment": "v0.5.1-160-ga389a3c",
+			"Rev": "a389a3cd1024f525555b21d06ba7873e597bf186"
 		},
 		{
 			"ImportPath": "github.com/imdario/mergo",

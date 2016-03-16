@@ -8,7 +8,7 @@
 		{
 			"ImportPath": "bitbucket.org/ww/goautoneg",
 			"Comment": "null-5",
-			"Rev": "75cd24fc2f2c2a2088577d12123ddee5f54e0675"
+			"Rev": "'75cd24fc2f2c2a2088577d12123ddee5f54e0675'"
 		},
 		{
 			"ImportPath": "github.com/beorn7/perks/quantile",
@@ -24,24 +24,18 @@
 			"Rev": "3e6e67c4dcea3ac2f25fd4731abc0e1deaf36216"
 		},
 		{
-			"ImportPath": "github.com/docker/docker/pkg/mount",
-			"Comment": "v1.4.1-4831-g0f5c9d3",
-			"Rev": "0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d"
-		},
-		{
 			"ImportPath": "github.com/docker/docker/pkg/parsers",
 			"Comment": "v1.4.1-4831-g0f5c9d3",
 			"Rev": "0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d"
 		},
 		{
-			"ImportPath": "github.com/docker/go-units",
-			"Comment": "v0.1.0-21-g0bbddae",
-			"Rev": "0bbddae09c5a5419a8c6dcdd7ff90da3d450393b"
-		},
-		{
 			"ImportPath": "github.com/emicklei/go-restful",
 			"Comment": "v1.2",
 			"Rev": "777bb3f19bcafe2575ffb2a3e46af92509ae9594"
+		},
+		{
+			"ImportPath": "github.com/fatih/structs",
+			"Rev": "12ff68a6f48a1c8bd118316171545683337655df"
 		},
 		{
 			"ImportPath": "github.com/ghodss/yaml",
@@ -65,39 +59,17 @@
 			"Rev": "bbcb9da2d746f8bdbd6a936686a0a6067ada0ec5"
 		},
 		{
+			"ImportPath": "github.com/hashicorp/go-cleanhttp",
+			"Rev": "875fb671b3ddc66f8e2f0acc33829c8cb989a38d"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/hcl",
+			"Rev": "71c7409f1abba841e528a80556ed2c67671744c3"
+		},
+		{
 			"ImportPath": "github.com/hashicorp/vault/api",
-			"Comment": "v0.5.0-121-g864d70c",
-			"Rev": "864d70cfc4515d5b7de920eb58eef3fcb9f3f568"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/fatih/structs",
-			"Comment": "v0.5.0-121-g864d70c",
-			"Rev": "864d70cfc4515d5b7de920eb58eef3fcb9f3f568"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/hashicorp/errwrap",
-			"Comment": "v0.5.0-121-g864d70c",
-			"Rev": "864d70cfc4515d5b7de920eb58eef3fcb9f3f568"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/hashicorp/go-cleanhttp",
-			"Comment": "v0.5.0-121-g864d70c",
-			"Rev": "864d70cfc4515d5b7de920eb58eef3fcb9f3f568"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/hashicorp/go-multierror",
-			"Comment": "v0.5.0-121-g864d70c",
-			"Rev": "864d70cfc4515d5b7de920eb58eef3fcb9f3f568"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/hashicorp/hcl",
-			"Comment": "v0.5.0-121-g864d70c",
-			"Rev": "864d70cfc4515d5b7de920eb58eef3fcb9f3f568"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/vault/vendor/github.com/mitchellh/mapstructure",
-			"Comment": "v0.5.0-121-g864d70c",
-			"Rev": "864d70cfc4515d5b7de920eb58eef3fcb9f3f568"
+			"Comment": "v0.5.1-160-ga389a3c",
+			"Rev": "a389a3cd1024f525555b21d06ba7873e597bf186"
 		},
 		{
 			"ImportPath": "github.com/juju/ratelimit",
@@ -108,19 +80,8 @@
 			"Rev": "fc2b8d3a73c4867e51861bbdd5ae3c1f0869dd6a"
 		},
 		{
-			"ImportPath": "github.com/opencontainers/runc/libcontainer/cgroups",
-			"Comment": "v0.0.7",
-			"Rev": "7ca2aa4873aea7cb4265b1726acb24b90d8726c6"
-		},
-		{
-			"ImportPath": "github.com/opencontainers/runc/libcontainer/configs",
-			"Comment": "v0.0.7",
-			"Rev": "7ca2aa4873aea7cb4265b1726acb24b90d8726c6"
-		},
-		{
-			"ImportPath": "github.com/opencontainers/runc/libcontainer/system",
-			"Comment": "v0.0.7",
-			"Rev": "7ca2aa4873aea7cb4265b1726acb24b90d8726c6"
+			"ImportPath": "github.com/mitchellh/mapstructure",
+			"Rev": "d2dd0262208475919e1a362f675cfc0e7c10e905"
 		},
 		{
 			"ImportPath": "github.com/pborman/uuid",
