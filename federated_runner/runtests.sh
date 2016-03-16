@@ -27,8 +27,8 @@ export AWS_PROFILE=fathomdb
 export KUBERNETES_PROVIDER="aws"
 export E2E_MIN_STARTUP_PODS="1"
 export KUBE_AWS_ZONE="us-west-2a"
-export MASTER_SIZE="m3.medium"
-export NODE_SIZE="m3.medium"
+export MASTER_SIZE="m3.large"
+export NODE_SIZE="m3.large"
 export NUM_NODES="3"
 
 # Nothing should want Jenkins $HOME
@@ -56,7 +56,7 @@ export GINKGO_PARALLEL="y"
 export PROJECT="k8s-jkns-e2e-aws"
 export AWS_CONFIG_FILE='/var/lib/jenkins/.aws/credentials'
 export AWS_SSH_KEY='/var/lib/jenkins/.ssh/kube_aws_rsa'
-export KUBE_SSH_USER='admin'
+export KUBE_SSH_USER=admin
 # This is needed to be able to create PD from the e2e test
 export AWS_SHARED_CREDENTIALS_FILE='~/.aws/credentials'
 
@@ -78,6 +78,8 @@ export KUBE_SSH_USER=admin
 
 
 # =====================================================
+
+export JENKINS_PUBLISHED_VERSION="ci/latest-1.2"
 
 export BUILD_NUMBER=`date -u +%Y%m%d%H%M%S`
 export JENKINS_HOME=${HOME}
