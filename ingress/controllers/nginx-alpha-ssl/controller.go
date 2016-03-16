@@ -48,6 +48,8 @@ http {
 	server_names_hash_bucket_size 64;
 
 	log_format default '$host $remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\"';
+	error_log /dev/stdout info;
+	access_log /dev/stdout default;
 
 {{range $ing := .Items}}
 {{range $rule := $ing.Spec.Rules}}
@@ -59,8 +61,6 @@ http {
 		ssl_certificate	/etc/nginx/certs/{{$rule.Host}}.crt;
 		ssl_certificate_key	/etc/nginx/certs/{{$rule.Host}}.key;
 {{- end}}{{end}}
-		error_log /dev/stdout info;
-		access_log /dev/stdout default;
 
 		listen 80;
 {{ range $path := $rule.HTTP.Paths }}
@@ -197,20 +197,16 @@ func main() {
 			"-c",
 			nginxConfDir + "/nginx.conf",
 		}
-		stopArgs := []string{
+		reloadArgs := []string{
 			"-s",
-			"quit",
+			"reload",
 		}
 
 		err = exec.Command(nginxCommand, verifyArgs...).Run()
 		if err != nil {
 			fmt.Printf("ERR: nginx config failed validation: %v\n", err)
 		} else {
-			err = exec.Command(nginxCommand, stopArgs...).Run()
-			if err != nil {
-				fmt.Printf("ERR: nginx restart failed: %v\n", err)
-			}
-			shellOut(nginxCommand, nginxArgs)
+			shellOut(nginxCommand, reloadArgs)
 			fmt.Printf("nginx config updated.\n")
 		}
 	}
