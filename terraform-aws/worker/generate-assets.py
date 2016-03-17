@@ -33,7 +33,7 @@ After=flanneld.service
 """)
 _write_asset('kubelet.service', """[Service]
 Environment=KUBELET_VERSION=v1.1.8_coreos.0
-ExecStart=/usr/lib/coreos/kubelet-wrapper \\
+ExecStart=/opt/local/bin/kubelet-wrapper \\
 --cloud-provider=aws \\
 --api_servers=https://{0}:443 \\
 --register-node=true \\

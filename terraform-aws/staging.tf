@@ -131,6 +131,11 @@ resource "aws_instance" "staging_master" {
     destination = "/srv/kubernetes/manifests/kube-scheduler.yaml"
   }
 
+  provisioner "file" {
+    source = "common/assets/kubelet-wrapper"
+    destination = "/opt/local/bin/kubelet-wrapper"
+  }
+
   /*TODO: Make conditional*/
   provisioner "file" {
     source = "common/assets/fluentd-es.yaml"
@@ -378,6 +383,11 @@ resource "aws_instance" "staging_worker" {
   provisioner "file" {
     source = "worker/assets/kube-proxy.yaml"
     destination = "/etc/kubernetes/manifests/kube-proxy.yaml"
+  }
+
+  provisioner "file" {
+    source = "common/assets/kubelet-wrapper"
+    destination = "/opt/local/bin/kubelet-wrapper"
   }
 
   /*TODO: Make conditional*/
