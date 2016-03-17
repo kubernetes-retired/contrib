@@ -22,7 +22,7 @@ RC=$?
 if [ "${RC}" == "0" ]; then
     cat "${RESULT}"
 else
-	cat <<EOF
+    cat <<EOF
 {
   "cniVersion": "0.1.0",
   "code": "${RC}",

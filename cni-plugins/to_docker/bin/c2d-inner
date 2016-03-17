@@ -37,7 +37,7 @@ case "${CNI_COMMAND}" in
         CTR_IP=$(echo "${CTR_INFO}" | cut '-d ' -f1)
         CTR_GW=$(echo "${CTR_INFO}" | cut '-d ' -f2)
         CTR_PF=$(echo "${CTR_INFO}" | cut '-d ' -f3)
-		echo > "${OUTFN}" <<EOF
+        echo > "${OUTFN}" <<EOF
 {
   "cniVersion": "0.1.0",
   "ip4": {
@@ -49,7 +49,7 @@ EOF
         ;;
     (DEL)
         docker network disconnect "${thenet}" "${CNI_CONTAINERID}"
-		echo > "${OUTFN}" <<EOF
+        echo > "${OUTFN}" <<EOF
 {
   "cniVersion": "0.1.0"
 }
