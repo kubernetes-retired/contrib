@@ -1,0 +1,62 @@
+#!/bin/bash
+# Copyright 2016 The Kubernetes Authors All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+if [ $# -ne 2 ]; then
+   echo Usage: $0 INPUT_FILE_NAME OUTPUT_FILE_NAME >& 2
+   exit 1
+fi
+INPFN="$1"
+OUTFN="$2"
+
+if [ "${DEBUG:-}" == "true" ]; then
+    echo
+    printenv | grep CNI
+    set -x
+fi
+
+set -e
+
+case "${CNI_COMMAND}" in
+    (ADD)
+        thenet="$(jq -r .name < "${INPFN}")"
+        docker network disconnect     none "${CNI_CONTAINERID}"
+        docker network connect "${thenet}" "${CNI_CONTAINERID}"
+        CTR_INFO=$(docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}} {{range .NetworkSettings.Networks}}{{.Gateway}}{{end}} {{range .NetworkSettings.Networks}}{{.IPPrefixLen}}{{end}}' $CNI_CONTAINERID)
+        CTR_IP=$(echo "${CTR_INFO}" | cut '-d ' -f1)
+        CTR_GW=$(echo "${CTR_INFO}" | cut '-d ' -f2)
+        CTR_PF=$(echo "${CTR_INFO}" | cut '-d ' -f3)
+		echo > "${OUTFN}" <<EOF
+{
+  "cniVersion": "0.1.0",
+  "ip4": {
+    "ip": "${CTR_IP}/${CTR_PF}",
+    "gateway": "${CTR_GW}"
+  }
+}
+EOF
+        ;;
+    (DEL)
+        docker network disconnect "${thenet}" "${CNI_CONTAINERID}"
+		echo > "${OUTFN}" <<EOF
+{
+  "cniVersion": "0.1.0"
+}
+EOF
+        ;;
+    (*)
+        echo "Unexpected CNI_COMMAND ($CNI_COMMAND)!" >& 2
+        exit 2
+        ;;
+esac
