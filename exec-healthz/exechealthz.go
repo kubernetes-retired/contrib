@@ -40,6 +40,7 @@ var (
 	cmd        = flag.String("cmd", "echo healthz", "Command to run in response to a GET on /healthz. If the given command exits with 0, /healthz will respond with a 200.")
 	period     = flag.Duration("period", 2*time.Second, "Period to run the given cmd in an async worker.")
 	maxLatency = flag.Duration("latency", 30*time.Second, "If the async worker hasn't updated the probe command output in this long, return a 503.")
+	quiet      = flag.Bool("quiet", false, "Run in quiet mode by only logging errors.")
 	// prober is the async worker running the cmd, the output of which is used to service /healthz.
 	prober *execWorker
 )
@@ -76,6 +77,13 @@ func (h *execWorker) getResults() execResult {
 	return h.result
 }
 
+// logf logs the message, unless we run in quiet mode.
+func logf(format string, args ...interface{}) {
+	if !*quiet {
+		log.Printf(format, args...)
+	}
+}
+
 // start attemtps to run the probeCmd every `period` seconds.
 // Meant to be called as a goroutine.
 func (h *execWorker) start() {
@@ -86,7 +94,7 @@ func (h *execWorker) start() {
 		select {
 		// If the command takes > period, the command runs continuously.
 		case <-ticker.C:
-			log.Printf("Worker running %v", *cmd)
+			logf("Worker running %v", *cmd)
 			output, err := exec.Command("sh", "-c", *cmd).CombinedOutput()
 			ts := time.Now()
 			func() {
@@ -141,7 +149,7 @@ func main() {
 }
 
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Client ip %v requesting /healthz probe servicing cmd %v", r.RemoteAddr, *cmd)
+	logf("Client ip %v requesting /healthz probe servicing cmd %v", r.RemoteAddr, *cmd)
 	result := prober.getResults()
 
 	// return 503 if the last command exec returned a non-zero status, or the worker

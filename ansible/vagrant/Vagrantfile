@@ -60,7 +60,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   end
 
   def set_vbox(vb, config)
-    config.vm.box = "chef/centos-7.0"
+    config.vm.box = "centos/7"
     config.vm.network "private_network", type: "dhcp"
     vb.gui = false
     vb.memory = 2048

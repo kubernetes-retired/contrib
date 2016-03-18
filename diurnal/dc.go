@@ -31,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"k8s.io/kubernetes/pkg/api"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
@@ -128,7 +129,10 @@ func findPos(tc []timeCount, cur int, offset time.Duration) int {
 
 func (s *scaler) setCount(c int) {
 	glog.Infof("scaling to %d replicas", c)
-	rcList, err := client.ReplicationControllers(namespace).List(s.selector, fields.Everything())
+	rcList, err := client.ReplicationControllers(namespace).List(api.ListOptions{
+		LabelSelector: s.selector,
+		FieldSelector: fields.Everything(),
+	})
 	if err != nil {
 		glog.Errorf("could not get replication controllers: %v", err)
 		return

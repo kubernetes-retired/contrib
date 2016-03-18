@@ -17,6 +17,9 @@ limitations under the License.
 package mungers
 
 import (
+	"fmt"
+
+	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
@@ -36,8 +39,13 @@ func init() {
 // Name is the name usable in --pr-mungers
 func (NeedsRebaseMunger) Name() string { return "needs-rebase" }
 
+// RequiredFeatures is a slice of 'features' that must be provided
+func (NeedsRebaseMunger) RequiredFeatures() []string { return []string{} }
+
 // Initialize will initialize the munger
-func (NeedsRebaseMunger) Initialize(config *github.Config) error { return nil }
+func (NeedsRebaseMunger) Initialize(config *github.Config, features *features.Features) error {
+	return nil
+}
 
 // EachLoop is called at the start of every munge loop
 func (NeedsRebaseMunger) EachLoop() error { return nil }
@@ -61,5 +69,10 @@ func (NeedsRebaseMunger) Munge(obj *github.MungeObject) {
 	}
 	if !mergeable && !obj.HasLabel(needsRebase) {
 		obj.AddLabels([]string{needsRebase})
+
+		body := fmt.Sprintf("@%s PR needs rebase", *obj.Issue.User.Login)
+		if err := obj.WriteComment(body); err != nil {
+			return
+		}
 	}
 }

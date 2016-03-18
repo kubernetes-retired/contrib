@@ -32,7 +32,7 @@ import (
 
 var flRepo = flag.String("repo", envString("GIT_SYNC_REPO", ""), "git repo url")
 var flBranch = flag.String("branch", envString("GIT_SYNC_BRANCH", "master"), "git branch")
-var flRev = flag.String("rev", envString("GIT_SYNC_BRANCH", "HEAD"), "git rev")
+var flRev = flag.String("rev", envString("GIT_SYNC_REV", "HEAD"), "git rev")
 var flDest = flag.String("dest", envString("GIT_SYNC_DEST", ""), "destination path")
 var flWait = flag.Int("wait", envInt("GIT_SYNC_WAIT", 0), "number of seconds to wait before exit")
 
@@ -110,5 +110,14 @@ func syncRepo(repo, dest, branch, rev string) error {
 		return fmt.Errorf("error running command %q : %v: %s", strings.Join(cmd.Args, " "), err, string(output))
 	}
 	log.Printf("reset %q: %v", rev, string(output))
+
+	// set file permissions
+	cmd = exec.Command("chmod", "-R", "744", dest)
+	cmd.Dir = dest
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running command %q : %v: %s", strings.Join(cmd.Args, " "), err, string(output))
+	}
+
 	return nil
 }

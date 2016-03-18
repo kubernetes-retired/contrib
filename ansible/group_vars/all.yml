@@ -23,7 +23,7 @@ cluster_name: cluster.local
 # If a password is needed to sudo to root that password must be set here
 #ansible_sudo_pass: password
 
-# A list of insecure registrys you night need to define
+# A list of insecure registrys you might need to define
 insecure_registrys:
 #  - "gcr.io"
 

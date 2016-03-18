@@ -24,6 +24,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 var (
@@ -88,8 +90,16 @@ func main() {
 			log.Printf("HTTP request from %s", r.RemoteAddr)
 			fmt.Fprintf(w, "%s", hostname)
 		})
-		go log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+		go func() {
+			// Run in a closure so http.ListenAndServe doesn't block
+			log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+		}()
 	}
 
-	select {}
+	// Write to stdout after receiving SIGTERM and SIGINT to help with debugging kubernetes issue #21605
+	signals := make(chan os.Signal)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+	sig := <-signals
+	// Keep behavior consistent with how the signal is handled by default (default is to panic)
+	log.Panicf("Terminating after receiving signal: %s.\n", sig)
 }

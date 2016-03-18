@@ -1,6 +1,6 @@
 all: serve_hostname
 
-TAG = v1.2
+TAG = v1.4
 PREFIX = gcr.io/google_containers
 TEST_PREFIX = gcr.io/_b_k8s_authenticated_test
 

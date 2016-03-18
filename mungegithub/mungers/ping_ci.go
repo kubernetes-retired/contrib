@@ -19,10 +19,15 @@ package mungers
 import (
 	"time"
 
+	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
+)
+
+var (
+	validBranches = []string{"master"}
 )
 
 // PingCIMunger looks for situations CI (Travis | Shippable) has flaked for some
@@ -36,8 +41,11 @@ func init() {
 // Name is the name usable in --pr-mungers
 func (PingCIMunger) Name() string { return "ping-ci" }
 
+// RequiredFeatures is a slice of 'features' that must be provided
+func (PingCIMunger) RequiredFeatures() []string { return []string{} }
+
 // Initialize will initialize the munger
-func (PingCIMunger) Initialize(config *github.Config) error { return nil }
+func (PingCIMunger) Initialize(config *github.Config, features *features.Features) error { return nil }
 
 // EachLoop is called at the start of every munge loop
 func (PingCIMunger) EachLoop() error { return nil }
@@ -48,6 +56,19 @@ func (PingCIMunger) AddFlags(cmd *cobra.Command, config *github.Config) {}
 // Munge is the workhorse the will actually make updates to the PR
 func (PingCIMunger) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
+		return
+	}
+
+	// This munger only runs on certain branches, since travis/CI only listens
+	// on certain branches
+	validBranch := false
+	for _, b := range validBranches {
+		if obj.IsForBranch(b) {
+			validBranch = true
+			break
+		}
+	}
+	if !validBranch {
 		return
 	}
 

@@ -1,7 +1,0 @@
-#!/bin/sh
-
-addgroup haproxy 2>/dev/null
-adduser -S -H -h /var/lib/haproxy -s /bin/false -D \
-	-G haproxy haproxy 2>/dev/null
-
-mkdir -p /etc/haproxy
