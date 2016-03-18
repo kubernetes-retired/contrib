@@ -13,6 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This is a wrapper that converts the stdin/stdout part of the CNI
+# calling convention into an input-file & output-file calling
+# convention.  All the stuff written to stdout and stderr by the inner
+# script is saved to a file in /tmp/.
+
 INPUT=/tmp/c2d-$$-in
 RESULT=/tmp/c2d-$$-out
 LOG=/tmp/c2d-$$-log

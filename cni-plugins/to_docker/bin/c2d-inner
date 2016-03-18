@@ -20,23 +20,39 @@ fi
 INPFN="$1"
 OUTFN="$2"
 
+# Look for the "debug" setting in the config file and turn on
+# debugging if requested.
 if jq .debug < "${INPFN}" | grep -i true &> /dev/null; then
     echo
     printenv | grep CNI
     set -x
 fi
 
+# From here on, any failed command is a fatal error.
 set -e
 
 case "${CNI_COMMAND}" in
     (ADD)
+		# Pick the desired network name out of the config.
         thenet="$(jq -r .name < "${INPFN}")"
+
+		# When the kubelet is configured to use a CNI plugin, the
+		# infrastructure container (the one running "/pause") starts
+		# out connected to the Docker network named "none".  Docker
+		# does not allow a container to be connected to both "none"
+		# and another network, so remove that pain.
         docker network disconnect     none "${CNI_CONTAINERID}"
+
+		# Connect to the desired Docker network
         docker network connect "${thenet}" "${CNI_CONTAINERID}"
+
+		# Extract the needed output info from the container
         CTR_INFO=$(docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}} {{range .NetworkSettings.Networks}}{{.Gateway}}{{end}} {{range .NetworkSettings.Networks}}{{.IPPrefixLen}}{{end}}' $CNI_CONTAINERID)
         CTR_IP=$(echo "${CTR_INFO}" | cut '-d ' -f1)
         CTR_GW=$(echo "${CTR_INFO}" | cut '-d ' -f2)
         CTR_PF=$(echo "${CTR_INFO}" | cut '-d ' -f3)
+
+		# Produce the proper CNI output
         echo > "${OUTFN}" <<EOF
 {
   "cniVersion": "0.1.0",
