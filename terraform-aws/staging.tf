@@ -136,36 +136,6 @@ resource "aws_instance" "staging_master" {
     destination = "/opt/local/bin/kubelet-wrapper"
   }
 
-  /*TODO: Make conditional*/
-  provisioner "file" {
-    source = "common/assets/fluentd-es.yaml"
-    destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
-  }
-
-  /*TODO: Make conditional*/
-  provisioner "file" {
-    source = "master/assets/es-controller.yaml"
-    destination = "/etc/kubernetes/addons/es-controller.yaml"
-  }
-
-  /*TODO: Make conditional*/
-  provisioner "file" {
-    source = "master/assets/es-service.yaml"
-    destination = "/etc/kubernetes/addons/es-service.yaml"
-  }
-
-  /*TODO: Make conditional*/
-  provisioner "file" {
-    source = "master/assets/kibana-controller.yaml"
-    destination = "/etc/kubernetes/addons/kibana-controller.yaml"
-  }
-
-  /*TODO: Make conditional*/
-  provisioner "file" {
-    source = "master/assets/kibana-service.yaml"
-    destination = "/etc/kubernetes/addons/kibana-service.yaml"
-  }
-
   provisioner "file" {
     source = "master/assets/etcd.client.conf"
     destination = "/etc/kubernetes/etcd.client.conf"
@@ -232,8 +202,38 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "file" {
-    source = "master/assets/dns-addon.yaml"
+    source = "master/addons/dns-addon.yaml"
     destination = "/etc/kubernetes/addons/dns-addon.yaml"
+  }
+
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "common/assets/fluentd-es.yaml"
+    destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
+  }
+
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "master/addons/es-controller.yaml"
+    destination = "/etc/kubernetes/addons/es-controller.yaml"
+  }
+
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "master/addons/es-service.yaml"
+    destination = "/etc/kubernetes/addons/es-service.yaml"
+  }
+
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "master/addons/kibana-controller.yaml"
+    destination = "/etc/kubernetes/addons/kibana-controller.yaml"
+  }
+
+  /*TODO: Make conditional*/
+  provisioner "file" {
+    source = "master/addons/kibana-service.yaml"
+    destination = "/etc/kubernetes/addons/kibana-service.yaml"
   }
 
   /*TODO: Parameterize somehow!*/
