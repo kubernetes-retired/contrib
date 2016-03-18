@@ -101,7 +101,7 @@ neutron router-interface-add router1 subnet=f3e6fc55-c26e-4f05-bcb1-b84dc40a4233
 That is probably not all you will have to do.  The remainder depends
 on details of your Neutron configuration.  Covering all the
 possibilities is beyond the scope of this simple example.  However, in
-the easiest cases all you need to do is add a route to each host's
+the easiest cases all you need to do is add a route in each host's
 main network namespace, telling it how to route to the tenant network.
 Following is an example command for that, which assumes that
 `10.9.8.7` is an IP address that the host can use to reach the
