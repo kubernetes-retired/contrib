@@ -20,18 +20,18 @@ import (
 	"bufio"
 	goflag "flag"
 	"fmt"
-	"net/http"
 	"os"
 
 	"k8s.io/contrib/compare/src"
+	"k8s.io/contrib/test-utils/utils"
 
 	"github.com/daviddengcn/go-colortext"
 	"github.com/spf13/pflag"
 )
 
 const (
-	urlPrefix = "https://storage.googleapis.com/kubernetes-jenkins/logs/kubernetes-e2e-gce-scalability/"
-	urlSuffix = "/build-log.txt"
+	job           = "kubernetes-e2e-gce-scalability"
+	buildFilePath = "build-log.txt"
 )
 
 var (
@@ -55,7 +55,7 @@ func main() {
 		return
 	}
 
-	leftResp, err := http.Get(fmt.Sprintf("%v%v%v", urlPrefix, leftBuildNumber, urlSuffix))
+	leftResp, err := utils.GetFileFromJenkinsGoogleBucket(job, leftBuildNumber, buildFilePath)
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +64,7 @@ func main() {
 	leftBodyScanner := bufio.NewScanner(leftBody)
 	leftLogs, leftResources, leftMetrics := src.ProcessSingleTest(leftBodyScanner, leftBuildNumber)
 
-	rightResp, err := http.Get(fmt.Sprintf("%v%v%v", urlPrefix, rightBuildNumber, urlSuffix))
+	rightResp, err := utils.GetFileFromJenkinsGoogleBucket(job, rightBuildNumber, buildFilePath)
 	if err != nil {
 		panic(err)
 	}
