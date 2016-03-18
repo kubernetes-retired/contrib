@@ -1,3 +1,5 @@
 # TCP port used by etcd clients. Also resides in
 # roles/etcd/defaults/main.yaml
 etcd_client_port: 2379
+# valid types: package | github-release
+flannel_source_type: package

@@ -39,6 +39,7 @@
 - name: docker graph driver 
   command: findmnt -no FSTYPE -T /var/lib/docker
   register: docker_driver
+  ignore_errors: true
   when: has_docker.rc|int != 2
   changed_when: false
 
