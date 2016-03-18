@@ -144,26 +144,26 @@ resource "aws_instance" "staging_master" {
 
   /*TODO: Make conditional*/
   provisioner "file" {
-    source = "common/assets/es-controller.yaml"
-    destination = "/etc/kubernetes/manifests/es-controller.yaml"
+    source = "master/assets/es-controller.yaml"
+    destination = "/etc/kubernetes/addons/es-controller.yaml"
   }
 
   /*TODO: Make conditional*/
   provisioner "file" {
-    source = "common/assets/es-service.yaml"
-    destination = "/etc/kubernetes/manifests/es-service.yaml"
+    source = "master/assets/es-service.yaml"
+    destination = "/etc/kubernetes/addons/es-service.yaml"
   }
 
   /*TODO: Make conditional*/
   provisioner "file" {
-    source = "common/assets/kibana-controller.yaml"
-    destination = "/etc/kubernetes/manifests/kibana-controller.yaml"
+    source = "master/assets/kibana-controller.yaml"
+    destination = "/etc/kubernetes/addons/kibana-controller.yaml"
   }
 
   /*TODO: Make conditional*/
   provisioner "file" {
-    source = "common/assets/kibana-service.yaml"
-    destination = "/etc/kubernetes/manifests/kibana-service.yaml"
+    source = "master/assets/kibana-service.yaml"
+    destination = "/etc/kubernetes/addons/kibana-service.yaml"
   }
 
   provisioner "file" {
@@ -233,7 +233,7 @@ resource "aws_instance" "staging_master" {
 
   provisioner "file" {
     source = "master/assets/dns-addon.yaml"
-    destination = "/tmp/dns-addon.yaml"
+    destination = "/etc/kubernetes/addons/dns-addon.yaml"
   }
 
   /*TODO: Parameterize somehow!*/
