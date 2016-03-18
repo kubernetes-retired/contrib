@@ -15,6 +15,7 @@ spec:
       -   --www=true
       -   --dir=/www
       -   --address=0.0.0.0:8080
+      -   --start-from=4500
     imagePullPolicy: Always
     name: perfdash
     ports:
