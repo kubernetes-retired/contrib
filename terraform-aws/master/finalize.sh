@@ -34,4 +34,4 @@ curl --cacert $CERTSDIR/ca.pem --cert $CERTSDIR/master-client.pem \
 -d "value={\"Network\":\"10.2.0.0/16\",\"Backend\":{\"Type\":\"vxlan\"}}" \
 https://127.0.0.1:2379/v2/keys/coreos.com/network/config && \
 create_namespace && \
-chmod +x ~/.local/bin/kubectl
+chmod +x /opt/bin/kubectl

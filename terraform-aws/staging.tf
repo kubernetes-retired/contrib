@@ -133,7 +133,7 @@ resource "aws_instance" "staging_master" {
 
   provisioner "file" {
     source = "common/assets/kubelet-wrapper"
-    destination = "/opt/local/bin/kubelet-wrapper"
+    destination = "/opt/bin/kubelet-wrapper"
   }
 
   provisioner "file" {
@@ -198,7 +198,7 @@ resource "aws_instance" "staging_master" {
 
   provisioner "file" {
     source = "master/kubectl-1.1.8"
-    destination = ".local/bin/kubectl"
+    destination = "/opt/bin/kubectl"
   }
 
   /*TODO: Make conditional*/
@@ -375,7 +375,7 @@ resource "aws_instance" "staging_worker" {
 
   provisioner "file" {
     source = "common/assets/kubelet-wrapper"
-    destination = "/opt/local/bin/kubelet-wrapper"
+    destination = "/opt/bin/kubelet-wrapper"
   }
 
   /*TODO: Make conditional*/

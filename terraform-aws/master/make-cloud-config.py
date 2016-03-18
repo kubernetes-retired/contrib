@@ -14,7 +14,6 @@ with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
 with open('./assets/cloud-config', 'wt') as fcloud_config:
     fcloud_config.write("""#cloud-config
 
-users:
 coreos:
   etcd2:
     discovery: {0}
