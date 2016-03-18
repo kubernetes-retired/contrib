@@ -23,12 +23,46 @@ Docker must be configured with a cluster store, and you must have a
 multi-host Docker network.  The Docker name of that multi-host network
 must appear as the value of the `name` field in `c2d.conf`.
 
+For example, you might use the Kuryr libnetwork driver to make a
+multi-host Docker network with the following command.
+
+```
+docker network create -d kuryr --ipam-driver=kuryr --subnet=172.19.0.0/16 --gateway=172.19.0.1 mynet
+```
+
+For an almost-example, you might try Docker's "overlay" driver to make
+a multi-host Docker network with the following command.
+
+```
+docker network create -d overlay --subnet=172.19.0.0/16 --gateway=172.19.0.1 mynet
+```
+
+However, with Docker's "overlay" driver there is no way to add the
+required additional connectivity from hosts to containers.  So do not
+do this.
+
+For another almost-example, you might try Calico's libnetwork driver,
+with commands like the following.
+
+```
+calicoctl pool add 172.19.0.0/16 --nat-outgoing
+calicoctl pool remove 192.168.0.0/16
+docker network create --driver calico --ipam-driver calico mynet
+```
+
+However, Calico's libnetwork driver gives the name `cali0` to the
+network interface inside the container --- which conflicts with
+Kubernetes' requirement that this network interface be named `eth0`.
+So do not do this.  Perhaps [eventually]
+(https://github.com/appc/cni/issues/113) CNI will allow the network
+interface name to be returned, which would enable Kubernetes to cope
+with variant names.
+
 
 ## Installation and Configuration
 
 This plugin has one config file and two executables.  Put the
-executables in a directory of your choice; `/opt/cni/bin/` would not
-be an unreasonable choice.  Put the config file, `c2d.conf`, in a
+executables in `/opt/cni/bin/`.  Put the config file, `c2d.conf`, in a
 directory of your choice; `/etc/cni/net.d/` is the usual choice.
 
 There are two configuration settings that must be made on each
@@ -51,3 +85,28 @@ typically enable this with a bit of static configuration.  The
 particulars of this depend on the Docker network you choose; this
 simple plugin does not attempt to discern and effect that static
 configuration --- it is up to you.
+
+For example, consider the case in which the multi-host Docker network
+was created by the Kuryr libnetwork driver making a Neutron "tenant
+network".  To complete the required connectivity, you might begin with
+connecting that tenant network to a Neutron router with a command like
+the following --- in which `f3e6fc55-c26e-4f05-bcb1-b84dc40a4233` is
+the Neutron UUID of the subnet of the tenant network in question and
+`router1` is the name of the Neutron router.
+
+```
+neutron router-interface-add router1 subnet=f3e6fc55-c26e-4f05-bcb1-b84dc40a4233
+```
+
+That is probably not all you will have to do.  The remainder depends
+on details of your Neutron configuration.  Covering all the
+possibilities is beyond the scope of this simple example.  However, in
+the easiest cases all you need to do is add a route to each host's
+main network namespace, telling it how to route to the tenant network.
+Following is an example command for that, which assumes that
+`10.9.8.7` is an IP address that the host can use to reach the
+relevant Neutron router and `172.19.0.0/16` is the tenant subnet.
+
+```
+ip route add 172.19.0.0/16 via 10.9.8.7
+```
