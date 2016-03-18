@@ -4,8 +4,8 @@ import subprocess
 import argparse
 
 
-def _write_asset(filename, content):
-    with open(os.path.join('assets', filename), 'wt') as f:
+def _write_asset(filename, content, dirname='assets'):
+    with open(os.path.join(dirname, filename), 'wt') as f:
         f.write(content)
 
 
@@ -469,6 +469,59 @@ spec:
     port: 53
     protocol: TCP
 """)
+num_heapster_nodes = 1
+metrics_memory = '{}Mi'.format(200 + num_heapster_nodes * 4)
+eventer_memory = '{}Ki'.format(200 * 1024 + num_heapster_nodes * 500)
+_write_asset('heapster-controller.yaml', dirname='addons/cluster-monitoring', """
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: heapster-v1.0.0
+  namespace: kube-system
+  labels:
+    k8s-app: heapster
+    kubernetes.io/cluster-service: "true"
+spec:
+  replicas: 1
+  selector:
+    k8s-app: heapster
+  template:
+    metadata:
+      labels:
+        k8s-app: heapster
+        kubernetes.io/cluster-service: "true"
+    spec:
+      containers:
+        - image: gcr.io/google_containers/heapster:v1.0.0
+          name: heapster
+          resources:
+            # keep request = limit to keep this container in guaranteed class
+            limits:
+              cpu: 100m
+              memory: {0}
+            requests:
+              cpu: 100m
+              memory: {0}
+          command:
+            - /heapster
+            - --source=kubernetes.summary_api:''
+            - --sink=influxdb:http://monitoring-influxdb:8086
+            - --metric_resolution=60s
+        - image: gcr.io/google_containers/heapster:v1.0.0
+          name: eventer
+          resources:
+            # keep request = limit to keep this container in guaranteed class
+            limits:
+              cpu: 100m
+              memory: {1}
+            requests:
+              cpu: 100m
+              memory: {1}
+          command:
+            - /eventer
+            - --source=kubernetes:''
+            - --sink=influxdb:http://monitoring-influxdb:8086
+""".format(metrics_memory, eventer_memory))
 # _write_asset('nginx-secret.yaml', """apiVersion: "v1"
 # kind: "Secret"
 # metadata:
