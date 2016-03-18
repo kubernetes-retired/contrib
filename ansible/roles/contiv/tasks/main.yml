@@ -14,6 +14,6 @@
 - include: restart_netplugin.yml tags=contiv_restart
   when: contiv_role == "netplugin"
 
-# copy/load images used for demo
-- include: copy_demo.yml tags=contiv_demo
+# load misc docker images
+- include: images.yml tags=contiv_demo
   when: contiv_role == "netplugin"
