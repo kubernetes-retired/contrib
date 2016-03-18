@@ -1,4 +1,4 @@
-# This is the ip address of the interface used for control communication within th cluster. It
+# This is the ip address of the interface used for control communication within the cluster. It
 # needs to be reachable from all nodes.
 # Defaults to the address used by ansible to reach the node.
 # If using vagrant, this will need to be overriden or edited here.
@@ -10,3 +10,15 @@ contiv_control_ip: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['add
 
 # This is the path where contiv binaries are kept
 contiv_bin_path: ~/go/bin
+
+# Specifies routed mode vs bridged mode for networking (bridge | routing)
+# if you are using an external router for all routing, you should select bridge here
+contiv_fwd_mode: routing
+
+# The following are aci specific parameters. These must be set only if aci integration
+# is desired. Otherwise, you can ignore these.
+apic_url: ""
+apic_username: ""
+apic_password: ""
+apic_leaf_nodes: ""
+apic_phys_dom: ""

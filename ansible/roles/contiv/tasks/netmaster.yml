@@ -23,9 +23,7 @@
 - name: wait for netmaster
   pause: seconds=60
 
+- include: aci.yml
+
 - name: configure network
   shell: nw_setup.sh
-  register: nw_test
-
-- debug: var=nw_test.stdout_lines
-

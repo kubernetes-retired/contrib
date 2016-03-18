@@ -1,6 +1,10 @@
 - name: stop netmaster
   service: name=netmaster state=stopped
 
+- name: stop aci-gw
+  service: name=aci-gw state=stopped
+  ignore_errors: yes
+
 - name: clean netmaster state
   shell: etcdctl rm --recursive /contiv.io || true
 
@@ -25,9 +29,7 @@
 - name: wait for netmaster
   pause: seconds=60
 
+- include: aci.yml
+
 - name: setup network
   shell: nw_setup.sh
-  register: nw_test
-
-- debug: var=nw_test.stdout_lines
-
