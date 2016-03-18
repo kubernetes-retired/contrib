@@ -6,7 +6,7 @@
   copy: src={{ contiv_bin_path }}/netctl dest=/usr/bin/netctl mode=0755
 
 - name: copy netmaster setup script
-  copy: src=nw_setup.sh dest=/usr/bin/nw_setup.sh mode=0755
+  template: src=nw_setup.j2 dest=/usr/bin/nw_setup.sh mode=0755
 
 - name: copy environment file for netmaster
   copy: src=netmaster.env dest=/etc/default/netmaster

@@ -15,6 +15,11 @@ contiv_bin_path: ~/go/bin
 # if you are using an external router for all routing, you should select bridge here
 contiv_fwd_mode: routing
 
+# contiv_def_subnet is the subnet pods will be assigned by default (i.e. pod spec does not
+# specify a network)
+contiv_def_subnet: "20.1.1.0/24"
+contiv_defnet_gw: 20.1.1.254
+
 # The following are aci specific parameters. These must be set only if aci integration
 # is desired. Otherwise, you can ignore these.
 apic_url: ""

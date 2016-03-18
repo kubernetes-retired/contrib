@@ -1,0 +1,3 @@
+- name: pull busybox+netcat image
+  shell: docker pull contiv/nc-busybox
+
