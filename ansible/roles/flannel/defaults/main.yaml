@@ -1,0 +1,3 @@
+---
+# valid types: package | github-release
+flannel_source_type: package

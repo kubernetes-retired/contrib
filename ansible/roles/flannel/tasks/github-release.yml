@@ -1,0 +1,41 @@
+---
+- name: flannel version
+  set_fact:
+    flannel_version: "0.5.5"
+
+- stat: path=/usr/local/flannel-{{ flannel_version }}
+  register: st
+
+- name: Create download dir
+  file: path="/tmp/.ansible/files" state=directory
+
+- name: Download tar file
+  get_url:
+    url: "https://github.com/coreos/flannel/releases/download/v{{ flannel_version }}/flannel-{{ flannel_version }}-linux-amd64.tar.gz"
+    dest: /tmp/.ansible/files
+    validate_certs: False
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+  when: st.stat.isdir is not defined
+
+- name: Extract tar file
+  unarchive:
+    src: "/tmp/.ansible/files/flannel-{{ flannel_version }}-linux-amd64.tar.gz"
+    dest: /usr/local
+    copy: no
+  when: st.stat.isdir is not defined
+
+- name: Create symlinks
+  file:
+    src: /usr/local/flannel-{{ flannel_version }}/{{ item }}
+    dest: /usr/local/bin/{{ item }}
+    state: link
+  with_items:
+    - flanneld
+
+- name: Create upstart script
+  copy: src=flanneld.upstart dest=/etc/init/flanneld.conf
+
+- name: Create config directory
+  file: path="/etc/flannel" state=directory

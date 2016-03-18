@@ -13,7 +13,7 @@
   delegate_to: "{{ groups['etcd'][0] }}"
 
 - name: Load the flannel config file into etcd
-  shell: "/usr/bin/etcdctl --no-sync --peers={{ peers }} set {{ conf_loc }} < {{ conf_file }}"
+  shell: "etcdctl --no-sync --peers={{ peers }} set {{ conf_loc }} < {{ conf_file }}"
   run_once: true
   delegate_to: "{{ groups['etcd'][0] }}"
 
