@@ -1,11 +1,11 @@
-package search
+package rsearch
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
-	"time"
 	"net/http"
-	"encoding/json"
+	"time"
 )
 
 /*
@@ -13,19 +13,19 @@ import (
 */
 
 type NsEvent struct {
-	Type string	`json:"Type"`
-	Object NsObject	`json:"object"`
+	Type   string   `json:"Type"`
+	Object NsObject `json:"object"`
 }
 
 type NsObject struct {
-	Kind	string	`json:"kind"`
-	Spec	Spec	`json:"spec"`
-	ApiVersion	string	`json:"apiVersion"`
-	Metadata	Metadata	`json:"metadata"`
-	Status	map[string]string	`json:"status"`
+	Kind       string            `json:"kind"`
+	Spec       Spec              `json:"spec"`
+	ApiVersion string            `json:"apiVersion"`
+	Metadata   Metadata          `json:"metadata"`
+	Status     map[string]string `json:"status"`
 }
 
-func NsWatch(done <-chan Done,  url string) (<-chan NsEvent, error) {
+func NsWatch(done <-chan Done, url string) (<-chan NsEvent, error) {
 	out := make(chan NsEvent)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -39,10 +39,10 @@ func NsWatch(done <-chan Done,  url string) (<-chan NsEvent, error) {
 	go func() {
 		for {
 			select {
-			case <- tick:
+			case <-tick:
 				dec.Decode(&e)
 				out <- e
-			case <- done:
+			case <-done:
 				return
 			}
 		}
@@ -51,14 +51,14 @@ func NsWatch(done <-chan Done,  url string) (<-chan NsEvent, error) {
 	return out, nil
 }
 
-func (ns NsEvent) Produce(out chan Event, done <-chan Done, config  Config) error {
+func (ns NsEvent) Produce(out chan Event, done <-chan Done, config Config) error {
 	url := fmt.Sprintf("%s/%s/%s/%s", config.Api.Url, config.Resource.UrlPrefix, ns.Object.Metadata.Name, config.Resource.UrlPostfix)
 	log.Println("Launching producer to listen on ", url)
 	tick := time.Tick(1 * time.Second)
 
-	resp, err  := http.Get(url)
+	resp, err := http.Get(url)
 	if err != nil {
-		return  err
+		return err
 	}
 
 	dec := json.NewDecoder(resp.Body)
@@ -66,10 +66,10 @@ func (ns NsEvent) Produce(out chan Event, done <-chan Done, config  Config) erro
 	go func() {
 		for {
 			select {
-			case <- tick:
+			case <-tick:
 				dec.Decode(&e)
 				out <- e
-			case <- done:
+			case <-done:
 				return
 			}
 		}

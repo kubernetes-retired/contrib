@@ -1,6 +1,6 @@
 // Conductor is a goroutine that consumes NsEvents
 // and maintains a proper number of Resource goroutines
-package search
+package rsearch
 
 func manageResources(ns NsEvent, terminators map[string]chan Done, config Config, out chan Event) {
 	if ns.Type == "ADDED" {
@@ -20,13 +20,13 @@ func Conductor(in <-chan NsEvent, done <-chan Done, config Config) <-chan Event 
 	ns := NsEvent{}
 	out := make(chan Event)
 
-	go func () {
+	go func() {
 		for {
 			select {
-				case ns = <- in:
-					manageResources(ns, terminators, config, out)
-				case <-done:
-					return
+			case ns = <-in:
+				manageResources(ns, terminators, config, out)
+			case <-done:
+				return
 			}
 		}
 	}()

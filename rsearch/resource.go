@@ -1,11 +1,11 @@
-package search
+package rsearch
 
 import (
-//	"fmt"
+	//	"fmt"
 	"log"
-//	"net/http"
-//	"encoding/json"
-//	"time"
+	//	"net/http"
+	//	"encoding/json"
+	//	"time"
 )
 
 /*
@@ -13,23 +13,23 @@ import (
 */
 
 type Event struct {
-	Type string	`json:"Type"`
-	Object KubeObject	`json:"object"`
+	Type   string     `json:"Type"`
+	Object KubeObject `json:"object"`
 }
 
 type KubeObject struct {
-	Kind	string	`json:"kind"`
-	Spec	Spec	`json:"spec"`
-	ApiVersion	string	`json:"apiVersion"`
-	Metadata	Metadata	`json:"metadata"`
+	Kind       string   `json:"kind"`
+	Spec       Spec     `json:"spec"`
+	ApiVersion string   `json:"apiVersion"`
+	Metadata   Metadata `json:"metadata"`
 }
 
-func (o KubeObject) makeId () string {
+func (o KubeObject) makeId() string {
 	id := o.Metadata.Name + "/" + o.Metadata.Namespace
 	return id
 }
 
-func (o KubeObject) getSelector (config Config) string {
+func (o KubeObject) getSelector(config Config) string {
 	var selector string
 	// TODO this should use Config.Resource.Selector path instead of podSelector
 	for k, v := range o.Spec.PodSelector {
@@ -40,24 +40,23 @@ func (o KubeObject) getSelector (config Config) string {
 
 // TODO need to find a way to use different specs for different resources
 type Spec struct {
-	AllowIncoming	map[string]interface{}	`json:"allowIncoming"`
-	ToPorts		map[string]interface{}	`json:"toPorts"`
-	PodSelector	map[string]string	`json:"podSelector"`
+	AllowIncoming map[string]interface{} `json:"allowIncoming"`
+	ToPorts       map[string]interface{} `json:"toPorts"`
+	PodSelector   map[string]string      `json:"podSelector"`
 }
-	
 
 type Metadata struct {
-	Name	string	`json:"name"`
-	Namespace	string	`json:"namespace"`
-	SelfLink	string	`json:"selfLink"`
-	Uid	string	`json:"uid"`
-	ResourceVersion string `json:"resourceVersion"`
-	CreationTimestamp string `json:"creationTimestamp"`
-	Labels	map[string]string	`json:"labels"`
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	SelfLink          string            `json:"selfLink"`
+	Uid               string            `json:"uid"`
+	ResourceVersion   string            `json:"resourceVersion"`
+	CreationTimestamp string            `json:"creationTimestamp"`
+	Labels            map[string]string `json:"labels"`
 }
 
 type SearchRequest struct {
-	Tag	string	`json:"tag"`
+	Tag string `json:"tag"`
 }
 
 type SearchResponse []KubeObject
@@ -73,7 +72,7 @@ func Process(in <-chan Event, done chan Done, config Config) (chan<- SearchReque
 	// storage struct is map[NPid]KubeObject
 	// search struct is map[Selector]map[NPid]bool
 	storage := make(map[string]KubeObject)
-	search  := make(map[string]map[string]bool)
+	search := make(map[string]map[string]bool)
 
 	// maintains storage map
 	// on event.type == ADDED:
@@ -92,16 +91,15 @@ func Process(in <-chan Event, done chan Done, config Config) (chan<- SearchReque
 	//		append(resp, storage[NPid])
 	//	return resp
 
-	
 	go func() {
 		for {
 			select {
-				case e := <- in:
-					updateStorage(e, storage, search, config)
-				case request := <- req:
-					resp <- processSearchRequest(storage, search, request)
-				case <-done:
-					return
+			case e := <-in:
+				updateStorage(e, storage, search, config)
+			case request := <-req:
+				resp <- processSearchRequest(storage, search, request)
+			case <-done:
+				return
 			}
 		}
 	}()

@@ -1,16 +1,15 @@
-package search
+package rsearch
 
 import (
-	"net/http"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 )
 
 type IO struct {
-	req chan<- SearchRequest
+	req  chan<- SearchRequest
 	resp <-chan SearchResponse
-	
 }
 
 func (io IO) handler(w http.ResponseWriter, req *http.Request) {
@@ -26,9 +25,9 @@ func (io IO) handler(w http.ResponseWriter, req *http.Request) {
 
 	// TODO there is no guarantee that response we're getting is related
 	// to our request, not some other request from another client.
-	response := <- io.resp
+	response := <-io.resp
 	fmt.Println("Sending response ", response)
-	r, err :=  json.Marshal(response)
+	r, err := json.Marshal(response)
 	if err != nil {
 		panic(err)
 	}
@@ -36,8 +35,8 @@ func (io IO) handler(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprint(w, string(r))
 }
 
-func Serve(config Config, req chan<- SearchRequest, resp <-chan SearchResponse)  {
+func Serve(config Config, req chan<- SearchRequest, resp <-chan SearchResponse) {
 	io := IO{req, resp}
 	http.HandleFunc("/", io.handler)
-	log.Fatal(http.ListenAndServe(":" + config.Server.Port, nil))
+	log.Fatal(http.ListenAndServe(":"+config.Server.Port, nil))
 }

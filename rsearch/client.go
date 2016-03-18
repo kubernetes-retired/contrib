@@ -1,11 +1,11 @@
-package search
+package rsearch
 
 import (
-	"net/http"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
-	"bytes"
+	"net/http"
 )
 
 func SearchResource(config Config, req SearchRequest) SearchResponse {

@@ -1,11 +1,11 @@
-package search
+package rsearch
 
 import (
-	"gopkg.in/gcfg.v1"
 	"bytes"
+	"encoding/json"
+	"gopkg.in/gcfg.v1"
 	"testing"
 	"time"
-	"encoding/json"
 )
 
 func TestResoureProcessor(t *testing.T) {
@@ -27,10 +27,10 @@ func TestResoureProcessor(t *testing.T) {
 	dec.Decode(&e)
 
 	events <- e
-	searchRequest := SearchRequest{ Tag: "tier/backend#" }
+	searchRequest := SearchRequest{Tag: "tier/backend#"}
 	req <- searchRequest
 
-	result := <- resp
+	result := <-resp
 	if result[0].Metadata.Name != "pol1" {
 		t.Error("Unexpected search response = expect policy name = pol1, got ", result[0].Metadata.Name)
 	}

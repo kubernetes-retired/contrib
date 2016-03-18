@@ -1,33 +1,33 @@
-package search
+package rsearch
 
 import (
 	"gopkg.in/gcfg.v1"
 )
 
-type Done struct {}
+type Done struct{}
 
 type Config struct {
 	Resource Resource
-	Server Server
-	Api Api
+	Server   Server
+	Api      Api
 }
 
 type Server struct {
-	Port string
+	Port  string
 	Debug bool
 }
 
 type Api struct {
-	Url string
+	Url          string
 	NamespaceUrl string
 }
 
 type Resource struct {
-	Name string
-	Type string
-	Selector string
+	Name       string
+	Type       string
+	Selector   string
 	Namespaced string
-	UrlPrefix string
+	UrlPrefix  string
 	UrlPostfix string
 }
 

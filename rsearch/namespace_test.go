@@ -1,13 +1,13 @@
-package search
+package rsearch
 
 import (
-	"net/http"
-	"gopkg.in/gcfg.v1"
-	"testing"
-	"math/rand"
-	"time"
-	"log"
 	"fmt"
+	"gopkg.in/gcfg.v1"
+	"log"
+	"math/rand"
+	"net/http"
+	"testing"
+	"time"
 )
 
 const cfgStr = `
@@ -44,7 +44,7 @@ func fakePolicyHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func fakeServer(config Config) {
-	http.HandleFunc("/" + config.Api.NamespaceUrl, fakeNsHandler)
+	http.HandleFunc("/"+config.Api.NamespaceUrl, fakeNsHandler)
 	policyUrl := "/" + config.Resource.UrlPrefix + "/default/" + config.Resource.UrlPostfix
 	http.HandleFunc(policyUrl, fakePolicyHandler)
 	log.Fatal(http.ListenAndServe(config.Api.Url[7:], nil))
@@ -67,12 +67,12 @@ func TestNsWatch(t *testing.T) {
 
 	done := make(chan Done)
 	url := config.Api.Url + "/" + config.Api.NamespaceUrl
-	nsEvents, err :=  NsWatch(done, url)
+	nsEvents, err := NsWatch(done, url)
 	if err != nil {
 		t.Error("Namespace watcher failed to start", err)
 	}
 
-	ns := <- nsEvents
+	ns := <-nsEvents
 	if ns.Object.Metadata.Name != "default" {
 		t.Error("Expecting namespace name = default, got =", ns.Object.Metadata.Name)
 	}
@@ -83,7 +83,7 @@ func TestNsWatch(t *testing.T) {
 		t.Error("Namespace producer failed to start", err)
 	}
 
-	e := <- events
+	e := <-events
 	if e.Object.Metadata.Name != "pol1" {
 		t.Error("Expecting policy name = pol1, got =", e.Object.Metadata.Name)
 	}
