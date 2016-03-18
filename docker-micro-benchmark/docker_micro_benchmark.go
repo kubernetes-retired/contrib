@@ -20,7 +20,8 @@ import (
 	"fmt"
 	"os"
 
-	docker "github.com/fsouza/go-dockerclient"
+	docker "github.com/docker/engine-api/client"
+	"k8s.io/contrib/docker-micro-benchmark/helpers"
 )
 
 func main() {
@@ -31,17 +32,18 @@ func main() {
 		usage()
 		return
 	}
-	client, _ := docker.NewClient(endpoint)
-	client.PullImage(docker.PullImageOptions{Repository: "ubuntu", Tag: "latest"}, docker.AuthConfiguration{})
+	client, _ := docker.NewClient(endpoint, apiVersion, nil, nil)
+	d := helpers.NewDockerHelper(client)
+	d.PullTestImage()
 	switch os.Args[1] {
 	case "-o":
-		benchmarkContainerStart(client)
+		benchmarkContainerStart(d)
 	case "-c":
-		benchmarkVariesContainerNumber(client)
+		benchmarkVariesContainerNumber(d)
 	case "-i":
-		benchmarkVariesInterval(client)
+		benchmarkVariesInterval(d)
 	case "-r":
-		benchmarkVariesRoutineNumber(client)
+		benchmarkVariesRoutineNumber(d)
 	default:
 		usage()
 	}

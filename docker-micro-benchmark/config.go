@@ -22,7 +22,8 @@ import (
 
 // Docker configuration
 var (
-	endpoint = "unix:///var/run/docker.sock"
+	endpoint   = "unix:///var/run/docker.sock"
+	apiVersion = "v1.21"
 )
 
 // Period configuration
