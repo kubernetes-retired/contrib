@@ -34,14 +34,4 @@ curl --cacert $CERTSDIR/ca.pem --cert $CERTSDIR/master-client.pem \
 -d "value={\"Network\":\"10.2.0.0/16\",\"Backend\":{\"Type\":\"vxlan\"}}" \
 https://127.0.0.1:2379/v2/keys/coreos.com/network/config && \
 create_namespace && \
-chmod +x ~/.local/bin/kubectl && \
-echo "Creating DNS addon..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/dns-addon.yaml && \
-echo "Creating Elasticsearch RC..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/es-controller.yaml && \
-echo "Creating Elasticsearch service..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/es-service.yaml && \
-echo "Creating Kibana RC..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/kibana-controller.yaml && \
-echo "Creating Kibana service..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/kibana-service.yaml
+chmod +x ~/.local/bin/kubectl

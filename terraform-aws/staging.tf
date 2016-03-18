@@ -201,6 +201,7 @@ resource "aws_instance" "staging_master" {
     destination = ".local/bin/kubectl"
   }
 
+  /*TODO: Make conditional*/
   provisioner "file" {
     source = "master/addons/dns-addon.yaml"
     destination = "/etc/kubernetes/addons/dns-addon.yaml"
@@ -214,26 +215,13 @@ resource "aws_instance" "staging_master" {
 
   /*TODO: Make conditional*/
   provisioner "file" {
-    source = "master/addons/es-controller.yaml"
-    destination = "/etc/kubernetes/addons/es-controller.yaml"
+    source = "master/addons/fluentd-elasticsearch/"
+    destination = "/etc/kubernetes/addons/"
   }
 
-  /*TODO: Make conditional*/
   provisioner "file" {
-    source = "master/addons/es-service.yaml"
-    destination = "/etc/kubernetes/addons/es-service.yaml"
-  }
-
-  /*TODO: Make conditional*/
-  provisioner "file" {
-    source = "master/addons/kibana-controller.yaml"
-    destination = "/etc/kubernetes/addons/kibana-controller.yaml"
-  }
-
-  /*TODO: Make conditional*/
-  provisioner "file" {
-    source = "master/addons/kibana-service.yaml"
-    destination = "/etc/kubernetes/addons/kibana-service.yaml"
+    source = "master/addons/cluster-monitoring/"
+    destination = "/etc/kubernetes/addons/"
   }
 
   /*TODO: Parameterize somehow!*/
