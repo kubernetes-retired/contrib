@@ -20,7 +20,7 @@ fi
 INPFN="$1"
 OUTFN="$2"
 
-if [ "${DEBUG:-}" == "true" ]; then
+if jq .debug < "${INPFN}" | grep -i true &> /dev/null; then
     echo
     printenv | grep CNI
     set -x
