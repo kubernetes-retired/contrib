@@ -204,7 +204,7 @@ resource "aws_instance" "staging_master" {
   /*TODO: Make conditional*/
   provisioner "file" {
     source = "master/addons/dns-addon.yaml"
-    destination = "/etc/kubernetes/addons/dns-addon.yaml"
+    destination = "/tmp/dns-addon.yaml"
   }
 
   /*TODO: Make conditional*/
@@ -216,12 +216,12 @@ resource "aws_instance" "staging_master" {
   /*TODO: Make conditional*/
   provisioner "file" {
     source = "master/addons/fluentd-elasticsearch/"
-    destination = "/etc/kubernetes/addons/"
+    destination = "/tmp/"
   }
 
   provisioner "file" {
     source = "master/addons/cluster-monitoring/"
-    destination = "/etc/kubernetes/addons/"
+    destination = "/tmp/"
   }
 
   /*TODO: Parameterize somehow!*/
