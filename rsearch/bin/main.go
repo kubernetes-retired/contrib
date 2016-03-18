@@ -1,16 +1,15 @@
 package main
 
 import (
-	"github.com/romana/search"	
 	"flag"
-	"log"
 	"fmt"
-//	"net/http"
-//    "encoding/json"
+	search "github.com/romana/contrib/rsearch"
+	"log"
+	//	"net/http"
+	//    "encoding/json"
 
-//	"io"
+	//	"io"
 )
-
 
 func main() {
 	var cfgFile = flag.String("c", "", "Kubernetes reverse search config file")
@@ -20,7 +19,7 @@ func main() {
 
 	done := make(chan search.Done)
 
-	config, err := search.NewConfig(*cfgFile); 
+	config, err := search.NewConfig(*cfgFile)
 	if err != nil {
 		fmt.Printf("Can not read config file %s, %s\n", *cfgFile, err)
 		return
@@ -29,7 +28,7 @@ func main() {
 	if *server {
 		fmt.Println("Starting server")
 		nsUrl := fmt.Sprintf("%s/%s", config.Api.Url, config.Api.NamespaceUrl)
-		nsEvents, err :=  search.NsWatch(done, nsUrl)
+		nsEvents, err := search.NsWatch(done, nsUrl)
 		if err != nil {
 			log.Fatal("Namespace watcher failed to start", err)
 		}
