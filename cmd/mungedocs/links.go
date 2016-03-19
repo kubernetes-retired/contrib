@@ -172,8 +172,8 @@ func cleanPath(dirPath, linkPath string) string {
 func checkPath(filePath, linkPath string) (newPath string, ok bool) {
 	dir := path.Dir(filePath)
 	absFilePrefixes := []string{
-		"/kubernetes/kubernetes/blob/master/",
-		"/kubernetes/kubernetes/tree/master/",
+		*repoName + "/blob/master/",
+		*repoName + "/tree/master/",
 	}
 	for _, prefix := range absFilePrefixes {
 		if strings.HasPrefix(linkPath, prefix) {

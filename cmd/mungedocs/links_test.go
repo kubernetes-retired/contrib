@@ -26,7 +26,21 @@ import (
 var _ = fmt.Printf
 
 func TestBadLinks(t *testing.T) {
+	*repoName = "/kubernetes/contrib"
 	var cases = []struct {
+		in string
+	}{
+		{"[NOTREADME](https://github.com/kubernetes/contrib/tree/master/NOTREADME.md)"},
+		{"[NOTREADME](https://github.com/kubernetes/contrib/tree/master/docs/NOTREADME.md)"},
+		{"[NOTREADME](../NOTREADME.md)"},
+	}
+	for _, c := range cases {
+		in := getMungeLines(c.in)
+		_, err := updateLinks("filename.md", in)
+		assert.Error(t, err)
+	}
+	*repoName = "/kubernetes/kubernetes"
+	cases = []struct {
 		in string
 	}{
 		{"[NOTREADME](https://github.com/kubernetes/kubernetes/tree/master/NOTREADME.md)"},
@@ -39,30 +53,32 @@ func TestBadLinks(t *testing.T) {
 		assert.Error(t, err)
 	}
 }
+
 func TestGoodLinks(t *testing.T) {
+	*repoName = "/kubernetes/contrib"
 	var cases = []struct {
 		in       string
 		expected string
 	}{
 		{"", ""},
-		{"[README](https://github.com/kubernetes/kubernetes/tree/master/README.md)",
+		{"[README](https://github.com/kubernetes/contrib/tree/master/README.md)",
 			"[README](README.md)"},
 		{"[README](../README.md)",
 			"[README](README.md)"},
 		{"[README](https://lwn.net)",
 			"[README](https://lwn.net)"},
 		// _ to -
-		{"[README](https://github.com/kubernetes/kubernetes/tree/master/docs/devel/cli_roadmap.md)",
-			"[README](../../docs/devel/cli-roadmap.md)"},
+		{"[README](https://github.com/kubernetes/contrib/tree/master/cmd/mungedocs/testdata/test-underscore.md)",
+			"[README](../../cmd/mungedocs/testdata/test_underscore.md)"},
 		// - to _
-		{"[README](../../docs/devel/api-changes.md)",
-			"[README](../../docs/devel/api_changes.md)"},
+		{"[README](testdata/test_dash.md)",
+			"[README](testdata/test-dash.md)"},
 
 		// Does this even make sense?  i dunno
 		{"[README](/docs/README.md)",
 			"[README](https://github.com/docs/README.md)"},
-		{"[README](/kubernetes/kubernetes/tree/master/docs/README.md)",
-			"[README](../../docs/README.md)"},
+		{"[README](/kubernetes/contrib/tree/master/compare/README.md)",
+			"[README](../../compare/README.md)"},
 	}
 	for i, c := range cases {
 		in := getMungeLines(c.in)

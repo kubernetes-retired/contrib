@@ -44,6 +44,7 @@ Examples:
  * --root-dir=/usr/local/long/path/repo/docs/ --repo-root=.. means the repository root is /usr/local/long/path/repo/
  * --root-dir=/usr/local/long/path/repo/docs/admin --repo-root=../.. means the repository root is /usr/local/long/path/repo/`)
 	skipMunges = flag.String("skip-munges", "", "Comma-separated list of munges to *not* run. Available munges are: "+availableMungeList)
+	repoName = flag.String("repo-name", "/kubernetes/kubernetes", "Name of the repo md links should be munged from.")
 	repoRoot   string
 
 	ErrChangesNeeded = errors.New("mungedocs: changes required")
