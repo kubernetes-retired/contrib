@@ -142,11 +142,6 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "file" {
-    source = "master/assets/kube.conf"
-    destination = "/etc/kubernetes/kube.conf"
-  }
-
-  provisioner "file" {
     source = "master/assets/certificates/ca.pem"
     destination = "/etc/kubernetes/ssl/ca.pem"
   }
@@ -382,11 +377,6 @@ resource "aws_instance" "staging_worker" {
   provisioner "file" {
     source = "common/assets/fluentd-es.yaml"
     destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/kube.conf"
-    destination = "/etc/kubernetes/kube.conf"
   }
 
   provisioner "file" {

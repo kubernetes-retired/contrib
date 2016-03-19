@@ -36,22 +36,22 @@ https://127.0.0.1:2379/v2/keys/coreos.com/network/config && \
 create_namespace && \
 chmod +x /opt/bin/kubectl && \
 echo "Creating DNS addon..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/dns-addon.yaml && \
+kubectl create -f /tmp/dns-addon.yaml && \
 echo "Creating Elasticsearch RC..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/es-controller.yaml && \
+kubectl create -f /tmp/es-controller.yaml && \
 echo "Creating Elasticsearch service..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/es-service.yaml && \
+kubectl create -f /tmp/es-service.yaml && \
 echo "Creating Kibana RC..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/kibana-controller.yaml && \
+kubectl create -f /tmp/kibana-controller.yaml && \
 echo "Creating Kibana service..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/kibana-service.yaml && \
+kubectl create -f /tmp/kibana-service.yaml && \
 echo "Creating Heapster controller..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/heapster-controller.yaml && \
+kubectl create -f /tmp/heapster-controller.yaml && \
 echo "Creating Heapster service..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/heapster-service.yaml && \
+kubectl create -f /tmp/heapster-service.yaml && \
 echo "Creating InfluxDB-Grafana controller..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/influxdb-grafana-controller.yaml && \
+kubectl create -f /tmp/influxdb-grafana-controller.yaml && \
 echo "Creating InfluxDB Service..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/influxdb-service.yaml && \
+kubectl create -f /tmp/influxdb-service.yaml && \
 echo "Creating Grafana Service..." && \
-~/.local/bin/kubectl --kubeconfig=/etc/kubernetes/kube.conf create -f /tmp/grafana-service.yaml
+kubectl create -f /tmp/grafana-service.yaml

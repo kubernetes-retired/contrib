@@ -41,7 +41,7 @@ ExecStart=/opt/bin/kubelet-wrapper \\
 --config=/etc/kubernetes/manifests \\
 --cluster-dns=10.3.0.10 \\
 --cluster-domain=cluster.local \\
---kubeconfig=/etc/kubernetes/kube.conf \\
+--kubeconfig=/home/core/.kube/conf \\
 --tls-cert-file=/etc/kubernetes/ssl/worker.pem \\
 --tls-private-key-file=/etc/kubernetes/ssl/worker-key.pem \\
 --hostname-override={1}
@@ -63,7 +63,7 @@ spec:
     command:
     - /hyperkube
     - proxy
-    - --kubeconfig=/etc/kubernetes/kube.conf
+    - --kubeconfig=/home/core/.kube/conf
     - --proxy-mode=iptables
     - --v=2
     securityContext:

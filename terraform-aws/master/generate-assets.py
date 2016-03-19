@@ -43,7 +43,7 @@ ExecStart=/opt/bin/kubelet-wrapper \\
 --api-servers=https://127.0.0.1:443 \\
 --register-node=false \\
 --allow-privileged=true \\
---kubeconfig=/etc/kubernetes/kube.conf \\
+--kubeconfig=/home/core/.kube/conf \\
 --config=/etc/kubernetes/manifests \\
 --tls-cert-file=/etc/kubernetes/ssl/master-client.pem \\
 --tls-private-key-file=/etc/kubernetes/ssl/master-client-key.pem \\
@@ -98,7 +98,7 @@ spec:
     - proxy
     - --master=https://127.0.0.1:443
     - --proxy-mode=iptables
-    - --kubeconfig=/etc/kubernetes/kube.conf
+    - --kubeconfig=/home/core/.kube/conf
     - --v=2
     securityContext:
       privileged: true
@@ -204,7 +204,7 @@ spec:
     - --cloud-provider=aws
     - --service-account-private-key-file=/etc/kubernetes/ssl/\
 master-client-key.pem
-    - --kubeconfig=/etc/kubernetes/kube.conf
+    - --kubeconfig=/home/core/.kube/conf
     livenessProbe:
       httpGet:
         host: 127.0.0.1
@@ -252,7 +252,7 @@ spec:
     command:
     - /hyperkube
     - scheduler
-    - --kubeconfig=/etc/kubernetes/kube.conf
+    - --kubeconfig=/home/core/.kube/conf
     livenessProbe:
       httpGet:
         host: 127.0.0.1
@@ -392,7 +392,7 @@ spec:
         args:
         # command = "/kube2sky"
         - --domain=cluster.local.
-        - --kubecfg-file=/etc/kubernetes/kube.conf
+        - --kubecfg-file=/home/core/.kube/conf
       - name: skydns
         image: gcr.io/google_containers/skydns:2015-10-13-8c72f8c
         resources:
@@ -472,7 +472,7 @@ spec:
 num_heapster_nodes = 1
 metrics_memory = '{}Mi'.format(200 + num_heapster_nodes * 4)
 eventer_memory = '{}Ki'.format(200 * 1024 + num_heapster_nodes * 500)
-_write_asset('heapster-controller.yaml', dirname='addons/cluster-monitoring', """
+_write_asset('heapster-controller.yaml', """
 apiVersion: v1
 kind: ReplicationController
 metadata:
@@ -521,7 +521,8 @@ spec:
             - /eventer
             - --source=kubernetes:''
             - --sink=influxdb:http://monitoring-influxdb:8086
-""".format(metrics_memory, eventer_memory))
+""".format(metrics_memory, eventer_memory),
+    dirname='addons/cluster-monitoring')
 # _write_asset('nginx-secret.yaml', """apiVersion: "v1"
 # kind: "Secret"
 # metadata:

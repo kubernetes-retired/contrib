@@ -11,9 +11,18 @@ with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
         as response:
     discovery_url = response.read().decode()
 
+with open('./assets/kube.conf', 'rt') as f:
+    kube_conf = f.read()
+
 with open('./assets/cloud-config', 'wt') as fcloud_config:
     fcloud_config.write("""#cloud-config
 
+write_files:
+  - path: "/home/core/.kube/config"
+    permissions: "0600"
+    owner: "core"
+    content: |
+      {0}
 coreos:
   units:
     - name: swap.service
@@ -33,4 +42,4 @@ coreos:
 
         [Install]
         WantedBy=local.target
-""".format(discovery_url, '172.31.29.111'))
+""".format(kube_conf)

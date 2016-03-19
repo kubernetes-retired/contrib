@@ -11,16 +11,24 @@ with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
         as response:
     discovery_url = response.read().decode()
 
+with open('./assets/kube.conf', 'rt') as f:
+    kube_conf = f.read()
+
 with open('./assets/cloud-config', 'wt') as fcloud_config:
     fcloud_config.write("""#cloud-config
-
+write_files:
+  - path: "/home/core/.kube/config"
+    permissions: "0600"
+    owner: "core"
+    content: |
+      {0}
 coreos:
   etcd2:
-    discovery: {0}
-    advertise-client-urls: https://{1}:2379
-    initial-advertise-peer-urls: https://{1}:2380
+    discovery: {1}
+    advertise-client-urls: https://{2}:2379
+    initial-advertise-peer-urls: https://{2}:2380
     listen-client-urls: https://0.0.0.0:2379
-    listen-peer-urls: https://{1}:2380
+    listen-peer-urls: https://{2}:2380
   units:
     - name: etcd2.service
       command: start
@@ -55,4 +63,4 @@ coreos:
 
         [Install]
         WantedBy=local.target
-""".format(discovery_url, '172.31.29.111'))
+""".format(kube_conf, discovery_url, '172.31.29.111'))
