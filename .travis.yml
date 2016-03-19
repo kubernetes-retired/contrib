@@ -6,12 +6,12 @@ matrix:
   include:
     - go: 1.4.3
     - go: 1.5.3
+    - go: 1.6
 
 install:
   - mkdir -p $HOME/gopath/src/k8s.io
   - mv $TRAVIS_BUILD_DIR $HOME/gopath/src/k8s.io/contrib
-  - go get github.com/tools/godep
-  - go get github.com/golang/lint/golint
+  - hack/install-verify-tools.sh
   - export PATH=$GOPATH/bin:$PATH
   - hack/for-go-proj.sh install
 
