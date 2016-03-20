@@ -31,6 +31,9 @@ insecure_registrys:
 #http_proxy: "http://proxy.example.com:3128"
 #https_proxy: "http://proxy.example.com:3128"
 
+# The port that the Kubernetes apiserver component listens on.
+kube_master_api_port: 443
+
 # Kubernetes internal network for services.
 # Kubernetes services will get fake IP addresses from this range.
 # This range must not conflict with anything in your infrastructure. These
