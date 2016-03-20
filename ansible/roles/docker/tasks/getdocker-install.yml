@@ -1,0 +1,26 @@
+---
+- name: get.docker.com | Create temp dir
+  local_action: command mktemp -d -t docker.XXXXXXXXXX
+  register: docker_temp_dir
+  sudo: no
+
+- name: get.docker.com | Create remote temp dir
+  command: mktemp -d -t docker.XXXXXXXXXX
+  register: remote_docker_temp_dir
+
+- name: get.docker.com | Download Docker shell script locally to workaround SNI 
+  local_action: get_url url=https://get.docker.com dest="{{ docker_temp_dir.stdout }}/docker-install.sh"
+  sudo: no
+
+- name: get.docker.com | Copy the Docker installer to remote
+  copy: src="{{ docker_temp_dir.stdout }}/docker-install.sh" dest={{ remote_docker_temp_dir.stdout }}/docker-install.sh mode=0755
+
+- name: get.docker.com | Install latest Docker
+  command: "{{ remote_docker_temp_dir.stdout }}/docker-install.sh"
+
+- name: get.docker.com | Clean Up Remote
+  file: path="{{ remote_docker_temp_dir.stdout }}" state=absent
+
+- name: get.docker.com | Clean up locally
+  local_action: file path="{{ docker_temp_dir.stdout }}" state=absent
+  sudo: no
