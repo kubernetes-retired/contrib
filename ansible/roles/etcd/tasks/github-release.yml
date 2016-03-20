@@ -24,7 +24,7 @@
 - name: Create symlinks
   file:
     src: /usr/local/etcd-{{ etcd_version }}-linux-amd64/{{ item }}
-    dest: /usr/local/bin/{{ item }}
+    dest: /usr/bin/{{ item }}
     state: link
   with_items:
     - etcd
