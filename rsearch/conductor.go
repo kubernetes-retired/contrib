@@ -3,16 +3,18 @@
 package rsearch
 
 func manageResources(ns NsEvent, terminators map[string]chan Done, config Config, out chan Event) {
+	uid := ns.Object.Metadata.Uid
 	if ns.Type == "ADDED" {
 		done := make(chan Done)
-		terminators[ns.Object.Metadata.Uid] = done
-		ns.Produce(out, terminators[ns.Object.Metadata.Uid], config)
+		terminators[uid] = done
+		ns.Object.Produce(out, terminators[uid], config)
 	} else if ns.Type == "DELETED" {
-		close(terminators[ns.Object.Metadata.Uid])
-		delete(terminators, ns.Object.Metadata.Uid)
+		close(terminators[uid])
+		delete(terminators, uid)
 	}
 }
 
+// Conductor manages a set of goroutines one per namespace
 func Conductor(in <-chan NsEvent, done <-chan Done, config Config) <-chan Event {
 	var terminators map[string]chan Done
 	terminators = make(map[string]chan Done)

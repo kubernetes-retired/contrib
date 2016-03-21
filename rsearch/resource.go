@@ -18,10 +18,11 @@ type Event struct {
 }
 
 type KubeObject struct {
-	Kind       string   `json:"kind"`
-	Spec       Spec     `json:"spec"`
-	ApiVersion string   `json:"apiVersion"`
-	Metadata   Metadata `json:"metadata"`
+	Kind       string            `json:"kind"`
+	Spec       Spec              `json:"spec"`
+	ApiVersion string            `json:"apiVersion"`
+	Metadata   Metadata          `json:"metadata"`
+	Status     map[string]string `json:"status"`
 }
 
 func (o KubeObject) makeId() string {

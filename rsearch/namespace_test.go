@@ -78,7 +78,7 @@ func TestNsWatch(t *testing.T) {
 	}
 
 	events := make(chan Event)
-	err = ns.Produce(events, done, config)
+	err = ns.Object.Produce(events, done, config)
 	if err != nil {
 		t.Error("Namespace producer failed to start", err)
 	}
