@@ -40,12 +40,16 @@ pr-mungers
 rate-limit
 rate-limit-burst
 relnote-filter
+repo-name
+repo-root
 required-contexts
 right-build-number
+root-dir
 running-in-cluster
 shame-cc
 shame-from
 shame-report-cmd
+skip-munges
 source-file
 start-from
 stats-port

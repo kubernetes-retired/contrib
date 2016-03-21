@@ -47,6 +47,7 @@ Examples:
 	repoName = flag.String("repo-name", "/kubernetes/kubernetes", "Name of the repo md links should be munged from.")
 	repoRoot   string
 
+	// ErrChangesNeeded is the error used if mungedocs finds required changes
 	ErrChangesNeeded = errors.New("mungedocs: changes required")
 
 	// This records the files in the rootDir in upstream/latest-release

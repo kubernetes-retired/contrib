@@ -180,12 +180,12 @@ type mungeLine struct {
 
 type mungeLines []mungeLine
 
-func (m1 mungeLines) Equal(m2 mungeLines) bool {
-	if len(m1) != len(m2) {
+func (mlines mungeLines) Equal(m2 mungeLines) bool {
+	if len(mlines) != len(m2) {
 		return false
 	}
-	for i := range m1 {
-		if m1[i].data != m2[i].data {
+	for i := range mlines {
+		if mlines[i].data != m2[i].data {
 			return false
 		}
 	}
