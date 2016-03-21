@@ -1,0 +1,19 @@
+# initial set up of netmaster
+- include: netmaster.yml
+  when: contiv_role == "netmaster"
+
+# clean restart of netmaster
+- include: restart_netmaster.yml tags=contiv_restart
+  when: contiv_role == "netmaster"
+
+# initial set up of netplugin
+- include: netplugin.yml
+  when: contiv_role == "netplugin"
+
+# clean restart of netplugin
+- include: restart_netplugin.yml tags=contiv_restart
+  when: contiv_role == "netplugin"
+
+# load misc docker images
+- include: images.yml tags=contiv_demo
+  when: contiv_role == "netplugin"
