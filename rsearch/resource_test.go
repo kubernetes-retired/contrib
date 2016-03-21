@@ -18,7 +18,7 @@ func TestResoureProcessor(t *testing.T) {
 	done := make(chan Done)
 	events := make(chan Event)
 
-	req, resp := Process(events, done, config)
+	req := Process(events, done, config)
 	time.Sleep(time.Duration(1 * time.Second))
 
 	var e Event
@@ -27,10 +27,12 @@ func TestResoureProcessor(t *testing.T) {
 	dec.Decode(&e)
 
 	events <- e
-	searchRequest := SearchRequest{Tag: "tier/backend#"}
+
+	responseChannel := make(chan SearchResponse)
+	searchRequest := SearchRequest{Tag: "tier/backend#", Resp: responseChannel}
 	req <- searchRequest
 
-	result := <-resp
+	result := <-searchRequest.Resp
 	if result[0].Metadata.Name != "pol1" {
 		t.Error("Unexpected search response = expect policy name = pol1, got ", result[0].Metadata.Name)
 	}

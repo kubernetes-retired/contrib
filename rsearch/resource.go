@@ -22,7 +22,7 @@ type KubeObject struct {
 	Spec       Spec              `json:"spec"`
 	ApiVersion string            `json:"apiVersion"`
 	Metadata   Metadata          `json:"metadata"`
-	Status     map[string]string `json:"status"`
+	Status     map[string]string `json:"status,omitempty"`
 }
 
 func (o KubeObject) makeId() string {
@@ -42,7 +42,6 @@ func (o KubeObject) getSelector(config Config) string {
 // TODO need to find a way to use different specs for different resources
 type Spec struct {
 	AllowIncoming map[string]interface{} `json:"allowIncoming"`
-	ToPorts       map[string]interface{} `json:"toPorts"`
 	PodSelector   map[string]string      `json:"podSelector"`
 }
 
@@ -56,18 +55,9 @@ type Metadata struct {
 	Labels            map[string]string `json:"labels"`
 }
 
-// TODO add response channel into request
-// TODO maybe move request/responce defenitions to the server.go ?
-type SearchRequest struct {
-	Tag string `json:"tag"`
-}
-
-type SearchResponse []KubeObject
-
 // TODO return only request channel, response channel should be uniq per request and come from request
-func Process(in <-chan Event, done chan Done, config Config) (chan<- SearchRequest, <-chan SearchResponse) {
+func Process(in <-chan Event, done chan Done, config Config) chan<- SearchRequest {
 	req := make(chan SearchRequest)
-	resp := make(chan SearchResponse, 100)
 	// search is allowed by Config.Resource.Selector tag
 	// which is hardcoded to Spec.PodSelector which is dict
 
@@ -101,14 +91,14 @@ func Process(in <-chan Event, done chan Done, config Config) (chan<- SearchReque
 			case e := <-in:
 				updateStorage(e, storage, search, config)
 			case request := <-req:
-				resp <- processSearchRequest(storage, search, request)
+				processSearchRequest(storage, search, request)
 			case <-done:
 				return
 			}
 		}
 	}()
 
-	return req, resp
+	return req
 }
 
 func processSearchRequest(storage map[string]KubeObject, search map[string]map[string]bool, req SearchRequest) SearchResponse {
@@ -120,6 +110,7 @@ func processSearchRequest(storage map[string]KubeObject, search map[string]map[s
 		resp = append(resp, storage[NPid])
 	}
 	log.Printf("Dispatching final response %s", resp)
+	req.Resp <- resp // may hang up here
 	return resp
 }
 

@@ -6,7 +6,7 @@ import (
 	search "github.com/romana/contrib/rsearch"
 	"log"
 	//	"net/http"
-	//    "encoding/json"
+	"encoding/json"
 
 	//	"io"
 )
@@ -34,15 +34,19 @@ func main() {
 		}
 
 		events := search.Conductor(nsEvents, done, config)
-		req, resp := search.Process(events, done, config)
+		req := search.Process(events, done, config)
 		log.Println("All routines started")
-		search.Serve(config, req, resp)
+		search.Serve(config, req)
 	} else if len(*searchTag) > 0 {
 		if config.Server.Debug {
 			fmt.Println("Making request t the server")
 		}
-		r := search.SearchResource(config, search.SearchRequest{*searchTag})
-		fmt.Println(r)
+		r := search.SearchResource(config, search.SearchRequest{Tag: *searchTag})
+		response, _ := json.Marshal(r)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(response))
 	}
 
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 )
 
+// SearchResource
 func SearchResource(config Config, req SearchRequest) SearchResponse {
 	url := "http://localhost:" + config.Server.Port
 	data := []byte(`{ "tag" : "` + req.Tag + `"}`)
