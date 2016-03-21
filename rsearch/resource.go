@@ -55,12 +55,15 @@ type Metadata struct {
 	Labels            map[string]string `json:"labels"`
 }
 
+// TODO add response channel into request
+// TODO maybe move request/responce defenitions to the server.go ?
 type SearchRequest struct {
 	Tag string `json:"tag"`
 }
 
 type SearchResponse []KubeObject
 
+// TODO return only request channel, response channel should be uniq per request and come from request
 func Process(in <-chan Event, done chan Done, config Config) (chan<- SearchRequest, <-chan SearchResponse) {
 	req := make(chan SearchRequest)
 	resp := make(chan SearchResponse, 100)

@@ -51,6 +51,7 @@ func NsWatch(done <-chan Done, url string) (<-chan NsEvent, error) {
 	return out, nil
 }
 
+// TODO redefine Produce on KubeObject
 func (ns NsEvent) Produce(out chan Event, done <-chan Done, config Config) error {
 	url := fmt.Sprintf("%s/%s/%s/%s", config.Api.Url, config.Resource.UrlPrefix, ns.Object.Metadata.Name, config.Resource.UrlPostfix)
 	log.Println("Launching producer to listen on ", url)

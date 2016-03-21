@@ -1,0 +1,3 @@
+1. When starting server read through namespace list and fire up ns.Producer per namespace.
+   Read throug resource list per namespace and send them to Processor
+2. Import Kubernetes and use Objects from there
