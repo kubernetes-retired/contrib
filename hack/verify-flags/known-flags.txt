@@ -72,3 +72,6 @@ ssl-ca-cert
 ssl-cert
 vrrp-password
 default-return-code
+cluster-dns
+custom-forwards
+default-resolver

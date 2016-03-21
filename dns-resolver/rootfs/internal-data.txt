@@ -1,0 +1,2 @@
+kubernetes.default.svc.cluster.local
+kube-dns.kube-system.svc.cluster.local
