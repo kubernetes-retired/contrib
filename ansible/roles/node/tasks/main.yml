@@ -1,6 +1,6 @@
 ---
 - include: coreos.yml
-  when: ansible_distribution == "CoreOS"
+  when: is_coreos
 
 - name: Set selinux permissive because tokens and selinux don't work together
   selinux: state=permissive policy={{ ansible_selinux.type }}
