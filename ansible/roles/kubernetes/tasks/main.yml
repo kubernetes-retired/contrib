@@ -11,7 +11,7 @@
   set_fact:
     bin_dir: "/opt/bin"
     kube_script_dir: "/opt/bin/kubernetes"
-  when: ansible_lsb.id == "CoreOS" and kube_script_dir == "/usr/libexec/kubernetes"
+  when: ansible_distribution == "CoreOS" and kube_script_dir == "/usr/libexec/kubernetes"
 
 - name: Create kubernetes config directory
   file: path={{ kube_config_dir }} state=directory
@@ -28,7 +28,7 @@
     - restart daemons
 
 - include: download_bins.yml
-  when: ansible_lsb.id == "CoreOS"
+  when: ansible_distribution == "CoreOS"
 
 - include: secrets.yml
   tags:

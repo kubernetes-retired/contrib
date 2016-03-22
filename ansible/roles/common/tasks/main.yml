@@ -29,7 +29,7 @@
 - name: Set the bin directory path for CoreOS
   set_fact:
     bin_dir: "/opt/bin"
-  when: ansible_lsb.id == "CoreOS"
+  when: ansible_distribution == "CoreOS"
 
 - name: Create the directory used to store binaries
   file: path={{ bin_dir }} state=directory
