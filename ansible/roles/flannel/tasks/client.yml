@@ -4,14 +4,25 @@
   args:
         name: flannel
         state: latest
-  when: not is_atomic
+  when: not is_atomic and ansible_lsb.id != "CoreOS"
+
+- name: Force flannel_source_type to github when packages are not available
+  set_fact:
+    flannel_source_type: "github-release"
+  when: ansible_lsb.id == "CoreOS"
+
+- name: Install from github
+  include: github-release.yml
+  when: flannel_source_type == "github-release"
 
 - name: Install Flannel config file
   template: src=flanneld.j2 dest=/etc/sysconfig/flanneld
+  when: ansible_lsb.id != "CoreOS"
   notify:
     - restart flannel
 
-- name: Launch Flannel
-  service: name=flanneld state=started enabled=yes
+- name: Install Flannel config file
+  template: src=flanneld-coreos.j2 dest=/etc/sysconfig/flanneld
+  when: ansible_lsb.id == "CoreOS"
   notify:
     - restart flannel

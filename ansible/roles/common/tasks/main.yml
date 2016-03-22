@@ -23,6 +23,20 @@
     docker_config_dir: "/etc/default"
   when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
 
+- name: Create config file directory
+  file: path={{ docker_config_dir }} state=directory
+
+- name: Set the bin directory path for CoreOS
+  set_fact:
+    bin_dir: "/opt/bin"
+  when: ansible_lsb.id == "CoreOS"
+
+- name: Create the directory used to store binaries
+  file: path={{ bin_dir }} state=directory
+
+- name: Create Ansible temp directory
+  file: path={{ ansible_temp_dir }} state=directory
+
 - name: Determine if has rpm
   stat: path=/usr/bin/rpm
   register: s

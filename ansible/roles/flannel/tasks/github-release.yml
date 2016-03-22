@@ -1,0 +1,25 @@
+---
+- name: Set Flannel Version fact
+  set_fact:
+    flannel_version: 0.5.5
+
+- name: Download tar file
+  get_url:
+    url: "https://github.com/coreos/flannel/releases/download/v{{ flannel_version }}/flannel-{{ flannel_version }}-linux-amd64.tar.gz"
+    dest: "{{ ansible_temp_dir }}"
+    validate_certs: False
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+
+- name: Extract tar file
+  unarchive:
+    src: "{{ ansible_temp_dir }}/flannel-{{ flannel_version }}-linux-amd64.tar.gz"
+    dest: "{{ ansible_temp_dir }}"
+    copy: no
+
+- name: Move Flannel bins to bin_dir
+  command: mv "{{ ansible_temp_dir }}/flannel-{{ flannel_version }}/{{ item }}" "{{ bin_dir }}/{{ item }}"
+  with_items:
+    - flanneld
+    - mk-docker-opts.sh

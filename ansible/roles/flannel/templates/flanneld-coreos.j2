@@ -1,0 +1,15 @@
+# Flanneld configuration options
+
+# etcd url location.  Point this to the server where etcd runs
+FLANNELD_ETCD_ENDPOINTS="{% for node in groups['etcd'] %}http://{{ node }}:{{ etcd_client_port }}{% if not loop.last %},{% endif %}{% endfor %}"
+
+# etcd config key.  This is the configuration key that flannel queries
+# For address range assignment
+FLANNELD_ETCD_PREFIX="/{{ cluster_name }}/network"
+
+# The file read by Docker to load Flannel environment variables.
+FLANNELD_ENV="/run/flannel_docker_opts.env"
+
+# Any additional options that you want to pass
+# By default, we just add a good guess for the network interface on Vbox.  Otherwise, Flannel will probably make the right guess.
+FLANNELD_OPTIONS="{{ flannel_opts | default('') }}"

@@ -1,0 +1,12 @@
+- name: CoreOS | Check if bootstrap is needed
+  raw: stat {{ bootstrap_script_dir }}/.bootstrapped
+  register: need_bootstrap
+  ignore_errors: True
+
+- name: CoreOS | Run bootstrap.sh
+  script: bootstrap.sh
+  environment:
+    BOOTSTRAP_SCRIPT_DIR: "{{ bootstrap_script_dir }}"
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+  when: need_bootstrap | failed

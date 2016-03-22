@@ -1,0 +1,6 @@
+---
+- name: CoreOS | Add Flanneld Systemd Unit File
+  template: src=flanneld.service dest=/etc/systemd/system/flanneld.service
+  register: flanneld_service
+  notify:
+    - reload systemd
