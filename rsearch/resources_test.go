@@ -67,7 +67,7 @@ func TestNsWatch(t *testing.T) {
 
 	done := make(chan Done)
 	url := config.Api.Url + "/" + config.Api.NamespaceUrl
-	nsEvents, err := NsWatch(done, url)
+	nsEvents, err := NsWatch(done, url, config)
 	if err != nil {
 		t.Error("Namespace watcher failed to start", err)
 	}

@@ -28,7 +28,7 @@ func main() {
 	if *server {
 		fmt.Println("Starting server")
 		nsUrl := fmt.Sprintf("%s/%s", config.Api.Url, config.Api.NamespaceUrl)
-		nsEvents, err := search.NsWatch(done, nsUrl)
+		nsEvents, err := search.NsWatch(done, nsUrl, config)
 		if err != nil {
 			log.Fatal("Namespace watcher failed to start", err)
 		}

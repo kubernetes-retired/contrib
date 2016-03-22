@@ -7,58 +7,68 @@ import (
 	"net/http"
 )
 
-// TODO will become obsolete as soon as handler will be redefined on searchRequest
-type IO struct {
-	req  chan<- SearchRequest
-	resp <-chan SearchResponse
-}
-
-// TODO add response channel into request
-// TODO maybe move request/responce defenitions to the server.go ?
+// SearchRequest associates search request data with channel that will be used
+// to fetch response from Processor
 type SearchRequest struct {
 	Tag  string              `json:"tag"`
 	Resp chan SearchResponse `json:",omitempty"`
 }
 
+// SearchResponse is a list of kubernetes objects
 type SearchResponse []KubeObject
 
-// TODO func responseWaiter is a goroutine that receives  http.responseWriter and KubeRequests from handlers
-// it will then pass requests to processor and await response
-// if responce arrives in time then it will be delivered to HTTP client
-// otherwise timeout will be served
-func (io IO) responseWaiter(w http.ResponseWriter, request SearchRequest) {
+func responseWaiter(w http.ResponseWriter, request SearchRequest, inbox chan<- SearchRequest, config Config) {
+	// Making channel for search responses
 	request.Resp = make(chan SearchResponse)
-	io.req <- request
-	fmt.Println("ResponseWaiter is waiting for answer")
-	response := <-request.Resp
 	defer close(request.Resp)
 
-	fmt.Println("Sending response ", response)
-	r, err := json.Marshal(response)
+	// Submitting search object to Processor goroutine
+	inbox <- request
+	if config.Server.Debug {
+		log.Println("ResponseWaiter awaiting for answer")
+	}
+
+	// Waiting for SearchResponse to arrive
+	// TODO handle timeouts here
+	response := <-request.Resp
+
+	if config.Server.Debug {
+		log.Println("Sending response ", response)
+	}
+
+	// Preparing response for sending back to client
+	result, err := json.Marshal(response)
 	if err != nil {
+		log.Println("Failed to marshal search response with json marshaller, that's weird as we expect it to come freshly decoded, ", response)
 		panic(err)
 	}
-	fmt.Println("Sending response ", string(r))
-	fmt.Fprint(w, string(r))
-	fmt.Fprint(w, "DEBUG")
+
+	if config.Server.Debug {
+		log.Println("Sending response ", string(result))
+	}
+	fmt.Fprint(w, string(result))
 }
 
-func (io IO) handler(w http.ResponseWriter, req *http.Request) {
-	decoder := json.NewDecoder(req.Body)
+func handler(w http.ResponseWriter, r *http.Request, inbox chan<- SearchRequest, config Config) {
+	decoder := json.NewDecoder(r.Body)
 	request := SearchRequest{}
 	err := decoder.Decode(&request)
 	if err != nil {
 		panic(err)
 	}
 
-	log.Printf("Server passing request %s  to Processor", request)
-	io.responseWaiter(w, request)
+	if config.Server.Debug {
+		log.Printf("Server passing request %s  to Processor", request)
+	}
+	responseWaiter(w, request, inbox, config)
 }
 
-// TODO search response channel not needed
-// handler can be a method of search request, IO not needed
-func Serve(config Config, req chan<- SearchRequest) {
-	io := IO{req: req}
-	http.HandleFunc("/", io.handler)
+// Serve responses from caching server.
+// Inbox is a channel for submitting SearchRequest's, there is an instance
+// of Process goroutine is listening on other side.
+func Serve(config Config, inbox chan<- SearchRequest) {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r, inbox, config)
+	})
 	log.Fatal(http.ListenAndServe(":"+config.Server.Port, nil))
 }

@@ -14,8 +14,11 @@ func manageResources(ns NsEvent, terminators map[string]chan Done, config Config
 	}
 }
 
-// Conductor manages a set of goroutines one per namespace
+// Conductor manages a set of goroutines one per namespace.
 func Conductor(in <-chan NsEvent, done <-chan Done, config Config) <-chan Event {
+	// Idea of this map is to keep termination channels organized
+	// so when DELETED event occurs on a namespace it would be possible
+	// to terminater related goroutine
 	var terminators map[string]chan Done
 	terminators = make(map[string]chan Done)
 
