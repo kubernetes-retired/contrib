@@ -5,7 +5,7 @@
   when: inventory_hostname in groups['masters'] + groups['nodes']
 
 - include: coreos.yml
-  when: ansible_lsb.id == "CoreOS"
+  when: ansible_distribution == "CoreOS"
 
 - include: firewalld.yml
   when: has_firewalld
