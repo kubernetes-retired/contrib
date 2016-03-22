@@ -469,9 +469,11 @@ spec:
     port: 53
     protocol: TCP
 """)
-num_heapster_nodes = 1
-metrics_memory = '{}Mi'.format(200 + num_heapster_nodes * 4)
-eventer_memory = '{}Ki'.format(200 * 1024 + num_heapster_nodes * 500)
+# num_heapster_nodes = 1
+# metrics_memory = '{}Mi'.format(200 + num_heapster_nodes * 4)
+# eventer_memory = '{}Ki'.format(200 * 1024 + num_heapster_nodes * 500)
+metrics_memory = '200Mi'
+eventer_memory = '200Mi'
 _write_asset('heapster-controller.yaml', """
 apiVersion: v1
 kind: ReplicationController
