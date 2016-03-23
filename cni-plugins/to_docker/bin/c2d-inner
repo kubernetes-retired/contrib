@@ -53,7 +53,7 @@ case "${CNI_COMMAND}" in
         CTR_PF=$(echo "${CTR_INFO}" | cut '-d ' -f3)
 
         # Produce the proper CNI output
-        echo > "${OUTFN}" <<EOF
+        cat > "${OUTFN}" <<EOF
 {
   "cniVersion": "0.1.0",
   "ip4": {
@@ -65,7 +65,7 @@ EOF
         ;;
     (DEL)
         docker network disconnect "${thenet}" "${CNI_CONTAINERID}"
-        echo > "${OUTFN}" <<EOF
+        cat > "${OUTFN}" <<EOF
 {
   "cniVersion": "0.1.0"
 }
