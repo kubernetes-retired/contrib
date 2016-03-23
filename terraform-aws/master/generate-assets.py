@@ -63,7 +63,7 @@ ExecStart=/opt/bin/kubelet-wrapper \\
 --api-servers=https://127.0.0.1:443 \\
 --register-node=false \\
 --allow-privileged=true \\
---kubeconfig=/home/core/.kube/conf \\
+--kubeconfig=/home/core/.kube/config \\
 --config=/etc/kubernetes/manifests \\
 --tls-cert-file=/etc/kubernetes/ssl/master-client.pem \\
 --tls-private-key-file=/etc/kubernetes/ssl/master-client-key.pem \\
@@ -118,7 +118,7 @@ spec:
     - proxy
     - --master=https://127.0.0.1:443
     - --proxy-mode=iptables
-    - --kubeconfig=/home/core/.kube/conf
+    - --kubeconfig=/home/core/.kube/config
     - --v=2
     securityContext:
       privileged: true
@@ -224,7 +224,7 @@ spec:
     - --cloud-provider=aws
     - --service-account-private-key-file=/etc/kubernetes/ssl/\
 master-client-key.pem
-    - --kubeconfig=/home/core/.kube/conf
+    - --kubeconfig=/home/core/.kube/config
     livenessProbe:
       httpGet:
         host: 127.0.0.1
@@ -272,7 +272,7 @@ spec:
     command:
     - /hyperkube
     - scheduler
-    - --kubeconfig=/home/core/.kube/conf
+    - --kubeconfig=/home/core/.kube/config
     livenessProbe:
       httpGet:
         host: 127.0.0.1
@@ -395,7 +395,7 @@ spec:
         args:
         # command = "/kube2sky"
         - --domain=cluster.local.
-        - --kubecfg-file=/home/core/.kube/conf
+        - --kubecfg-file=/home/core/.kube/config
       - name: skydns
         image: gcr.io/google_containers/skydns:2015-10-13-8c72f8c
         resources:

@@ -35,6 +35,7 @@ curl --cacert $CERTSDIR/ca.pem --cert $CERTSDIR/master-client.pem \
 https://127.0.0.1:2379/v2/keys/coreos.com/network/config && \
 create_namespace && \
 chmod +x /opt/bin/kubectl && \
+chmod +x /opt/bin/kubelet-wrapper && \
 echo "Creating DNS addon..." && \
 kubectl create -f /tmp/dns-addon.yaml && \
 echo "Creating Elasticsearch RC..." && \
