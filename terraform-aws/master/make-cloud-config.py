@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import subprocess
-import urllib.request
 import os.path
 import argparse
 
@@ -9,16 +8,10 @@ os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument('node_num', help='Specify node number')
+cl_parser.add_argument('discovery_url', help='Specify etcd discovery URL')
 cl_parser.add_argument(
     'private_ip', nargs='+', help='Specify private IPs of masters')
 args = cl_parser.parse_args()
-
-num_nodes = len(args.private_ip)
-with urllib.request.urlopen('https://discovery.etcd.io/new?size={}'.format(
-    num_nodes
-)) \
-        as response:
-    discovery_url = response.read().decode()
 
 kube_conf = """apiVersion: v1
 kind: Config
@@ -89,4 +82,4 @@ coreos:
 
         [Install]
         WantedBy=local.target
-""".format(kube_conf, discovery_url, args.private_ip[0],))
+""".format(kube_conf, args.discovery_url, args.private_ip[0],))

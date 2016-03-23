@@ -4,6 +4,7 @@ import sys
 import subprocess
 import argparse
 import os.path
+import urllib.request
 
 
 def _error(msg):
@@ -72,6 +73,12 @@ else:
             aws_key_name=args.key_name,
         ).dump(f)
 
+with urllib.request.urlopen('https://discovery.etcd.io/new?size={}'.format(
+    len(master_instances)
+)) \
+        as response:
+    discovery_url = response.read().decode()
+
 master_private_ips = [x.private_ip for x in master_instances]
 for i, master in enumerate(master_instances):
     private_ip = master_private_ips[i]
@@ -80,6 +87,7 @@ for i, master in enumerate(master_instances):
         str(i + 1),
         args.dns_address,
         args.region,
+        discovery_url,
         args.public_ip,
         private_ip,
     ] + list(set(master_private_ips).difference([private_ip])))
