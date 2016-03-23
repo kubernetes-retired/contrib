@@ -1,6 +1,6 @@
 package rsearch
 
-func manageResources(ns NsEvent, terminators map[string]chan Done, config Config, out chan Event) {
+func manageResources(ns Event, terminators map[string]chan Done, config Config, out chan Event) {
 	uid := ns.Object.Metadata.Uid
 	if ns.Type == "ADDED" {
 		done := make(chan Done)
@@ -18,14 +18,14 @@ func manageResources(ns NsEvent, terminators map[string]chan Done, config Config
 }
 
 // Conductor manages a set of goroutines one per namespace.
-func Conductor(in <-chan NsEvent, done <-chan Done, config Config) <-chan Event {
+func Conductor(in <-chan Event, done <-chan Done, config Config) <-chan Event {
 	// Idea of this map is to keep termination channels organized
 	// so when DELETED event occurs on a namespace it would be possible
 	// to terminater related goroutine
 	var terminators map[string]chan Done
 	terminators = make(map[string]chan Done)
 
-	ns := NsEvent{}
+	ns := Event{}
 	out := make(chan Event)
 
 	go func() {
