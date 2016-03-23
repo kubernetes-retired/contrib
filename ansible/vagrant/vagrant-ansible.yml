@@ -1,19 +1,45 @@
 - hosts: all
   sudo: yes
   tasks:
+    - name: "Set host public IP addresses fact"
+      set_fact:
+        hosts_public_ips: |-
+          {
+            {% for host in groups['all'] %}
+              {% if hostvars[host].ansible_default_ipv4.address is defined %}
+                "{{ host }}": "{{ hostvars[host].ansible_default_ipv4.address }}",
+              {% endif %}
+            {% endfor %}
+          }
+
+    # On VirtualBox eth0 is used for NAT-ed internet connection, and actual connectivity
+    # with the host and other VMs is done using eth1 interface.
+    - name: "Set host public IP addresses fact on Virtualbox"
+      set_fact:
+        hosts_public_ips: |-
+          {
+            {% for host in groups['all'] %}
+              {% if hostvars[host].ansible_eth1.ipv4.address is defined %}
+                "{{ host }}": "{{ hostvars[host].ansible_eth1.ipv4.address }}",
+              {% endif %}
+            {% endfor %}
+          }
+      when: vagrant_provider == "virtualbox"
+
     - name: "Build hosts file"
       lineinfile:
         dest=/etc/hosts
         regexp=".*{{ item }}$"
-        line="{{ hostvars[item].ansible_default_ipv4.address }} {{item}}"
+        line="{{ hosts_public_ips[item] }} {{item}}"
         state=present
-      when: hostvars[item].ansible_default_ipv4.address is defined
+      when: item in hosts_public_ips
       with_items: groups['all']
+
     - name: "Remove hostname from localhost line"
       replace:
         dest=/etc/hosts
         regexp="{{ item }} localhost?"
         replace="localhost"
-      when: hostvars[item].ansible_default_ipv4.address is defined
+      when: item in hosts_public_ips
       with_items: groups['all']
 

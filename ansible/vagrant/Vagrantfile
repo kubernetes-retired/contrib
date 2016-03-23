@@ -92,45 +92,50 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     end
   end
 
-  def common_ansible_provision(ansible)
-    # This sets up both flannel and kube.
+  def set_common_ansible_options(ansible)
     ansible.groups = $groups
-    ansible.playbook = "../cluster.yml"
     ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
     ansible.tags = $ansible_tags unless $ansible_tags.nil?
     ansible.raw_ssh_args = ['-o ControlMaster=no']
   end
 
-  def ansible_provision_openstack(os, override)
-    override.vm.provision :ansible do |ansible|
-      common_ansible_provision(ansible)
-    end
+  def vagrant_ansible_provision(ansible, provider)
+    set_common_ansible_options(ansible)
+    # This set up the vagrant hosts before we run the main playbook
+    # Today this just creates /etc/hosts so machines can talk via their
+    # 'internal' IPs instead of the openstack public ip.
+    ansible.playbook = "./vagrant-ansible.yml"
+
+    ansible.extra_vars = { vagrant_provider: provider.to_s }
   end
 
-  def ansible_provision_virtualbox(os, override)
-    override.vm.provision :ansible do |ansible|
-      common_ansible_provision(ansible)
+  def cluster_ansible_provision(ansible, provider)
+    set_common_ansible_options(ansible)
 
+    # This sets up both flannel and kube.
+    ansible.playbook = "../cluster.yml"
+
+    if provider == :virtualbox
       # for some hypervisors, like vbox, eth0 is not the right interface to bind to.
       ansible.extra_vars = { flannel_opts: "--iface=eth1" }
     end
   end
 
-  def ansible_provision_libvirt(os, override)
-    override.vm.provision :ansible do |ansible|
-      common_ansible_provision(ansible)
-    end
-  end
-
-  def ansible_provision(n)
+  def run_ansible_provision(n)
     n.vm.provider :openstack do |os, override|
-      ansible_provision_openstack(os, override)
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :openstack
+      end
     end
     n.vm.provider :virtualbox do |vb, override|
-      ansible_provision_virtualbox(vb, override)
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :virtualbox
+      end
     end
     n.vm.provider :libvirt do |lv, override|
-      ansible_provision_libvirt(lv, override)
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :libvirt
+      end
     end
   end
 
@@ -163,15 +168,13 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     set_provider(n)
 
     if $ansible_tags.nil?
-      # This set up the vagrant hosts before we run the main playbook
-      # Today this just creates /etc/hosts so machines can talk via their
-      # 'internal' IPs instead of the openstack public ip.
-      n.vm.provision :ansible do |ansible|
-        common_ansible_provision(ansible)
-        ansible.playbook = "./vagrant-ansible.yml"
+      run_ansible_provision n do |ansible, provider|
+        vagrant_ansible_provision(ansible, provider)
       end
     end
 
-    ansible_provision(n)
+    run_ansible_provision n do |ansible, provider|
+      cluster_ansible_provision(ansible, provider)
+    end
   end
 end
