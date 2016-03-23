@@ -70,7 +70,7 @@ func NsWatch(done <-chan Done, url string, config Config) (<-chan NsEvent, error
 	}
 	tick := time.Tick(1 * time.Second)
 	if config.Server.Debug {
-		fmt.Println("Received namespace related event from kubernetes", resp.Body)
+		log.Println("Received namespace related event from kubernetes", resp.Body)
 	}
 	dec := json.NewDecoder(resp.Body)
 	var e NsEvent
@@ -79,8 +79,20 @@ func NsWatch(done <-chan Done, url string, config Config) (<-chan NsEvent, error
 		for {
 			select {
 			case <-tick:
-				dec.Decode(&e)
-				out <- e
+				if err = dec.Decode(&e); err != nil {
+					if config.Server.Debug {
+						log.Printf("Failed to decode message from conenction %s due to %s\n. Attempting to re-establish", url, err)
+					}
+					out <- NsEvent{Type: "_CRASH"}
+					resp, err2 := http.Get(url)
+					if (err2 != nil) && (config.Server.Debug) {
+						log.Printf("Failed establish conenction %s due to %s\n.", url, err)
+					} else if err2 == nil {
+						dec = json.NewDecoder(resp.Body)
+					}
+				} else {
+					out <- e
+				}
 			case <-done:
 				return
 			}
@@ -110,8 +122,19 @@ func (ns KubeObject) Produce(out chan Event, done <-chan Done, config Config) er
 		for {
 			select {
 			case <-tick:
-				dec.Decode(&e)
-				out <- e
+				if err = dec.Decode(&e); err != nil {
+					if config.Server.Debug {
+						log.Printf("Failed to decode message from conenction %s due to %s\n. Attempting to re-establish", url, err)
+					}
+					resp, err2 := http.Get(url)
+					if (err2 != nil) && (config.Server.Debug) {
+						log.Printf("Failed establish conenction %s due to %s\n.", url, err)
+					} else if err2 == nil {
+						dec = json.NewDecoder(resp.Body)
+					}
+				} else {
+					out <- e
+				}
 			case <-done:
 				return
 			}

@@ -1,5 +1,3 @@
-// Conductor is a goroutine that consumes NsEvents
-// and maintains a proper number of Resource goroutines
 package rsearch
 
 func manageResources(ns NsEvent, terminators map[string]chan Done, config Config, out chan Event) {
@@ -11,6 +9,11 @@ func manageResources(ns NsEvent, terminators map[string]chan Done, config Config
 	} else if ns.Type == "DELETED" {
 		close(terminators[uid])
 		delete(terminators, uid)
+	} else if ns.Type == "_CRASH" {
+		for uid, c := range terminators {
+			close(c)
+			delete(terminators, uid)
+		}
 	}
 }
 
