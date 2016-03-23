@@ -36,9 +36,9 @@ with open(os.path.join('assets', args.node_num, 'cloud-config'), 'wt') as \
         fcloud_config:
     fcloud_config.write("""#cloud-config
 write_files:
-  - path: "/home/core/.kube/config"
-    permissions: "0600"
-    owner: "core"
+  - path: "/etc/kubernetes/kube.conf"
+    permissions: "0644"
+    owner: "root"
     content: |
 {0}
 coreos:

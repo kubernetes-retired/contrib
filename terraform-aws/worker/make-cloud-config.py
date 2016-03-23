@@ -10,9 +10,8 @@ os.chdir(os.path.abspath(os.path.dirname(__file__)))
 cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument('node_num', help='Specify node number')
 cl_parser.add_argument(
-    'master_private_ip', help='Specify private IP of masters')
+    'master_private_ip', help='Specify private IP of master')
 args = cl_parser.parse_args()
-
 
 with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
         as response:
@@ -34,7 +33,7 @@ contexts:
 - context:
     cluster: local
     user: kubelet
-""".format(args.master_private_ip[0])
+""".format(args.master_private_ip)
 kube_conf = '\n'.join([' ' * 6 + l for l in kube_conf.splitlines()])
 
 with open(os.path.join('assets', args.node_num, 'cloud-config'), 'wt') as \
@@ -42,9 +41,9 @@ with open(os.path.join('assets', args.node_num, 'cloud-config'), 'wt') as \
     fcloud_config.write("""#cloud-config
 
 write_files:
-  - path: "/home/core/.kube/config"
-    permissions: "0600"
-    owner: "core"
+  - path: "/etc/kubernetes/kube.conf"
+    permissions: "0644"
+    owner: "root"
     content: |
 {0}
 coreos:

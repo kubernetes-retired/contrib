@@ -183,6 +183,10 @@ resource "aws_instance" "staging_master{{instance.number}}" {
     destination = "/opt/bin/kubectl"
   }
 
+  provisioner "remote-exec" {
+    script = "master/finalize.sh"
+  }
+
   {% if instance.number == 1 %}
 
   /*TODO: Make conditional*/
@@ -215,7 +219,7 @@ resource "aws_instance" "staging_master{{instance.number}}" {
   }
 
   provisioner "remote-exec" {
-    script = "master/finalize.sh"
+    script = "master/oneshot-finalize.sh"
   }
   {% endif %}
 }
