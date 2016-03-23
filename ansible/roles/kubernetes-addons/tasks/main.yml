@@ -4,7 +4,8 @@
     python_bin: "/opt/bin/python"
   when: ansible_distribution == "CoreOS"
 
-- set_fact:
+- name: Set python_bin for other OS
+  set_fact:
     python_bin: "python"
   when: python_bin is not defined
 
