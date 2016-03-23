@@ -17,6 +17,7 @@ type Config struct {
 // Server is a config section describing server instance of this package.
 type Server struct {
 	Port  string
+	Host  string
 	Debug bool
 }
 

@@ -26,6 +26,7 @@ selector=podSelector
 
 [server]
 port=9700
+host=http://localhost
 debug=false
 `
 

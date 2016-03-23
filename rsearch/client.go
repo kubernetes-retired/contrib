@@ -12,7 +12,7 @@ import (
 // and resolves SearchRequest
 func SearchResource(config Config, req SearchRequest) SearchResponse {
 	// TODO need to make url configurable
-	url := "http://localhost:" + config.Server.Port
+	url := config.Server.Host + ":" + config.Server.Port
 	data := []byte(`{ "tag" : "` + req.Tag + `"}`)
 	if config.Server.Debug {
 		log.Println("Making request with", string(data))

@@ -14,12 +14,17 @@ import (
 func main() {
 	var cfgFile = flag.String("c", "", "Kubernetes reverse search config file")
 	var server = flag.Bool("s", false, "Start a server")
+	var host = flag.String("h", "", "Protocol://host for client to connect to")
 	var searchTag = flag.String("r", "", "Search resources by tag")
 	flag.Parse()
 
 	done := make(chan search.Done)
 
 	config, err := search.NewConfig(*cfgFile)
+	if *host != "" {
+		config.Server.Host = *host
+	}
+
 	if err != nil {
 		fmt.Printf("Can not read config file %s, %s\n", *cfgFile, err)
 		return
