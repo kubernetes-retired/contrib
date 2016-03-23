@@ -97,8 +97,12 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 		return err
 	}
 	path = filepath.Dir(path)
-	o.assignees[path] = sets.NewString(c.Assignees...)
-	//o.owners[path] = sets.NewString(c.Assignees...)
+	if len(c.Assignees) > 0 {
+		o.assignees[path] = sets.NewString(c.Assignees...)
+	}
+	//if len(c.Owners) > 0 {
+	//o.owners[path] = sets.NewString(c.Owners...)
+	//}
 	return nil
 }
 
