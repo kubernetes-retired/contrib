@@ -28,6 +28,7 @@ cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument('node_num', type=int, help='Specify node number')
 cl_parser.add_argument('dns_address', help='Specify DNS address')
 cl_parser.add_argument('region', help='Specify AWS region')
+cl_parser.add_argument('discovery_url', help='Specify etcd discovery URL')
 cl_parser.add_argument('public_ip', help='Specify public IP')
 cl_parser.add_argument('private_ip', nargs='+', help='Specify private IP(s)')
 args = cl_parser.parse_args()
@@ -40,15 +41,17 @@ subprocess.check_call([
 subprocess.check_call([
     './make-cloud-config.py',
     str(args.node_num),
+    args.discovery_url,
 ] + args.private_ip)
 
 etcd_endpoints = ['https://{0}:2379'.format(x) for x in args.private_ip]
+etcd_endpoints_str = ','.join(etcd_endpoints)
 _write_asset('options.env', """FLANNELD_IFACE={0}
 FLANNELD_ETCD_ENDPOINTS={1}
 FLANNELD_ETCD_CAFILE=/etc/ssl/etcd/ca.pem
 FLANNELD_ETCD_CERTFILE=/etc/ssl/etcd/master-client.pem
 FLANNELD_ETCD_KEYFILE=/etc/ssl/etcd/master-client-key.pem
-""".format(args.private_ip[0], etcd_endpoints))
+""".format(args.private_ip[0], etcd_endpoints_str))
 _write_asset('40-ExecStartPre-symlink.conf', """[Service]
 ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
 """)
@@ -297,14 +300,14 @@ spec:
 """)
 _write_asset('etcd.client.conf', """{{
   "cluster": {{
-    "machines": [ {} ]
+    "machines": [ {0} ]
   }},
   "config": {{
     "certFile": "/etc/ssl/etcd/master-client.pem",
     "keyFile": "/etc/ssl/etcd/master-client-key.pem"
    }}
 }}
-""".format(['"https://{0}:2379"'.format(x) for x in args.private_ip]))
+""".format(','.join(['"{}"'.format(x) for x in etcd_endpoints]),))
 _write_asset('dns-addon.yaml', """apiVersion: v1
 kind: ReplicationController
 metadata:
