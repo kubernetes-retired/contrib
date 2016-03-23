@@ -1,16 +1,7 @@
-variable "access_key" {}
-variable "secret_key" {}
-variable "region" {}
-variable "master_ip" {}
-variable "worker_ip" {}
-variable "aws_key_name" {}
-variable "dns_address" {}
-variable "public_ip" {}
-
 provider "aws" {
-  access_key = "${var.access_key}"
-  secret_key = "${var.secret_key}"
-  region = "${var.region}"
+  access_key = "{{access_key_id}}"
+  secret_key = "{{secret_access_key}}"
+  region = "{{region}}"
 }
 
 resource "aws_iam_instance_profile" "admin_profile" {
@@ -52,14 +43,14 @@ resource "aws_iam_role" "admin" {
 }
 EOF
 }
-
-resource "aws_instance" "staging_master" {
+{% for instance in master_instances %}
+resource "aws_instance" "staging_master{{instance.number}}" {
   ami = "ami-ec46a283"
-  instance_type = "t2.small"
-  user_data = "${file("master/assets/cloud-config")}"
-  private_ip = "${var.master_ip}"
+  instance_type = "t2.micro"
+  user_data = "${file("master/assets/{{instance.number}}/cloud-config")}"
+  private_ip = "{{instance.private_ip}}"
   vpc_security_group_ids = ["${aws_security_group.master.id}"]
-  key_name = "${var.aws_key_name}"
+  key_name = "{{aws_key_name}}"
   iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
 
   root_block_device {
@@ -67,13 +58,9 @@ resource "aws_instance" "staging_master" {
   }
 
   tags {
-    Name = "Staging Master"
+    Name = "Staging Master {{instance.number}}"
     Stack = "Staging"
     NodeType = "Master"
-  }
-
-  provisioner "local-exec" {
-    command = "./master/generate-assets.py ${var.dns_address} ${var.region} ${var.public_ip} ${aws_instance.staging_master.private_ip}"
   }
 
   connection {
@@ -87,47 +74,47 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "file" {
-    source = "master/assets/options.env"
+    source = "master/assets/{{instance.number}}/options.env"
     destination = "/etc/flannel/options.env"
   }
 
   provisioner "file" {
-    source = "master/assets/40-ExecStartPre-symlink.conf"
+    source = "master/assets/{{instance.number}}/40-ExecStartPre-symlink.conf"
     destination = "/etc/systemd/system/flanneld.service.d/40-ExecStartPre-symlink.conf"
   }
 
   provisioner "file" {
-    source = "master/assets/40-flannel.conf"
+    source = "master/assets/{{instance.number}}/40-flannel.conf"
     destination = "/etc/systemd/system/docker.service.d/40-flannel.conf"
   }
 
   provisioner "file" {
-    source = "master/assets/kubelet.service"
+    source = "master/assets/{{instance.number}}/kubelet.service"
     destination = "/etc/systemd/system/kubelet.service"
   }
 
   provisioner "file" {
-    source = "master/assets/kube-apiserver.service"
+    source = "master/assets/{{instance.number}}/kube-apiserver.service"
     destination = "/etc/systemd/system/kube-apiserver.service"
   }
 
   provisioner "file" {
-    source = "master/assets/kube-proxy.yaml"
+    source = "master/assets/{{instance.number}}/kube-proxy.yaml"
     destination = "/etc/kubernetes/manifests/kube-proxy.yaml"
   }
 
   provisioner "file" {
-    source = "master/assets/kube-podmaster.yaml"
+    source = "master/assets/{{instance.number}}/kube-podmaster.yaml"
     destination = "/etc/kubernetes/manifests/kube-podmaster.yaml"
   }
 
   provisioner "file" {
-    source = "master/assets/kube-controller-manager.yaml"
+    source = "master/assets/{{instance.number}}/kube-controller-manager.yaml"
     destination = "/srv/kubernetes/manifests/kube-controller-manager.yaml"
   }
 
   provisioner "file" {
-    source = "master/assets/kube-scheduler.yaml"
+    source = "master/assets/{{instance.number}}/kube-scheduler.yaml"
     destination = "/srv/kubernetes/manifests/kube-scheduler.yaml"
   }
 
@@ -137,7 +124,7 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "file" {
-    source = "master/assets/etcd.client.conf"
+    source = "master/assets/{{instance.number}}/etcd.client.conf"
     destination = "/etc/kubernetes/etcd.client.conf"
   }
 
@@ -152,42 +139,42 @@ resource "aws_instance" "staging_master" {
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master1-master-client.pem"
+    source = "master/assets/certificates/master{{instance.number}}-master-client.pem"
     destination = "/etc/kubernetes/ssl/master-client.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master1-master-client.pem"
+    source = "master/assets/certificates/master{{instance.number}}-master-client.pem"
     destination = "/etc/ssl/etcd/master-client.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master1-master-client-key.pem"
+    source = "master/assets/certificates/master{{instance.number}}-master-client-key.pem"
     destination = "/etc/kubernetes/ssl/master-client-key.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master1-master-client-key.pem"
+    source = "master/assets/certificates/master{{instance.number}}-master-client-key.pem"
     destination = "/etc/ssl/etcd/master-client-key.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master1-master-peer.pem"
+    source = "master/assets/certificates/master{{instance.number}}-master-peer.pem"
     destination = "/etc/kubernetes/ssl/master-peer.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master1-master-peer.pem"
+    source = "master/assets/certificates/master{{instance.number}}-master-peer.pem"
     destination = "/etc/ssl/etcd/master-peer.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master1-master-peer-key.pem"
+    source = "master/assets/certificates/master{{instance.number}}-master-peer-key.pem"
     destination = "/etc/kubernetes/ssl/master-peer-key.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master1-master-peer-key.pem"
+    source = "master/assets/certificates/master{{instance.number}}-master-peer-key.pem"
     destination = "/etc/ssl/etcd/master-peer-key.pem"
   }
 
@@ -195,6 +182,8 @@ resource "aws_instance" "staging_master" {
     source = "master/kubectl-1.1.8"
     destination = "/opt/bin/kubectl"
   }
+
+  {% if instance.number == 1 %}
 
   /*TODO: Make conditional*/
   provisioner "file" {
@@ -221,15 +210,16 @@ resource "aws_instance" "staging_master" {
 
   /*TODO: Parameterize somehow!*/
   provisioner "file" {
-    source = "quay-io-secret.yaml"
+    source = "master/assets/quay-io-secret.yaml"
     destination = "/tmp/quay-io-secret.yaml"
   }
 
   provisioner "remote-exec" {
     script = "master/finalize.sh"
   }
+  {% endif %}
 }
-
+{% endfor %}
 resource "aws_security_group" "master" {
   name = "master"
   description = "Allow traffic to Kubernetes master"
@@ -309,14 +299,14 @@ resource "aws_security_group" "worker" {
       cidr_blocks = ["0.0.0.0/0"]
   }
 }
-
-resource "aws_instance" "staging_worker" {
+{% for instance in worker_instances %}
+resource "aws_instance" "staging_worker{{instance['number']}}" {
   ami = "ami-ec46a283"
-  instance_type = "t2.small"
-  user_data = "${file("worker/assets/cloud-config")}"
-  private_ip = "${var.worker_ip}"
+  instance_type = "t2.micro"
+  user_data = "${file("worker/assets/{{instance.number}}/cloud-config")}"
+  private_ip = "{{instance.private_ip}}"
   vpc_security_group_ids  = ["${aws_security_group.worker.id}"]
-  key_name = "${var.aws_key_name}"
+  key_name = "{{aws_key_name}}"
   iam_instance_profile = "${aws_iam_instance_profile.admin_profile.id}"
 
   root_block_device {
@@ -324,13 +314,9 @@ resource "aws_instance" "staging_worker" {
   }
 
   tags {
-    Name = "Staging Worker"
+    Name = "Staging Worker {{instance.number}}"
     Stack = "Staging"
     NodeType = "Worker"
-  }
-
-  provisioner "local-exec" {
-    command = "./worker/generate-assets.py ${aws_instance.staging_worker.private_ip} ${aws_instance.staging_master.private_ip}"
   }
 
   connection {
@@ -344,27 +330,27 @@ resource "aws_instance" "staging_worker" {
   }
 
   provisioner "file" {
-    source = "worker/assets/options.env"
+    source = "worker/assets/{{instance.number}}/options.env"
     destination = "/etc/flannel/options.env"
   }
 
   provisioner "file" {
-    source = "worker/assets/40-ExecStartPre-symlink.conf"
+    source = "worker/assets/{{instance.number}}/40-ExecStartPre-symlink.conf"
     destination = "/etc/systemd/system/flanneld.service.d/40-ExecStartPre-symlink.conf"
   }
 
   provisioner "file" {
-    source = "worker/assets/40-flannel.conf"
+    source = "worker/assets/{{instance.number}}/40-flannel.conf"
     destination = "/etc/systemd/system/docker.service.d/40-flannel.conf"
   }
 
   provisioner "file" {
-    source = "worker/assets/kubelet.service"
+    source = "worker/assets/{{instance.number}}/kubelet.service"
     destination = "/etc/systemd/system/kubelet.service"
   }
 
   provisioner "file" {
-    source = "worker/assets/kube-proxy.yaml"
+    source = "worker/assets/{{instance.number}}/kube-proxy.yaml"
     destination = "/etc/kubernetes/manifests/kube-proxy.yaml"
   }
 
@@ -385,12 +371,12 @@ resource "aws_instance" "staging_worker" {
   }
 
   provisioner "file" {
-    source = "worker/assets/certificates/worker1-worker-client.pem"
+    source = "worker/assets/certificates/worker{{instance.number}}-worker-client.pem"
     destination = "/etc/ssl/etcd/worker.pem"
   }
 
   provisioner "file" {
-    source = "worker/assets/certificates/worker1-worker-client-key.pem"
+    source = "worker/assets/certificates/worker{{instance.number}}-worker-client-key.pem"
     destination = "/etc/ssl/etcd/worker-key.pem"
   }
 
@@ -400,12 +386,12 @@ resource "aws_instance" "staging_worker" {
   }
 
   provisioner "file" {
-    source = "worker/assets/certificates/worker1-worker-client.pem"
+    source = "worker/assets/certificates/worker{{instance.number}}-worker-client.pem"
     destination = "/etc/kubernetes/ssl/worker.pem"
   }
 
   provisioner "file" {
-    source = "worker/assets/certificates/worker1-worker-client-key.pem"
+    source = "worker/assets/certificates/worker{{instance.number}}-worker-client-key.pem"
     destination = "/etc/kubernetes/ssl/worker-key.pem"
   }
 
@@ -413,3 +399,4 @@ resource "aws_instance" "staging_worker" {
     script = "worker/finalize.sh"
   }
 }
+{% endfor %}

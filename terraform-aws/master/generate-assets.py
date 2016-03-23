@@ -4,7 +4,20 @@ import subprocess
 import argparse
 
 
-def _write_asset(filename, content, dirname='assets'):
+def _write_asset(filename, content):
+    dirname = os.path.join('assets', str(args.node_num))
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
+    with open(os.path.join(dirname, filename), 'wt') as f:
+        f.write(content)
+
+
+def _write_addon(filename, parent, content):
+    dirname = os.path.join('addons', parent)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+
     with open(os.path.join(dirname, filename), 'wt') as f:
         f.write(content)
 
@@ -12,23 +25,30 @@ def _write_asset(filename, content, dirname='assets'):
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 cl_parser = argparse.ArgumentParser()
+cl_parser.add_argument('node_num', type=int, help='Specify node number')
 cl_parser.add_argument('dns_address', help='Specify DNS address')
 cl_parser.add_argument('region', help='Specify AWS region')
 cl_parser.add_argument('public_ip', help='Specify public IP')
-cl_parser.add_argument('private_ip', help='Specify private IP')
+cl_parser.add_argument('private_ip', nargs='+', help='Specify private IP(s)')
 args = cl_parser.parse_args()
 
-subprocess.check_call(
-    ['./generate-certs.py', args.dns_address, args.region, args.public_ip,
-     args.private_ip, ]
-)
+subprocess.check_call([
+    './generate-certs.py', str(args.node_num), args.dns_address, args.region,
+    args.public_ip, args.private_ip[0],
+])
 
+subprocess.check_call([
+    './make-cloud-config.py',
+    str(args.node_num),
+] + args.private_ip)
+
+etcd_endpoints = ['https://{0}:2379'.format(x) for x in args.private_ip]
 _write_asset('options.env', """FLANNELD_IFACE={0}
-FLANNELD_ETCD_ENDPOINTS=https://{0}:2379
+FLANNELD_ETCD_ENDPOINTS={1}
 FLANNELD_ETCD_CAFILE=/etc/ssl/etcd/ca.pem
 FLANNELD_ETCD_CERTFILE=/etc/ssl/etcd/master-client.pem
 FLANNELD_ETCD_KEYFILE=/etc/ssl/etcd/master-client-key.pem
-""".format(args.private_ip))
+""".format(args.private_ip[0], etcd_endpoints))
 _write_asset('40-ExecStartPre-symlink.conf', """[Service]
 ExecStartPre=/usr/bin/ln -sf /etc/flannel/options.env /run/flannel/options.env
 """)
@@ -54,7 +74,7 @@ Restart=always
 RestartSec=10
 [Install]
 WantedBy=multi-user.target
-""".format(args.private_ip))
+""".format(args.private_ip[0]))
 _write_asset('kube-apiserver.service', """[Service]
 ExecStart=/usr/bin/docker run \\
 -p 443:443 \\
@@ -82,7 +102,7 @@ Restart=always
 RestartSec=10
 [Install]
 WantedBy=multi-user.target
-""".format(args.private_ip))
+""".format(args.private_ip[0]))
 _write_asset('kube-proxy.yaml', """apiVersion: v1
 kind: Pod
 metadata:
@@ -187,7 +207,7 @@ spec:
   - hostPath:
       path: /etc/kubernetes/ssl
     name: secrets
-""".format(args.private_ip))
+""".format(args.private_ip[0]))
 _write_asset('kube-controller-manager.yaml', """apiVersion: v1
 kind: Pod
 metadata:
@@ -277,31 +297,14 @@ spec:
 """)
 _write_asset('etcd.client.conf', """{{
   "cluster": {{
-    "machines": [ "https://{}:2379" ]
+    "machines": [ {} ]
   }},
   "config": {{
     "certFile": "/etc/ssl/etcd/master-client.pem",
     "keyFile": "/etc/ssl/etcd/master-client-key.pem"
    }}
 }}
-""".format(args.private_ip))
-_write_asset('kube.conf', """apiVersion: v1
-kind: Config
-clusters:
-- name: kube
-  cluster:
-    server: https://127.0.0.1:443
-    certificate-authority: /etc/kubernetes/ssl/ca.pem
-users:
-- name: kubelet
-  user:
-    client-certificate: /etc/kubernetes/ssl/master-client.pem
-    client-key: /etc/kubernetes/ssl/master-client-key.pem
-contexts:
-- context:
-    cluster: kube
-    user: kubelet
-""")
+""".format(['"https://{0}:2379"'.format(x) for x in args.private_ip]))
 _write_asset('dns-addon.yaml', """apiVersion: v1
 kind: ReplicationController
 metadata:
@@ -474,7 +477,7 @@ spec:
 # eventer_memory = '{}Ki'.format(200 * 1024 + num_heapster_nodes * 500)
 metrics_memory = '200Mi'
 eventer_memory = '200Mi'
-_write_asset('heapster-controller.yaml', """
+_write_addon('heapster-controller.yaml', 'cluster-monitoring', """
 apiVersion: v1
 kind: ReplicationController
 metadata:
@@ -523,8 +526,7 @@ spec:
             - /eventer
             - --source=kubernetes:''
             - --sink=influxdb:http://monitoring-influxdb:8086
-""".format(metrics_memory, eventer_memory),
-    dirname='addons/cluster-monitoring')
+""".format(metrics_memory, eventer_memory))
 # _write_asset('nginx-secret.yaml', """apiVersion: "v1"
 # kind: "Secret"
 # metadata:

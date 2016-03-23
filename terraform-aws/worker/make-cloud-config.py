@@ -2,19 +2,43 @@
 import subprocess
 import urllib.request
 import os.path
+import argparse
 
 
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
+
+cl_parser = argparse.ArgumentParser()
+cl_parser.add_argument('node_num', help='Specify node number')
+cl_parser.add_argument(
+    'master_private_ip', help='Specify private IP of masters')
+args = cl_parser.parse_args()
 
 
 with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
         as response:
     discovery_url = response.read().decode()
 
-with open('./assets/kube.conf', 'rt') as f:
-    kube_conf = f.read()
+kube_conf = """apiVersion: v1
+kind: Config
+clusters:
+- name: local
+  cluster:
+    certificate-authority: /etc/kubernetes/ssl/ca.pem
+    server: https://{}:443
+users:
+- name: kubelet
+  user:
+    client-certificate: /etc/kubernetes/ssl/worker.pem
+    client-key: /etc/kubernetes/ssl/worker-key.pem
+contexts:
+- context:
+    cluster: local
+    user: kubelet
+""".format(args.master_private_ip[0])
+kube_conf = '\n'.join([' ' * 6 + l for l in kube_conf.splitlines()])
 
-with open('./assets/cloud-config', 'wt') as fcloud_config:
+with open(os.path.join('assets', args.node_num, 'cloud-config'), 'wt') as \
+        fcloud_config:
     fcloud_config.write("""#cloud-config
 
 write_files:
@@ -22,7 +46,7 @@ write_files:
     permissions: "0600"
     owner: "core"
     content: |
-      {0}
+{0}
 coreos:
   units:
     - name: swap.service
@@ -42,4 +66,4 @@ coreos:
 
         [Install]
         WantedBy=local.target
-""".format(kube_conf)
+""".format(kube_conf))

@@ -7,6 +7,7 @@ make_dir () {
 sudo groupadd admin && \
 sudo usermod core -a -G admin && \
 sudo usermod root -a -G admin && \
+make_dir /opt/bin && \
 make_dir /etc/kubernetes && \
 make_dir /etc/kubernetes/ssl && \
 make_dir /etc/kubernetes/manifests && \

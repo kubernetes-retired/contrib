@@ -2,33 +2,59 @@
 import subprocess
 import urllib.request
 import os.path
+import argparse
 
 
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
+cl_parser = argparse.ArgumentParser()
+cl_parser.add_argument('node_num', help='Specify node number')
+cl_parser.add_argument(
+    'private_ip', nargs='+', help='Specify private IPs of masters')
+args = cl_parser.parse_args()
 
-with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
+num_nodes = len(args.private_ip)
+with urllib.request.urlopen('https://discovery.etcd.io/new?size={}'.format(
+    num_nodes
+)) \
         as response:
     discovery_url = response.read().decode()
 
-with open('./assets/kube.conf', 'rt') as f:
-    kube_conf = f.read()
+kube_conf = """apiVersion: v1
+kind: Config
+clusters:
+- name: kube
+  cluster:
+    server: https://127.0.0.1:443
+    certificate-authority: /etc/kubernetes/ssl/ca.pem
+users:
+- name: kubelet
+  user:
+    client-certificate: /etc/kubernetes/ssl/master-client.pem
+    client-key: /etc/kubernetes/ssl/master-client-key.pem
+contexts:
+- context:
+    cluster: kube
+    user: kubelet
+"""
+kube_conf = '\n'.join([' ' * 6 + l for l in kube_conf.splitlines()])
 
-with open('./assets/cloud-config', 'wt') as fcloud_config:
+with open(os.path.join('assets', args.node_num, 'cloud-config'), 'wt') as \
+        fcloud_config:
     fcloud_config.write("""#cloud-config
 write_files:
   - path: "/home/core/.kube/config"
     permissions: "0600"
     owner: "core"
     content: |
-      {0}
+{0}
 coreos:
   etcd2:
     discovery: {1}
-    advertise-client-urls: https://{2}:2379
     initial-advertise-peer-urls: https://{2}:2380
-    listen-client-urls: https://0.0.0.0:2379
     listen-peer-urls: https://{2}:2380
+    listen-client-urls: https://0.0.0.0:2379
+    advertise-client-urls: https://{2}:2379
   units:
     - name: etcd2.service
       command: start
@@ -63,4 +89,4 @@ coreos:
 
         [Install]
         WantedBy=local.target
-""".format(kube_conf, discovery_url, '172.31.29.111'))
+""".format(kube_conf, discovery_url, args.private_ip[0],))

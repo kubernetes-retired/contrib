@@ -6,6 +6,7 @@ import shutil
 
 
 cl_parser = argparse.ArgumentParser()
+cl_parser.add_argument('node_num', type=int, help='Specify node number')
 cl_parser.add_argument('private_ip', help='Specify node private IP')
 args = cl_parser.parse_args()
 
@@ -15,12 +16,12 @@ os.chdir('assets/certificates')
 
 print(os.listdir('.'))
 
-with file('worker1-worker.json', 'wt') as f:
+with file('worker{0}-worker.json'.format(args.node_num), 'wt') as f:
     f.write("""{{
-  "CN": "worker1.staging.realtimemusic.com",
+  "CN": "worker{0}.staging.realtimemusic.com",
   "hosts": [
-    "{0}",
-    "ip-{1}.eu-central-1.compute.internal",
+    "{1}",
+    "ip-{2}.eu-central-1.compute.internal",
     "127.0.0.1"
   ],
   "key": {{
@@ -35,12 +36,10 @@ with file('worker1-worker.json', 'wt') as f:
     }}
   ]
 }}
-""".format(args.private_ip, args.private_ip.replace('.', '-')))
-
-# cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client-server worker1-worker.json | cfssljson -bare worker1-worker-client
+""".format(args.node_num, args.private_ip, args.private_ip.replace('.', '-')))
 
 subprocess.check_call(
     'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json '
-    '-profile=client-server worker1-worker.json | '
-    'cfssljson -bare worker1-worker-client',
+    '-profile=client-server worker{0}-worker.json | '
+    'cfssljson -bare worker{0}-worker-client'.format(args.node_num),
     shell=True)

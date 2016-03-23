@@ -6,6 +6,7 @@ import shutil
 
 
 cl_parser = argparse.ArgumentParser()
+cl_parser.add_argument('node_num', type=int, help='Specify node number')
 cl_parser.add_argument('dns_address', help='Specify app\'s DNS address')
 cl_parser.add_argument('region', help='Specify AWS region')
 cl_parser.add_argument('public_ip', help='Specify node public IP')
@@ -16,14 +17,14 @@ os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 os.chdir('assets/certificates')
 
-with file('master1-master.json', 'wt') as f:
+with file('master{0}-master.json'.format(args.node_num), 'wt') as f:
     f.write("""{{
-  "CN": "master1.{0}",
+  "CN": "master{0}.{1}",
   "hosts": [
-    "{0}",
     "{1}",
     "{2}",
-    "ip-{3}.{4}.compute.internal",
+    "{3}",
+    "ip-{4}.{5}.compute.internal",
     "10.3.0.1",
     "127.0.0.1",
     "localhost"
@@ -41,7 +42,7 @@ with file('master1-master.json', 'wt') as f:
   ]
 }}
 """.format(
-            args.dns_address, args.public_ip, args.private_ip,
+            args.node_num, args.dns_address, args.public_ip, args.private_ip,
             args.private_ip.replace('.', '-'),
             args.region
             ))
@@ -51,11 +52,11 @@ subprocess.check_call(
     shell=True)
 subprocess.check_call(
     'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json '
-    '-profile=client-server master1-master.json | '
-    'cfssljson -bare master1-master-peer',
+    '-profile=client-server master{0}-master.json | '
+    'cfssljson -bare master{0}-master-peer'.format(args.node_num),
     shell=True)
 subprocess.check_call(
     'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json '
-    '-profile=client-server master1-master.json | '
-    'cfssljson -bare master1-master-client',
+    '-profile=client-server master{0}-master.json | '
+    'cfssljson -bare master{0}-master-client'.format(args.node_num),
     shell=True)

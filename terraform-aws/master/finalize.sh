@@ -54,4 +54,6 @@ kubectl create -f /tmp/influxdb-grafana-controller.yaml && \
 echo "Creating InfluxDB Service..." && \
 kubectl create -f /tmp/influxdb-service.yaml && \
 echo "Creating Grafana Service..." && \
-kubectl create -f /tmp/grafana-service.yaml
+kubectl create -f /tmp/grafana-service.yaml && \
+echo "Creating Quay secret..." && \
+kubectl create -f /tmp/quay-io-secret.yaml
