@@ -271,6 +271,24 @@ resource "aws_security_group" "master" {
   }
 }
 
+resource "aws_security_group_rule" "allow_all_master_master" {
+  type = "ingress"
+  from_port = 0
+  to_port = 65535
+  protocol = "-1"
+  source_security_group_id = "${aws_security_group.master.id}"
+  security_group_id = "${aws_security_group.master.id}"
+}
+
+resource "aws_security_group_rule" "allow_all_master_worker" {
+  type = "ingress"
+  from_port = 0
+  to_port = 65535
+  protocol = "-1"
+  source_security_group_id = "${aws_security_group.worker.id}"
+  security_group_id = "${aws_security_group.master.id}"
+}
+
 resource "aws_security_group" "worker" {
   name = "worker"
   description = "Allow traffic to Kubernetes worker"
@@ -302,6 +320,24 @@ resource "aws_security_group" "worker" {
       protocol = "-1"
       cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "aws_security_group_rule" "allow_all_worker_worker" {
+  type = "ingress"
+  from_port = 0
+  to_port = 65535
+  protocol = "-1"
+  source_security_group_id = "${aws_security_group.worker.id}"
+  security_group_id = "${aws_security_group.worker.id}"
+}
+
+resource "aws_security_group_rule" "allow_all_worker_master" {
+  type = "ingress"
+  from_port = 0
+  to_port = 65535
+  protocol = "-1"
+  source_security_group_id = "${aws_security_group.master.id}"
+  security_group_id = "${aws_security_group.worker.id}"
 }
 {% for instance in worker_instances %}
 resource "aws_instance" "staging_worker{{instance['number']}}" {
