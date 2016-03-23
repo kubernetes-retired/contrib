@@ -46,6 +46,7 @@ pr-mungers
 rate-limit
 rate-limit-burst
 relnote-filter
+repo-path
 required-contexts
 right-build-number
 running-in-cluster
