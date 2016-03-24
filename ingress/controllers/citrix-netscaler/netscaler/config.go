@@ -120,7 +120,12 @@ func ConfigureContentVServer(csvserverName string, domainName string, path strin
 
 	//create a content switch policy to use the action
 	policyName := "switch_to_lb_" + lbName + "_policy"
-	rule := fmt.Sprintf("HTTP.REQ.HOSTNAME.EQ(\"%s\") && HTTP.REQ.URL.PATH.EQ(\"%s\")", domainName, path)
+	var rule string
+	if path != "" {
+		rule = fmt.Sprintf("HTTP.REQ.HOSTNAME.EQ(\"%s\") && HTTP.REQ.URL.PATH.EQ(\"%s\")", domainName, path)
+	} else {
+		rule = fmt.Sprintf("HTTP.REQ.HOSTNAME.EQ(\"%s\")", domainName)
+	}
 	nsCsPolicy := &struct {
 		Cspolicy NetscalerCsPolicy `json:"cspolicy"`
 	}{Cspolicy: NetscalerCsPolicy{PolicyName: policyName, Rule: rule, Action: actionName}}
