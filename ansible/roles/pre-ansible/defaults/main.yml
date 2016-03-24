@@ -1,3 +1,5 @@
 # The directory where scripts used for bootstrapping CoreOS
 # reside.
 bootstrap_script_dir: /opt/bin
+pypy_version: 2.4.0
+pypy_base_url: https://bitbucket.org/pypy/pypy/downloads/
