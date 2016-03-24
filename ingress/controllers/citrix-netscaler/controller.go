@@ -21,22 +21,15 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/chiradeep/contrib/ingress/controllers/citrix-netscaler/netscaler"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
 )
 
-func main() {
+func loop(csvserverName string, kubeClient *client.Client) {
 	var ingClient client.IngressInterface
-	config := client.Config{
-		Host:     "https://127.0.0.1:6443",
-		Insecure: true,
-	}
-	kubeClient, err := client.New(&config)
-	if err != nil {
-		log.Fatalln("Can't connect to Kubernetes API:", err)
-	}
 	ingClient = kubeClient.Extensions().Ingress(api.NamespaceAll)
 	rateLimiter := util.NewTokenBucketRateLimiter(0.1, 1)
 	known := &extensions.IngressList{}
@@ -53,27 +46,27 @@ func main() {
 			continue
 		}
 		known = ingresses
-		/*
-			{{range $ing := .Items}}
-			{{range $rule := $ing.Spec.Rules}}
-			  server {
-			    listen 80;
-			    server_name {{$rule.Host}};
-			{{ range $path := $rule.HTTP.Paths }}
-			    location {{$path.Path}} {
-			      proxy_set_header Host $host;
-			      proxy_pass http://{{$path.Backend.ServiceName}}.{{$ing.Namespace}}.svc.cluster.local:{{$path.Backend.ServicePort}};
-			    }{{end}}
-			  }{{end}}{{end}}
-		*/
 		for _, ing := range ingresses.Items {
 			for _, rule := range ing.Spec.Rules {
 				host := rule.Host
 				for _, path := range rule.HTTP.Paths {
 					path_ := path.Path
 					serviceName := path.Backend.ServiceName
-					servicePort := path.Backend.ServicePort
-					log.Printf("Host: %s, path: %s, serviceName: %s, servicePort: %d", host, path_, serviceName, servicePort.IntValue())
+					servicePort := path.Backend.ServicePort.IntValue()
+					log.Printf("Host: %s, path: %s, serviceName: %s, servicePort: %d", host, path_, serviceName, servicePort)
+					// Need to resolve the service IP
+					s, err := kubeClient.Services(api.NamespaceDefault).Get(serviceName)
+					if err != nil {
+						log.Printf("Failed to retrieve Service %s", serviceName)
+						continue
+					}
+					serviceIp := s.Spec.ClusterIP
+					if serviceIp == "None" {
+						log.Printf("Service %s has service IP of None", serviceName)
+					}
+					log.Printf("Host: %s, path: %s, serviceName: %s, serviceIp: %s servicePort: %d", host, path_, serviceName, serviceIp, servicePort)
+					netscaler.ConfigureContentVServer(csvserverName, host, path_, serviceIp, serviceName, servicePort)
+					//TODO adjust priority for each rule
 				}
 
 			}
@@ -82,4 +75,18 @@ func main() {
 		os.Exit(1)
 	}
 
+}
+
+func main() {
+	config := client.Config{
+		Host:     "https://127.0.0.1:6443",
+		Insecure: true,
+	}
+	kubeClient, err := client.New(&config)
+	if err != nil {
+		log.Fatalln("Can't connect to Kubernetes API:", err)
+	}
+	csvserver := os.Getenv("NS_CSVSERVER")
+	//netscaler.UnconfigureContentVServer("csvserver_foobar", "foo.com", "/foo", "10.220.160.254", "fooService", 80)
+	loop(csvserver, kubeClient)
 }
