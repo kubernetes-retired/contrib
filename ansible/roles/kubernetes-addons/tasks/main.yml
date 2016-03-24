@@ -1,16 +1,4 @@
 ---
-- name: Set default python_bin
-  set_fact:
-    python_bin: "python"
-
-- name: Set python_bin fact for CoreOS
-  set_fact:
-    python_bin: "/opt/bin/python"
-  when: is_coreos
-  set_fact:
-    python_bin: "python"
-  when: python_bin is not defined
-
 - name: Assures addons dir exists
   file: path={{ kube_addons_dir }} state=directory
 
