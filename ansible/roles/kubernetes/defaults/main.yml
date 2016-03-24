@@ -1,3 +1,6 @@
+# Version of Kubernetes binaries
+kube_version: 1.1.4
+
 # The port that the Kubernetes apiserver component listens on.
 kube_master_api_port: 443
 
@@ -13,6 +16,9 @@ kube_script_dir: /usr/libexec/kubernetes
 # change it. Things like the systemd scripts are hard coded to
 # look in here. Don't do it.
 kube_config_dir: /etc/kubernetes
+
+# The URL to download Kubernetes binaries from.
+kube_download_url: https://github.com/kubernetes/kubernetes/releases/download/v{{ kube_version }}/kubernetes.tar.gz
 
 # This is where all the cert scripts and certs will be located
 kube_cert_dir: "{{ kube_config_dir }}/certs"

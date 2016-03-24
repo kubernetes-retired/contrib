@@ -33,6 +33,7 @@ import (
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers/e2e"
 
+	"github.com/NYTimes/gziphandler"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 )
@@ -92,10 +93,11 @@ type submitQueueStatus struct {
 //  PR must have LGTM after the last commit
 //  PR must have passed all github CI checks
 //  if user not in whitelist PR must have "ok-to-merge"
-//  The google internal jenkins instance must be passing the JenkinsJobs e2e tests
+//  The google internal jenkins instance must be passing the JobNames e2e tests
 type SubmitQueue struct {
 	githubConfig           *github.Config
-	JenkinsJobs            []string
+	JobNames               []string
+	WeakStableJobNames     []string
 	JenkinsHost            string
 	Whitelist              string
 	WhitelistOverride      string
@@ -151,23 +153,24 @@ func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Feat
 
 	sq.lastE2EStable = true
 	e2e := &e2e.E2ETester{
-		JenkinsJobs: sq.JenkinsJobs,
-		JenkinsHost: sq.JenkinsHost,
-		BuildStatus: map[string]e2e.BuildInfo{},
+		JobNames:           sq.JobNames,
+		JenkinsHost:        sq.JenkinsHost,
+		WeakStableJobNames: sq.WeakStableJobNames,
+		BuildStatus:        map[string]e2e.BuildInfo{},
 	}
 	sq.e2e = e2e
 
 	if len(config.Address) > 0 {
 		if len(config.WWWRoot) > 0 {
-			http.Handle("/", http.FileServer(http.Dir(config.WWWRoot)))
+			http.Handle("/", gziphandler.GzipHandler(http.FileServer(http.Dir(config.WWWRoot))))
 		}
-		http.HandleFunc("/prs", sq.servePRs)
-		http.HandleFunc("/history", sq.serveHistory)
-		http.HandleFunc("/users", sq.serveUsers)
-		http.HandleFunc("/github-e2e-queue", sq.serveGithubE2EStatus)
-		http.HandleFunc("/google-internal-ci", sq.serveGoogleInternalStatus)
-		http.HandleFunc("/merge-info", sq.serveMergeInfo)
-		http.HandleFunc("/priority-info", sq.servePriorityInfo)
+		http.Handle("/prs", gziphandler.GzipHandler(http.HandlerFunc(sq.servePRs)))
+		http.Handle("/history", gziphandler.GzipHandler(http.HandlerFunc(sq.serveHistory)))
+		http.Handle("/users", gziphandler.GzipHandler(http.HandlerFunc(sq.serveUsers)))
+		http.Handle("/github-e2e-queue", gziphandler.GzipHandler(http.HandlerFunc(sq.serveGithubE2EStatus)))
+		http.Handle("/google-internal-ci", gziphandler.GzipHandler(http.HandlerFunc(sq.serveGoogleInternalStatus)))
+		http.Handle("/merge-info", gziphandler.GzipHandler(http.HandlerFunc(sq.serveMergeInfo)))
+		http.Handle("/priority-info", gziphandler.GzipHandler(http.HandlerFunc(sq.servePriorityInfo)))
 		config.ServeDebugStats("/stats")
 		go http.ListenAndServe(config.Address, nil)
 	}
@@ -208,7 +211,7 @@ func (sq *SubmitQueue) EachLoop() error {
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringSliceVar(&sq.JenkinsJobs, "jenkins-jobs", []string{
+	cmd.Flags().StringSliceVar(&sq.JobNames, "jenkins-jobs", []string{
 		"kubernetes-build",
 		"kubernetes-test-go",
 		"kubernetes-e2e-gce",
@@ -218,6 +221,9 @@ func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 		"kubernetes-e2e-gce-scalability",
 		"kubernetes-kubemark-5-gce",
 	}, "Comma separated list of jobs in Jenkins to use for stability testing")
+	cmd.Flags().StringSliceVar(&sq.WeakStableJobNames, "weak-stable-jobs", []string{
+		"kubernetes-kubemark-500-gce",
+	}, "Comma separated list of jobs in Jenkins to use for stability testing that needs only weak success")
 	cmd.Flags().StringVar(&sq.JenkinsHost, "jenkins-host", "http://jenkins-master:8080", "The URL for the jenkins job to watch")
 	cmd.Flags().StringSliceVar(&sq.RequiredStatusContexts, "required-contexts", []string{}, "Comma separate list of status contexts required for a PR to be considered ok to merge")
 	cmd.Flags().StringVar(&sq.E2EStatusContext, "e2e-status-context", jenkinsE2EContext, "The name of the github status context for the e2e PR Builder")
@@ -230,6 +236,11 @@ func (sq *SubmitQueue) e2eStable() bool {
 	wentUnstable := false
 
 	stable := sq.e2e.Stable()
+	gcsStable := sq.e2e.GCSBasedStable()
+
+	if stable != gcsStable {
+		glog.Errorf("GCS stable check returned different value than Jenkins.")
+	}
 
 	sq.Lock()
 	last := sq.lastE2EStable
