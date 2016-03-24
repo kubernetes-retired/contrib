@@ -106,7 +106,12 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     # 'internal' IPs instead of the openstack public ip.
     ansible.playbook = "./vagrant-ansible.yml"
 
-    ansible.extra_vars = { vagrant_provider: provider.to_s }
+    if provider == :virtualbox
+      # On VirtualBox eth0 is used for NAT-ed internet connection,
+      # and actual connectivity with the host and other VMs is done
+      # using eth1 interface.
+      ansible.extra_vars = { public_iface: "eth1" }
+    end
   end
 
   def cluster_ansible_provision(ansible, provider)
@@ -116,7 +121,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     ansible.playbook = "../cluster.yml"
 
     if provider == :virtualbox
-      # for some hypervisors, like vbox, eth0 is not the right interface to bind to.
+      # On VirtualBox eth0 is used for NAT-ed internet connection,
+      # and actual connectivity with the host and other VMs is done
+      # using eth1 interface.
       ansible.extra_vars = { flannel_opts: "--iface=eth1" }
     end
   end
