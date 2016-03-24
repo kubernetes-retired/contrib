@@ -47,6 +47,7 @@ func loop(csvserverName string, kubeClient *client.Client) {
 			continue
 		}
 		known = ingresses
+		priority := 10
 		for _, ing := range ingresses.Items {
 			for _, rule := range ing.Spec.Rules {
 				host := rule.Host
@@ -65,9 +66,9 @@ func loop(csvserverName string, kubeClient *client.Client) {
 					if serviceIp == "None" {
 						log.Printf("Service %s has service IP of None", serviceName)
 					}
-					log.Printf("Host: %s, path: %s, serviceName: %s, serviceIp: %s servicePort: %d", host, path_, serviceName, serviceIp, servicePort)
-					netscaler.ConfigureContentVServer(csvserverName, host, path_, serviceIp, serviceName, servicePort)
-					//TODO adjust priority for each rule
+					log.Printf("Host: %s, path: %s, serviceName: %s, serviceIp: %s servicePort: %d priority %d", host, path_, serviceName, serviceIp, servicePort, priority)
+					netscaler.ConfigureContentVServer(csvserverName, host, path_, serviceIp, serviceName, servicePort, priority)
+					priority += 10
 				}
 
 			}

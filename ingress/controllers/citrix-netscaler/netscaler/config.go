@@ -51,7 +51,7 @@ type NetscalerCsVserver struct {
 	Port        int    `json:"port"`
 }
 
-func ConfigureContentVServer(csvserverName string, domainName string, path string, serviceIp string, serviceName string, servicePort int) {
+func ConfigureContentVServer(csvserverName string, domainName string, path string, serviceIp string, serviceName string, servicePort int, priority int) {
 	lbName := strings.Replace(domainName, ".", "_", -1) + "_lb"
 
 	//create a Netscaler Service that represents the Kubernetes service
@@ -142,7 +142,7 @@ func ConfigureContentVServer(csvserverName string, domainName string, path strin
 	//bind the content switch policy to the content switching vserver
 	nsCsPolicyBinding := &struct {
 		Csvserver_cspolicy_binding NetscalerCsPolicyBinding `json:"csvserver_cspolicy_binding"`
-	}{Csvserver_cspolicy_binding: NetscalerCsPolicyBinding{Name: csvserverName, PolicyName: policyName, Priority: 10, Bindpoint: "REQUEST"}}
+	}{Csvserver_cspolicy_binding: NetscalerCsPolicyBinding{Name: csvserverName, PolicyName: policyName, Priority: priority, Bindpoint: "REQUEST"}}
 	resourceJson, err = json.Marshal(nsCsPolicyBinding)
 	resourceType = "csvserver_cspolicy_binding"
 
