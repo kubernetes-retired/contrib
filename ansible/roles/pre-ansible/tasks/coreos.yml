@@ -3,10 +3,6 @@
   register: need_bootstrap
   ignore_errors: True
 
-- name: CoreOS | Run bootstrap.sh
-  script: bootstrap.sh
-  environment:
-    BOOTSTRAP_SCRIPT_DIR: "{{ bootstrap_script_dir }}"
-    http_proxy: "{{ http_proxy|default('') }}"
-    https_proxy: "{{ https_proxy|default('') }}"
+- include: coreos_bootstrap.yml
   when: need_bootstrap | failed
+
