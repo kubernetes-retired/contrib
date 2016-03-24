@@ -6,8 +6,8 @@ After=network.target
 Type=simple
 WorkingDirectory=/var/lib/etcd/
 EnvironmentFile=-/etc/etcd/etcd.conf
-User=etcd
-ExecStart=/usr/bin/etcd
+User=root
+ExecStart=/usr/local/bin/etcd
 Restart=on-failure
 LimitNOFILE=65536
 

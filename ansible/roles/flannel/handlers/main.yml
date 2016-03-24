@@ -41,6 +41,7 @@
   register: docker_driver
   when: has_docker.rc|int != 2
   changed_when: false
+  failed_when: false
 
   # TODO: fail if no --selinux-enabled in 'OPTIONS'
 - name: docker fix start on btrfs

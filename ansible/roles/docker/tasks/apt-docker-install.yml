@@ -7,7 +7,7 @@
   register: add_apt_source_docker
 
 - name: Update repository information
-  command: apt-get update
+  apt: update_cache=yes cache_valid_time=1
   when: add_apt_source_docker.changed
 
 - name: Install docker engine

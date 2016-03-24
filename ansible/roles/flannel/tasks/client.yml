@@ -1,17 +1,28 @@
 ---
+
 - name: Install flannel
-  action: "{{ ansible_pkg_mgr }}"
-  args:
-        name: flannel
-        state: latest
-  when: not is_atomic
-
+#  action: "{{ ansible_pkg_mgr }}"
+#  args:
+#        name: flannel
+#        state: latest
+#  when: not is_atomic
+  copy: src=binaries/flannel-0.5.5/flanneld dest=/usr/bin/flanneld mode=755
+  
 - name: Install Flannel config file
-  template: src=flanneld.j2 dest=/etc/sysconfig/flanneld
+#  template: src=flanneld.j2 dest=/etc/sysconfig/flanneld
+  template: src=flanneld.j2 dest=/etc/default/flanneld
+
+- name: Install Flannel systemd file
+  template: src=flanneld.service dest=/etc/systemd/system/flanneld.service
   notify:
     - restart flannel
 
+- name: install Docker systemd file, referring to flannel generated docker network specs
+  template: src=docker.service dest=/etc/systemd/system/docker.service
+  
 - name: Launch Flannel
-  service: name=flanneld state=started enabled=yes
+  service: name=flanneld state=restarted enabled=yes
   notify:
     - restart flannel
+    
+

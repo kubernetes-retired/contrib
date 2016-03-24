@@ -1,0 +1,24 @@
+[Unit]
+Description=Docker Application Container Engine
+Documentation=https://docs.docker.com
+After=network.target docker.socket
+Requires=docker.socket
+
+[Service]
+EnvironmentFile=-/run/flannel/docker
+Type=notify
+ExecStart=/usr/bin/docker daemon -H fd:// \
+	$DOCKER_OPT_BIP \
+	$DOCKER_OPT_IPMASQ \
+	$DOCKER_OPT_MTU \
+	$DOCKER_NETWORK_OPTIONS
+
+MountFlags=slave
+LimitNOFILE=1048576
+LimitNPROC=1048576
+LimitCORE=infinity
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+

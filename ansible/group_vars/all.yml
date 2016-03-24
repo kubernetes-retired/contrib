@@ -35,7 +35,7 @@ insecure_registrys:
 # Kubernetes services will get fake IP addresses from this range.
 # This range must not conflict with anything in your infrastructure. These
 # addresses do not need to be routable and must just be an unused block of space.
-kube_service_addresses: 10.254.0.0/16
+kube_service_addresses: 172.30.0.0/16
 
 # Network implementation (flannel|opencontrail)
 networking: flannel
@@ -57,12 +57,15 @@ flannel_subnet: 172.16.0.0
 # Flannel internal network total size (optional). This is the prefix of the
 # entire flannel overlay network.  So the entirety of 172.16.0.0/12 must be
 # unused in your environment.
-flannel_prefix: 12
+flannel_prefix: 16
 
 # Flannel internal network (optional). This is the size allocation that flannel
 # will give to each node on your network.  With these defaults you should have
 # room for 4096 nodes with 254 pods per node.
 flannel_host_prefix: 24
+
+# the interface/ip to use for flannel inter-node communication
+flannel_iface: eth1
 
 # Set to false to disable logging with elasticsearch
 cluster_logging: true

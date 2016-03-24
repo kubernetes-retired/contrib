@@ -1,0 +1,18 @@
+[Unit]
+Description=Flanneld overlay address etcd agent
+After=network.target
+After=etcd.service
+
+[Service]
+Type=notify
+Restart=always
+RestartSec=3
+
+EnvironmentFile=/etc/default/flanneld
+EnvironmentFile=-/etc/default/docker-network
+ExecStart=/usr/bin/flanneld -iface=${FLANNEL_IFACE} -etcd-endpoints=${FLANNEL_ETCD} -etcd-prefix=${FLANNEL_ETCD_KEY} $FLANNEL_OPTIONS
+ExecStartPost=/usr/libexec/flannel/mk-docker-opts.sh -k DOCKER_NETWORK_OPTIONS -d /run/flannel/docker
+
+[Install]
+WantedBy=multi-user.target
+

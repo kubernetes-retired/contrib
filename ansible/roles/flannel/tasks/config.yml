@@ -7,13 +7,25 @@
   run_once: true
   delegate_to: "{{ groups['etcd'][0] }}"
 
+
+# flannel docker opts script
+- name: create dir 
+  file: path=/usr/libexec/flannel state=directory
+- name: place mk-docker-opts.sh
+  copy: src=binaries/flannel-0.5.5/mk-docker-opts.sh dest=/usr/libexec/flannel/ mode=755
+
+- name: Create flannel service file
+  template: src=flanneld.service dest=/etc/systemd/system/flanneld.service
+  run_once: true
+  delegate_to: "{{ groups['etcd'][0] }}"
+
 - name: Create flannel config file to go in etcd
   template: src=flannel-conf.json.j2 dest={{ conf_file }}
   run_once: true
   delegate_to: "{{ groups['etcd'][0] }}"
 
 - name: Load the flannel config file into etcd
-  shell: "/usr/bin/etcdctl --no-sync --peers={{ peers }} set {{ conf_loc }} < {{ conf_file }}"
+  shell: "etcdctl --no-sync --peers={{ peers }} set {{ conf_loc }} < {{ conf_file }}"
   run_once: true
   delegate_to: "{{ groups['etcd'][0] }}"
 

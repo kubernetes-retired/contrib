@@ -2,3 +2,5 @@ myinventory
 inventory
 *.swp
 *~
+binaries
+host_vars

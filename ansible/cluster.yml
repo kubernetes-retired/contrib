@@ -3,6 +3,15 @@
 # with the default addons.
 
 - hosts: all
+  sudo: yes
+  gather_facts: true
+  tasks: 
+
+    - lineinfile: dest=/etc/hosts line="{{hostvars[groups['masters'][0]].static_lan_ip}}    {{groups['masters'][0]}}"
+
+    - apt: name=util-linux state=installed
+
+- hosts: all
   gather_facts: false
   sudo: yes
   roles:
