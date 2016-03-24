@@ -19,9 +19,9 @@ etcd_peer_key_file: "{{ etcd_conf_dir }}/peer.key"
 etcd_initial_cluster_state: new
 etcd_initial_cluster_token: etcd-k8-cluster
 
-etcd_initial_advertise_peer_urls: "{{ etcd_peer_url_scheme }}://{{ ansible_fqdn }}:{{ etcd_peer_port }}"
+etcd_initial_advertise_peer_urls: "{{ etcd_peer_url_scheme }}://{{ ansible_default_ipv4.address }}:{{ etcd_peer_port }}"
 etcd_listen_peer_urls: "{{ etcd_peer_url_scheme }}://0.0.0.0:{{ etcd_peer_port }}"
-etcd_advertise_client_urls: "{{ etcd_url_scheme }}://{{ ansible_fqdn }}:{{ etcd_client_port }}"
+etcd_advertise_client_urls: "{{ etcd_url_scheme }}://{{ ansible_default_ipv4.address }}:{{ etcd_client_port }}"
 etcd_listen_client_urls: "{{ etcd_url_scheme }}://0.0.0.0:{{ etcd_client_port }}"
 
 etcd_data_dir: /var/lib/etcd

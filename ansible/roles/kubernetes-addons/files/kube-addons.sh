@@ -17,6 +17,8 @@
 # The business logic for whether a given object should be created
 # was already enforced by salt, and /etc/kubernetes/addons is the
 # managed result is of that. Start everything below that directory.
+PYTHON_BIN=${PYTHON_BIN:-python}
+
 KUBECTL=${KUBECTL_BIN:-/usr/local/bin/kubectl}
 
 ADDON_CHECK_INTERVAL_SEC=${TEST_ADDON_CHECK_INTERVAL_SEC:-600}
@@ -135,7 +137,7 @@ echo "== Kubernetes addon manager started at $(date -Is) with ADDON_CHECK_INTERV
 # about, in a flat yaml format.
 kube_env_yaml="/var/cache/kubernetes-install/kube_env.yaml"
 if [ ! -e "${kubelet_kubeconfig_file}" ]; then
-  eval $(python -c '''
+  eval $(${PYTHON_BIN} -c '''
 import pipes,sys,yaml
 
 for k,v in yaml.load(sys.stdin).iteritems():

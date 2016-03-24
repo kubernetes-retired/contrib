@@ -18,12 +18,17 @@ package utils
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+
+	"github.com/golang/glog"
 )
 
 const (
-	urlPrefix = "https://storage.googleapis.com/kubernetes-jenkins/logs"
+	urlPrefix     = "https://storage.googleapis.com/kubernetes-jenkins/logs"
+	successString = "SUCCESS"
 )
 
 // GetFileFromJenkinsGoogleBucket reads data from Google project's GCS bucket for the given job and buildNumber.
@@ -50,4 +55,37 @@ func GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, error) {
 	var lastBuildNo int
 	fmt.Sscanf(scanner.Text(), "%d", &lastBuildNo)
 	return lastBuildNo, nil
+}
+
+type finishedFile struct {
+	Result    string `json:"result"`
+	Timestamp uint64 `json:"timestamp"`
+}
+
+// CheckFinishedStatus reads the finished.json file for a given job and build number.
+// It returns true if the result stored there is success, and false otherwise.
+func CheckFinishedStatus(job string, buildNumber int) (bool, error) {
+	response, err := GetFileFromJenkinsGoogleBucket(job, buildNumber, "finished.json")
+	if err != nil {
+		glog.Errorf("Error while getting data for %v/%v/%v: %v", job, buildNumber, "finished.json", err)
+		return false, err
+	}
+
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		glog.Infof("Got a non-success response %v while reading data for %v/%v/%v", response.StatusCode, job, buildNumber, "finished.json")
+		return false, err
+	}
+	result := finishedFile{}
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		glog.Errorf("Failed to read the response for %v/%v/%v: %v", job, buildNumber, "finished.json", err)
+		return false, err
+	}
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		glog.Errorf("Failed to unmarshal %v: %v", string(body), err)
+		return false, err
+	}
+	return result.Result == successString, nil
 }

@@ -1,0 +1,21 @@
+---
+- name: Download tar file
+  get_url:
+    url: "{{ kube_download_url }}"
+    dest: "{{ ansible_temp_dir }}"
+    validate_certs: False
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+
+- name: Extract tar file
+  unarchive:
+    src: "{{ ansible_temp_dir }}/kubernetes.tar.gz"
+    dest: "{{ ansible_temp_dir }}"
+    copy: no
+
+- name: Extract 2nd tar file
+  unarchive:
+    src: "{{ ansible_temp_dir }}/kubernetes/server/kubernetes-server-linux-amd64.tar.gz"
+    dest: "{{ bin_dir }}"
+    copy: no
