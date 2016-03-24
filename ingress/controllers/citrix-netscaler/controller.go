@@ -24,6 +24,7 @@ import (
 	"github.com/chiradeep/contrib/ingress/controllers/citrix-netscaler/netscaler"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
 )
@@ -78,7 +79,7 @@ func loop(csvserverName string, kubeClient *client.Client) {
 }
 
 func main() {
-	config := client.Config{
+	config := restclient.Config{
 		Host:     "https://127.0.0.1:6443",
 		Insecure: true,
 	}
