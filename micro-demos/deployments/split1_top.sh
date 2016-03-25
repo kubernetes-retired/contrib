@@ -13,13 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-. $(dirname ${BASH_SOURCE})/util.sh
+. $(dirname ${BASH_SOURCE})/../util.sh
 
-desc "Nuke it all"
-run "kubectl delete namespace demos"
-while kubectl get namespace demos >/dev/null 2>&1; do
-  run "kubectl get namespace demos"
-done
-run "kubectl get namespace demos"
-run "kubectl get namespaces"
-run "tmux kill-session -t my-session"
+desc "Update the deployment"
+# First command in a window is running without user's confirm, so adding a padding.
+run ""
+run "cat $(relative deployment.yaml) | sed 's/ v1/ v2/g' | kubectl --namespace=demos apply -f- --validate=false"
+desc "Rollback the deployment"
+run "kubectl --namespace=demos rollout undo deployment deployment-demo"

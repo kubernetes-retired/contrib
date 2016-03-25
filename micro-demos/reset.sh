@@ -13,8 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-. $(dirname ${BASH_SOURCE})/../util.sh
-
-desc "Update the deployment"
-run "cat $(relative deployment.yaml) | sed 's/ v1/ v2/g' | kubectl --namespace=demos apply -f- --validate=false"
-run "kubectl --namespace=demos describe deployment deployment-demo"
+. $(dirname ${BASH_SOURCE})/util.sh
+kubectl delete namespace demos
+while kubectl get namespace demos >/dev/null 2>&1; do
+   kubectl get namespace demos
+done
+kubectl apply -f $(relative demo-namespace.yaml)
+tmux kill-session -t my-session
