@@ -9,6 +9,13 @@ require 'vagrant-openstack-provider'
 
 $num_nodes = (ENV['NUM_NODES'] || 2).to_i
 $ansible_tags = ENV['ANSIBLE_TAGS']
+# OS image to use. Currently supported:
+# - "centos7" on openstack, libvirt, virtualbox
+# - "coreos" on virtualbox
+$os_image = (ENV['OS_IMAGE'] || "centos7").to_sym
+
+$coreos_update_channel = "stable"
+$coreos_image_version = "current"
 
 VAGRANTFILE_API_VERSION = "2"
 
@@ -27,10 +34,39 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provider "libvirt"
   config.vm.provider "virtualbox"
 
+  def set_openstack_box(config)
+    case $os_image
+    when :centos7
+      # common config
+      config.vm.box = "dummy"
+      config.vm.box_url = "https://github.com/cloudbau/vagrant-openstack-plugin/raw/master/dummy.box"
+    end
+  end
+
+  def set_vbox_box(config)
+    case $os_image
+    when :centos7
+      config.vm.box = "centos/7"
+    when :coreos
+      config.vm.box = "coreos-%s" % $coreos_update_channel
+      if $coreos_image_version != "current"
+        config.vm.box_version = $coreos_image_version
+      end
+      config.vm.box_url = "https://storage.googleapis.com/%s.release.core-os.net/amd64-usr/%s/coreos_production_vagrant.json" %
+        [$update_channel, $image_version]
+    end
+  end
+
+  def set_libvirt_box(config)
+    case $os_image
+    when :centos7
+      config.vm.box = "kube-centos-7"
+      config.vm.box_url = "http://cloud.centos.org/centos/7/vagrant/x86_64/images/CentOS-7.LibVirt.box"
+    end
+  end
+
   def set_openstack(os, config, n)
-    # common config
-    config.vm.box = "dummy"
-    config.vm.box_url = "https://github.com/cloudbau/vagrant-openstack-plugin/raw/master/dummy.box"
+    set_openstack_box(config)
 
     # this crap is to make it not fail if the file doesn't exist (which is ok if we are using a different provisioner)
     __filename = File.join(File.dirname(__FILE__), "openstack_config.yml")
@@ -60,7 +96,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   end
 
   def set_vbox(vb, config)
-    config.vm.box = "centos/7"
+    set_vbox_box(config)
+
     config.vm.network "private_network", type: "dhcp"
     vb.gui = false
     vb.memory = 2048
@@ -72,8 +109,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   end
 
   def set_libvirt(lv, config)
-    config.vm.box = "kube-centos-7"
-    config.vm.box_url = "http://cloud.centos.org/centos/7/vagrant/x86_64/images/CentOS-7.LibVirt.box"
+    set_libvirt_box(config)
+
     lv.memory = 2048
     lv.cpus = 2
     lv.nested = true
@@ -166,7 +203,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
      "etcd" => ["kube-master"],
      "masters" => ["kube-master"],
      "nodes" => nodes,
-     "all_groups:children" => ["etcd","masters","nodes"]
+     "all_groups:children" => ["etcd","masters","nodes"],
   }
 
   config.vm.define "kube-master" do |n|
