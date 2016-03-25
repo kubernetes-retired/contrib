@@ -6,29 +6,60 @@ This is a nginx Ingress controller that uses [ConfigMap](https://github.com/kube
 ## What it provides?
 
 - Ingress controller
-- nginx 1.9.x with [lua-nginx-module](https://github.com/openresty/lua-nginx-module)
+- nginx 1.9.x with
 - SSL support
 - custom ssl_dhparam (optional). Just mount a secret with a file named `dhparam.pem`.
-- support for TCP services (flag `--tcp-services`)
+- support for TCP services (flag `--tcp-services-configmap`)
 - custom nginx configuration using [ConfigMap](https://github.com/kubernetes/kubernetes/blob/master/docs/proposals/configmap.md)
 - custom error pages. Using the flag `--custom-error-service` is possible to use a custom compatible [404-server](https://github.com/kubernetes/contrib/tree/master/404-server) image [nginx-error-server](https://github.com/aledbf/contrib/tree/nginx-debug-server/Ingress/images/nginx-error-server) that provides an additional `/errors` route that returns custom content for a particular error code. **This is completely optional**
 
 
 ## Requirements
 - default backend [404-server](https://github.com/kubernetes/contrib/tree/master/404-server) (or a custom compatible image)
-- DNS must be operational and able to resolve default-http-backend.default.svc.cluster.local
 
-## SSL
+## TLS
 
+You can secure an Ingress by specifying a secret that contains a TLS private key and certificate. Currently the Ingress only supports a single TLS port, 443, and assumes TLS termination. This controller supports SNI. The TLS secret must contain keys named tls.crt and tls.key that contain the certificate and private key to use for TLS, eg:
+
+```
+apiVersion: v1
+data:
+  tls.crt: base64 encoded cert
+  tls.key: base64 encoded key
+kind: Secret
+metadata:
+  name: testsecret
+  namespace: default
+type: Opaque
+```
+
+Referencing this secret in an Ingress will tell the Ingress controller to secure the channel from the client to the loadbalancer using TLS:
+
+```
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: no-rules-map
+spec:
+  tls:
+    secretName: testsecret
+  backend:
+    serviceName: s1
+    servicePort: 80
+```
 Please follow [test.sh](https://github.com/bprashanth/Ingress/blob/master/examples/sni/nginx/test.sh) as a guide on how to generate secrets containing SSL certificates. The name of the secret can be different than the name of the certificate.
 
-Currently Ingress does not support HTTPS. To bypass this the controller will check if there's a certificate for the the host in `Spec.Rules.Host` checking for a certificate in each of the mounted secrets. If exists it will create a nginx server listening in the port 443.
+
+## Optimizing TLS Time To First Byte (TTTFB)
+
+NGINX provides the configuration option (`ssl_buffer_size)[http://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_buffer_size] to allow the optimization of the TLS record size. This improves the (Time To First Byte)[https://www.igvita.com/2013/12/16/optimizing-nginx-tls-time-to-first-byte/] (TTTFB). The default value in the Ingress controller it is `4k` (nginx default is `16k`);
+
 
 ## Examples:
 
 First we need to deploy some application to publish. To keep this simple we will use the [echoheaders app]() that just returns information about the http request as output
 ```
-kubectl run echoheaders --image=gcr.io/google_containers/echoserver:1.0 --replicas=1 --port=8080
+kubectl run echoheaders --image=gcr.io/google_containers/echoserver:1.1 --replicas=1 --port=8080
 ```
 
 Now we expose the same application in two different services (so we can create different Ingress rules)
@@ -145,22 +176,19 @@ First we need to remove the running
 kubectl delete rc nginx-ingress-3rdpartycfg
 ```
 
+To configure which services and ports will be exposed
+```
+kubectl create -f examples/tcp-configmap-example.yaml
+```
+
+The file `examples/tcp-configmap-example.yaml` uses a ConfigMap where the key is the external port to use and the value is 
+`<namespace/service name>:<service port>`
+It is possible to use a number or the name of the port.
+
+
 ```
 kubectl create -f examples/rc-tcp.yaml
 ```
-
-Now we add the annotation to the replication controller that indicates with services should be exposed as TCP:
-The annotation key is `nginx-ingress.kubernetes.io/tcpservices`. You can expose more than one service using comma as separator.
-Each service must contain the namespace, service name and port to be use as public port
-
-```
-kubectl annotate rc nginx-ingress-3rdpartycfg "nginx-ingress.kubernetes.io/tcpservices=default/echoheaders-x:9000"
-```
-
-*Note:* the only reason to remove and create a new rc is that we cannot open new ports dynamically once the pod is running.
-
-
-Once we run the `kubectl annotate` command nginx will reload.
 
 Now we can test the new service:
 ```
@@ -224,8 +252,6 @@ BODY:
 ```
 
 ## SSL
-
-Currently Ingress rules does not contains SSL definitions. In order to support SSL in nginx this controller uses secrets mounted inside the directory `/etc/nginx-ssl` to detect if some Ingress rule contains a host for which it is possible the creation of an SSL server.
 
 First create a secret containing the ssl certificate and key. This example creates the certificate and the secret (json):
 
@@ -314,14 +340,95 @@ The route `/error` expects two arguments: code and format
 
 Using a volume pointing to `/var/www/html` directory is possible to use a custom error
 
+
+## Debug
+
+Using the flag `--v=XX` it is possible to increase the level of logging.
+In particular:
+- `--v=2` shows details using `diff` about the changes in the configuration in nginx
+
+```
+I0316 12:24:37.581267       1 utils.go:148] NGINX configuration diff a//etc/nginx/nginx.conf b//etc/nginx/nginx.conf
+I0316 12:24:37.581356       1 utils.go:149] --- /tmp/922554809  2016-03-16 12:24:37.000000000 +0000
++++ /tmp/079811012  2016-03-16 12:24:37.000000000 +0000
+@@ -235,7 +235,6 @@
+
+     upstream default-echoheadersx {
+         least_conn;
+-        server 10.2.112.124:5000;
+         server 10.2.208.50:5000;
+
+     }
+I0316 12:24:37.610073       1 command.go:69] change in configuration detected. Reloading...
+```
+
+- `--v=3` shows details about the service, Ingress rule, endpoint changes and it dumps the nginx configuration in JSON format
+- `--v=5` configures NGINX in [debug mode](http://nginx.org/en/docs/debugging_log.html)
+
+## Custom NGINX configuration
+
+Using a ConfigMap it is possible to customize the defaults in nginx.
+The next command shows the defaults:
+```
+$ ./nginx-third-party-lb --dump-nginx—configuration
+Example of ConfigMap to customize NGINX configuration:
+data:
+  body-size: 1m
+  error-log-level: info
+  gzip-types: application/atom+xml application/javascript application/json application/rss+xml
+    application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json
+    application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon
+    text/css text/plain text/x-component
+  hts-include-subdomains: "true"
+  hts-max-age: "15724800"
+  keep-alive: "75"
+  max-worker-connections: "16384"
+  proxy-connect-timeout: "30"
+  proxy-read-timeout: "30"
+  proxy-real-ip-cidr: 0.0.0.0/0
+  proxy-send-timeout: "30"
+  server-name-hash-bucket-size: "64"
+  server-name-hash-max-size: "512"
+  ssl-buffer-size: 4k
+  ssl-ciphers: ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA
+  ssl-protocols: TLSv1 TLSv1.1 TLSv1.2
+  ssl-session-cache: "true"
+  ssl-session-cache-size: 10m
+  ssl-session-tickets: "true"
+  ssl-session-timeout: 10m
+  use-gzip: "true"
+  use-hts: "true"
+  worker-processes: "8"
+metadata:
+  name: custom-name
+  namespace: a-valid-namespace
+```
+
+For instance, if we want to change the timeouts we need to create a ConfigMap:
+```
+$ cat nginx-load-balancer-conf.yaml
+apiVersion: v1
+data:
+  proxy-connect-timeout: "10"
+  proxy-read-timeout: "120"
+  proxy-send-imeout: "120"
+kind: ConfigMap
+metadata:
+  name: nginx-load-balancer-conf
+
+```
+
+```
+$ kubectl create -f nginx-load-balancer-conf.yaml
+```
+
+Please check the example `rc-custom-configuration.yaml`
+
+If the Configmap it is updated, NGINX will be reloaded with the new configuration
+
+
 ## Troubleshooting
 
 Problems encountered during [1.2.0-alpha7 deployment](https://github.com/kubernetes/kubernetes/blob/master/docs/getting-started-guides/docker.md):
 * make setup-files.sh file in hypercube does not provide 10.0.0.1 IP to make-ca-certs, resulting in CA certs that are issued to the external cluster IP address rather then 10.0.0.1 -> this results in nginx-third-party-lb appearing to get stuck at "Utils.go:177 - Waiting for default/default-http-backend" in the docker logs.  Kubernetes will eventually kill the container before nginx-third-party-lb times out with a message indicating that the CA certificate issuer is invalid (wrong ip), to verify this add zeros to the end of initialDelaySeconds and timeoutSeconds and reload the RC, and docker will log this error before kubernetes kills the container.
   * To fix the above, setup-files.sh must be patched before the cluster is inited (refer to https://github.com/kubernetes/kubernetes/pull/21504)
-* if once the nginx-third-party-lb starts, its docker log spams this message continously "utils.go:(line #)] Requeuing default/echomap, err Post http://127.0.0.1:8080/update-ingress: dial tcp 127.0.0.1:8080: getsockopt: connection refused", it means that the container is unable to use DNS to resolve the service address, DNS autoconfigure is broken on 1.2.0-alpha7 (refer again to https://github.com/kubernetes/kubernetes/pull/21504 for fixes)
-
-## TODO:
-- multiple SSL certificates
-- custom nginx configuration using [ConfigMap](https://github.com/kubernetes/kubernetes/blob/master/docs/proposals/configmap.md)
-

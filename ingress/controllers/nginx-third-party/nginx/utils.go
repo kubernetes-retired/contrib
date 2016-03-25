@@ -18,54 +18,20 @@ package nginx
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
 	"io/ioutil"
-	"net/http"
+	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 
 	"github.com/golang/glog"
+
+	"github.com/mitchellh/mapstructure"
+	"k8s.io/kubernetes/pkg/api"
 )
 
-// SyncIngress creates a GET request to nginx to indicate that is required to refresh the Ingress rules.
-func (ngx *NginxManager) SyncIngress(ingList []interface{}) error {
-	encData, _ := json.Marshal(ingList)
-	req, err := http.NewRequest("POST", "http://127.0.0.1:8080/update-ingress", bytes.NewBuffer(encData))
-	req.Header.Set("Content-Type", "application/json")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != 200 {
-		body, _ := ioutil.ReadAll(res.Body)
-		glog.Errorf("Error: %v", string(body))
-		return fmt.Errorf("nginx status is unhealthy")
-	}
-
-	return nil
-
-}
-
-// IsHealthy checks if nginx is running
-func (ngx *NginxManager) IsHealthy() error {
-	res, err := http.Get("http://127.0.0.1:8080/healthz")
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != 200 {
-		return fmt.Errorf("nginx status is unhealthy")
-	}
-
-	return nil
-}
-
-// getDnsServers returns the list of nameservers located in the file /etc/resolv.conf
-func getDnsServers() []string {
+// getDNSServers returns the list of nameservers located in the file /etc/resolv.conf
+func getDNSServers() []string {
 	file, err := ioutil.ReadFile("/etc/resolv.conf")
 	if err != nil {
 		return []string{}
@@ -89,25 +55,92 @@ func getDnsServers() []string {
 		}
 	}
 
-	glog.V(2).Infof("Nameservers to use: %v", nameservers)
+	glog.V(3).Infof("nameservers to use: %v", nameservers)
 	return nameservers
 }
 
-// ReadConfig obtains the configuration defined by the user or returns the default if it does not
-// exists or if is not a well formed json object
-func (ngx *NginxManager) ReadConfig(data string) (*nginxConfiguration, error) {
-	if data == "" {
-		return newDefaultNginxCfg(), nil
+// ReadConfig obtains the configuration defined by the user merged with the defaults.
+func (ngx *Manager) ReadConfig(config *api.ConfigMap) nginxConfiguration {
+	if len(config.Data) == 0 {
+		return newDefaultNginxCfg()
 	}
 
-	cfg := nginxConfiguration{}
-	err := json.Unmarshal([]byte(data), &cfg)
+	cfg := newDefaultNginxCfg()
+
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		TagName:          "structs",
+		Result:           &cfg,
+		WeaklyTypedInput: true,
+	})
+
+	err = decoder.Decode(config.Data)
 	if err != nil {
-		glog.Errorf("Invalid json: %v", err)
-		return newDefaultNginxCfg(), fmt.Errorf("Invalid custom nginx configuration: %v", err)
+		glog.Infof("%v", err)
 	}
 
-	return &cfg, nil
+	return cfg
+}
+
+func (ngx *Manager) needsReload(data *bytes.Buffer) (bool, error) {
+	filename := ngx.ConfigFile
+	in, err := os.Open(filename)
+	if err != nil {
+		return false, err
+	}
+
+	src, err := ioutil.ReadAll(in)
+	in.Close()
+	if err != nil {
+		return false, err
+	}
+
+	res := data.Bytes()
+	if !bytes.Equal(src, res) {
+		err = ioutil.WriteFile(filename, res, 0644)
+		if err != nil {
+			return false, err
+		}
+
+		dData, err := diff(src, res)
+		if err != nil {
+			glog.Errorf("error computing diff: %s", err)
+			return true, nil
+		}
+
+		if glog.V(2) {
+			glog.Infof("NGINX configuration diff a/%s b/%s\n", filename, filename)
+			glog.Infof("%v", string(dData))
+		}
+
+		return len(dData) > 0, nil
+	}
+
+	return false, nil
+}
+
+func diff(b1, b2 []byte) (data []byte, err error) {
+	f1, err := ioutil.TempFile("", "")
+	if err != nil {
+		return
+	}
+	defer os.Remove(f1.Name())
+	defer f1.Close()
+
+	f2, err := ioutil.TempFile("", "")
+	if err != nil {
+		return
+	}
+	defer os.Remove(f2.Name())
+	defer f2.Close()
+
+	f1.Write(b1)
+	f2.Write(b2)
+
+	data, err = exec.Command("diff", "-u", f1.Name(), f2.Name()).CombinedOutput()
+	if len(data) > 0 {
+		err = nil
+	}
+	return
 }
 
 func merge(dst, src map[string]interface{}) map[string]interface{} {

@@ -6,7 +6,7 @@
         state: latest
   notify:
     - restart etcd
-  when: not is_atomic and ansible_distribution != "Ubuntu" and ansible_distribution != "CoreOS"
+  when: not is_atomic and ansible_distribution != "Ubuntu" and not is_coreos
 
 - name: Force etcd_source_type to github when packages are not available
   set_fact:
@@ -24,7 +24,7 @@
   template: src=etcd.conf.j2 dest=/etc/etcd/etcd.conf
   notify:
     - restart etcd
-  when: ansible_distribution != "CoreOS"
+  when: not is_coreos
 
 - name: Write etcd systemd unit file for Debian
   copy: src=etcd.service dest=/etc/systemd/system
@@ -35,15 +35,15 @@
 
 - name: Enable etcd
   service: name=etcd enabled=yes
-  when: ansible_distribution != "CoreOS"
+  when: not is_coreos
 
 - name: Start etcd
   service: name=etcd state=started
   register: etcd_started
-  when: ansible_distribution != "CoreOS"
+  when: not is_coreos
 
 - include: coreos.yml
-  when: ansible_distribution == "CoreOS"
+  when: is_coreos
 
 - include: firewalld.yml
   when: has_firewalld

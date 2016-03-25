@@ -8,7 +8,7 @@ require "yaml"
 require 'vagrant-openstack-provider'
 
 $num_nodes = (ENV['NUM_NODES'] || 2).to_i
-ansible_tags = ENV['ANSIBLE_TAGS']
+$ansible_tags = ENV['ANSIBLE_TAGS']
 
 VAGRANTFILE_API_VERSION = "2"
 
@@ -92,6 +92,60 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     end
   end
 
+  def set_common_ansible_options(ansible)
+    ansible.groups = $groups
+    ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
+    ansible.tags = $ansible_tags unless $ansible_tags.nil?
+    ansible.raw_ssh_args = ['-o ControlMaster=no']
+  end
+
+  def vagrant_ansible_provision(ansible, provider)
+    set_common_ansible_options(ansible)
+    # This set up the vagrant hosts before we run the main playbook
+    # Today this just creates /etc/hosts so machines can talk via their
+    # 'internal' IPs instead of the openstack public ip.
+    ansible.playbook = "./vagrant-ansible.yml"
+
+    if provider == :virtualbox
+      # On VirtualBox eth0 is used for NAT-ed internet connection,
+      # and actual connectivity with the host and other VMs is done
+      # using eth1 interface.
+      ansible.extra_vars = { public_iface: "eth1" }
+    end
+  end
+
+  def cluster_ansible_provision(ansible, provider)
+    set_common_ansible_options(ansible)
+
+    # This sets up both flannel and kube.
+    ansible.playbook = "../cluster.yml"
+
+    if provider == :virtualbox
+      # On VirtualBox eth0 is used for NAT-ed internet connection,
+      # and actual connectivity with the host and other VMs is done
+      # using eth1 interface.
+      ansible.extra_vars = { flannel_opts: "--iface=eth1" }
+    end
+  end
+
+  def run_ansible_provision(n)
+    n.vm.provider :openstack do |os, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :openstack
+      end
+    end
+    n.vm.provider :virtualbox do |vb, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :virtualbox
+      end
+    end
+    n.vm.provider :libvirt do |lv, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :libvirt
+      end
+    end
+  end
+
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
   nodes = Array.new()
@@ -108,7 +162,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # This is how we create the ansible inventory, see it in .vagrant
   # if you want to debug, run 'VAGRANT_LOG=info vagrant up'
   # and you'll see exactly how the cluster comes up via ansible inv.
-  groups = {
+  $groups = {
      "etcd" => ["kube-master"],
      "masters" => ["kube-master"],
      "nodes" => nodes,
@@ -120,27 +174,14 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     n.vm.hostname = name
     set_provider(n)
 
-    if ansible_tags.nil?
-      # This set up the vagrant hosts before we run the main playbook
-      # Today this just creates /etc/hosts so machines can talk via their
-      # 'internal' IPs instead of the openstack public ip.
-      n.vm.provision :ansible do |ansible|
-        ansible.groups = groups
-        ansible.playbook = "./vagrant-ansible.yml"
-        ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
-        ansible.raw_ssh_args = ['-o ControlMaster=no']
+    if $ansible_tags.nil?
+      run_ansible_provision n do |ansible, provider|
+        vagrant_ansible_provision(ansible, provider)
       end
     end
 
-    # This sets up both flannel and kube.
-    n.vm.provision :ansible do |ansible|
-      ansible.groups = groups
-      ansible.playbook = "../cluster.yml"
-      ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
-      # for some hypervisors, like vbox, eth0 is not the right interface to bind to.
-      # ansible.extra_vars = { flannel_opts: "--iface=eth1"}
-      ansible.tags = ansible_tags
-      ansible.raw_ssh_args = ['-o ControlMaster=no']
+    run_ansible_provision n do |ansible, provider|
+      cluster_ansible_provision(ansible, provider)
     end
   end
 end

@@ -17,20 +17,20 @@ limitations under the License.
 package nginx
 
 import (
+	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 
 	"github.com/golang/glog"
-)
 
-const (
-	nginxEvent = "NGINX"
+	"k8s.io/kubernetes/pkg/healthz"
 )
 
 // Start starts a nginx (master process) and waits. If the process ends
 // we need to kill the controller process and return the reason.
-func (ngx *NginxManager) Start() {
-	glog.Info("Starting nginx...")
+func (ngx *Manager) Start() {
+	glog.Info("Starting NGINX process...")
 	cmd := exec.Command("nginx")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -43,7 +43,9 @@ func (ngx *NginxManager) Start() {
 	}
 }
 
-// Reload the master process receives the signal to reload configuration, it checks
+// CheckAndReload verify if the nginx configuration changed and sends a reload
+//
+// the master process receives the signal to reload configuration, it checks
 // the syntax validity of the new configuration file and tries to apply the
 // configuration provided in it. If this is a success, the master process starts
 // new worker processes and sends messages to old worker processes, requesting them
@@ -52,27 +54,56 @@ func (ngx *NginxManager) Start() {
 // shut down, stop accepting new connections and continue to service current requests
 // until all such requests are serviced. After that, the old worker processes exit.
 // http://nginx.org/en/docs/beginners_guide.html#control
-func (ngx *NginxManager) Reload(cfg *nginxConfiguration, servicesL4 []Service) {
+func (ngx *Manager) CheckAndReload(cfg nginxConfiguration, ingressCfg IngressConfig) {
+	ngx.reloadRateLimiter.Accept()
+
 	ngx.reloadLock.Lock()
 	defer ngx.reloadLock.Unlock()
 
-	if err := ngx.writeCfg(cfg, servicesL4); err != nil {
-		glog.Errorf("Failed to write new nginx configuration. Avoiding reload: %v", err)
+	newCfg, err := ngx.writeCfg(cfg, ingressCfg)
+
+	if err != nil {
+		glog.Errorf("failed to write new nginx configuration. Avoiding reload: %v", err)
 		return
 	}
 
-	if err := ngx.shellOut("nginx -s reload"); err == nil {
-		glog.Info("Change in configuration detected. Reloading...")
+	if newCfg {
+		if err := ngx.shellOut("nginx -s reload"); err == nil {
+			glog.Info("change in configuration detected. Reloading...")
+		}
 	}
 }
 
 // shellOut executes a command and returns its combined standard output and standard
 // error in case of an error in the execution
-func (ngx *NginxManager) shellOut(cmd string) error {
+func (ngx *Manager) shellOut(cmd string) error {
 	out, err := exec.Command("sh", "-c", cmd).CombinedOutput()
 	if err != nil {
-		glog.Errorf("Failed to execute %v: %v", cmd, string(out))
+		glog.Errorf("failed to execute %v: %v", cmd, string(out))
 		return err
+	}
+
+	return nil
+}
+
+// check to verify Manager implements HealthzChecker interface
+var _ healthz.HealthzChecker = Manager{}
+
+// Name returns the healthcheck name
+func (ngx Manager) Name() string {
+	return "NGINX"
+}
+
+// Check returns if the nginx healthz endpoint is returning ok (status code 200)
+func (ngx Manager) Check(_ *http.Request) error {
+	res, err := http.Get("http://127.0.0.1:8080/healthz")
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		return fmt.Errorf("NGINX is unhealthy")
 	}
 
 	return nil

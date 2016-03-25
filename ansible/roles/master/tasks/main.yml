@@ -1,6 +1,6 @@
 ---
 - include: coreos.yml
-  when: ansible_distribution == "CoreOS"
+  when: is_coreos
 
 - include: packageManagerInstall.yml
   when: source_type == "packageManager"
@@ -23,7 +23,7 @@
 
 - name: add cap_net_bind_service to kube-apiserver
   capabilities: path=/usr/bin/kube-apiserver capability=cap_net_bind_service=ep state=present
-  when: not is_atomic and ansible_distribution != "CoreOS"
+  when: not is_atomic and not is_coreos
 
 - name: Enable apiserver
   service: name=kube-apiserver enabled=yes state=started
