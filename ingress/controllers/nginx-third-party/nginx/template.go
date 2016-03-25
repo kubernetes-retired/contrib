@@ -17,85 +17,88 @@ limitations under the License.
 package nginx
 
 import (
+	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
+	"regexp"
 	"text/template"
 
 	"github.com/fatih/structs"
 	"github.com/golang/glog"
-
-	"k8s.io/contrib/ingress/controllers/nginx-third-party/ssl"
 )
 
-var funcMap = template.FuncMap{
-	"getSSLHost": ssl.GetSSLHost,
-	"empty": func(input interface{}) bool {
-		check, ok := input.(string)
-		if ok {
-			return len(check) == 0
-		}
+var (
+	camelRegexp = regexp.MustCompile("[0-9A-Za-z]+")
 
-		return true
-	},
-	"dict": func(values ...interface{}) (map[string]interface{}, error) {
-		if len(values)%2 != 0 {
-			return nil, errors.New("invalid dict call")
-		}
-		dict := make(map[string]interface{}, len(values)/2)
-		for i := 0; i < len(values); i += 2 {
-			key, ok := values[i].(string)
-			if !ok {
-				return nil, errors.New("dict keys must be strings")
+	funcMap = template.FuncMap{
+		"empty": func(input interface{}) bool {
+			check, ok := input.(string)
+			if ok {
+				return len(check) == 0
 			}
-			dict[key] = values[i+1]
-		}
-		return dict, nil
-	},
-}
 
-func (ngx *NginxManager) loadTemplate() {
+			return true
+		},
+	}
+)
+
+func (ngx *Manager) loadTemplate() {
 	tmpl, _ := template.New("nginx.tmpl").Funcs(funcMap).ParseFiles("./nginx.tmpl")
 	ngx.template = tmpl
 }
 
-func (ngx *NginxManager) writeCfg(cfg *nginxConfiguration, servicesL4 []Service) error {
-	file, err := os.Create(ngx.ConfigFile)
-	if err != nil {
-		return err
-	}
-
+func (ngx *Manager) writeCfg(cfg nginxConfiguration, ingressCfg IngressConfig) (bool, error) {
 	fromMap := structs.Map(cfg)
 	toMap := structs.Map(ngx.defCfg)
 	curNginxCfg := merge(toMap, fromMap)
 
 	conf := make(map[string]interface{})
-	conf["sslCertificates"] = ngx.sslCertificates
-	conf["tcpServices"] = servicesL4
-	conf["defBackend"] = ngx.defBackend
+	conf["upstreams"] = ingressCfg.Upstreams
+	conf["servers"] = ingressCfg.Servers
+	conf["tcpUpstreams"] = ingressCfg.TCPUpstreams
 	conf["defResolver"] = ngx.defResolver
 	conf["sslDHParam"] = ngx.sslDHParam
-	conf["cfg"] = curNginxCfg
+	conf["cfg"] = fixKeyNames(curNginxCfg)
 
-	if ngx.defError.ServiceName != "" {
-		conf["defErrorSvc"] = ngx.defError
-	} else {
-		conf["defErrorSvc"] = false
+	buffer := new(bytes.Buffer)
+	err := ngx.template.Execute(buffer, conf)
+	if err != nil {
+		glog.Infof("NGINX error: %v", err)
+		return false, err
 	}
 
-	if glog.V(2) {
+	if glog.V(3) {
 		b, err := json.Marshal(conf)
 		if err != nil {
 			fmt.Println("error:", err)
 		}
-		glog.Infof("nginx configuration: %v", string(b))
+		glog.Infof("NGINX configuration: %v", string(b))
 	}
 
-	err = ngx.template.Execute(file, conf)
+	changed, err := ngx.needsReload(buffer)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return nil
+	return changed, nil
+}
+
+func fixKeyNames(data map[string]interface{}) map[string]interface{} {
+	fixed := make(map[string]interface{})
+	for k, v := range data {
+		fixed[toCamelCase(k)] = v
+	}
+
+	return fixed
+}
+
+func toCamelCase(src string) string {
+	byteSrc := []byte(src)
+	chunks := camelRegexp.FindAll(byteSrc, -1)
+	for idx, val := range chunks {
+		if idx > 0 {
+			chunks[idx] = bytes.Title(val)
+		}
+	}
+	return string(bytes.Join(chunks, nil))
 }

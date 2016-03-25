@@ -18,14 +18,20 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"net/http"
+	"net/http/pprof"
 	"os"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
+	"k8s.io/contrib/ingress/controllers/nginx-third-party/nginx"
+
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/healthz"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -41,10 +47,15 @@ var (
     namespace/name. The controller uses the first node port of this Service for
     the default backend.`)
 
-	customErrorSvc = flags.String("custom-error-service", "",
-		`Service used that will receive the errors from nginx and serve a custom error page. 
-    Takes the form namespace/name. The controller uses the first node port of this Service 
-    for the backend.`)
+	nxgConfigMap = flags.String("nginx-configmap", "",
+		`Name of the ConfigMap that containes the custom nginx configuration to use`)
+
+	tcpConfigMapName = flags.String("tcp-services-configmap", "",
+		`Name of the ConfigMap that containes the definition of the TCP services to expose.
+		The key in the map indicates the external port to be used. The value is the name of the 
+		service with the format namespace/serviceName and the port of the service could be a number of the
+		name of the port.
+		The ports 80 and 443 are not allowed as external ports. This ports are reserved for nginx`)
 
 	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
 		`Relist and confirm cloud resources this often.`)
@@ -53,45 +64,52 @@ var (
 		`Namespace to watch for Ingress. Default is to watch all namespaces`)
 
 	healthzPort = flags.Int("healthz-port", healthPort, "port for healthz endpoint.")
+
+	buildCfg = flags.Bool("dump-nginx—configuration", false, `Returns a ConfigMap with the default nginx conguration.
+		This can be used as a guide to create a custom configuration.`)
+
+	profiling = flags.Bool("profiling", true, `Enable profiling via web interface host:port/debug/pprof/`)
 )
 
 func main() {
 	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
 
+	if *buildCfg {
+		fmt.Printf("Example of ConfigMap to customize NGINX configuration:\n%v", nginx.ConfigMapAsString())
+		os.Exit(0)
+	}
+
 	if *defaultSvc == "" {
 		glog.Fatalf("Please specify --default-backend")
 	}
-
-	glog.Info("Checking if DNS is working")
-	ip, err := checkDNS(*defaultSvc)
-	if err != nil {
-		glog.Fatalf("Please check if the DNS addon is working properly.\n%v", err)
-	}
-	glog.Infof("IP address of '%v' service: %s", *defaultSvc, ip)
 
 	kubeClient, err := unversioned.NewInCluster()
 	if err != nil {
 		glog.Fatalf("failed to create client: %v", err)
 	}
 
-	lbInfo, _ := getLBDetails(kubeClient)
-	defSvc, err := getService(kubeClient, *defaultSvc)
+	lbInfo, err := getLBDetails(kubeClient)
 	if err != nil {
-		glog.Fatalf("no default backend service found: %v", err)
+		glog.Fatalf("unexpected error getting runtime information: %v", err)
 	}
-	defError, _ := getService(kubeClient, *customErrorSvc)
 
-	// Start loadbalancer controller
-	lbc, err := NewLoadBalancerController(kubeClient, *resyncPeriod, defSvc, defError, *watchNamespace, lbInfo)
+	err = isValidService(kubeClient, *defaultSvc)
+	if err != nil {
+		glog.Fatalf("no service with name %v found: %v", *defaultSvc, err)
+	}
+
+	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName, lbInfo)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}
 
+	go registerHandlers(lbc)
+
 	lbc.Run()
 
 	for {
-		glog.Infof("Handled quit, awaiting pod deletion.")
+		glog.Infof("Handled quit, awaiting pod deletion")
 		time.Sleep(30 * time.Second)
 	}
 }
@@ -103,4 +121,25 @@ type lbInfo struct {
 	Podname      string
 	PodIP        string
 	PodNamespace string
+}
+
+func registerHandlers(lbc *loadBalancerController) {
+	mux := http.NewServeMux()
+	healthz.InstallHandler(mux, lbc.nginx)
+
+	http.HandleFunc("/stop", func(w http.ResponseWriter, r *http.Request) {
+		lbc.Stop()
+	})
+
+	if *profiling {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	}
+
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%v", *healthzPort),
+		Handler: mux,
+	}
+	glog.Fatal(server.ListenAndServe())
 }
