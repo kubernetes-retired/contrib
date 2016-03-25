@@ -205,6 +205,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
      "nodes" => nodes,
      "all_groups:children" => ["etcd","masters","nodes"],
   }
+  if $os_image == :coreos
+    # On CoreOS we use custom Python in Ansible.
+    $groups["all_groups:vars"] = ['ansible_python_interpreter="PATH=/opt/bin:$PATH python"']
+  end
 
   config.vm.define "kube-master" do |n|
     name = "kube-master"
