@@ -1,19 +1,20 @@
 - hosts: all
   sudo: yes
+  vars:
+    - public_iface: "{{ ansible_default_ipv4.interface }}"
   tasks:
     - name: "Build hosts file"
       lineinfile:
         dest=/etc/hosts
         regexp=".*{{ item }}$"
-        line="{{ hostvars[item].ansible_default_ipv4.address }} {{item}}"
+        line="{{ hostvars[item]['ansible_' + public_iface].ipv4.address }} {{item}}"
         state=present
-      when: hostvars[item].ansible_default_ipv4.address is defined
+      when: hostvars[item]['ansible_' + public_iface].ipv4.address is defined
       with_items: groups['all']
     - name: "Remove hostname from localhost line"
       replace:
         dest=/etc/hosts
         regexp="{{ item }} localhost?"
         replace="localhost"
-      when: hostvars[item].ansible_default_ipv4.address is defined
+      when: hostvars[item]['ansible_' + public_iface].ipv4.address is defined
       with_items: groups['all']
-
