@@ -23,6 +23,7 @@ import (
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
 
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util/wait"
@@ -76,7 +77,7 @@ func main() {
 	}
 
 	if !specified {
-		namespace = ""
+		namespace = api.NamespaceAll
 	}
 
 	err = loadIPVModule()

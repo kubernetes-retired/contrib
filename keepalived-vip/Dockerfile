@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.3
+FROM gcr.io/google_containers/ubuntu-slim:0.1
 
-RUN echo "http://dl-4.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
-  apk add -U --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted \
-  bash curl ipvsadm iproute2 keepalived && \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  bash \
+  curl \
+  ipvsadm \
+  iproute2 \
+  keepalived \
+  kmod \
+  psmisc && \
   rm -rf /var/cache/apk/* /etc/keepalived/keepalived.conf
   
 COPY kube-keepalived-vip /kube-keepalived-vip

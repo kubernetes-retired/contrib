@@ -13,11 +13,15 @@
 # limitations under the License.
 
 
-FROM alpine:edge
+FROM gcr.io/google_containers/ubuntu-slim:0.1
 MAINTAINER Prashanth B <beeps@google.com>
 
-RUN apk add -U bash curl socat haproxy && \
-  rm -rf /var/cache/apk/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  bash curl socat haproxy ca-certificates liblua5.3-0 && \
+  curl -o /tmp/haproxy.deb http://mirrors.kernel.org/ubuntu/pool/main/h/haproxy/haproxy_1.6.3-1_amd64.deb && \
+  dpkg -i /tmp/haproxy.deb && \
+  apt-get clean -y && \
+  rm -rf /var/lib/apt/lists/* /tmp/*
 
 RUN mkdir -p /etc/haproxy/errors /var/state/haproxy
 RUN for ERROR_CODE in 400 403 404 408 500 502 503 504;do curl -sSL -o /etc/haproxy/errors/$ERROR_CODE.http \

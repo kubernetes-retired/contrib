@@ -15,16 +15,16 @@
 # limitations under the License.
 
 
-set -eof pipefail
+set -e
 
-export NGINX_VERSION=1.9.11
+export NGINX_VERSION=1.9.12
 export NDK_VERSION=0.2.19
-export VTS_VERSION=0.1.8
+export VTS_VERSION=0.1.9
 export SETMISC_VERSION=0.29
-export LUA_VERSION=0.10.1rc0 
-export LUA_CJSON_VERSION=f79aa68af865ae84b36c7e794beedd87fef2ed54
-export LUA_RESTY_HTTP_VERSION=0.06
-export LUA_UPSTREAM_VERSION=0.04
+export LUA_VERSION=0.10.2
+export LUA_CJSON_VERSION=e1ebda146f63276093970f1bec36e51f952b3dba
+export LUA_RESTY_HTTP_VERSION=0.07
+export LUA_UPSTREAM_VERSION=0.05
 export MORE_HEADERS_VERSION=0.29
 
 export BUILD_PATH=/tmp/build
@@ -45,28 +45,27 @@ mkdir "$BUILD_PATH"
 cd "$BUILD_PATH"
 
 # install required packages to build
-apk add --update-cache \
+apt-get update && apt-get install --no-install-recommends -y \
   bash \
-  build-base \
-  curl \
-  geoip \
-  geoip-dev \
-  libcrypto1.0 \
+  build-essential \
+  curl ca-certificates \
+  libgeoip1 \
+  libgeoip-dev \
   patch \
-  pcre \
-  pcre-dev \
-  openssl-dev \
-  zlib \
-  zlib-dev \
-  pcre-dev \
-  libaio \
+  libpcre3 \
+  libpcre3-dev \
+  libssl-dev \
+  zlib1g \
+  zlib1g-dev \
+  libaio1 \
   libaio-dev \
   luajit \
-  luajit-dev \
-  linux-headers
+  openssl \
+  libluajit-5.1-dev \
+  linux-headers-generic
 
 # download, verify and extract the source files
-get_src 6a5c72f4afaf57a6db064bba0965d72335f127481c5d4e64ee8714e7b368a51f \
+get_src 1af2eb956910ed4b11aaf525a81bc37e135907e7127948f9179f5410337da042 \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
@@ -75,29 +74,29 @@ get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
 get_src 8d280fc083420afb41dbe10df9a8ceec98f1d391bd2caa42ebae67d5bc9295d8 \
         "https://github.com/openresty/set-misc-nginx-module/archive/v$SETMISC_VERSION.tar.gz"
 
-get_src 6bb9a36d8d70302d691c49557313fb7262cafd942a961d11a2730d9a5d9f70e0 \
+get_src ddd297a5f894d966cae19f112c79f99ec9fa13612c3d324c19533247c4953980 \
         "https://github.com/vozlt/nginx-module-vts/archive/v$VTS_VERSION.tar.gz"
 
-get_src 1bae94d2a0fd4fad39f2544a2f8eaf71335ea512a6f0027af190b46562224c68 \
+get_src 155feeff08a0b2efaf980705b9ef83d0b341e6d011adad8e2679ea4105668134 \
         "https://github.com/openresty/lua-nginx-module/archive/v$LUA_VERSION.tar.gz"
 
-get_src 2c451368a9e1a6fc01ed196cd6bd1602ee29f4b264df9263816e4dce17bca2c0 \
+get_src ec2a5ab856ad0168e840abfe394b9e6765fd7d209187c5599054b7f2768f2468 \
         "https://github.com/openresty/lua-cjson/archive/$LUA_CJSON_VERSION.tar.gz"
 
-get_src 30ea2b03e8e8c4add5e143cc1826fd3364df58ea7f4b9a3fe02cd1630a505701 \
+get_src 1c6aa06c9955397c94e9c3e0c0fba4e2704e85bee77b4512fb54ae7c25d58d86 \
         "https://github.com/pintsized/lua-resty-http/archive/v$LUA_RESTY_HTTP_VERSION.tar.gz"
 
 get_src 0a5f3003b5851373b03c542723eb5e7da44a01bf4c4c5f20b4de53f355a28d33 \
         "https://github.com/openresty/headers-more-nginx-module/archive/v$MORE_HEADERS_VERSION.tar.gz"
 
-get_src eec4bbb40fd14e12179fd536a029e2fe82a7f29340ed357879d0b02b65302913 \
+get_src 0fdfb17083598e674680d8babe944f48a9ccd2af9f982eda030c446c93cfe72b \
         "https://github.com/openresty/lua-upstream-nginx-module/archive/v$LUA_UPSTREAM_VERSION.tar.gz"
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
 
 ./configure \
-  --prefix=/usr \
+  --prefix=/usr/share/nginx \
   --conf-path=/etc/nginx/nginx.conf \
   --http-log-path=/var/log/nginx/access.log \
   --error-log-path=/var/log/nginx/error.log \
@@ -148,20 +147,39 @@ echo "Cleaning..."
 
 cd /
 
-rm -rf "$BUILD_PATH"
+apt-mark unmarkauto \
+  bash \
+  curl ca-certificates \
+  libgeoip1 \
+  libpcre3 \
+  zlib1g \
+  libaio1 \
+  luajit \
+  libluajit-5.1-2 \
+  xz-utils \
+  geoip-bin \
+  openssl
 
-apk del --purge \
-  build-base \
-  geoip-dev \
-  patch \
-  openssl-dev \
-  zlib-dev \
-  pcre-dev \
-  luajit-dev \
+apt-get remove -y --purge \
+  build-essential \
+  gcc-5 \
+  cpp-5 \
+  libgeoip-dev \
+  libpcre3-dev \
+  libssl-dev \
+  zlib1g-dev \
   libaio-dev \
-  linux-headers
+  libluajit-5.1-dev \
+  linux-libc-dev \
+  linux-headers-generic
+
+apt-get autoremove -y
 
 mkdir -p /var/lib/nginx/body /usr/share/nginx/html
-mv /usr/html /usr/share/nginx
 
-rm -rf /var/cache/apk/*
+mv /usr/share/nginx/sbin/nginx /usr/sbin
+
+rm -rf "$BUILD_PATH"
+rm -Rf /usr/share/man /usr/share/doc
+rm -rf /tmp/* /var/tmp/*
+rm -rf /var/lib/apt/lists/*
