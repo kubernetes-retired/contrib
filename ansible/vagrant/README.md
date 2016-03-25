@@ -41,6 +41,36 @@ Vagrant (1.7.x) does not properly select a provider. You will need to manually s
 
 ## Usage
 
+You can change some aspects of configuration using environment variables.
+Note that these variables should be set for all vagrant commands invocations,
+`vagrant up`, `vagrant provision`, `vagrant destroy`, etc.
+
+### Configure number of nodes
+
+If you export an env variable such as
+```
+export NUM_MINIONS=4
+```
+
+The system will create that number of nodes. Default is 2.
+
+### Configure OS to use
+
+You can specify which OS image to use on hosts:
+
+```
+export OS_IMAGE=coreos7
+```
+
+By default CoreOS 7 image is used.
+
+Supported images:
+
+* `centos7` (default) - Core OS 7 supported on OpenStack, VirtualBox, Libvirt providers.
+* `coreos` - Core OS supported on VirtualBox provider.
+
+### Start your cluster
+
 Update ~/contrib/ansible/group_vars/all.yml with the following:
 ```
 source_type: packageManager
@@ -52,12 +82,6 @@ If you are not running Vagrant 1.7.x or older, then change to the vagrant direct
 vagrant up
 ```
 
-If you export an env variable such as
-```
-export NUM_MINIONS=4
-```
-
-The system will create that number of nodes. Default is 2.
 
 Vagrant up should complete with a successful Ansible playbook run:
 ```
@@ -136,7 +160,26 @@ If you just want to update the binaries on your systems (either pkgManager or lo
 ```
 ANSIBLE_TAGS="binary-update" vagrant provision
 ```
-[![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/ansible/vagrant/README.md?pixel)]()
+
+### Running Ansible
+
+After provisioning cluster vith Vagrant you can run ansible in this directory for any additional provision -
+`ansible.cfg` provides configuration that will allow Ansible to connect to managed hosts.
+
+For example:
+
+```
+$ ansible -m setup kube-master
+kube-master | SUCCESS => {
+    "ansible_facts": {
+        "ansible_all_ipv4_addresses": [
+            "172.28.128.21",
+            "10.0.2.15"
+        ],
+...
+```
 
 ### Issues
 File an issue [here](https://github.com/kubernetes/contrib/issues) if the Vagrant Deployer does not work for you or the documentation has a bug. [Pull Requests](https://github.com/kubernetes/contrib/pulls) are always welcome :-) Please review the [contributing guidelines](https://github.com/kubernetes/kubernetes/blob/master/CONTRIBUTING.md) if you have not contributed in the past and feel free to ask questions on the [kubernetes-users Slack](http://slack.kubernetes.io) channel.
+
+[![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/ansible/vagrant/README.md?pixel)]()
