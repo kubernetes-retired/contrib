@@ -1,0 +1,12 @@
+*.pem
+aws-credentials.sh
+.DS_Store
+cloud-config
+variables.json
+*.csr
+master1-master.json
+terraform.tfstate*
+assets/
+master/addons/cluster-monitoring/heapster-controller.yaml
+staging-variables.sh
+staging.tf
