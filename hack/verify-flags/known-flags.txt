@@ -51,6 +51,7 @@ right-build-number
 running-in-cluster
 shame-cc
 shame-from
+shame-reply-to
 shame-report-cmd
 source-file
 ssl-ca-cert
