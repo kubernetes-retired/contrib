@@ -10,6 +10,10 @@
   vars:
     - public_iface: "{{ ansible_default_ipv4.interface }}"
   tasks:
+    # On stock Core OS there is no /etc/hosts.
+    - name: "Create hosts file if it is not present"
+      file: path=/etc/hosts state=touch
+
     - name: "Build hosts file"
       lineinfile:
         dest=/etc/hosts
@@ -18,6 +22,7 @@
         state=present
       when: hostvars[item]['ansible_' + public_iface].ipv4.address is defined
       with_items: groups['all']
+
     - name: "Remove hostname from localhost line"
       replace:
         dest=/etc/hosts
