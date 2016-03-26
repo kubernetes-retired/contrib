@@ -51,8 +51,36 @@ type NetscalerCsVserver struct {
 	Port        int    `json:"port"`
 }
 
-func ConfigureContentVServer(csvserverName string, domainName string, path string, serviceIp string, serviceName string, servicePort int, priority int) {
-	lbName := strings.Replace(domainName, ".", "_", -1) + "_lb"
+func GenerateLbName(namespace string, host string) string {
+	lbName := "lb_" + strings.Replace(host, ".", "_", -1)
+	return lbName
+}
+
+func GeneratePolicyName(namespace string, host string, path string) string {
+	path_ := path
+	if path == "" {
+		path_ = "nilpath"
+	}
+	host = strings.Replace(host, ".", "_", -1)
+
+	policyName := host + "-" + path_ + "_policy"
+	return policyName
+}
+
+func GenerateActionName(namespace string, host string, path string) string {
+	path_ := path
+	if path == "" {
+		path_ = "nilpath"
+	}
+	host = strings.Replace(host, ".", "_", -1)
+	actionName := host + "-" + path_ + "_action"
+	return actionName
+}
+
+func ConfigureContentVServer(namespace string, csvserverName string, domainName string, path string, serviceIp string, serviceName string, servicePort int, priority int) {
+	lbName := GenerateLbName(namespace, domainName)
+	policyName := GeneratePolicyName(namespace, domainName, path)
+	actionName := GenerateActionName(namespace, domainName, path)
 
 	//create a Netscaler Service that represents the Kubernetes service
 	nsService := &struct {
@@ -104,7 +132,6 @@ func ConfigureContentVServer(csvserverName string, domainName string, path strin
 	}
 
 	//create a content switch action to switch to the lb
-	actionName := "switch_to_lb_" + lbName
 	nsCsAction := &struct {
 		Csaction NetscalerCsAction `json:"csaction"`
 	}{Csaction: NetscalerCsAction{Name: actionName, TargetLBVserver: lbName}}
@@ -119,7 +146,6 @@ func ConfigureContentVServer(csvserverName string, domainName string, path strin
 	}
 
 	//create a content switch policy to use the action
-	policyName := "switch_to_lb_" + lbName + "_policy"
 	var rule string
 	if path != "" {
 		rule = fmt.Sprintf("HTTP.REQ.HOSTNAME.EQ(\"%s\") && HTTP.REQ.URL.PATH.EQ(\"%s\")", domainName, path)
@@ -169,10 +195,10 @@ func CreateContentVServer(csvserverName string, vserverIp string, vserverPort in
 	}
 }
 
-func UnconfigureContentVServer(csvserverName string, domainName string, path string, serviceIp string, serviceName string, servicePort int) {
-	lbName := strings.Replace(domainName, ".", "_", -1) + "_lb"
-	actionName := "switch_to_lb_" + lbName
-	policyName := "switch_to_lb_" + lbName + "_policy"
+func UnconfigureContentVServer(namespace string, csvserverName string, domainName string, path string, serviceName string) {
+	lbName := GenerateLbName(namespace, domainName)
+	actionName := GenerateActionName(namespace, domainName, path)
+	policyName := GeneratePolicyName(namespace, domainName, path)
 
 	//unbind the content switch policy from the content switching vserver
 	resourceType := "csvserver_cspolicy_binding"
@@ -227,4 +253,75 @@ func UnconfigureContentVServer(csvserverName string, domainName string, path str
 	}
 	_ = body
 
+}
+
+func ListBoundPolicies(csvserverName string) []string {
+	result, err := listBoundResources(csvserverName, "csvserver", "cspolicy")
+	if err != nil {
+		log.Println("No bindings for CS Vserver %s", csvserverName)
+		return []string{}
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(result, &data); err != nil {
+		log.Println("Failed to unmarshal Netscaler Response!")
+		return []string{}
+	}
+
+	bindings := data["csvserver_cspolicy_binding"].([]interface{})
+	var ret []string
+	for _, b := range bindings {
+		binding := b.(map[string]interface{})
+		ret = append(ret, binding["policyname"].(string))
+	}
+	return ret
+}
+
+func ListPolicyAction(policyName string) string {
+	result, err := listResource("cspolicy", policyName)
+	if err != nil {
+		log.Println("No policy %s", policyName)
+		return ""
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(result, &data); err != nil {
+		log.Println("Failed to unmarshal Netscaler Response!")
+		return ""
+	}
+
+	policy := data["cspolicy"].([]interface{})[0]
+	return policy.(map[string]interface{})["action"].(string)
+}
+
+func DeleteCsPolicies(csvserverName string, policyNames []string) {
+
+	for _, policyName := range policyNames {
+		//unbind the content switch policy from the content switching vserver
+		resourceType := "csvserver_cspolicy_binding"
+		_, err := unbindResource(resourceType, csvserverName, "policyName", policyName)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to unbind Content Switching Policy %s fromo Content Switching VServer %s, err=%s", policyName, csvserverName, err))
+			return
+		}
+
+		resourceType = "cspolicy"
+		//if there was an action in the policy, find that action
+		action := ListPolicyAction(policyName)
+
+		//delete the content switch policy that uses the action
+		resourceType = "cspolicy"
+
+		_, err = deleteResource(resourceType, policyName)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to delete Content Switching Policy %s, err=%s", policyName, err))
+			return
+		}
+
+		_, err = deleteResource("csaction", action)
+
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to delete Content Switching Policy Action%s, err=%s", action, err))
+			return
+		}
+
+	}
 }
