@@ -115,6 +115,5 @@ func main() {
 		log.Fatalln("Can't connect to Kubernetes API:", err)
 	}
 	csvserver := os.Getenv("NS_CSVSERVER")
-	_ = csvserver
 	loop(csvserver, kubeClient)
 }
