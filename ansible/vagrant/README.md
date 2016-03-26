@@ -1,14 +1,52 @@
-## Vagrant deployer for Kubernetes Ansible
+## Welcome to the Vagrant Deployer for Kubernetes Ansible
 
-This deployer sets up a vagrant cluster and installs kubernetes with flannel on it.
+This deployer sets-up a Kubernetes cluster on Vagrant.
 
-## Before you start !
+## Before You Start
 
-You will need a functioning vagrant provider. Currently supported are openstack, libvirt, and virtualbox.
+Make sure you have [git installed](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) and clone the contrib repo:
+```
+git clone https://github.com/kubernetes/contrib.git
+```
 
-## USAGE
+[Install Vagrant](https://www.vagrantup.com/downloads.html) if it's not currently installed on your system.
 
-In general all that should be needed it to run
+You will need a functioning [vagrant provider](https://www.vagrantup.com/docs/providers/). Currently supported providers are openstack, libvirt, and virtualbox. Vagrant comes with VirtualBox support by default. No matter what provider you choose, you need to install the OpenStack Vagrant plugin:
+
+```
+vagrant plugin install vagrant-openstack-provider --plugin-version ">= 0.6.1"
+```
+
+Vagrant uses Ansible to automate the Kubernetes deployment. Install Ansible (Mac OSX example):
+```
+sudo easy_install pip
+sudo pip install ansible
+```
+
+Reference [Ansible installation](http://docs.ansible.com/ansible/intro_installation.html) documentation for other platforms.
+
+The DNS kubernetes-addon requires python-netaddr. Install netaddr (Mac OSX example):
+
+```
+sudo pip install python-netaddr
+```
+
+Reference the [python-netaddr documentation](https://pythonhosted.org/netaddr/installation.html) for additional installation instructions.
+
+
+## Caveats
+
+Vagrant (1.7.x) does not properly select a provider. You will need to manually specify the provider. Refer to the Provider Specific Information section for using the proper `vagrant up` command.
+
+
+## Usage
+
+Update ~/contrib/ansible/group_vars/all.yml with the following:
+```
+source_type: packageManager
+```
+
+If you are not running Vagrant 1.7.x or older, then change to the vagrant directory and `vagrant up`:
 
 ```
 vagrant up
@@ -21,14 +59,52 @@ export NUM_MINIONS=4
 
 The system will create that number of nodes. Default is 2.
 
+Vagrant up should complete with a successful Ansible playbook run:
+```
+....
+
+PLAY RECAP *********************************************************************
+kube-master                : ok=266  changed=78   unreachable=0    failed=0
+kube-node-1                : ok=129  changed=39   unreachable=0    failed=0
+kube-node-2                : ok=128  changed=39   unreachable=0    failed=0
+```
+
+Login to the Kubernetes master:
+```
+vagrant ssh kube-master
+```
+
+Verify the Kuberenetes cluster is up:
+```
+[vagrant@kube-master ~]$ kubectl cluster-info
+Kubernetes master is running at http://localhost:8080
+Elasticsearch is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/elasticsearch-logging
+Heapster is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/heapster
+Kibana is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/kibana-logging
+KubeDNS is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/kube-dns
+Grafana is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/monitoring-grafana
+InfluxDB is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/monitoring-influxdb
+
+[vagrant@kube-master ~]$ kubectl get nodes
+NAME          LABELS                               STATUS    AGE
+kube-node-1   kubernetes.io/hostname=kube-node-1   Ready     34m
+kube-node-2   kubernetes.io/hostname=kube-node-2   Ready     34m
+```
+
+Make sure the STATUS shows Ready for each node. You are now ready to deploy Kubernetes resources. Try one of the [examples](https://github.com/kubernetes/kubernetes/tree/master/examples) from the Kubernetes project repo.
+
 ## Provider Specific Information
 Vagrant tries to be intelligent and pick the first provider supported by your installation. If you want to specify a provider you can do so by running vagrant like so:
 ```
+# virtualbox provider
+vagrant up --provider=virtualbox
+
+# openstack provider
 vagrant up --provider=openstack
 ```
 
 ### OpenStack
-Make sure to install the openstack provider for vagrant.
+Make sure you installed the openstack provider for vagrant.
 ```
 vagrant plugin install vagrant-openstack-provider --plugin-version ">= 0.6.1"
 ```
@@ -42,8 +118,6 @@ To use the vagrant openstack provider you will need
 - Copy `openstack_config.yml.example` to `openstack_config.yml`
 - Edit `openstack_config.yml` to include your relevant details.
 
-For vagrant (1.7.2) does not seem to ever want to pick openstack as the provider. So you will need to tell it to use openstack explicitly.
-
 ###### Libvirt
 
 The libvirt vagrant provider is non-deterministic when launching VMs. This is a problem as we need ansible to only run after all of the VMs are running. To solve this when using libvirt one must
@@ -54,12 +128,15 @@ vagrant provision
 ```
 
 ### VirtualBox
-Nothing special with VirtualBox. Hopefully `vagrant up` just works.
+Nothing special should be required for the VirtualBox provisioner. `vagrant up` should just work.
 
 
-## Random Information
+## Additional Information
 If you just want to update the binaries on your systems (either pkgManager or localBuild) you can do so using the ansible binary-update tag. To do so with vagrant provision you would need to run
 ```
 ANSIBLE_TAGS="binary-update" vagrant provision
 ```
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/ansible/vagrant/README.md?pixel)]()
+
+### Issues
+File an issue [here](https://github.com/kubernetes/contrib/issues) if the Vagrant Deployer does not work for you or the documentation has a bug. [Pull Requests](https://github.com/kubernetes/contrib/pulls) are always welcome :-) Please review the [contributing guidelines](https://github.com/kubernetes/kubernetes/blob/master/CONTRIBUTING.md) if you have not contributed in the past and feel free to ask questions on the [kubernetes-users Slack](http://slack.kubernetes.io) channel.
