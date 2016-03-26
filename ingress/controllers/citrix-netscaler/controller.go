@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"sort"
 
 	"github.com/chiradeep/contrib/ingress/controllers/citrix-netscaler/netscaler"
 	"k8s.io/kubernetes/pkg/api"
@@ -28,6 +29,51 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
 )
+
+func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, ingress extensions.Ingress, priority int) []string {
+	var resultPolicyNames []string
+	namespace := ingress.Namespace
+	for _, rule := range ingress.Spec.Rules {
+		host := rule.Host
+		for _, path := range rule.HTTP.Paths {
+			path_ := path.Path
+			serviceName := path.Backend.ServiceName
+			servicePort := path.Backend.ServicePort.IntValue()
+			log.Printf("Host: %s, path: %s, serviceName: %s, servicePort: %d", host, path_, serviceName, servicePort)
+			// Need to resolve the service IP
+			s, err := kubeClient.Services(api.NamespaceDefault).Get(serviceName)
+			if err != nil {
+				log.Printf("Failed to retrieve Service %s", serviceName)
+				continue
+			}
+			serviceIp := s.Spec.ClusterIP
+			if serviceIp == "None" {
+				log.Printf("Service %s has service IP of None", serviceName)
+			}
+			log.Printf("Host: %s, path: %s, serviceName: %s, serviceIp: %s servicePort: %d priority %d", host, path_, serviceName, serviceIp, servicePort, priority)
+			netscaler.ConfigureContentVServer(namespace, csvserverName, host, path_, serviceIp, serviceName, servicePort, priority)
+			policyName := netscaler.GeneratePolicyName(namespace, host, path_)
+			resultPolicyNames = append(resultPolicyNames, policyName)
+			priority += 10
+		}
+
+	}
+	return resultPolicyNames
+}
+
+func sliceDifference(left []string, right []string) []string {
+	sort.Strings(right)
+	lenRight := len(right)
+	var result []string
+	for _, s := range left {
+		index := sort.SearchStrings(right, s)
+		log.Printf("s=%s, searchResult=%d", s, index)
+		if index == lenRight || right[index] != s {
+			result = append(result, s)
+		}
+	}
+	return result
+}
 
 func loop(csvserverName string, kubeClient *client.Client) {
 	var ingClient client.IngressInterface
@@ -47,36 +93,16 @@ func loop(csvserverName string, kubeClient *client.Client) {
 			continue
 		}
 		known = ingresses
+		var newOrExistingPolicyNames []string
 		priority := 10
 		for _, ing := range ingresses.Items {
-			for _, rule := range ing.Spec.Rules {
-				host := rule.Host
-				for _, path := range rule.HTTP.Paths {
-					path_ := path.Path
-					serviceName := path.Backend.ServiceName
-					servicePort := path.Backend.ServicePort.IntValue()
-					log.Printf("Host: %s, path: %s, serviceName: %s, servicePort: %d", host, path_, serviceName, servicePort)
-					// Need to resolve the service IP
-					s, err := kubeClient.Services(api.NamespaceDefault).Get(serviceName)
-					if err != nil {
-						log.Printf("Failed to retrieve Service %s", serviceName)
-						continue
-					}
-					serviceIp := s.Spec.ClusterIP
-					if serviceIp == "None" {
-						log.Printf("Service %s has service IP of None", serviceName)
-					}
-					log.Printf("Host: %s, path: %s, serviceName: %s, serviceIp: %s servicePort: %d priority %d", host, path_, serviceName, serviceIp, servicePort, priority)
-					netscaler.ConfigureContentVServer(csvserverName, host, path_, serviceIp, serviceName, servicePort, priority)
-					priority += 10
-				}
-
-			}
-
+			policyNames := ingressToNetscalerConfig(kubeClient, csvserverName, ing, priority)
+			newOrExistingPolicyNames = append(newOrExistingPolicyNames, policyNames...)
 		}
-		os.Exit(1)
+		lbPolicyNames := netscaler.ListBoundPolicies(csvserverName)
+		toDelete := sliceDifference(lbPolicyNames, newOrExistingPolicyNames)
+		netscaler.DeleteCsPolicies(csvserverName, toDelete)
 	}
-
 }
 
 func main() {
@@ -89,6 +115,6 @@ func main() {
 		log.Fatalln("Can't connect to Kubernetes API:", err)
 	}
 	csvserver := os.Getenv("NS_CSVSERVER")
-	//netscaler.UnconfigureContentVServer("csvserver_foobar", "foo.com", "/foo", "10.220.160.254", "fooService", 80)
+	_ = csvserver
 	loop(csvserver, kubeClient)
 }
