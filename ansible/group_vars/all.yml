@@ -4,7 +4,7 @@
 #
 # localBuild - requires make release to have been run to build local binaries
 # packageManager - will install packages from your distribution using yum/dnf/apt
-source_type: localBuild
+source_type: packageManager
 
 # will be used as the Internal dns domain name if DNS is enabled. Services
 # will be discoverable under <service-name>.<namespace>.svc.<domainname>, e.g.
