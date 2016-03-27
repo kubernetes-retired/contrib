@@ -1,0 +1,17 @@
+[Match]
+Name={{ kube_internal_interface }}
+
+[Network]
+Address={{ kube_internal_ip }}{{ kube_internal_cidr }}
+
+{% if kube_internal_routes %}
+{% for route in kube_internal_routes %}
+{% set route_dest=route.split(',')[0] %}
+{% set route_mask=route.split(',')[1] %}
+{% set route_next_hop=route.split(',')[2] %}
+[Route]
+Destination={{ route_dest }}{{ route_mask }}
+Gateway={{ route_next_hop }}
+
+{% endfor %}
+{% endif %}

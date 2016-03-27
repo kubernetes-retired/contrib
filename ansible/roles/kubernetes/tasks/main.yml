@@ -32,7 +32,7 @@
   notify:
     - restart daemons
 
-- include: download_bins.yml
+- include: coreos.yml
   when: is_coreos
 
 - include: secrets.yml

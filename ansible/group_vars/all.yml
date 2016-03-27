@@ -45,6 +45,19 @@ kube_master_api_port: 443
 # addresses do not need to be routable and must just be an unused block of space.
 kube_service_addresses: 10.254.0.0/16
 
+# Set manage_internal_kube_network: true to manage an
+# internal Kubernetes network for CoreOS deployments.
+# Internal network variables should be set in host_vars.
+# See the example at ansible/host_vars/managed_host_example
+manage_internal_kube_network: false
+
+# When manage_internal_kube_network: true
+# kube_internal_routes adds internal routes for
+# CoreOS deployments in the form of:
+# destination_network,destination_mask,next_hop_ip
+kube_internal_routes:
+#  - 192.168.0.0,/16,192.168.10.1
+
 # Network implementation (flannel|opencontrail)
 networking: flannel
 
