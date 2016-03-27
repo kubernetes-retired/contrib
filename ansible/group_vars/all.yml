@@ -35,6 +35,7 @@ insecure_registrys:
 # If you need a proxy for the docker daemon define these here
 #http_proxy: "http://proxy.example.com:3128"
 #https_proxy: "http://proxy.example.com:3128"
+#no_proxy: "127.0.0.1,localhost,docker-registry.somecorporation.com"
 
 # The port that the Kubernetes apiserver component listens on.
 kube_master_api_port: 443

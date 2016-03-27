@@ -28,6 +28,7 @@
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
   when: cluster_logging
 
 - name: Get the node token values
