@@ -23,7 +23,7 @@ sudo easy_install pip
 sudo pip install ansible
 ```
 
-Reference [Ansible installation](http://docs.ansible.com/ansible/intro_installation.html) documentation for other platforms.
+Reference [Ansible installation](http://docs.ansible.com/ansible/intro_installation.html) for additional installation instructions.
 
 The DNS kubernetes-addon requires python-netaddr. Install netaddr (Mac OSX example):
 
@@ -59,22 +59,17 @@ The system will create that number of nodes. Default is 2.
 You can specify which OS image to use on hosts:
 
 ```
-export OS_IMAGE=coreos7
+export OS_IMAGE=centos7
 ```
 
-By default CoreOS 7 image is used.
+By default CentOS 7 image is used.
 
 Supported images:
 
-* `centos7` (default) - Core OS 7 supported on OpenStack, VirtualBox, Libvirt providers.
-* `coreos` - Core OS supported on VirtualBox provider.
+* `centos7` (default) - CentOS 7 supported on OpenStack, VirtualBox, Libvirt providers.
+* `coreos` - [CoreOS](https://coreos.com/) supported on VirtualBox provider.
 
 ### Start your cluster
-
-Update ~/contrib/ansible/group_vars/all.yml with the following:
-```
-source_type: packageManager
-```
 
 If you are not running Vagrant 1.7.x or older, then change to the vagrant directory and `vagrant up`:
 
@@ -163,7 +158,7 @@ ANSIBLE_TAGS="binary-update" vagrant provision
 
 ### Running Ansible
 
-After provisioning cluster vith Vagrant you can run ansible in this directory for any additional provision -
+After provisioning a cluster vith Vagrant you can run ansible in this directory for any additional provisioning -
 `ansible.cfg` provides configuration that will allow Ansible to connect to managed hosts.
 
 For example:
@@ -180,6 +175,6 @@ kube-master | SUCCESS => {
 ```
 
 ### Issues
-File an issue [here](https://github.com/kubernetes/contrib/issues) if the Vagrant Deployer does not work for you or the documentation has a bug. [Pull Requests](https://github.com/kubernetes/contrib/pulls) are always welcome :-) Please review the [contributing guidelines](https://github.com/kubernetes/kubernetes/blob/master/CONTRIBUTING.md) if you have not contributed in the past and feel free to ask questions on the [kubernetes-users Slack](http://slack.kubernetes.io) channel.
+File an issue [here](https://github.com/kubernetes/contrib/issues) if the Vagrant Deployer does not work for you or if you find a documentation bug. [Pull Requests](https://github.com/kubernetes/contrib/pulls) are always welcome :-) Please review the [contributing guidelines](https://github.com/kubernetes/kubernetes/blob/master/CONTRIBUTING.md) if you have not contributed in the past and feel free to ask questions on the [kubernetes-users Slack](http://slack.kubernetes.io) channel.
 
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/ansible/vagrant/README.md?pixel)]()
