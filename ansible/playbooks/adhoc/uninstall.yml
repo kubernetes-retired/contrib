@@ -18,6 +18,20 @@
     - set_fact:
         is_containerized: "{{ is_atomic or containerized | default(false) | bool }}"
 
+    - name: Determine if CoreOS
+      raw: "grep '^NAME=' /etc/os-release | sed s'/NAME=//'"
+      register: distro
+      always_run: yes
+
+    - name: Init the is_coreos fact
+      set_fact:
+        is_coreos: false
+
+    - name: Set the is_coreos fact
+      set_fact:
+        is_coreos: true
+      when: "'CoreOS' in distro.stdout"
+
     - name: Remove br0 interface
       shell: ovs-vsctl del-br br0
       changed_when: False
@@ -33,20 +47,45 @@
         - kube-scheduler
         - kube-addons
         - etcd
+        - etcd2
       failed_when: false
 
     - name: Remove packages
       action: "{{ ansible_pkg_mgr }} name={{ item }} state=absent"
-      when: not is_atomic | bool
+      when: not is_coreos and not is_atomic | bool
       with_items:
         - flannel
         - kubernetes-node
         - kubernetes-master
         - etcd
+        - etcd2
         - kube-addons
         - atomic-enterprise
         - atomic-enterprise-master
         - atomic-enterprise-node
+
+    - name: CoreOS | Remove packages
+      file: path={{ item }} state=absent
+      when: is_coreos
+      with_items:
+        - /opt/bin/flanneld
+        - /opt/bin/kubelet
+        - /opt/bin/kubectl
+        - /opt/bin/kubernetes
+        - /etc/systemd/system/flanneld.service
+        - /etc/systemd/system/etcd2.service.d
+        - /etc/systemd/system/kube-proxy.service.d
+        - /etc/systemd/system/kube-apiserver.service.d
+        - /etc/systemd/system/kube-controller-manager.service.d
+        - /etc/systemd/system/kube-scheduler.service.d
+        - /etc/systemd/system/kubelet.service.d
+        - /etc/systemd/system/docker.service.d
+        - /etc/systemd/system/flanneld.service.wants
+        - /etc/systemd/system/kube-proxy.service.wants
+        - /etc/systemd/system/kube-apiserver.service.wants
+        - /etc/systemd/system/multi-user.target.wants
+        - /etc/systemd/system/delay-master-services.target
+        - /etc/systemd/system/delay-node-services.target
 
     - name: Remove linux interfaces
       shell: ip link del "{{ item }}"
@@ -96,6 +135,9 @@
         - /var/lib/etcd
         - /etc/tmpfiles.d
 
+    - name: CoreOS | Recover etcd data directory
+      file: path=/var/lib/etcd state=directory owner=etcd group=etcd
+
     - name: Reload systemd manager configuration
       command: systemctl daemon-reload
 
@@ -104,3 +146,17 @@
   tasks:
     - name: restart docker
       service: name=docker state=restarted
+
+- hosts: 
+    - masters
+    - nodes
+    - etcd 
+  sudo: yes
+  tasks:
+    - name: CoreOS | unbootstrap python
+      raw: rm -r {{ item }}
+      when: is_coreos
+      with_items:
+        - /opt/bin/python
+        - /opt/bin/pypy
+        - /opt/bin/.bootstrapped
