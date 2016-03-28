@@ -20,7 +20,7 @@ vagrant plugin install vagrant-openstack-provider --plugin-version ">= 0.6.1"
 Vagrant uses Ansible to automate the Kubernetes deployment. Install Ansible (Mac OSX example):
 ```
 sudo easy_install pip
-sudo pip install ansible
+sudo pip install ansible==2.0.0.2
 ```
 
 Reference [Ansible installation](http://docs.ansible.com/ansible/intro_installation.html) for additional installation instructions.
@@ -49,7 +49,7 @@ Note that these variables should be set for all vagrant commands invocations,
 
 If you export an env variable such as
 ```
-export NUM_MINIONS=4
+export NUM_NODES=4
 ```
 
 The system will create that number of nodes. Default is 2.
