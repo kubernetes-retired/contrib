@@ -38,6 +38,7 @@ Reference the [python-netaddr documentation](https://pythonhosted.org/netaddr/in
 
 Vagrant (1.7.x) does not properly select a provider. You will need to manually specify the provider. Refer to the Provider Specific Information section for using the proper `vagrant up` command.
 
+Vagrant prior version 1.8.0 doesn't write group variables into Ansible inventory file, which is required for using Core OS images.
 
 ## Usage
 

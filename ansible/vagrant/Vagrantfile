@@ -206,6 +206,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
      "all_groups:children" => ["etcd","masters","nodes"],
   }
   if $os_image == :coreos
+    # Vagrant prior version 1.8.0 doesn't write group variables into inventory file:
+    # <https://github.com/mitchellh/vagrant/commit/dd4ae1a51cfb246d561bced89d3b34ee90a0a38f>
+    Vagrant.require_version ">= 1.8.0"
+
     # On CoreOS we use custom Python in Ansible.
     $groups["all_groups:vars"] = ['ansible_python_interpreter="PATH=/opt/bin:$PATH python"']
   end
