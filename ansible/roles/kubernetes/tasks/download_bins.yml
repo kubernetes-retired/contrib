@@ -1,22 +1,18 @@
 ---
-- name: Download tar file
+- name: Download Kubernetes binaries
   get_url:
-    url: "{{ kube_download_url }}"
-    dest: "{{ ansible_temp_dir }}"
+    url: "{{ kube_download_url_base }}{{ item }}"
+    dest: "{{ bin_dir }}/{{ item }}"
+    mode: 0755
     validate_certs: False
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
     no_proxy: "{{ no_proxy|default('') }}"
-
-- name: Extract tar file
-  unarchive:
-    src: "{{ ansible_temp_dir }}/kubernetes.tar.gz"
-    dest: "{{ ansible_temp_dir }}"
-    copy: no
-
-- name: Extract 2nd tar file
-  unarchive:
-    src: "{{ ansible_temp_dir }}/kubernetes/server/kubernetes-server-linux-amd64.tar.gz"
-    dest: "{{ bin_dir }}"
-    copy: no
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-proxy
+    - kube-scheduler
+    - kubectl
+    - kubelet
