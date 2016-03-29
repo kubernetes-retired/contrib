@@ -3,7 +3,7 @@
   set_fact:
     flannel_version: 0.5.5
 
-- stat: path=/usr/local/flannel-{{ flannel_version }}
+- stat: path={{ flannel_releases_dir }}/flannel-{{ flannel_version }}
   register: st
 
 - name: Download tar file
@@ -20,13 +20,13 @@
 - name: Extract tar file
   unarchive:
     src: "{{ ansible_temp_dir }}/flannel-{{ flannel_version }}-linux-amd64.tar.gz"
-    dest: /usr/local
+    dest: "{{ flannel_releases_dir }}"
     copy: no
   when: st.stat.isdir is not defined
 
 - name: Create symlinks
   file:
-    src: /usr/local/flannel-{{ flannel_version }}/{{ item }}
+    src: "{{ flannel_releases_dir }}/flannel-{{ flannel_version }}/{{ item }}"
     dest: "{{ bin_dir }}/{{ item }}"
     state: link
     force: yes
