@@ -3,17 +3,6 @@
   set_fact:
     source_type: "github-release"
 
-- name: CoreOS | Create symlinks
-  file:
-    src: "{{ bin_dir }}/kubernetes/server/bin/{{ item }}"
-    dest: "{{ bin_dir }}/{{ item }}"
-    state: link
-  with_items:
-    - kube-apiserver
-    - kube-controller-manager
-    - kube-scheduler
-    - kubectl
-
 - name: CoreOS | Get Systemd Unit Files from Kubernetes repository
   get_url:
     url=https://raw.githubusercontent.com/kubernetes/contrib/master/init/systemd/{{ item }}.service
