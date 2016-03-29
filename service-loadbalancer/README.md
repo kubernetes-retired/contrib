@@ -77,7 +77,7 @@ e2e-test-beeps-minion-c9up   kubernetes.io/hostname=e2e-test-beeps-minion-c9up,r
 ```
 #### Expose services
 
-Let's create 3 services (HTTP, HTTP and TCP) to test the loadbalancer.
+Let's create 3 services (HTTP, HTTPS and TCP) to test the loadbalancer.
 
 #### HTTP
 You can use the [https-nginx](https://github.com/kubernetes/kubernetes/tree/master/examples/https-nginx) example to create some new HTTP/HTTPS services.

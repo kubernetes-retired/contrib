@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 FROM gcr.io/google_containers/ubuntu-slim:0.1
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  bash \
-  curl \
-  ipvsadm \
-  iproute2 \
-  keepalived \
-  kmod \
-  psmisc && \
-  rm -rf /var/cache/apk/* /etc/keepalived/keepalived.conf
-  
-COPY kube-keepalived-vip /kube-keepalived-vip
+COPY build.sh /tmp
 
-ENTRYPOINT ["/kube-keepalived-vip"]
+RUN /tmp/build.sh
+
+# Create symlinks to redirect nginx logs to stdout and stderr docker log collector
+# This only works if nginx is started with CMD or ENTRYPOINT
+RUN ln -sf /dev/stdout /var/log/nginx/access.log
+RUN ln -sf /dev/stderr /var/log/nginx/error.log
+
+EXPOSE 80 443
+
+CMD ["nginx", "-g", "daemon off;"]

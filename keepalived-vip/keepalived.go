@@ -167,17 +167,7 @@ func (k *keepalived) Start() {
 
 	k.started = true
 
-	// in case the pod is terminated we need to check that the vips are removed
-	c := make(chan os.Signal, 2)
-	signal.Notify(c, syscall.SIGTERM)
-	go func() {
-		for range c {
-			glog.Warning("TERM signal received. removing vips")
-			for _, vip := range k.vips {
-				k.removeVIP(vip)
-			}
-		}
-	}()
+	k.setupSignalHandlers()
 
 	if err := cmd.Start(); err != nil {
 		glog.Errorf("keepalived error: %v", err)
@@ -226,9 +216,23 @@ func resetIPVS() error {
 
 func (k *keepalived) removeVIP(vip string) error {
 	glog.Infof("removing configred VIP %v", vip)
-	out, err := k8sexec.New().Command("ip", "add", "del", vip+"/32", "dev", k.iface).CombinedOutput()
+	out, err := k8sexec.New().Command("ip", "addr", "del", vip+"/32", "dev", k.iface).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error reloading keepalived: %v\n%s", err, out)
 	}
 	return nil
+}
+
+func (k *keepalived) setupSignalHandlers() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		switch <-sigChan {
+		case syscall.SIGINT:
+		case syscall.SIGTERM:
+			for _, vip := range k.vips {
+				k.removeVIP(vip)
+			}
+		}
+	}()
 }

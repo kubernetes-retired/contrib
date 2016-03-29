@@ -1,4 +1,6 @@
-# Copyright 2015 The Kubernetes Authors. All rights reserved.
+#!/bin/bash
+
+# Copyright 2016 The Kubernetes Authors All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,18 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-FROM alpine:edge
-
-COPY build.sh /tmp
-
-RUN /tmp/build.sh
-
-# Create symlinks to redirect nginx logs to stdout and stderr docker log collector
-# This only works if nginx is started with CMD or ENTRYPOINT
-RUN ln -sf /dev/stdout /var/log/nginx/access.log
-RUN ln -sf /dev/stderr /var/log/nginx/error.log
-
-EXPOSE 80 443
-
-CMD ["nginx", "-g", "daemon off;"]
+./mungegithub --token="${GITHUB_API_TOKEN}" --issue-reports=shame\
+	      --shame-from="${SHAME_FROM}" --shame-reply-to="${SHAME_REPLY_TO}"\
+	      --shame-cc="${SHAME_CC}"\
+	      --shame-report-cmd="mailx -v -t -S smtp=${SMTP_SERVER} -S smtp-auth=login -S smtp-auth-user=${SMTP_USER} -S smtp-auth-password=${SMTP_PASS}"
