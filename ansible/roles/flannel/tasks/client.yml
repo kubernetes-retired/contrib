@@ -1,16 +1,36 @@
 ---
-- name: Install flannel
+- name: Force to use github-release when packages are not available
+  set_fact:
+    flannel_source_type: "github-release"
+  when: is_coreos or ansible_distribution == "Ubuntu"
+
+- name: Install Flannel with package manager
   action: "{{ ansible_pkg_mgr }}"
   args:
         name: flannel
         state: latest
-  when: not is_atomic and not is_coreos
+  when: not is_atomic and flannel_source_type != "github-release"
 
-- name: Install from github
+- name: Install Flannel with github release
   include: github-release.yml
-  when: is_coreos
+  when: flannel_source_type == "github-release"
+
+- set_fact:
+    flannel_use_upstart: ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
+
+- name: Set Flannel config file directory
+  set_fact:
+    flannel_config_dir: "/etc/sysconfig"
+
+- name: Override Flannel config file directory for Ubuntu
+  set_fact:
+    flannel_config_dir: "/etc/flannel"
+  when: flannel_use_upstart
+
+- name: Create config file directory
+  file: path={{ flannel_config_dir }} state=directory
 
 - name: Install Flannel config file
-  template: src=flanneld.j2 dest=/etc/sysconfig/flanneld
+  template: src=flanneld.j2 dest={{ flannel_config_dir }}/flanneld
   notify:
     - restart flannel

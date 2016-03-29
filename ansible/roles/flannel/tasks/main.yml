@@ -7,6 +7,9 @@
 - include: coreos.yml
   when: is_coreos
 
+- include: ubuntu.yml
+  when: ansible_distribution == 'Ubuntu'
+
 - include: firewalld.yml
   when: has_firewalld
 

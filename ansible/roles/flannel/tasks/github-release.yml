@@ -3,6 +3,9 @@
   set_fact:
     flannel_version: 0.5.5
 
+- stat: path=/usr/local/flannel-{{ flannel_version }}
+  register: st
+
 - name: Download tar file
   get_url:
     url: "https://github.com/coreos/flannel/releases/download/v{{ flannel_version }}/flannel-{{ flannel_version }}-linux-amd64.tar.gz"
@@ -12,15 +15,21 @@
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
     no_proxy: "{{ no_proxy|default('') }}"
+  when: st.stat.isdir is not defined
 
 - name: Extract tar file
   unarchive:
     src: "{{ ansible_temp_dir }}/flannel-{{ flannel_version }}-linux-amd64.tar.gz"
-    dest: "{{ ansible_temp_dir }}"
+    dest: /usr/local
     copy: no
+  when: st.stat.isdir is not defined
 
-- name: Move Flannel bins to bin_dir
-  command: mv "{{ ansible_temp_dir }}/flannel-{{ flannel_version }}/{{ item }}" "{{ bin_dir }}/{{ item }}"
+- name: Create symlinks
+  file:
+    src: /usr/local/flannel-{{ flannel_version }}/{{ item }}
+    dest: "{{ bin_dir }}/{{ item }}"
+    state: link
+    force: yes
   with_items:
     - flanneld
     - mk-docker-opts.sh
