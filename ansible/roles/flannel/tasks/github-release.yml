@@ -3,11 +3,7 @@
   set_fact:
     flannel_version: 0.5.5
 
-- name: Set Flannel releases directory
-  set_fact:
-    flannel_releases_dir: /opt/
-
-- stat: path={{ flannel_releases_dir }}flannel-{{ flannel_version }}
+- stat: path={{ flannel_releases_dir }}/flannel-{{ flannel_version }}
   register: st
 
 - name: Download tar file
@@ -30,7 +26,7 @@
 
 - name: Create symlinks
   file:
-    src: "{{ flannel_releases_dir }}flannel-{{ flannel_version }}/{{ item }}"
+    src: "{{ flannel_releases_dir }}/flannel-{{ flannel_version }}/{{ item }}"
     dest: "{{ bin_dir }}/{{ item }}"
     state: link
     force: yes

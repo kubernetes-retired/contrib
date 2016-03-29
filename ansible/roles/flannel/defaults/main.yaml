@@ -3,3 +3,7 @@
 etcd_client_port: 2379
 # valid types: package | github-release
 flannel_source_type: package
+
+# Directory to store downloaded flannel releases
+# (in case of using github-releases).
+flannel_releases_dir: /opt
