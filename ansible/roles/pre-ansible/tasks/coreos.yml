@@ -34,7 +34,7 @@
   raw: >
           printf "%s\n%s"
           "#! /usr/bin/bash"
-          "PATH=\$PATH:/opt/bin"
+          "PATH=\$PATH:{{ bin_dir }}"
           > /etc/profile.d/opt-path.sh
 
 - name: CoreOS | Change permissions and ownership for opt-path.sh to run as root
