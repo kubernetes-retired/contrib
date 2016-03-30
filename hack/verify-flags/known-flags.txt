@@ -77,5 +77,6 @@ whitelist-override-label
 dump-nginx—configuration
 nginx-configmap
 tcp-services-configmap
+udp-services-configmap
 one-time
 change-permissions
