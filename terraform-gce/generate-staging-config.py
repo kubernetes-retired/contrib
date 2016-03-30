@@ -5,6 +5,10 @@ import subprocess
 import argparse
 import os.path
 import urllib.request
+import sys
+
+root_dir = os.path.abspath(os.path.dirname(__file__))
+sys.path.insert(0, root_dir)
 
 
 def _error(msg):
@@ -28,7 +32,7 @@ class Worker(InstanceBase):
         super().__init__(number)
 
 
-os.chdir(os.path.abspath(os.path.dirname(__file__)))
+os.chdir(root_dir)
 
 cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument(
@@ -69,17 +73,18 @@ with urllib.request.urlopen('https://discovery.etcd.io/new?size={}'.format(
         as response:
     discovery_url = response.read().decode()
 
-for i, master in enumerate(master_instances):
+for master in master_instances:
     subprocess.check_call([
         './master/generate-assets.py',
-        str(i + 1),
+        str(master.number),
         args.dns_address,
         args.region,
         discovery_url,
         master.public_ip,
     ])
-for i, worker in enumerate(worker_instances):
+for worker in worker_instances:
     subprocess.check_call([
         './worker/generate-assets.py',
-        str(i + 1),
+        str(worker.number),
+        args.master_public_ip,
     ])

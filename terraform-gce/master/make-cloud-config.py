@@ -7,9 +7,11 @@ import argparse
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 cl_parser = argparse.ArgumentParser()
-cl_parser.add_argument('node_num', help='Specify node number')
 cl_parser.add_argument('discovery_url', help='Specify etcd discovery URL')
 args = cl_parser.parse_args()
+
+with open(os.path.expanduser('~/.ssh/id_rsa.pub'), 'rt') as f:
+    ssh_key = f.read().strip()
 
 kube_conf = """apiVersion: v1
 kind: Config
@@ -30,7 +32,7 @@ contexts:
 """
 kube_conf = '\n'.join([' ' * 6 + l for l in kube_conf.splitlines()])
 
-with open(os.path.join('assets', args.node_num, 'cloud-config'), 'wt') as \
+with open(os.path.join('assets', 'cloud-config'), 'wt') as \
         fcloud_config:
     fcloud_config.write("""#cloud-config
 write_files:
@@ -39,9 +41,11 @@ write_files:
     owner: "root"
     content: |
 {0}
+ssh_authorized_keys:
+  - "{1}"
 coreos:
   etcd2:
-    discovery: {1}
+    discovery: {2}
     initial-advertise-peer-urls: https://$private_ipv4:2380
     listen-peer-urls: https://$private_ipv4:2380
     listen-client-urls: https://0.0.0.0:2379
@@ -80,4 +84,4 @@ coreos:
 
         [Install]
         WantedBy=local.target
-""".format(kube_conf, args.discovery_url,))
+""".format(kube_conf, ssh_key, args.discovery_url,))

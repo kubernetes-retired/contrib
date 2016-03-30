@@ -9,12 +9,15 @@ os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument(
-    'master_private_ip', help='Specify private IP of master')
+    'master_public_ip', help='Specify public IP of master')
 args = cl_parser.parse_args()
 
 with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
         as response:
     discovery_url = response.read().decode()
+
+with open(os.path.expanduser('~/.ssh/id_rsa.pub'), 'rt') as f:
+    ssh_key = f.read().strip()
 
 kube_conf = """apiVersion: v1
 kind: Config
@@ -32,7 +35,7 @@ contexts:
 - context:
     cluster: local
     user: kubelet
-""".format(args.master_private_ip)
+""".format(args.master_public_ip)
 kube_conf = '\n'.join([' ' * 6 + l for l in kube_conf.splitlines()])
 
 with open(os.path.join('assets', 'cloud-config'), 'wt') as \
@@ -45,6 +48,8 @@ write_files:
     owner: "root"
     content: |
 {0}
+ssh_authorized_keys:
+  - "{1}"
 coreos:
   units:
     - name: swap.service
@@ -64,4 +69,4 @@ coreos:
 
         [Install]
         WantedBy=local.target
-""".format(kube_conf))
+""".format(kube_conf, ssh_key,))

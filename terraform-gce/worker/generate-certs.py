@@ -7,22 +7,22 @@ import shutil
 
 cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument('node_num', type=int, help='Specify node number')
-cl_parser.add_argument('private_ip', help='Specify node private IP')
 args = cl_parser.parse_args()
 
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
+if not os.path.exists('assets/certificates'):
+    os.makedirs('assets/certificates')
 os.chdir('assets/certificates')
 
 print(os.listdir('.'))
 
 with file('worker{0}-worker.json'.format(args.node_num), 'wt') as f:
     f.write("""{{
-  "CN": "worker{0}.staging.realtimemusic.com",
+  "CN": "node{0}.staging.realtimemusic.com",
   "hosts": [
-    "{1}",
-    "ip-{2}.eu-central-1.compute.internal",
-    "127.0.0.1"
+    "127.0.0.1",
+    "staging-node{0}"
   ],
   "key": {{
     "algo": "rsa",
@@ -36,7 +36,7 @@ with file('worker{0}-worker.json'.format(args.node_num), 'wt') as f:
     }}
   ]
 }}
-""".format(args.node_num, args.private_ip, args.private_ip.replace('.', '-')))
+""".format(args.node_num,))
 
 subprocess.check_call(
     'cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json '

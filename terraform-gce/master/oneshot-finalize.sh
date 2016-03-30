@@ -23,11 +23,6 @@ $CERTSDIR/master-client-key.pem -XPOST \
 https://127.0.0.1/api/v1/namespaces
 }
 
-echo Configuring Flannel network...
-curl --cacert $CERTSDIR/ca.pem --cert $CERTSDIR/master-client.pem \
---key $CERTSDIR/master-client-key.pem -X PUT \
--d "value={\"Network\":\"10.2.0.0/16\",\"Backend\":{\"Type\":\"vxlan\"}}" \
-https://127.0.0.1:2379/v2/keys/coreos.com/network/config && \
 create_namespace && \
 echo "Creating DNS addon..." && \
 /opt/bin/kubectl create -f /tmp/dns-addon.yaml && \

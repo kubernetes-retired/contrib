@@ -12,10 +12,7 @@ make_dir /etc/kubernetes && \
 make_dir /etc/kubernetes/ssl && \
 make_dir /etc/kubernetes/manifests && \
 make_dir /etc/ssl/etcd && \
-make_dir /etc/flannel && \
 make_dir /etc/systemd/system && \
-make_dir /etc/systemd/system/flanneld.service.d && \
-make_dir /etc/systemd/system/docker.service.d && \
 make_dir /srv/kubernetes/manifests && \
 mkdir -p ~/.local/bin && \
 sudo fallocate -l 2048m /swap && \

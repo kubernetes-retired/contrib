@@ -8,12 +8,14 @@ import shutil
 cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument('node_num', type=int, help='Specify node number')
 cl_parser.add_argument('dns_address', help='Specify app\'s DNS address')
-cl_parser.add_argument('region', help='Specify AWS region')
+cl_parser.add_argument('region', help='Specify GCE region')
 cl_parser.add_argument('public_ip', help='Specify node public IP')
 args = cl_parser.parse_args()
 
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
+if not os.path.exists('assets/certificates'):
+    os.makedirs('assets/certificates')
 os.chdir('assets/certificates')
 
 with file('master{0}-master.json'.format(args.node_num), 'wt') as f:
@@ -22,6 +24,7 @@ with file('master{0}-master.json'.format(args.node_num), 'wt') as f:
   "hosts": [
     "{1}",
     "{2}",
+    "staging-master{0}",
     "10.3.0.1",
     "127.0.0.1",
     "localhost"

@@ -36,7 +36,7 @@
             exit 1
           fi
         fi
-5. Upload server tars:
+5. Upload server tars to gs://kubernetes-staging-$hash-eu/kubernetes-devel:
         SERVER_BINARY_TAR_URL=
         SERVER_BINARY_TAR_HASH=
         SALT_TAR_URL=
