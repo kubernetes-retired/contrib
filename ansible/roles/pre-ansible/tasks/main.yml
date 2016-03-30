@@ -18,6 +18,11 @@
     is_coreos: true
   when: "'CoreOS' in distro.stdout"
 
+- name: Set the bin directory path for CoreOS
+  set_fact:
+    bin_dir: "/opt/bin"
+  when: is_coreos
+
 - include: coreos.yml
   when: is_coreos
 
