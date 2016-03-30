@@ -36,8 +36,8 @@ kubectl run echoheaders --image=gcr.io/google_containers/echoserver:1.3 --replic
 
 Now we expose the same application in two different services (so we can create different Ingress rules)
 ```
-kubectl expose rc echoheaders --port=80 --target-port=8080 --name=echoheaders-x
-kubectl expose rc echoheaders --port=80 --target-port=8080 --name=echoheaders-y
+kubectl expose deployment echoheaders --port=80 --target-port=8080 --name=echoheaders-x
+kubectl expose deployment echoheaders --port=80 --target-port=8080 --name=echoheaders-y
 ```
 
 Next we create a couple of Ingress rules
@@ -130,6 +130,27 @@ data:
 
 Please check the [tcp services](examples/tcp/README.md) example
 
+## Exposing UDP services
+
+Since 1.9.13 NGINX provides [UDP Load Balancing](https://www.nginx.com/blog/announcing-udp-load-balancing/).
+
+Ingress does not support UDP services (yet). For this reason this Ingress controller uses a ConfigMap where the key is the external port to use and the value is 
+`<namespace/service name>:<service port>`
+It is possible to use a number or the name of the port.
+
+The next example shows how to expose the service `kube-dns` running in the namespace `kube-system` in the port `53` using the port `53`
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udp-configmap-example
+data:
+  53: "kube-system/kube-dns:53"
+```
+
+
+Please check the [udp services](examples/udp/README.md) example
+
 
 ## Custom NGINX configuration
 
@@ -192,6 +213,13 @@ I0316 12:24:37.610073       1 command.go:69] change in configuration detected. R
 
 - `--v=3` shows details about the service, Ingress rule, endpoint changes and it dumps the nginx configuration in JSON format
 - `--v=5` configures NGINX in [debug mode](http://nginx.org/en/docs/debugging_log.html)
+
+
+
+### Retries in no idempotent methods
+
+Since 1.9.13 NGINX will not retry non-idempotent requests (POST, LOCK, PATCH) in case of an error. 
+The previous behavior can be restored using `retry-non-idempotent=true` in the configuration ConfigMap
 
 
 ## Limitations

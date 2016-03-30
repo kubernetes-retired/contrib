@@ -62,6 +62,7 @@ type loadBalancerController struct {
 	defaultSvc     string
 	nxgConfigMap   string
 	tcpConfigMap   string
+	udpConfigMap   string
 
 	syncQueue *taskQueue
 
@@ -75,7 +76,7 @@ type loadBalancerController struct {
 
 // newLoadBalancerController creates a controller for nginx loadbalancer
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, defaultSvc,
-	namespace, nxgConfigMapName, tcpConfigMapName string, lbRuntimeInfo *lbInfo) (*loadBalancerController, error) {
+	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName string, lbRuntimeInfo *lbInfo) (*loadBalancerController, error) {
 	lbc := loadBalancerController{
 		client:       kubeClient,
 		stopCh:       make(chan struct{}),
@@ -83,6 +84,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		nginx:        nginx.NewManager(kubeClient),
 		nxgConfigMap: nxgConfigMapName,
 		tcpConfigMap: tcpConfigMapName,
+		udpConfigMap: udpConfigMapName,
 		defaultSvc:   defaultSvc,
 	}
 
@@ -174,6 +176,10 @@ func (lbc *loadBalancerController) getTCPConfigMap(ns, name string) (*api.Config
 	return lbc.client.ConfigMaps(ns).Get(name)
 }
 
+func (lbc *loadBalancerController) getUDPConfigMap(ns, name string) (*api.ConfigMap, error) {
+	return lbc.client.ConfigMaps(ns).Get(name)
+}
+
 func (lbc *loadBalancerController) sync(key string) {
 	if !lbc.controllersInSync() {
 		lbc.syncQueue.requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
@@ -192,11 +198,11 @@ func (lbc *loadBalancerController) sync(key string) {
 	}
 
 	ngxConfig := lbc.nginx.ReadConfig(cfg)
-	tcpServices := lbc.getTCPServices()
 	lbc.nginx.CheckAndReload(ngxConfig, nginx.IngressConfig{
 		Upstreams:    upstreams,
 		Servers:      servers,
-		TCPUpstreams: tcpServices,
+		TCPUpstreams: lbc.getTCPServices(),
+		UDPUpstreams: lbc.getUDPServices(),
 	})
 }
 
@@ -217,10 +223,34 @@ func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
 		return []*nginx.Location{}
 	}
 
-	var tcpSvcs []*nginx.Location
+	return lbc.getServices(tcpMap.Data, api.ProtocolTCP)
+}
+
+func (lbc *loadBalancerController) getUDPServices() []*nginx.Location {
+	if lbc.udpConfigMap == "" {
+		// no configmap for TCP services
+		return []*nginx.Location{}
+	}
+
+	ns, name, err := parseNsName(lbc.udpConfigMap)
+	if err != nil {
+		glog.Warningf("%v", err)
+		return []*nginx.Location{}
+	}
+	tcpMap, err := lbc.getUDPConfigMap(ns, name)
+	if err != nil {
+		glog.V(3).Infof("no configured tcp services found: %v", err)
+		return []*nginx.Location{}
+	}
+
+	return lbc.getServices(tcpMap.Data, api.ProtocolUDP)
+}
+
+func (lbc *loadBalancerController) getServices(data map[string]string, proto api.Protocol) []*nginx.Location {
+	var svcs []*nginx.Location
 	// k -> port to expose in nginx
 	// v -> <namespace>/<service name>:<port from service to be used>
-	for k, v := range tcpMap.Data {
+	for k, v := range data {
 		port, err := strconv.Atoi(k)
 		if err != nil {
 			glog.Warningf("%v is not valid as a TCP port", k)
@@ -255,12 +285,12 @@ func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
 		var endps []nginx.UpstreamServer
 		targetPort, err := strconv.Atoi(svcPort[1])
 		if err != nil {
-			endps = lbc.getEndpoints(svc, intstr.FromString(svcPort[1]))
+			endps = lbc.getEndpoints(svc, intstr.FromString(svcPort[1]), proto)
 		} else {
 			// we need to use the TargetPort (where the endpoints are running)
 			for _, sp := range svc.Spec.Ports {
 				if sp.Port == targetPort {
-					endps = lbc.getEndpoints(svc, sp.TargetPort)
+					endps = lbc.getEndpoints(svc, sp.TargetPort, proto)
 					break
 				}
 			}
@@ -273,7 +303,7 @@ func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
 			continue
 		}
 
-		tcpSvcs = append(tcpSvcs, &nginx.Location{
+		svcs = append(svcs, &nginx.Location{
 			Path: k,
 			Upstream: nginx.Upstream{
 				Name:     fmt.Sprintf("%v-%v-%v", svcNs, svcName, port),
@@ -282,7 +312,7 @@ func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
 		})
 	}
 
-	return tcpSvcs
+	return svcs
 }
 
 func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
@@ -305,7 +335,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 
 	svc := svcObj.(*api.Service)
 
-	endps := lbc.getEndpoints(svc, svc.Spec.Ports[0].TargetPort)
+	endps := lbc.getEndpoints(svc, svc.Spec.Ports[0].TargetPort, api.ProtocolTCP)
 	if len(endps) == 0 {
 		glog.Warningf("service %v does no have any active endpoints", svcKey)
 		upstream.Backends = append(upstream.Backends, nginx.NewDefaultServer())
@@ -353,7 +383,7 @@ func (lbc *loadBalancerController) getUpstreamServers(data []interface{}) ([]*ng
 
 				for _, servicePort := range svc.Spec.Ports {
 					if servicePort.Port == path.Backend.ServicePort.IntValue() {
-						endps := lbc.getEndpoints(svc, servicePort.TargetPort)
+						endps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP)
 						if len(endps) == 0 {
 							glog.Warningf("service %v does no have any active endpoints", svcKey)
 						}
@@ -496,7 +526,7 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
-func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString) []nginx.UpstreamServer {
+func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString, proto api.Protocol) []nginx.UpstreamServer {
 	glog.V(3).Infof("getting endpoints for service %v/%v and port %v", s.Namespace, s.Name, servicePort.String())
 	ep, err := lbc.endpLister.GetServiceEndpoints(s)
 	if err != nil {
@@ -508,6 +538,11 @@ func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort ints
 
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
+
+			if !reflect.DeepEqual(epPort.Protocol, proto) {
+				continue
+			}
+
 			var targetPort int
 			switch servicePort.Type {
 			case intstr.Int:
