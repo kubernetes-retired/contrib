@@ -37,23 +37,29 @@
 - include: kube-dash.yml
   when: kube-dash
 
-#- name: Get kube-addons script from Kubernetes
-#  get_url:
-#    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addons.sh
-#    dest={{ kube_script_dir }}/kube-addons.sh mode=0755
-#    force=yes
+- name: Get kube-addons script from Kubernetes
+  get_url:
+    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addons.sh
+    dest={{ kube_script_dir }}/kube-addons.sh mode=0755
+    force=yes
+  notify:
+    - restart kube-addons
 
-#- name: Get kube-addon-update script from Kubernetes
-#  get_url:
-#    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addon-update.sh
-#    dest={{ kube_script_dir }}/kube-addon-update.sh mode=0755
-#    force=yes
+- name: Get kube-addon-update script from Kubernetes
+  get_url:
+    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addon-update.sh
+    dest={{ kube_script_dir }}/kube-addon-update.sh mode=0755
+    force=yes
+  notify:
+    - restart kube-addons
 
-- name: HACK | copy local kube-addons.sh
-  copy: src=kube-addons.sh dest={{ kube_script_dir }}/kube-addons.sh mode=0755
-
-- name: HACK | copy local kube-addon-update.sh
-  copy: src=kube-addon-update.sh dest={{ kube_script_dir }}/kube-addon-update.sh mode=0755
+- name: Build Python image to use in Kubernetes Addons
+  shell: docker build -t python:2.7-slim-pyyaml https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/python-image/Dockerfile
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
+  when: is_coreos
 
 - name: Run kube-gen-token script to create {{ kube_token_dir }}/known_tokens.csv
   command: "{{ kube_script_dir }}/kube-gen-token.sh {{ item }}"
