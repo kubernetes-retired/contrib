@@ -20,7 +20,6 @@ import (
 	"log"
 	"os"
 	"reflect"
-	"sort"
 
 	"github.com/chiradeep/contrib/ingress/controllers/citrix-netscaler/netscaler"
 	"k8s.io/kubernetes/pkg/api"
@@ -28,10 +27,34 @@ import (
 	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/sets"
 )
 
-func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, ingress extensions.Ingress, priority int) []string {
-	var resultPolicyNames []string
+func ingressRuleToPolicyName(namespace string, rule extensions.IngressRule) []string {
+	resultPolicyNames := []string{}
+	host := rule.Host
+	for _, path := range rule.HTTP.Paths {
+		path_ := path.Path
+		serviceName := path.Backend.ServiceName
+		servicePort := path.Backend.ServicePort.IntValue()
+		log.Printf("Ingress: Host: %s, path: %s, serviceName: %s, servicePort: %d", host, path_, serviceName, servicePort)
+		policyName := netscaler.GeneratePolicyName(namespace, host, path_)
+		resultPolicyNames = append(resultPolicyNames, policyName)
+	}
+	return resultPolicyNames
+}
+
+func ingressToPolicyNames(ingress extensions.Ingress) []string {
+	resultPolicyNames := []string{}
+	namespace := ingress.Namespace
+	for _, rule := range ingress.Spec.Rules {
+		policyNames := ingressRuleToPolicyName(namespace, rule)
+		resultPolicyNames = append(resultPolicyNames, policyNames...)
+	}
+	return resultPolicyNames
+}
+
+func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, ingress extensions.Ingress, priority int) int {
 	namespace := ingress.Namespace
 	for _, rule := range ingress.Spec.Rules {
 		host := rule.Host
@@ -39,7 +62,12 @@ func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, i
 			path_ := path.Path
 			serviceName := path.Backend.ServiceName
 			servicePort := path.Backend.ServicePort.IntValue()
-			log.Printf("Host: %s, path: %s, serviceName: %s, servicePort: %d", host, path_, serviceName, servicePort)
+			policyName := netscaler.GeneratePolicyName(namespace, host, path_)
+			existing := netscaler.ListBoundPolicy(csvserverName, policyName)
+			if len(existing) != 0 {
+				log.Printf("Ingress: Policy already exists: %s, Host: %s, path: %s, serviceName: %s, servicePort: %d", policyName, host, path_, serviceName, servicePort)
+				continue
+			}
 			// Need to resolve the service IP
 			s, err := kubeClient.Services(api.NamespaceDefault).Get(serviceName)
 			if err != nil {
@@ -50,29 +78,12 @@ func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, i
 			if serviceIp == "None" {
 				log.Printf("Service %s has service IP of None", serviceName)
 			}
-			log.Printf("Host: %s, path: %s, serviceName: %s, serviceIp: %s servicePort: %d priority %d", host, path_, serviceName, serviceIp, servicePort, priority)
+			log.Printf("Configure Netscaler: policy: %s Ingress Host: %s, path: %s, serviceName: %s, serviceIp: %s servicePort: %d priority %d", policyName, host, path_, serviceName, serviceIp, servicePort, priority)
 			netscaler.ConfigureContentVServer(namespace, csvserverName, host, path_, serviceIp, serviceName, servicePort, priority)
-			policyName := netscaler.GeneratePolicyName(namespace, host, path_)
-			resultPolicyNames = append(resultPolicyNames, policyName)
 			priority += 10
 		}
-
 	}
-	return resultPolicyNames
-}
-
-func sliceDifference(left []string, right []string) []string {
-	sort.Strings(right)
-	lenRight := len(right)
-	var result []string
-	for _, s := range left {
-		index := sort.SearchStrings(right, s)
-		log.Printf("s=%s, searchResult=%d", s, index)
-		if index == lenRight || right[index] != s {
-			result = append(result, s)
-		}
-	}
-	return result
+	return priority
 }
 
 func loop(csvserverName string, kubeClient *client.Client) {
@@ -82,6 +93,7 @@ func loop(csvserverName string, kubeClient *client.Client) {
 	known := &extensions.IngressList{}
 
 	// Controller loop
+	var priority = 10
 	for {
 		rateLimiter.Accept()
 		ingresses, err := ingClient.List(api.ListOptions{})
@@ -93,15 +105,26 @@ func loop(csvserverName string, kubeClient *client.Client) {
 			continue
 		}
 		known = ingresses
-		var newOrExistingPolicyNames []string
-		priority := 10
-		for _, ing := range ingresses.Items {
-			policyNames := ingressToNetscalerConfig(kubeClient, csvserverName, ing, priority)
-			newOrExistingPolicyNames = append(newOrExistingPolicyNames, policyNames...)
+		var newOrExistingPolicyNames = sets.NewString()
+		_, priorities := netscaler.ListBoundPolicies(csvserverName)
+		if len(priorities) > 0 {
+			priority = priorities[len(priorities)-1] + 10
 		}
-		lbPolicyNames := netscaler.ListBoundPolicies(csvserverName)
-		toDelete := sliceDifference(lbPolicyNames, newOrExistingPolicyNames)
-		netscaler.DeleteCsPolicies(csvserverName, toDelete)
+		log.Printf("loop: current priority: %d", priority)
+		for _, ing := range ingresses.Items {
+			log.Printf("inner loop: current priority: %d", priority)
+			priority = ingressToNetscalerConfig(kubeClient, csvserverName, ing, priority)
+			policyNames := ingressToPolicyNames(ing)
+			newOrExistingPolicyNames.Insert(policyNames...)
+		}
+		log.Printf("New or Existing Ingress: %v", newOrExistingPolicyNames.List())
+		var lbPolicyNames = sets.NewString()
+		policyNames, _ := netscaler.ListBoundPolicies(csvserverName)
+		lbPolicyNames.Insert(policyNames...)
+		log.Printf("Existing Ingress policy on LB: %v", lbPolicyNames.List())
+		toDelete := lbPolicyNames.Difference(newOrExistingPolicyNames)
+		log.Printf("Need to delete: %v", toDelete.List())
+		netscaler.DeleteCsPolicies(csvserverName, toDelete.List())
 	}
 }
 

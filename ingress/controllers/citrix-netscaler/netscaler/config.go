@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -61,6 +63,7 @@ func GeneratePolicyName(namespace string, host string, path string) string {
 	if path == "" {
 		path_ = "nilpath"
 	}
+	path_ = strings.Replace(path_, "/", "_", -1)
 	host = strings.Replace(host, ".", "_", -1)
 
 	policyName := host + "-" + path_ + "_policy"
@@ -72,6 +75,7 @@ func GenerateActionName(namespace string, host string, path string) string {
 	if path == "" {
 		path_ = "nilpath"
 	}
+	path_ = strings.Replace(path_, "/", "_", -1)
 	host = strings.Replace(host, ".", "_", -1)
 	actionName := host + "-" + path_ + "_action"
 	return actionName
@@ -255,23 +259,61 @@ func UnconfigureContentVServer(namespace string, csvserverName string, domainNam
 
 }
 
-func ListBoundPolicies(csvserverName string) []string {
-	result, err := listBoundResources(csvserverName, "csvserver", "cspolicy")
+func ListBoundPolicies(csvserverName string) ([]string, []int) {
+	result, err := listBoundResources(csvserverName, "csvserver", "cspolicy", "", "")
+	ret1 := []string{}
+	ret2 := []int{}
 	if err != nil {
 		log.Println("No bindings for CS Vserver %s", csvserverName)
-		return []string{}
+		return ret1, ret2
 	}
 	var data map[string]interface{}
 	if err := json.Unmarshal(result, &data); err != nil {
 		log.Println("Failed to unmarshal Netscaler Response!")
-		return []string{}
+		return ret1, ret2
+	}
+
+	if data["csvserver_cspolicy_binding"] == nil {
+		return ret1, ret2
 	}
 
 	bindings := data["csvserver_cspolicy_binding"].([]interface{})
-	var ret []string
 	for _, b := range bindings {
 		binding := b.(map[string]interface{})
-		ret = append(ret, binding["policyname"].(string))
+		pname := binding["policyname"].(string)
+		prio, err := strconv.Atoi(binding["priority"].(string))
+		if err != nil {
+			continue
+		}
+		ret1 = append(ret1, pname)
+		ret2 = append(ret2, prio)
+	}
+	sort.Ints(ret2)
+	return ret1, ret2
+}
+
+func ListBoundPolicy(csvserverName string, policyName string) map[string]int {
+	result, err := listBoundResources(csvserverName, "csvserver", "cspolicy", "policyname", policyName)
+	if err != nil {
+		log.Println("No bindings for CS Vserver %s policy %", csvserverName, policyName)
+		return map[string]int{}
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(result, &data); err != nil {
+		log.Println("Failed to unmarshal Netscaler Response!")
+		return map[string]int{}
+	}
+
+	ret := make(map[string]int)
+	if data["csvserver_cspolicy_binding"] == nil {
+		return ret
+	}
+	bindings := data["csvserver_cspolicy_binding"].([]interface{})
+	for _, b := range bindings {
+		binding := b.(map[string]interface{})
+		pname := binding["policyname"].(string)
+		prio := binding["priority"].(string)
+		ret[pname], _ = strconv.Atoi(prio)
 	}
 	return ret
 }
