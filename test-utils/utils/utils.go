@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/golang/glog"
 )
@@ -30,6 +31,7 @@ const (
 	urlPrefix     = "https://storage.googleapis.com/kubernetes-jenkins/logs"
 	successString = "SUCCESS"
 	retries       = 3
+	retryWait     = 100 * time.Millisecond
 )
 
 func getResponseWithRetry(url string) (*http.Response, error) {
@@ -43,6 +45,7 @@ func getResponseWithRetry(url string) (*http.Response, error) {
 		if response.StatusCode == http.StatusOK {
 			return response, nil
 		}
+		time.Sleep(retryWait)
 	}
 	return response, nil
 }
