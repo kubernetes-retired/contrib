@@ -19,16 +19,16 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"net/http"
 	"os"
 
+	"k8s.io/contrib/test-utils/utils"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 // constants to use for downloading data.
 const (
-	urlPrefix = "https://storage.googleapis.com/kubernetes-jenkins/logs/kubernetes-e2e-gce-scalability/"
-	urlSuffix = "/build-log.txt"
+	jobName = "kubernetes-e2e-gce-scalability"
+	logFile = "build-log.txt"
 )
 
 // GoogleGCSDownloader that gets data about Google results from the GCS repository
@@ -50,24 +50,17 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, sets.String, sets.Stri
 	methods := sets.NewString()
 
 	buildNumber := g.startFrom
-	latestBuildResponse, err := http.Get(fmt.Sprintf("%vlatest-build.txt", urlPrefix))
+	lastBuildNo, err := utils.GetLastestBuildNumberFromJenkinsGoogleBucket(jobName)
 	if err != nil {
 		return buildLatency, resources, methods, err
 	}
-	latestBuildBody := latestBuildResponse.Body
-	defer latestBuildBody.Close()
-	latestBuildBodyScanner := bufio.NewScanner(latestBuildBody)
-	latestBuildBodyScanner.Scan()
-	var lastBuildNo int
-	fmt.Sscanf(latestBuildBodyScanner.Text(), "%d", &lastBuildNo)
-	fmt.Printf("Last build no: %v\n", lastBuildNo)
 	if buildNumber < lastBuildNo-100 {
 		buildNumber = lastBuildNo - 100
 	}
 
 	for ; buildNumber <= lastBuildNo; buildNumber++ {
 		fmt.Printf("Fetching build %v...\n", buildNumber)
-		testDataResponse, err := http.Get(fmt.Sprintf("%v%v%v", urlPrefix, buildNumber, urlSuffix))
+		testDataResponse, err := utils.GetFileFromJenkinsGoogleBucket(jobName, buildNumber, logFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
 			continue

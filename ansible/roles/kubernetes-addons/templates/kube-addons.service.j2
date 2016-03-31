@@ -4,8 +4,9 @@ Documentation=https://github.com/GoogleCloudPlatform/kubernetes
 
 [Service]
 Environment="TOKEN_DIR={{ kube_token_dir }}"
-Environment="KUBECTL_BIN=/usr/bin/kubectl"
+Environment="KUBECTL_BIN={{ bin_dir }}/kubectl"
 Environment="KUBERNETES_MASTER_NAME={{ groups['masters'][0] }}"
+Environment="TRUSTY_MASTER=true"
 ExecStart={{ kube_script_dir }}/kube-addons.sh
 
 [Install]

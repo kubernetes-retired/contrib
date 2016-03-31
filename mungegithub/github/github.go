@@ -244,11 +244,12 @@ func (a analytics) print() {
 // MungeObject is the object that mungers deal with. It is a combination of
 // different github API objects.
 type MungeObject struct {
-	config  *Config
-	Issue   *github.Issue
-	pr      *github.PullRequest
-	commits []github.RepositoryCommit
-	events  []github.IssueEvent
+	config   *Config
+	Issue    *github.Issue
+	pr       *github.PullRequest
+	commits  []github.RepositoryCommit
+	events   []github.IssueEvent
+	comments []github.IssueComment
 }
 
 // DebugStats is a structure that tells information about how we have interacted
@@ -1172,10 +1173,38 @@ func (obj *MungeObject) MergePR(who string) error {
 	if config.DryRun {
 		return nil
 	}
-	mergeBody := "Automatic merge from " + who
+	mergeBody := fmt.Sprintf("Automatic merge from %s", who)
 	obj.WriteComment(mergeBody)
 
-	_, _, err := config.client.PullRequests.Merge(config.Org, config.Project, prNum, "Auto commit by PR queue bot")
+	if obj.Issue.Title != nil {
+		mergeBody = fmt.Sprintf("%s\n\n%s", mergeBody, *obj.Issue.Title)
+	}
+
+	// Get the text of the issue body
+	issueBody := ""
+	if obj.Issue.Body != nil {
+		issueBody = *obj.Issue.Body
+	}
+
+	// Get the text of the first commit
+	firstCommit := ""
+	if commits, err := obj.GetCommits(); err != nil {
+		return err
+	} else if commits[0].Commit.Message != nil {
+		firstCommit = *commits[0].Commit.Message
+	}
+
+	// Include the contents of the issue body if it is not the exact same text as was
+	// included in the first commit.  PRs with a single commit (by default when opened
+	// via the web UI) have the same text as the first commit. If there are multiple
+	// commits people often put summary info in the body. But sometimes, even with one
+	// commit people will edit/update the issue body. So if there is any reason, include
+	// the issue body in the merge commit in git.
+	if !strings.Contains(firstCommit, issueBody) {
+		mergeBody = fmt.Sprintf("%s\n\n%s", mergeBody, issueBody)
+	}
+
+	_, _, err := config.client.PullRequests.Merge(config.Org, config.Project, prNum, mergeBody)
 
 	// The github API https://developer.github.com/v3/pulls/#merge-a-pull-request-merge-button indicates
 	// we will only get the bellow error if we provided a particular sha to merge PUT. We aren't doing that
@@ -1185,7 +1214,7 @@ func (obj *MungeObject) MergePR(who string) error {
 	// then merge this PR, so try again.
 	if err != nil && strings.Contains(err.Error(), "branch was modified. Review and try the merge again.") {
 		if mergeable, _ := obj.IsMergeable(); mergeable {
-			_, _, err = config.client.PullRequests.Merge(config.Org, config.Project, prNum, "Auto commit by PR queue bot")
+			_, _, err = config.client.PullRequests.Merge(config.Org, config.Project, prNum, mergeBody)
 		}
 	}
 	if err != nil {
@@ -1196,10 +1225,14 @@ func (obj *MungeObject) MergePR(who string) error {
 }
 
 // ListComments returns all comments for the issue/PR in question
-func (obj *MungeObject) ListComments(number int) ([]github.IssueComment, error) {
+func (obj *MungeObject) ListComments() ([]github.IssueComment, error) {
 	config := obj.config
 	issueNum := *obj.Issue.Number
 	allComments := []github.IssueComment{}
+
+	if obj.comments != nil {
+		return obj.comments, nil
+	}
 
 	listOpts := &github.IssueListCommentsOptions{}
 
@@ -1218,6 +1251,7 @@ func (obj *MungeObject) ListComments(number int) ([]github.IssueComment, error) 
 		}
 		page++
 	}
+	obj.comments = allComments
 	return allComments, nil
 }
 

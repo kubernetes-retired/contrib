@@ -9,6 +9,23 @@
   register: distro
   always_run: yes
 
+- name: Init the is_coreos fact
+  set_fact:
+    is_coreos: false
+
+- name: Set the is_coreos fact
+  set_fact:
+    is_coreos: true
+  when: "'CoreOS' in distro.stdout"
+
+- name: Set the bin directory path for CoreOS
+  set_fact:
+    bin_dir: "/opt/bin"
+  when: is_coreos
+
+- include: coreos.yml
+  when: is_coreos
+
 - name: Determine if Atomic
   stat: path=/run/ostree-booted
   register: s

@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM busybox
+FROM BASEIMAGE
 MAINTAINER Prashanth B <beeps@google.com>
-ADD exechealthz exechealthz
-ADD README.md README.md
+COPY exechealthz /
+COPY README.md /
 ENTRYPOINT ["/exechealthz"]
