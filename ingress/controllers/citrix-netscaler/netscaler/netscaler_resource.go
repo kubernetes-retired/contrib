@@ -160,12 +160,17 @@ func unbindResource(resourceType string, resourceName string, boundResourceType 
 	}
 }
 
-func listBoundResources(resourceName string, resourceType string, boundResourceType string) ([]byte, error) {
+func listBoundResources(resourceName string, resourceType string, boundResourceType string, boundResourceFilterName string, boundResourceFilterValue string) ([]byte, error) {
 	log.Println("listing resource of type ", resourceType)
 	nsIp := os.Getenv("NS_IP")
 	username := os.Getenv("NS_USERNAME")
 	password := os.Getenv("NS_PASSWORD")
-	url := fmt.Sprintf("http://%s/nitro/v1/config/%s_%s_binding/%s", nsIp, resourceType, boundResourceType, resourceName)
+	var url string
+	if boundResourceFilterName == "" {
+		url = fmt.Sprintf("http://%s/nitro/v1/config/%s_%s_binding/%s", nsIp, resourceType, boundResourceType, resourceName)
+	} else {
+		url = fmt.Sprintf("http://%s/nitro/v1/config/%s_%s_binding/%s?filter=%s:%s", nsIp, resourceType, boundResourceType, resourceName, boundResourceFilterName, boundResourceFilterValue)
+	}
 
 	var contentType = fmt.Sprintf("application/vnd.com.citrix.netscaler.%s_%s_binding+json", resourceType, boundResourceType)
 
