@@ -1,3 +1,5 @@
 kube_master_insecure_port: 8080
 
 localBuildOutput: ../../_output/local/go/bin
+
+admission_controllers: NamespaceLifecycle,NamespaceExists,LimitRanger,ServiceAccount,ResourceQuota
