@@ -15,11 +15,11 @@
 # Build the exechealthz binary or image for any GOARCH
 #
 # Usage:
-# 	[TAG=1.0] [PREFIX=gcr.io/google_containers/exechealthz] [ARCH=amd64] make (server|container|push)
+# 	[PREFIX=gcr.io/google_containers/exechealthz] [ARCH=amd64] make TAG={somevalue} (server|container|push)
 
 all: container
 
-TAG?=1.0
+# TAG doesn't default to anything. You must set it via make params
 PREFIX?=gcr.io/google_containers/exechealthz
 ARCH?=amd64
 GOLANG_VERSION=1.6
@@ -43,6 +43,11 @@ server: exechealthz.go
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) GOARM=6 go build -a -installsuffix cgo -ldflags '-w' -o exechealthz ./exechealthz.go
 
 container:
+
+ifndef TAG
+    $(error TAG is undefined)
+endif
+
 	# Copy the whole directory to a temporary dir and set the base image
 	cp -r ./* $(TEMP_DIR)
 	cd $(TEMP_DIR) && sed -i "s|BASEIMAGE|$(BASEIMAGE)|g" Dockerfile
@@ -52,18 +57,15 @@ container:
 
 	docker build -t $(PREFIX)-$(ARCH):$(TAG) $(TEMP_DIR)
 
-ifeq ($(ARCH),amd64)
-	# Backward compatibility. TODO: deprecate this image tag
-	docker tag -f $(PREFIX)-$(ARCH):$(TAG) $(PREFIX):$(TAG)
-endif
-
-	sudo rm -r $(TEMP_DIR)
+	rm -r $(TEMP_DIR)
 
 push: container
 	gcloud docker push $(PREFIX)-$(ARCH):$(TAG)
 
+push-legacy: container
 ifeq ($(ARCH),amd64)
 	# Backward compatibility. TODO: deprecate this image tag
+	docker tag -f $(PREFIX)-$(ARCH):$(TAG) $(PREFIX):$(TAG)
 	gcloud docker push $(PREFIX):$(TAG)
 endif
 
