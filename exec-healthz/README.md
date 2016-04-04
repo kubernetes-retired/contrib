@@ -10,19 +10,21 @@ If you are releasing a new version, please bump the `TAG` value in the `Makefile
 How to build and push all images:
 ```
 # Build for linux/amd64 (default)
-$ make push
-$ make push ARCH=amd64
-# ---> gcr.io/google_containers/exechealthz-amd64
-# ---> gcr.io/google_containers/exechealthz (backwards compatible image)
+$ make push TAG=1.0
+$ make push TAG=1.0 ARCH=amd64
+# ---> gcr.io/google_containers/exechealthz-amd64:1.0
 
-$ make push ARCH=arm
-# ---> gcr.io/google_containers/exechealthz-arm
+$ make push-legacy TAG=1.0 ARCH=amd64
+# ---> gcr.io/google_containers/exechealthz:1.0 (image with backwards compatible naming)
 
-$ make push ARCH=arm64
-# ---> gcr.io/google_containers/exechealthz-arm64
+$ make push TAG=1.0 ARCH=arm
+# ---> gcr.io/google_containers/exechealthz-arm:1.0
 
-$ make push ARCH=ppc64le
-# ---> gcr.io/google_containers/exechealthz-ppc64le
+$ make push TAG=1.0 ARCH=arm64
+# ---> gcr.io/google_containers/exechealthz-arm64:1.0
+
+$ make push TAG=1.0 ARCH=ppc64le
+# ---> gcr.io/google_containers/exechealthz-ppc64le:1.0
 ```
 Of course, if you don't want to push the images, just run `make` or `make container`
 
