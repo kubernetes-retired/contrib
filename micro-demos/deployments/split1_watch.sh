@@ -15,9 +15,20 @@
 
 . $(dirname ${BASH_SOURCE})/../util.sh
 
-desc "Update the deployment"
-# First command in a window is running without user's confirm, so adding a padding.
-run ""
-run "cat $(relative deployment.yaml) | sed 's/ v1/ v2/g' | kubectl --namespace=demos apply -f- --validate=false"
-desc "Rollback the deployment"
-run "kubectl --namespace=demos rollout undo deployment deployment-demo"
+target="$1"
+
+while true; do
+  kubectl --namespace=demos get rs -l demo=deployment \
+      -o go-template='{{range .items}}{{.metadata.name}} {{.metadata.labels}}{{"\n"}}{{end}}' \
+      | while read NAME LABELS; do
+    if echo "$LABELS" | grep -q "$target"; then
+      trap "exit" INT
+      while true; do
+        kubectl --namespace=demos get rs "$NAME" \
+            -o go-template='Desired: {{.spec.replicas}} Running: {{.status.replicas}}{{"\n"}}'
+        sleep 0.3
+      done
+      exit 0
+    fi
+  done
+done

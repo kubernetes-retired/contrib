@@ -15,12 +15,7 @@
 
 . $(dirname ${BASH_SOURCE})/../util.sh
 
-IP=$(kubectl --namespace=demos get svc hostnames \
-        -o go-template='{{.spec.clusterIP}}')
-
-run "gcloud compute ssh --zone=us-central1-b $SSH_NODE --command '\\
-    while true; do \\
-        curl --connect-timeout 1 -s $IP && echo; \\
-        sleep 0.5; \\
-    done \\
-    '"
+desc "Update the deployment"
+run "cat $(relative deployment.yaml) | sed 's/ v1/ v2/g' | kubectl --namespace=demos apply -f-"
+desc "Rollback the deployment"
+run "kubectl --namespace=demos rollout undo deployment deployment-demo"

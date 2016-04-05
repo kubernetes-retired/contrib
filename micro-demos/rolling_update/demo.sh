@@ -24,6 +24,6 @@ run "cat $(relative rc-v1.yaml)"
 run "kubectl --namespace=demos create -f $(relative rc-v1.yaml)"
 
 tmux new -d -s my-session \
-    "$(dirname ${BASH_SOURCE})/split1_lhs.sh" \; \
-    split-window -h -d "sleep 10; $(dirname $BASH_SOURCE)/split1_rhs.sh" \; \
+    "sleep 10; $(dirname ${BASH_SOURCE})/split1_update.sh" \; \
+    split-window -h -d "$(dirname $BASH_SOURCE)/split1_hit_svc.sh" \; \
     attach \;

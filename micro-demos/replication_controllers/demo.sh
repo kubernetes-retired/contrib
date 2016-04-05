@@ -17,15 +17,17 @@
 
 desc "Run some pods under a replication controller"
 run "kubectl --namespace=demos run hostnames \\
-    --image=gcr.io/google_containers/serve_hostname:1.1 --replicas=5"
+    --image=gcr.io/google_containers/serve_hostname:1.1 \\
+    --replicas=5 \\
+    -o name"
+WHAT_WAS_RUN="$DEMO_RUN_STDOUT"
 
 desc "Look what I made!"
-run "kubectl --namespace=demos describe rc hostnames"
+run "kubectl --namespace=demos describe $WHAT_WAS_RUN"
 
 desc "These are the pods that were created"
 run "kubectl --namespace=demos get pods -l run=hostnames"
 
-trap "" SIGINT
 IPS=($(kubectl --namespace=demos get pods -l run=hostnames \
           -o go-template='{{range .items}}{{.status.podIP}}{{"\n"}}{{end}}'))
 desc "SSH into my cluster and access the pods"
@@ -41,7 +43,7 @@ desc "Kill a pod"
 VICTIM=$(kubectl --namespace=demos get pods -o name -l run=hostnames | tail -1)
 run "kubectl --namespace=demos delete $VICTIM"
 run "kubectl --namespace=demos get pods -l run=hostnames"
-run "kubectl --namespace=demos describe rc hostnames"
+run "kubectl --namespace=demos describe $WHAT_WAS_RUN"
 
 desc "Kill a node"
 NODE=$(kubectl --namespace=demos get pods -l run=hostnames -o wide \
@@ -59,4 +61,4 @@ while true; do
     fi
 done
 run "kubectl --namespace=demos get pods -l run=hostnames -o wide"
-run "kubectl --namespace=demos describe rc hostnames"
+run "kubectl --namespace=demos describe $WHAT_WAS_RUN"
