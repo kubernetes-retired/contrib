@@ -1,5 +1,5 @@
 
-nginx 1.9.x base image using alpine linux
+nginx 1.10.x base image using [ubuntu-slim](https://github.com/kubernetes/contrib/tree/master/images/ubuntu-slim)
 
 nginx [engine x] is an HTTP and reverse proxy server, a mail proxy server, and a generic TCP proxy server.
 
@@ -15,7 +15,7 @@ This image does provides a default configuration file with no backend servers.
 
 *Using docker*
 ```
-$ docker run -v /some/nginx.con:/etc/nginx/nginx.conf:ro gcr.io/google_containers/nginx-slim:0.3
+$ docker run -v /some/nginx.con:/etc/nginx/nginx.conf:ro gcr.io/google_containers/nginx-slim:0.6
 ```
 
 *Creating a replication controller*
