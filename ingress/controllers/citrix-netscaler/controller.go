@@ -136,7 +136,8 @@ func loop(kubeClient *client.Client) {
 			continue
 		}
 		known = ingresses
-
+        var existingCsVservers = sets.NewString()
+        existingCsVservers.Insert(netscaler.ListContentVservers()...)
 		for _, ing := range ingresses.Items {
 			var newOrExistingPolicyNames = sets.NewString()
 			var priority = 10
@@ -162,6 +163,10 @@ func loop(kubeClient *client.Client) {
 			toDelete := lbPolicyNames.Difference(newOrExistingPolicyNames)
 			log.Printf("Need to delete: %v", toDelete.List())
 			netscaler.DeleteCsPolicies(csvserverName, toDelete.List())
+			existingCsVservers.Delete(csvserverName)
+		}
+		for _, csvserver := range existingCsVservers.List() {
+			netscaler.DeleteContentVServer(csvserver)
 		}
 
 	}
