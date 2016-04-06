@@ -161,7 +161,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       # On VirtualBox eth0 is used for NAT-ed internet connection,
       # and actual connectivity with the host and other VMs is done
       # using eth1 interface.
-      ansible.extra_vars = { flannel_opts: "--iface=eth1" }
+      ansible.extra_vars = {
+        flannel_opts: "--iface=eth1",
+        etcd_interface: "eth1",
+      }
     end
   end
 
