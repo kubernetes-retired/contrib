@@ -23,6 +23,7 @@ etcd-servers
 extra-cpu
 extra-memory
 extra-storage
+fake-e2e
 forward-services
 generated-files-config
 health-check-path
