@@ -41,6 +41,14 @@
       changed_when: False
       failed_when: False
 
+    - name: Clear etcd configuration data
+      command: etcdctl rm --recursive {{ item }}
+      with_items:
+        - "/registry"
+        - "/cluster.local" #cluster name. default in group_vars/all.yml
+      ignore_errors: True
+      when: inventory_hostname == groups['etcd'][0]
+
     - name: Stop services
       service: name={{ item }} state=stopped
       with_items:
@@ -61,7 +69,8 @@
         - flannel
         - kubernetes-node
         - kubernetes-master
-        - etcd
+        - kubernetes-client
+        - "{{ etcd_svc_name }}"
         - kube-addons
         - atomic-enterprise
         - atomic-enterprise-master
@@ -113,25 +122,33 @@
         - "{{ bin_dir }}/kubelet"
         - "{{ bin_dir }}/kube-proxy"
         - "{{ bin_dir }}/kube-scheduler"
+        - "{{ bin_dir }}/flanneld"
+        - /run/flannel_docker_opts.env
+        - /run/flannel
+        - /tmp/flannel-conf.json
+        - /opt/flannel-0.5.5 #flannel version can change
         - /etc/kubernetes
         - /etc/systemd/system/kube-addons.service
         - /etc/systemd/system/kube-controller-manager.service
         - /etc/systemd/system/kube-proxy.service
+        - /etc/systemd/system/kube-proxy.service.wants
         - /etc/systemd/system/kube-apiserver.service
+        - /etc/systemd/system/kube-apiserver.service.wants
         - /etc/systemd/system/kubelet.service
         - /etc/systemd/system/kube-scheduler.service
+        - /etc/systemd/system/flanneld.service
+        - /etc/systemd/system/flanneld.service.wants
+        - /etc/systemd/system/multi-user.target.wants
+        - /etc/systemd/system/delay-master-services.target
+        - /etc/systemd/system/delay-node-services.target
+        - /etc/sysconfig/flanneld
         - "/etc/systemd/system/{{ etcd_svc_name }}.service"
         - /etc/init/kubelet.conf
         - /etc/init/kube-proxy.confA
         - /etc/init/etcd.conf
         - /usr/libexec/kubernetes
         - /etc/etcd
-        - /var/lib/etcd
         - /etc/tmpfiles.d
-
-    - name: CoreOS | Recover etcd data directory
-      file: path=/var/lib/etcd state=directory owner=etcd group=etcd
-      when: is_coreos
 
     - name: Reload systemd manager configuration
       command: systemctl daemon-reload
@@ -152,5 +169,5 @@
       raw: rm -r {{ item }}
       when: is_coreos
       with_items:
-        - /opt/bin/python
-        - /opt/bin/pypy
+        - "{{ bin_dir }}/python"
+        - "{{ bin_dir }}/pypy"
