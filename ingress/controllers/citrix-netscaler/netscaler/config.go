@@ -2,6 +2,7 @@ package netscaler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -56,6 +57,11 @@ type NetscalerCsVserver struct {
 func GenerateLbName(namespace string, host string) string {
 	lbName := "lb_" + strings.Replace(host, ".", "_", -1)
 	return lbName
+}
+
+func GenerateCsVserverName(namespace string, ingressName string) string {
+	csv := "cs_" + namespace + "_" + ingressName
+	return csv
 }
 
 func GeneratePolicyName(namespace string, host string, path string) string {
@@ -184,10 +190,10 @@ func ConfigureContentVServer(namespace string, csvserverName string, domainName 
 
 }
 
-func CreateContentVServer(csvserverName string, vserverIp string, vserverPort int) {
+func CreateContentVServer(csvserverName string, vserverIp string, vserverPort int, protocol string) error {
 	contentServer := &struct {
 		Csvserver NetscalerCsVserver `json:"csvserver"`
-	}{Csvserver: NetscalerCsVserver{Name: csvserverName, Ipv46: vserverIp, ServiceType: "HTTP", Port: vserverPort}}
+	}{Csvserver: NetscalerCsVserver{Name: csvserverName, Ipv46: vserverIp, ServiceType: protocol, Port: vserverPort}}
 	resourceJson, err := json.Marshal(contentServer)
 	resourceType := "csvserver"
 
@@ -195,8 +201,9 @@ func CreateContentVServer(csvserverName string, vserverIp string, vserverPort in
 	_ = body
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Failed to create Content Switching Vserver %s, err=%s", csvserverName, err))
-		return
+		return errors.New("Failed to create Content Switching Vserver " + csvserverName)
 	}
+	return nil
 }
 
 func UnconfigureContentVServer(namespace string, csvserverName string, domainName string, path string, serviceName string) {
@@ -257,6 +264,15 @@ func UnconfigureContentVServer(namespace string, csvserverName string, domainNam
 	}
 	_ = body
 
+}
+
+func FindContentVserver(csvserverName string) bool {
+	_, err := listResource("csvserver", csvserverName)
+	if err != nil {
+		log.Printf("No csvserver %s", csvserverName)
+		return false
+	}
+	return true
 }
 
 func ListBoundPolicies(csvserverName string) ([]string, []int) {

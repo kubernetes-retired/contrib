@@ -17,9 +17,10 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"log"
-	"os"
 	"reflect"
+	"strconv"
 
 	"github.com/chiradeep/contrib/ingress/controllers/citrix-netscaler/netscaler"
 	"k8s.io/kubernetes/pkg/api"
@@ -55,9 +56,10 @@ func ingressToPolicyNames(ingress extensions.Ingress) []string {
 }
 
 func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, ingress extensions.Ingress, priority int) int {
-	namespace := ingress.Namespace
+
 	for _, rule := range ingress.Spec.Rules {
 		host := rule.Host
+		namespace := ingress.Namespace
 		for _, path := range rule.HTTP.Paths {
 			path_ := path.Path
 			serviceName := path.Backend.ServiceName
@@ -86,14 +88,43 @@ func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, i
 	return priority
 }
 
-func loop(csvserverName string, kubeClient *client.Client) {
+func createContentVserverForIngress(ing extensions.Ingress) (string, error) {
+	csvserverName := netscaler.GenerateCsVserverName(ing.Namespace, ing.Name)
+	if netscaler.FindContentVserver(csvserverName) {
+		return csvserverName, nil
+	}
+	protocol, ok := ing.Annotations["protocol"]
+	if !ok {
+		protocol = "HTTP"
+	}
+	port, ok := ing.Annotations["port"]
+	if !ok {
+		port = "80"
+	}
+	intPort, err := strconv.Atoi(port)
+	if err != nil {
+		log.Printf("Failed to parse port annotation for ingress %s", ing.Name)
+		return "", errors.New("Failed to parse port annotation for ingress " + ing.Name)
+	}
+	publicIP, ok := ing.Annotations["publicIP"]
+	if !ok {
+		log.Printf("Failed to retrieve annotation publicIP for ingress %s, skipping processing", ing.Name)
+		return "", errors.New("Failed to retrieve annotation publicIP for ingress " + ing.Name)
+	}
+	err = netscaler.CreateContentVServer(csvserverName, publicIP, intPort, protocol)
+	if err != nil {
+		return "", errors.New("Failed to create content vserver " + csvserverName + " for ingress " + ing.Name)
+	}
+	return csvserverName, nil
+}
+
+func loop(kubeClient *client.Client) {
 	var ingClient client.IngressInterface
 	ingClient = kubeClient.Extensions().Ingress(api.NamespaceAll)
 	rateLimiter := util.NewTokenBucketRateLimiter(0.1, 1)
 	known := &extensions.IngressList{}
 
 	// Controller loop
-	var priority = 10
 	for {
 		rateLimiter.Accept()
 		ingresses, err := ingClient.List(api.ListOptions{})
@@ -105,26 +136,34 @@ func loop(csvserverName string, kubeClient *client.Client) {
 			continue
 		}
 		known = ingresses
-		var newOrExistingPolicyNames = sets.NewString()
-		_, priorities := netscaler.ListBoundPolicies(csvserverName)
-		if len(priorities) > 0 {
-			priority = priorities[len(priorities)-1] + 10
-		}
-		log.Printf("loop: current priority: %d", priority)
+
 		for _, ing := range ingresses.Items {
+			var newOrExistingPolicyNames = sets.NewString()
+			var priority = 10
+
 			log.Printf("inner loop: current priority: %d", priority)
+			csvserverName, err := createContentVserverForIngress(ing)
+			if err != nil {
+				log.Printf("Unable to create / retrieve content vserver for ingress %s; skipping", ing.Name)
+				continue
+			}
+			_, priorities := netscaler.ListBoundPolicies(csvserverName)
+			if len(priorities) > 0 {
+				priority = priorities[len(priorities)-1] + 10
+			}
 			priority = ingressToNetscalerConfig(kubeClient, csvserverName, ing, priority)
 			policyNames := ingressToPolicyNames(ing)
 			newOrExistingPolicyNames.Insert(policyNames...)
+			log.Printf("New or Existing Ingress: %v", newOrExistingPolicyNames.List())
+			var lbPolicyNames = sets.NewString()
+			policyNames, _ = netscaler.ListBoundPolicies(csvserverName)
+			lbPolicyNames.Insert(policyNames...)
+			log.Printf("Existing Ingress policy on LB: %v", lbPolicyNames.List())
+			toDelete := lbPolicyNames.Difference(newOrExistingPolicyNames)
+			log.Printf("Need to delete: %v", toDelete.List())
+			netscaler.DeleteCsPolicies(csvserverName, toDelete.List())
 		}
-		log.Printf("New or Existing Ingress: %v", newOrExistingPolicyNames.List())
-		var lbPolicyNames = sets.NewString()
-		policyNames, _ := netscaler.ListBoundPolicies(csvserverName)
-		lbPolicyNames.Insert(policyNames...)
-		log.Printf("Existing Ingress policy on LB: %v", lbPolicyNames.List())
-		toDelete := lbPolicyNames.Difference(newOrExistingPolicyNames)
-		log.Printf("Need to delete: %v", toDelete.List())
-		netscaler.DeleteCsPolicies(csvserverName, toDelete.List())
+
 	}
 }
 
@@ -137,6 +176,5 @@ func main() {
 	if err != nil {
 		log.Fatalln("Can't connect to Kubernetes API:", err)
 	}
-	csvserver := os.Getenv("NS_CSVSERVER")
-	loop(csvserver, kubeClient)
+	loop(kubeClient)
 }
