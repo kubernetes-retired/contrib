@@ -206,6 +206,89 @@ func CreateContentVServer(csvserverName string, vserverIp string, vserverPort in
 	return nil
 }
 
+func DeleteContentVServer(csvserverName string) {
+	policyNames, _ := ListBoundPolicies(csvserverName)
+
+	for _, policyName := range policyNames {
+		//unbind the content switch policy from the content switching vserver
+		resourceType := "csvserver_cspolicy_binding"
+
+		_, err := unbindResource(resourceType, csvserverName, "policyName", policyName)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to unbind Content Switching Policy %s fromo Content Switching VServer %s, err=%s", policyName, csvserverName, err))
+			continue
+		}
+
+		//find the action name from the policy
+		actionName := ListPolicyAction(policyName)
+
+		//delete the content switch policy that uses the action
+		resourceType = "cspolicy"
+
+		_, err = deleteResource(resourceType, policyName)
+		if err != nil {
+			log.Printf("Failed to delete Content Switching Policy %s, err=%s", policyName, err)
+			continue
+		}
+		//find the lb name associated with the action
+		lbName, err := ListLbVserverForAction(actionName)
+
+		if err != nil {
+			log.Printf("Failed to obtain lb name for cs action %s", actionName)
+			continue
+		}
+		//delete content switch action that switches to the lb
+		resourceType = "csaction"
+
+		_, err = deleteResource(resourceType, actionName)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to delete Content Switching Action %s for LB %s err=%s", actionName, lbName, err))
+			return
+		}
+
+		//find the service names that the LB is bound to
+		serviceNames, err := ListBoundServicesForLB(lbName)
+		if err != nil {
+			log.Printf("Failed to retrieve services bound to LB " + lbName)
+			continue
+		}
+		for _, sname := range serviceNames {
+
+			//unbind the service from the LB
+			resourceType = "lbvserver_service_binding"
+
+			_, err = unbindResource(resourceType, lbName, "servicename", sname)
+			if err != nil {
+				log.Fatal(fmt.Sprintf("Failed to unbind svc %s from lb %s, err=%s", sname, lbName, err))
+				continue
+			}
+		}
+
+		//delete  "lbvserver" that fronts the service
+		resourceType = "lbvserver"
+
+		_, err = deleteResource(resourceType, lbName)
+		if err != nil {
+			log.Println(fmt.Sprintf("Failed to delete lb %s, err=%s", lbName, err))
+			continue
+		}
+
+		//Delete the Netscaler Services
+		for _, sname := range serviceNames {
+
+			resourceType = "service"
+
+			_, err = deleteResource(resourceType, sname)
+			if err != nil {
+				log.Println(fmt.Sprintf("Failed to delete service %s err=%s", sname, err))
+				continue
+			}
+		}
+	}
+	deleteResource("csvserver", csvserverName)
+
+}
+
 func UnconfigureContentVServer(namespace string, csvserverName string, domainName string, path string, serviceName string) {
 	lbName := GenerateLbName(namespace, domainName)
 	actionName := GenerateActionName(namespace, domainName, path)
@@ -273,6 +356,35 @@ func FindContentVserver(csvserverName string) bool {
 		return false
 	}
 	return true
+}
+
+func ListContentVservers() []string {
+	result := []string{}
+
+	body, err := listResource("csvserver", "")
+	if err != nil {
+		log.Printf("No csvservers found")
+		return result
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		log.Println("Failed to unmarshal Netscaler Response!")
+		return []string{}
+	}
+	if data["csvserver"] == nil {
+		log.Printf("No csvservers found")
+		return result
+	}
+
+	csvs := data["csvserver"].([]interface{})
+	for _, c := range csvs {
+		csvserver := c.(map[string]interface{})
+		csname := csvserver["name"].(string)
+		
+		result = append(result, csname)
+	}
+	return result
+
 }
 
 func ListBoundPolicies(csvserverName string) ([]string, []int) {
@@ -350,6 +462,22 @@ func ListPolicyAction(policyName string) string {
 	return policy.(map[string]interface{})["action"].(string)
 }
 
+func ListLbVserverForAction(actionName string) (string, error) {
+	result, err := listResource("csaction", actionName)
+	if err != nil {
+		log.Println("No action %s", actionName)
+		return "", errors.New("No action " + actionName)
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(result, &data); err != nil {
+		log.Println("Failed to unmarshal Netscaler Response!")
+		return "", errors.New("Failed to unmarshal Netscaler response")
+	}
+
+	action := data["csaction"].([]interface{})[0]
+	return action.(map[string]interface{})["targetlbvserver"].(string), nil
+}
+
 func DeleteCsPolicies(csvserverName string, policyNames []string) {
 
 	for _, policyName := range policyNames {
@@ -382,4 +510,31 @@ func DeleteCsPolicies(csvserverName string, policyNames []string) {
 		}
 
 	}
+}
+
+func ListBoundServicesForLB(lbName string) ([]string, error) {
+	result, err := listBoundResources(lbName, "lbvserver", "service", "", "")
+	ret := []string{}
+	if err != nil {
+		log.Println("No bindings for LB Vserver %s", lbName)
+		return ret, nil
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(result, &data); err != nil {
+		log.Println("Failed to unmarshal Netscaler Response!")
+		return ret, errors.New("Failed to unmarshal Netscaler response")
+	}
+
+	if data["lbvserver_service_binding"] == nil {
+		return ret, nil
+	}
+
+	bindings := data["lbvserver_service_binding"].([]interface{})
+	for _, b := range bindings {
+		binding := b.(map[string]interface{})
+		sname := binding["servicename"].(string)
+
+		ret = append(ret, sname)
+	}
+	return ret, nil
 }

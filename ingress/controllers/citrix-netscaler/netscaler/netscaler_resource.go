@@ -215,7 +215,11 @@ func listResource(resourceType string, resourceName string) ([]byte, error) {
 	nsIp := os.Getenv("NS_IP")
 	username := os.Getenv("NS_USERNAME")
 	password := os.Getenv("NS_PASSWORD")
-	url := fmt.Sprintf("http://%s/nitro/v1/config/%s/%s", nsIp, resourceType, resourceName)
+	url := fmt.Sprintf("http://%s/nitro/v1/config/%s", nsIp, resourceType)
+
+	if resourceName != "" {
+		url = fmt.Sprintf("http://%s/nitro/v1/config/%s/%s", nsIp, resourceType, resourceName)
+	}
 
 	var contentType = fmt.Sprintf("application/vnd.com.citrix.netscaler.%s+json", resourceType)
 
