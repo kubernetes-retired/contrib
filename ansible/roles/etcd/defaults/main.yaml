@@ -19,10 +19,16 @@ etcd_peer_key_file: "{{ etcd_conf_dir }}/peer.key"
 etcd_initial_cluster_state: new
 etcd_initial_cluster_token: etcd-k8-cluster
 
-etcd_initial_advertise_peer_urls: "{{ etcd_peer_url_scheme }}://{{ ansible_default_ipv4.address }}:{{ etcd_peer_port }}"
+# Interface on which etcd listens.
+# Useful on systems when default interface is not connected to other machines,
+# for example as in Vagrant+VirtualBox configuration.
+# Note that this variable can't be set in per-host manner with current implementation.
+etcd_interface: "{{ ansible_default_ipv4.interface }}"
+
+etcd_machine_address: "{{ hostvars[inventory_hostname]['ansible_' + etcd_interface].ipv4.address }}"
+etcd_initial_advertise_peer_urls: "{{ etcd_peer_url_scheme }}://{{ etcd_machine_address }}:{{ etcd_peer_port }}"
 etcd_listen_peer_urls: "{{ etcd_peer_url_scheme }}://0.0.0.0:{{ etcd_peer_port }}"
-etcd_advertise_client_urls: "{{ etcd_url_scheme }}://{{ ansible_default_ipv4.address }}:{{ etcd_client_port }}"
+etcd_advertise_client_urls: "{{ etcd_url_scheme }}://{{ etcd_machine_address }}:{{ etcd_client_port }}"
 etcd_listen_client_urls: "{{ etcd_url_scheme }}://0.0.0.0:{{ etcd_client_port }}"
 
 etcd_data_dir: /var/lib/etcd
-
