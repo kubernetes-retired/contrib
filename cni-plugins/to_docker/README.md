@@ -80,11 +80,11 @@ in `/tmp/`.
 
 A multi-host docker network does not necessarily meet the requirement
 (seen in http://kubernetes.io/docs/admin/networking/#kubernetes-model)
-that hosts can open connections to containers.  However, you can
-typically enable this with a bit of static configuration.  The
-particulars of this depend on the Docker network you choose; this
-simple plugin does not attempt to discern and effect that static
-configuration --- it is up to you.
+that hosts and containers can open connections to each other.
+However, you can typically enable this with a bit of static
+configuration.  The particulars of this depend on the Docker network
+you choose; this simple plugin does not attempt to discern and effect
+that static configuration --- it is up to you.
 
 For example, consider the case in which the multi-host Docker network
 was created by the Kuryr libnetwork driver making a Neutron "tenant
@@ -99,7 +99,12 @@ neutron router-interface-add router1 subnet=f3e6fc55-c26e-4f05-bcb1-b84dc40a4233
 ```
 
 That is probably not all you will have to do.  The remainder depends
-on details of your Neutron configuration.  Covering all the
+on details of your Neutron configuration.  There are two remaining
+things to accomplish: getting service requests routed to something(s)
+that serve the service cluster IP addresses, and getting replies
+routed back to the client pods.  The first can be accomplished with
+more or less complicated IP routing rules in the Neutron router(s)
+involved.  For the routes from server back to client, covering all the
 possibilities is beyond the scope of this simple example.  However, in
 the easiest cases all you need to do is add a route in each host's
 main network namespace, telling it how to route to the tenant network.
