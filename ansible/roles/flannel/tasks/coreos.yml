@@ -4,3 +4,11 @@
   register: flanneld_service
   notify:
     - reload systemd
+
+- name: CoreOS | Create Docker systemd dropin directory
+  file: path=/etc/systemd/system/docker.service.d state=directory
+
+- name: CoreOS | Add Docker drop-in with dependency on Flannel
+  copy: src=40-docker-depends-on-flannel.conf dest="/etc/systemd/system/docker.service.d/40-docker-depends-on-flannel.conf"
+  notify:
+    - reload systemd
