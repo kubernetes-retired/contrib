@@ -15,13 +15,15 @@
 
 . $(dirname ${BASH_SOURCE})/../util.sh
 
+WHAT_WAS_RUN="$1"
+
 desc "Resize the RC and watch the service backends change"
-run "kubectl --namespace=demos scale rc hostnames --replicas=1"
-run "kubectl --namespace=demos scale rc hostnames --replicas=2"
-run "kubectl --namespace=demos scale rc hostnames --replicas=5"
+run "kubectl --namespace=demos scale $WHAT_WAS_RUN --replicas=1"
+run "kubectl --namespace=demos scale $WHAT_WAS_RUN --replicas=2"
+run "kubectl --namespace=demos scale $WHAT_WAS_RUN --replicas=5"
 
 desc "Fire up a cloud load-balancer"
-run "kubectl --namespace=demos get svc hostnames -o yaml \\
+run "kubectl --namespace=demos get svc hostnames-svc -o yaml \\
     | sed 's/ClusterIP/LoadBalancer/' \\
     | kubectl replace -f -"
 while true; do
