@@ -19,7 +19,7 @@ $coreos_image_version = "current"
 
 # Machines under VirtualBox provier use static IPs, based on VM index.
 # Master has index 0.
-VBOX_STATIC_IP_TEMPLATE = "172.30.128.1%d"
+VBOX_STATIC_IP_TEMPLATE = "172.32.128.1%d"
 
 VAGRANTFILE_API_VERSION = "2"
 
