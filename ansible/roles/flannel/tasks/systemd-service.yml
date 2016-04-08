@@ -1,14 +1,21 @@
 ---
-- name: CoreOS | Add Flanneld Systemd Unit File
+# Write systemd Flannel configuration.
+
+# On non-github-release service files must be provided by flannel package.
+- assert:
+    that:
+      - flannel_source_type == "github-release"
+
+- name: Add Flanneld Systemd Unit File
   template: src=flanneld.service dest=/etc/systemd/system/flanneld.service
   register: flanneld_service
   notify:
     - reload systemd
 
-- name: CoreOS | Create Docker systemd dropin directory
+- name: Create Docker systemd dropin directory
   file: path=/etc/systemd/system/docker.service.d state=directory
 
-- name: CoreOS | Add Docker drop-in with dependency on Flannel
+- name: Add Docker drop-in with dependency on Flannel
   copy: src=40-docker-depends-on-flannel.conf dest="/etc/systemd/system/docker.service.d/40-docker-depends-on-flannel.conf"
   notify:
     - reload systemd
