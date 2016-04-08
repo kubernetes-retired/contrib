@@ -14,7 +14,7 @@
   when: not is_atomic and flannel_source_type != "github-release"
 
 - set_fact:
-    flannel_use_upstart: ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
+    flannel_use_upstart: "{{ ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15 }}"
 
 - name: Install Flannel with github release
   include: github-release.yml
