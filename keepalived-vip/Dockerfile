@@ -14,8 +14,6 @@
 
 FROM gcr.io/google_containers/ubuntu-slim:0.1
 
-ENV VERSION=2b600d95582c8ddaa4292d6f8f3d768104a83919
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
   libssl1.0.0 \
   libnl-3-200 \
@@ -37,9 +35,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ADD keepalived.tar.gz /
 
 RUN mkdir -p /etc/keepalived && \
-  ln -s /keepalived-1.2.X/sbin/keepalived /usr/sbin && \
-  ln -s /keepalived-1.2.X/bin/genhash /usr/sbin
+  ln -s /keepalived/sbin/keepalived /usr/sbin && \
+  ln -s /keepalived/bin/genhash /usr/sbin
 
 COPY kube-keepalived-vip /kube-keepalived-vip
+COPY keepalived.tmpl /keepalived.tmpl
 
 ENTRYPOINT ["/kube-keepalived-vip"]

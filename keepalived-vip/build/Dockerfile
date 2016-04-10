@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends bash
 
 COPY build.sh /build.sh
 
-RUN /build.sh
+ENV VERSION 1.2.20
+ENV SHA256 44284a29fa7e2a442f269863c761df04b2790fdaa7a85ce514a4eceb26c722b0
 
-RUN tar -czvf /keepalived.tar.gz /keepalived-1.2.X
+RUN /build.sh

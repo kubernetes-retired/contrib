@@ -18,10 +18,12 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
@@ -227,4 +229,13 @@ func appendIfMissing(slice []string, item string) []string {
 		}
 	}
 	return append(slice, item)
+}
+
+func parseNsName(input string) (string, string, error) {
+	nsName := strings.Split(input, "/")
+	if len(nsName) != 2 {
+		return "", "", fmt.Errorf("invalid format (namespace/name) found in '%v'", input)
+	}
+
+	return nsName[0], nsName[1], nil
 }
