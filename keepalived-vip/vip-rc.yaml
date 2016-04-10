@@ -16,24 +16,21 @@ spec:
     spec:
       hostNetwork: true
       containers:
-      - image: gcr.io/google_containers/kube-keepalived-vip:0.3
+      - image: gcr.io/google_containers/kube-keepalived-vip:0.4
         name: kube-keepalived-vip
         imagePullPolicy: Always
         securityContext:
           privileged: true
-        env:
-          - name: POD_NAME
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
-          - name: POD_NAMESPACE
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.namespace
         volumeMounts:
         - mountPath: /lib/modules
           name: modules
           readOnly: true
+        # to use unicast
+        args:
+        - --services-configmap=default/vip-configmap
+        # unicast uses the ip of the nodes instead of multicast
+        # this is useful if running in cloud providers (like AWS)
+        #- --use-unicast=true
       volumes:
       - hostPath:
           path: /lib/modules

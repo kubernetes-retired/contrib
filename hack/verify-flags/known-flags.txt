@@ -81,3 +81,4 @@ tcp-services-configmap
 udp-services-configmap
 one-time
 change-permissions
+services-configmap

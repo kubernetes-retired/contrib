@@ -33,7 +33,8 @@ This should be considered a complement, not a replacement for HAProxy or nginx. 
 
 ## Configuration
 
-To expose a service add the annotation `k8s.io/public-vip` in the service with the IP address to be use. This IP must be routable inside the LAN and must be available.
+To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`.
+This IP must be routable inside the LAN and must be available. 
 By default the IP address of the pods are used to route the traffic. This means that is one pod dies or a new one is created by a scale event the keepalived configuration file will be updated and reloaded.
 
 
@@ -55,37 +56,12 @@ service "echoheaders" created
 Next add the required annotation to expose the service using a local IP
 
 ```
-$ kubectl annotate svc echoheaders "k8s.io/public-vip=10.4.0.50"
-service "echoheaders" annotated
-
-$ kubectl get svc echoheaders -o yaml
-apiVersion: v1
-kind: Service
+$ echo "apiVersion: v1
+kind: ConfigMap
 metadata:
-  annotations:
-    k8s.io/public-vip: 10.4.0.50
-  creationTimestamp: 2015-12-30T19:15:32Z
-  labels:
-    app: echoheaders
-  name: echoheaders
-  namespace: default
-  resourceVersion: "50811"
-  selfLink: /api/v1/namespaces/default/services/echoheaders
-  uid: b26d82b8-af29-11e5-a436-b8aeed77f611
-spec:
-  clusterIP: 10.3.0.118
-  ports:
-  - name: http
-    nodePort: 30302
-    port: 80
-    protocol: TCP
-    targetPort: 8080
-  selector:
-    app: echoheaders
-  sessionAffinity: None
-  type: NodePort
-status:
-  loadBalancer: {}
+  name: vip-configmap
+data:
+  10.4.0.50: default/echoheaders" | kubectl create -f -
 ```
 
 Now the creation of the daemonset
@@ -94,7 +70,7 @@ $ kubectl create -f vip-daemonset.yaml
 daemonset "kube-keepalived-vip" created
 $ kubectl get daemonset
 NAME                  CONTAINER(S)          IMAGE(S)                         SELECTOR                        NODE-SELECTOR
-kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.1   name in (kube-keepalived-vip)   type=worker
+kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.4   name in (kube-keepalived-vip)   type=worker
 ```
 
 **Note: the daemonset yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**
@@ -119,107 +95,76 @@ kube-keepalived-vip-gd18l   1/1       Running   0          54s
 
 ```
 $ kubectl logs kube-keepalived-vip-a90bt
-I1230 19:52:24.790134       1 main.go:74] starting LVS configuration
-I1230 19:52:24.873084       1 controller.go:166] Sync triggered by service default/echoheaders
-I1230 19:52:24.973776       1 controller.go:168] Requeuing default/echoheaders because of error: deferring sync till endpoints controller has synced
-I1230 19:52:24.973861       1 controller.go:166] Sync triggered by service default/kubernetes
-I1230 19:52:24.973974       1 controller.go:134] Found service: echoheaders
-I1230 19:52:24.975492       1 keepalived.go:110] {"authPass":"166ee42274df2b6b2fd2f23b1aed43df552d88ad","iface":"enp3s0","myIP":"10.4.0.4","netmask":24,"nodes":["10.4.0.3","10.4.0.5"],"priority":101,"svcs":[{"Name":"default/echoheaders","Ip":"10.4.0.50","Port":80,"Protocol":"TCP","Backends":[{"Ip":"10.2.48.2","Port":8080}]}]}
-I1230 19:52:24.976034       1 keepalived.go:135] reloading keepalived
-E1230 19:52:24.978096       1 controller.go:155] error reloading keepalived: exit status 1
-I1230 19:52:24.978149       1 controller.go:166] Sync triggered by service default/echoheaders
-I1230 19:52:24.978220       1 controller.go:134] Found service: echoheaders
-I1230 19:52:24.978981       1 keepalived.go:110] {"authPass":"166ee42274df2b6b2fd2f23b1aed43df552d88ad","iface":"enp3s0","myIP":"10.4.0.4","netmask":24,"nodes":["10.4.0.3","10.4.0.5"],"priority":101,"svcs":[{"Name":"default/echoheaders","Ip":"10.4.0.50","Port":80,"Protocol":"TCP","Backends":[{"Ip":"10.2.48.2","Port":8080}]}]}
-I1230 19:52:24.979647       1 keepalived.go:135] reloading keepalived
-E1230 19:52:24.981501       1 controller.go:155] error reloading keepalived: exit status 1
-I1230 19:52:29.867940       1 main.go:81] starting keepalived to announce VIPs
-Starting Healthcheck child process, pid=18
-Starting VRRP child process, pid=19
+I0410 14:24:45.860119       1 keepalived.go:161] cleaning ipvs configuration
+I0410 14:24:45.873095       1 main.go:109] starting LVS configuration
+I0410 14:24:45.894664       1 main.go:119] starting keepalived to announce VIPs
+Starting Healthcheck child process, pid=17
+Starting VRRP child process, pid=18
 Initializing ipvs 2.6
-Netlink reflector reports IP 10.4.0.4 added
-Netlink reflector reports IP 10.4.0.50 added
-Netlink reflector reports IP 10.2.48.0 added
-Netlink reflector reports IP 10.2.48.1 added
-Netlink reflector reports IP fe80::baae:edff:fe77:ef88 added
-Netlink reflector reports IP fe80::f455:a1ff:fecc:3fc2 added
-Netlink reflector reports IP fe80::42:e9ff:fec1:a2ad added
-Netlink reflector reports IP fe80::609e:77ff:feae:ba7d added
 Registering Kernel netlink reflector
-Netlink reflector reports IP 10.4.0.4 added
+Registering Kernel netlink reflector
 Registering Kernel netlink command channel
-Netlink reflector reports IP 10.4.0.50 added
 Registering gratuitous ARP shared channel
-Netlink reflector reports IP 10.2.48.0 added
-Netlink reflector reports IP 10.2.48.1 added
-Netlink reflector reports IP fe80::baae:edff:fe77:ef88 added
-Netlink reflector reports IP fe80::f455:a1ff:fecc:3fc2 added
-Netlink reflector reports IP fe80::42:e9ff:fec1:a2ad added
-Netlink reflector reports IP fe80::609e:77ff:feae:ba7d added
-Opening file '/etc/keepalived/keepalived.conf'.
-Registering Kernel netlink reflector
 Registering Kernel netlink command channel
-Truncating auth_pass to 8 characters
+Using LinkWatch kernel netlink reflector...
+Using LinkWatch kernel netlink reflector...
+I0410 14:24:56.017590       1 keepalived.go:151] reloading keepalived
+Got SIGHUP, reloading checker configuration
+Registering Kernel netlink reflector
+Initializing ipvs 2.6
+Registering Kernel netlink command channel
+Registering gratuitous ARP shared channel
+Registering Kernel netlink reflector
 Opening file '/etc/keepalived/keepalived.conf'.
-Configuration is using : 68505 Bytes
+Registering Kernel netlink command channel
+Opening file '/etc/keepalived/keepalived.conf'.
 Using LinkWatch kernel netlink reflector...
 VRRP_Instance(vips) Entering BACKUP STATE
-VRRP sockpool: [ifindex(2), proto(51), unicast(0), fd(10,11)]
-Configuration is using : 14226 Bytes
 Using LinkWatch kernel netlink reflector...
-Activating healthchecker for service [10.2.48.2]:8080
-TCP connection to [10.2.48.2]:8080 success.
-Adding service [10.2.48.2]:8080 to VS [10.4.0.50]:80
-Gained quorum 1+0=1 <= 1 for VS [10.4.0.50]:80
+Activating healthchecker for service [10.2.68.5]:8080
 VRRP_Instance(vips) Transition to MASTER STATE
-VRRP_Group(VG_1) Syncing instances to MASTER state
 VRRP_Instance(vips) Entering MASTER STATE
-VRRP_Instance(vips) setting protocol VIPs.
-VRRP_Instance(vips) Sending gratuitous ARPs on enp3s0 for 10.4.0.50
+VRRP_Instance(vips) using locally configured advertisement interval (1000 milli-sec)
 ```
 
 ```
 $ kubectl exec kube-keepalived-vip-a90bt cat /etc/keepalived/keepalived.conf
 
-vrrp_sync_group VG_1
-  group {
-    vips
-  }
+global_defs {
+  vrrp_version 3
+  vrrp_iptables KUBE-KEEPALIVED-VIP
 }
 
 vrrp_instance vips {
   state BACKUP
-  interface enp3s0
+  interface eth1
   virtual_router_id 50
   priority 100
   nopreempt
   advert_int 1
 
   track_interface {
-    enp3s0
+    eth1
   }
+
+
 
   virtual_ipaddress {
-    10.4.0.50
-  }
-
-  authentication {
-    auth_type AH
-    auth_pass 166ee42274df2b6b2fd2f23b1aed43df552d88ad
+    172.17.4.90
   }
 }
 
 
+# Service: default/echoheaders
 virtual_server 10.4.0.50 80 {
   delay_loop 5
   lvs_sched wlc
   lvs_method NAT
   persistence_timeout 1800
   protocol TCP
-  #TCP
-  alpha
 
 
-  real_server 10.2.48.2 8080 {
+  real_server 10.2.68.5 8080 {
     weight 1
     TCP_CHECK {
       connect_port 8080
@@ -228,6 +173,7 @@ virtual_server 10.4.0.50 80 {
   }
 
 }
+
 ```
 
 
@@ -278,46 +224,41 @@ replicationcontroller "echoheaders" scaled
 ````
 $ kubectl exec kube-keepalived-vip-a90bt cat /etc/keepalived/keepalived.conf
 
-vrrp_sync_group VG_1
-  group {
-    vips
-  }
+global_defs {
+  vrrp_version 3
+  vrrp_iptables KUBE-KEEPALIVED-VIP
 }
 
 vrrp_instance vips {
   state BACKUP
-  interface enp3s0
+  interface eth1
   virtual_router_id 50
-  priority 101
+  priority 100
   nopreempt
   advert_int 1
 
   track_interface {
-    enp3s0
+    eth1
   }
+
+
 
   virtual_ipaddress {
-    10.4.0.50
-  }
-
-  authentication {
-    auth_type AH
-    auth_pass 166ee42274df2b6b2fd2f23b1aed43df552d88ad
+    172.17.4.90
   }
 }
 
 
+# Service: default/echoheaders
 virtual_server 10.4.0.50 80 {
   delay_loop 5
   lvs_sched wlc
   lvs_method NAT
   persistence_timeout 1800
   protocol TCP
-  #TCP
-  alpha
 
 
-  real_server 10.2.16.2 8080 {
+  real_server 10.2.68.5 8080 {
     weight 1
     TCP_CHECK {
       connect_port 8080
@@ -325,7 +266,7 @@ virtual_server 10.4.0.50 80 {
     }
   }
 
-  real_server 10.2.16.3 8080 {
+  real_server 10.2.68.6 8080 {
     weight 1
     TCP_CHECK {
       connect_port 8080
@@ -333,7 +274,7 @@ virtual_server 10.4.0.50 80 {
     }
   }
 
-  real_server 10.2.224.2 8080 {
+  real_server 10.2.68.7 8080 {
     weight 1
     TCP_CHECK {
       connect_port 8080
@@ -341,7 +282,7 @@ virtual_server 10.4.0.50 80 {
     }
   }
 
-  real_server 10.2.224.3 8080 {
+  real_server 10.2.68.8 8080 {
     weight 1
     TCP_CHECK {
       connect_port 8080
@@ -349,7 +290,7 @@ virtual_server 10.4.0.50 80 {
     }
   }
 
-  real_server 10.2.48.2 8080 {
+  real_server 10.2.68.9 8080 {
     weight 1
     TCP_CHECK {
       connect_port 8080
@@ -360,9 +301,7 @@ virtual_server 10.4.0.50 80 {
 }
 ```
 
-
 ## TODO
-- option to choose wich IP should be used (kubernetes VIP or pod IP)
 - custom weight?
 - quorum rules
 
