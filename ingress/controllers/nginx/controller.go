@@ -42,6 +42,7 @@ import (
 
 const (
 	defUpstreamName = "upstream-default-backend"
+	defServerName   = "_"
 )
 
 var (
@@ -59,7 +60,7 @@ type loadBalancerController struct {
 	svcLister      cache.StoreToServiceLister
 	endpLister     cache.StoreToEndpointsLister
 	nginx          *nginx.Manager
-	lbInfo         *lbInfo
+	podInfo        *podInfo
 	defaultSvc     string
 	nxgConfigMap   string
 	tcpConfigMap   string
@@ -83,7 +84,7 @@ type loadBalancerController struct {
 
 // newLoadBalancerController creates a controller for nginx loadbalancer
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, defaultSvc,
-	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName string, lbRuntimeInfo *lbInfo) (*loadBalancerController, error) {
+	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName string, runtimeInfo *podInfo) (*loadBalancerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
@@ -92,7 +93,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 	lbc := loadBalancerController{
 		client:       kubeClient,
 		stopCh:       make(chan struct{}),
-		lbInfo:       lbRuntimeInfo,
+		podInfo:      runtimeInfo,
 		nginx:        nginx.NewManager(kubeClient),
 		nxgConfigMap: nxgConfigMapName,
 		tcpConfigMap: tcpConfigMapName,
@@ -270,22 +271,22 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 
 	lbIPs := ing.Status.LoadBalancer.Ingress
 	if !lbc.isStatusIPDefined(lbIPs) {
-		glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, lbc.lbInfo.Address)
+		glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
 		currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
-			IP: lbc.lbInfo.Address,
+			IP: lbc.podInfo.NodeIP,
 		})
 		if _, err := ingClient.UpdateStatus(currIng); err != nil {
 			lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
 			return
 		}
 
-		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", lbc.lbInfo.Address)
+		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", lbc.podInfo.NodeIP)
 	}
 }
 
 func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIngress) bool {
 	for _, lbing := range lbings {
-		if lbing.IP == lbc.lbInfo.Address {
+		if lbing.IP == lbc.podInfo.NodeIP {
 			return true
 		}
 	}
@@ -435,9 +436,18 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 
 func (lbc *loadBalancerController) getUpstreamServers(data []interface{}) ([]*nginx.Upstream, []*nginx.Server) {
 	upstreams := lbc.createUpstreams(data)
-	servers := lbc.createServers(data)
-
 	upstreams[defUpstreamName] = lbc.getDefaultUpstream()
+
+	servers := lbc.createServers(data)
+	// default server - no servername.
+	servers[defServerName] = &nginx.Server{
+		Name: defServerName,
+		Locations: []*nginx.Location{{
+			Path:     "/",
+			Upstream: *lbc.getDefaultUpstream(),
+		},
+		},
+	}
 
 	for _, ingIf := range data {
 		ing := ingIf.(*extensions.Ingress)
@@ -521,7 +531,6 @@ func (lbc *loadBalancerController) getUpstreamServers(data []interface{}) ([]*ng
 
 func (lbc *loadBalancerController) createUpstreams(data []interface{}) map[string]*nginx.Upstream {
 	upstreams := make(map[string]*nginx.Upstream)
-	upstreams[defUpstreamName] = nginx.NewUpstream(defUpstreamName)
 
 	for _, ingIf := range data {
 		ing := ingIf.(*extensions.Ingress)
@@ -600,6 +609,17 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 			cn, err := lbc.nginx.CheckSSLCertificate(pemFileName)
 			if err != nil {
 				glog.Errorf("No valid SSL certificate found in secret %v: %v", secretName, err)
+				continue
+			}
+
+			if len(tls.Hosts) == 0 {
+				if _, ok := pems["_"]; ok {
+					glog.Warningf("It is not possible to use %v secret for default SSL certificate because there is one already defined", secretName)
+					continue
+				}
+
+				pems["_"] = pemFileName
+				glog.Infof("Using the secret %v as source for the default SSL certificate", secretName)
 				continue
 			}
 
@@ -698,10 +718,10 @@ func (lbc *loadBalancerController) removeFromIngress() {
 
 		lbIPs := ing.Status.LoadBalancer.Ingress
 		if len(lbIPs) > 0 && lbc.isStatusIPDefined(lbIPs) {
-			glog.Infof("Updating loadbalancer %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbc.lbInfo.Address)
+			glog.Infof("Updating loadbalancer %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
 
 			for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
-				if lbStatus.IP == lbc.lbInfo.Address {
+				if lbStatus.IP == lbc.podInfo.NodeIP {
 					currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
 						currIng.Status.LoadBalancer.Ingress[idx+1:]...)
 					break
@@ -713,7 +733,7 @@ func (lbc *loadBalancerController) removeFromIngress() {
 				continue
 			}
 
-			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", lbc.lbInfo.Address)
+			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", lbc.podInfo.NodeIP)
 		}
 	}
 }
