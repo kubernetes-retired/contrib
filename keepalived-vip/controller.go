@@ -40,9 +40,8 @@ import (
 )
 
 const (
-	reloadQPS     = 10.0
-	resyncPeriod  = 10 * time.Second
-	ipvsPublicVIP = "k8s.io/public-vip"
+	reloadQPS    = 10.0
+	resyncPeriod = 10 * time.Second
 )
 
 type service struct {
@@ -106,17 +105,21 @@ type ipvsControllerController struct {
 	epLister          cache.StoreToEndpointsLister
 	reloadRateLimiter util.RateLimiter
 	keepalived        *keepalived
+	configMapName     string
 	ruCfg             []vip
 	ruMD5             string
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
 func (ipvsc *ipvsControllerController) getEndpoints(
-	s *api.Service, servicePort *api.ServicePort) (endpoints []service) {
+	s *api.Service, servicePort *api.ServicePort) []service {
 	ep, err := ipvsc.epLister.GetServiceEndpoints(s)
 	if err != nil {
-		return
+		glog.Warningf("unexpected error getting service endpoints: %v", err)
+		return []service{}
 	}
+
+	var endpoints []service
 
 	// The intent here is to create a union of all subsets that match a targetPort.
 	// We know the endpoint already matches the service, so all pod ips that have
@@ -142,40 +145,73 @@ func (ipvsc *ipvsControllerController) getEndpoints(
 			}
 		}
 	}
-	return
+
+	return endpoints
 }
 
 // getServices returns a list of services and their endpoints.
 func (ipvsc *ipvsControllerController) getServices() []vip {
 	svcs := []vip{}
 
-	services, _ := ipvsc.svcLister.List()
-	for _, s := range services.Items {
-		if externalIP, ok := s.GetAnnotations()[ipvsPublicVIP]; ok {
-			for _, servicePort := range s.Spec.Ports {
-				ep := ipvsc.getEndpoints(&s, &servicePort)
-				if len(ep) == 0 {
-					glog.Warningf("No endpoints found for service %v, port %+v", s.Name, servicePort)
-					continue
-				}
+	ns, name, err := parseNsName(ipvsc.configMapName)
+	if err != nil {
+		glog.Warningf("%v", err)
+		return []vip{}
+	}
+	cfgMap, err := ipvsc.getConfigMap(ns, name)
+	if err != nil {
+		glog.Warningf("%v", err)
+		return []vip{}
+	}
 
-				sort.Sort(serviceByIPPort(ep))
+	// k -> IP to use
+	// v -> <namespace>/<service name>:<port from service to be used>
+	for externalIP, nsSvc := range cfgMap.Data {
+		_, _, err := parseNsName(nsSvc)
+		if err != nil {
+			glog.Warningf("%v", err)
+			continue
+		}
 
-				svcs = append(svcs, vip{
-					Name:     fmt.Sprintf("%v/%v", s.Namespace, s.Name),
-					IP:       externalIP,
-					Port:     servicePort.Port,
-					Backends: ep,
-					Protocol: fmt.Sprintf("%v", servicePort.Protocol),
-				})
-				glog.V(2).Infof("Found service: %v:%v", s.Name, servicePort.Port)
+		svcObj, svcExists, err := ipvsc.svcLister.Store.GetByKey(nsSvc)
+		if err != nil {
+			glog.Warningf("error getting service %v: %v", nsSvc, err)
+			continue
+		}
+
+		if !svcExists {
+			glog.Warningf("service %v not found", nsSvc)
+			continue
+		}
+
+		s := svcObj.(*api.Service)
+		for _, servicePort := range s.Spec.Ports {
+			ep := ipvsc.getEndpoints(s, &servicePort)
+			if len(ep) == 0 {
+				glog.Warningf("no endpoints found for service %v, port %+v", s.Name, servicePort)
+				continue
 			}
+
+			sort.Sort(serviceByIPPort(ep))
+
+			svcs = append(svcs, vip{
+				Name:     fmt.Sprintf("%v/%v", s.Namespace, s.Name),
+				IP:       externalIP,
+				Port:     servicePort.Port,
+				Backends: ep,
+				Protocol: fmt.Sprintf("%v", servicePort.Protocol),
+			})
+			glog.V(2).Infof("found service: %v:%v", s.Name, servicePort.Port)
 		}
 	}
 
 	sort.Sort(vipByNameIPPort(svcs))
 
 	return svcs
+}
+
+func (ipvsc *ipvsControllerController) getConfigMap(ns, name string) (*api.ConfigMap, error) {
+	return ipvsc.client.ConfigMaps(ns).Get(name)
 }
 
 // sync all services with the
@@ -209,11 +245,12 @@ func (ipvsc *ipvsControllerController) sync() {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool) *ipvsControllerController {
+func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: util.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
 		ruCfg:             []vip{},
+		configMapName:     configMapName,
 	}
 
 	clusterNodes := getClusterNodesIP(kubeClient)
@@ -238,6 +275,11 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
 		useUnicast: useUnicast,
 		ipt:        iptInterface,
+	}
+
+	err = ipvsc.keepalived.loadTemplate()
+	if err != nil {
+		glog.Fatalf("Error loading keepalived template: %v", err)
 	}
 
 	eventHandlers := framework.ResourceEventHandlerFuncs{}

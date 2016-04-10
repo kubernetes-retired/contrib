@@ -31,61 +31,11 @@ import (
 )
 
 const (
-	iptablesChain  = "KUBE-KEEPALIVED-VIP"
-	keepalivedCfg  = "/etc/keepalived/keepalived.conf"
-	keepalivedTmpl = `{{ $iface := .iface }}{{ $netmask := .netmask }}
-
-global_defs {
-  vrrp_version 3
-  vrrp_iptables {{ .iptablesChain }}
-}
-
-vrrp_instance vips {
-  state BACKUP
-  interface {{ $iface }}
-  virtual_router_id 50
-  priority {{ .priority }}
-  nopreempt
-  advert_int 1
-
-  track_interface {
-    {{ $iface }}
-  }
-
-  {{ if .useUnicast }}
-  unicast_src_ip {{ .myIP }}
-  unicast_peer { {{ range .nodes }}
-    {{ . }}{{ end }}
-  }
-  {{ end }}
-
-  virtual_ipaddress { {{ range .vips }}
-    {{ . }}{{ end }}
-  }
-}
-
-{{ range $i, $svc := .svcs }}
-# Service: {{ $svc.Name }}
-virtual_server {{ $svc.IP }} {{ $svc.Port }} {
-  delay_loop 5
-  lvs_sched wlc
-  lvs_method NAT
-  persistence_timeout 1800
-  protocol TCP
-
-  {{ range $j, $backend := $svc.Backends }}
-  real_server {{ $backend.IP }} {{ $backend.Port }} {
-    weight 1
-    TCP_CHECK {
-      connect_port {{ $backend.Port }}
-      connect_timeout 3
-    }
-  }
-{{ end }}
-}    
-{{ end }}
-`
+	iptablesChain = "KUBE-KEEPALIVED-VIP"
+	keepalivedCfg = "/etc/keepalived/keepalived.conf"
 )
+
+var keepalivedTmpl = "keepalived.tmpl"
 
 type keepalived struct {
 	iface      string
@@ -97,6 +47,7 @@ type keepalived struct {
 	useUnicast bool
 	started    bool
 	vips       []string
+	tmpl       *template.Template
 	cmd        *exec.Cmd
 	ipt        iptables.Interface
 }
@@ -109,11 +60,6 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 		return err
 	}
 	defer w.Close()
-
-	t, err := template.New("keepalived").Parse(keepalivedTmpl)
-	if err != nil {
-		return err
-	}
 
 	k.vips = getVIPs(svcs)
 
@@ -133,7 +79,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 		glog.Infof("%v", string(b))
 	}
 
-	return t.Execute(w, conf)
+	return k.tmpl.Execute(w, conf)
 }
 
 // getVIPs returns a list of the virtual IP addresses to be used in keepalived
@@ -179,7 +125,10 @@ func (k *keepalived) Start() {
 				k.removeVIP(vip)
 			}
 
-			k.ipt.FlushChain(iptables.TableFilter, iptables.Chain(iptablesChain))
+			err := k.ipt.FlushChain(iptables.TableFilter, iptables.Chain(iptablesChain))
+			if err != nil {
+				glog.V(2).Infof("unexpected error flushing iptables chain %v: %v", err, iptablesChain)
+			}
 		}
 	}()
 
@@ -224,6 +173,15 @@ func (k *keepalived) removeVIP(vip string) error {
 	if err != nil {
 		return fmt.Errorf("error reloading keepalived: %v\n%s", err, out)
 	}
+	return nil
+}
+
+func (k *keepalived) loadTemplate() error {
+	tmpl, err := template.ParseFiles(keepalivedTmpl)
+	if err != nil {
+		return err
+	}
+	k.tmpl = tmpl
 	return nil
 }
 
