@@ -91,7 +91,8 @@ func (u *Utils) GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, e
 	return lastBuildNo, nil
 }
 
-type finishedFile struct {
+// FinishedFile is a type in which we store test result in GCS as finished.json
+type FinishedFile struct {
 	Result    string `json:"result"`
 	Timestamp uint64 `json:"timestamp"`
 }
@@ -107,10 +108,10 @@ func (u *Utils) CheckFinishedStatus(job string, buildNumber int) (bool, error) {
 
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		glog.Infof("Got a non-success response %v while reading data for %v/%v/%v", response.StatusCode, job, buildNumber, "finished.json")
+		glog.Errorf("Got a non-success response %v while reading data for %v/%v/%v", response.StatusCode, job, buildNumber, "finished.json")
 		return false, err
 	}
-	result := finishedFile{}
+	result := FinishedFile{}
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		glog.Errorf("Failed to read the response for %v/%v/%v: %v", job, buildNumber, "finished.json", err)
