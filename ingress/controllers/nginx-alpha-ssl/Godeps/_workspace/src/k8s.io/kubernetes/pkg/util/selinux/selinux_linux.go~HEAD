@@ -1,4 +1,4 @@
-// +build windows
+// +build linux
 
 /*
 Copyright 2014 The Kubernetes Authors All rights reserved.
@@ -16,12 +16,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+package selinux
 
 import (
-	"errors"
+	"github.com/opencontainers/runc/libcontainer/selinux"
 )
 
-func Umask(mask int) (old int, err error) {
-	return 0, errors.New("platform and architecture is not supported")
+type realChconRunner struct{}
+
+func (_ *realChconRunner) SetContext(dir, context string) error {
+	// If SELinux is not enabled, return an empty string
+	if !selinux.SelinuxEnabled() {
+		return nil
+	}
+
+	return selinux.Setfilecon(dir, context)
 }
