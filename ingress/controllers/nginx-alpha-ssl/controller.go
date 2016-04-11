@@ -53,6 +53,7 @@ http {
 
 {{range $ing := .Items}}
 {{range $rule := $ing.Spec.Rules}}
+{{if $rule.Host}}
 	server {
 		server_name {{$rule.Host}};
 {{range $key, $val := $ing.Labels}}
@@ -68,7 +69,7 @@ http {
 			proxy_set_header Host $host;
 			proxy_pass http://{{$path.Backend.ServiceName}}.{{$ing.Namespace}}.svc.cluster.local:{{$path.Backend.ServicePort}};
 		}{{end}}
-	}{{end}}{{end}}
+	}{{end}}{{end}}{{end}}
 }`
 )
 
@@ -105,21 +106,35 @@ func main() {
 	VAULT_TOKEN
 	VAULT_SKIP_VERIFY (if using self-signed SSL on vault)
 	The only one we need to explicitly introduce is VAULT_ADDR, but we can check the others
+	Se the following to disable Vault integration entirely:
+	VAULT_ENABLED = "false"
 	*/
-	vaultEnabled := true
-	config := vault.DefaultConfig()
-	config.Address = os.Getenv("VAULT_ADDR")
-	vault, err := vault.NewClient(config)
-	if err != nil {
-		fmt.Printf("WARN: VAULT_ADDR is not set\n")
-		vaultEnabled = false
+	vaultEnabled := "true"
+	vaultEnabledFlag := os.Getenv("VAULT_ENABLED")
+	vaultAddress := os.Getenv("VAULT_ADDR")
+	vaultToken := os.Getenv("VAULT_TOKEN")
+
+	if vaultEnabledFlag == "" {
+  	vaultEnabled = "true"
+	} else {
+		vaultEnabled = vaultEnabledFlag
+	}
+ 
+	if vaultAddress == "" || vaultToken == "" {
+		vaultEnabled = "false"
 	}
 
-	token := os.Getenv("VAULT_TOKEN")
-	if token == "" {
-		fmt.Printf("WARN: VAULT_TOKEN is not set\n")
-		vaultEnabled = false
+	config := vault.DefaultConfig()
+	config.Address = vaultAddress
+
+	vault, err := vault.NewClient(config)
+	if err != nil {
+		fmt.Printf("WARN: Vault config failedt\n")
+		vaultEnabled = "false"
 	}
+
+	token := vaultToken
+    _ = token
 
 	tmpl, _ := template.New("nginx").Parse(nginxConf)
 	rateLimiter := util.NewTokenBucketRateLimiter(0.1, 1)
@@ -144,14 +159,15 @@ func main() {
 		}
 		known = ingresses
 
-		if vaultEnabled {
+		if vaultEnabled == "true" {
 			for _, ingress := range ingresses.Items {
 				ingressHost := ingress.Spec.Rules[0].Host
 				vaultPath := "secret/ssl/" + ingressHost
 
 				keySecretData, err := vault.Logical().Read(vaultPath)
 				if err != nil {
-					log.Fatal(err)
+					fmt.Printf("No secret for %v\n", ingressHost)
+					continue
 				}
 				if keySecretData == nil {
 					fmt.Printf("No secret for %v\n", ingressHost)
@@ -162,11 +178,10 @@ func main() {
 				var keySecret string = fmt.Sprintf("%v", keySecretData.Data["key"])
 				if err != nil {
 					fmt.Printf("WARN: No secret keys found at %v\n", vaultPath)
-					continue
+					keySecret = ""
 				}
 				if keySecret == "" {
 					fmt.Printf("WARN: No value found at %v\n", vaultPath)
-					continue
 				} 
 				fmt.Printf("Found key for %v\n", ingressHost)
 				keyFileName := nginxConfDir + "/certs/" + ingressHost + ".key"
@@ -175,9 +190,12 @@ func main() {
 					continue
 				}
 				var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
+				if err != nil {
+					fmt.Printf("WARN: No crt found at %v\n", vaultPath)
+					crtSecret = ""
+				}
 				if crtSecret == "" {
 					fmt.Printf("WARN: Failed to find crt secret at %v\n", vaultPath)
-					continue
 				}
 				fmt.Printf("Found crt for %v\n", ingressHost)
 				crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
