@@ -14,13 +14,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package workqueue provides a simple queue that supports the following
-// features:
-//  * Fair: items processed in the order in which they are added.
-//  * Stingy: a single item will not be processed multiple times concurrently,
-//      and if an item is added multiple times before it can be processed, it
-//      will only be processed once.
-//  * Multiple consumers and producers. In particular, it is allowed for an
-//      item to be reenqueued while it is being processed.
-//  * Shutdown notifications.
-package workqueue
+// Package iptables provides an interface and implementations for running iptables commands.
+package iptables
