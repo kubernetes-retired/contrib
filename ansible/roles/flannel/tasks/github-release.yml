@@ -33,3 +33,11 @@
   with_items:
     - flanneld
     - mk-docker-opts.sh
+
+- name: Setup systemd service
+  include: systemd-service.yml
+  when: not flannel_use_upstart
+
+- name: Setup upstart service
+  include: upstart-service.yml
+  when: flannel_use_upstart

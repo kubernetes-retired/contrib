@@ -10,7 +10,3 @@
   when: ansible_distribution_major_version|int < 15
   notify:
     - restart flannel
-
-- name: Ubuntu | Create Upstart Script
-  template: src=flanneld.upstart dest=/etc/init/flanneld.conf
-  when: ansible_distribution_major_version|int < 15
