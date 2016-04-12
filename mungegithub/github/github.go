@@ -209,6 +209,8 @@ type analytics struct {
 	DeleteComment     analytic
 	Merge             analytic
 	GetUser           analytic
+	SetMilestone      analytic
+	ListMilestones    analytic
 }
 
 func (a analytics) print() {
@@ -237,6 +239,8 @@ func (a analytics) print() {
 	fmt.Fprintf(w, "DeleteComment\t%d\t\n", a.DeleteComment.Count)
 	fmt.Fprintf(w, "Merge\t%d\t\n", a.Merge.Count)
 	fmt.Fprintf(w, "GetUser\t%d\t\n", a.GetUser.Count)
+	fmt.Fprintf(w, "SetMilestone\t%d\t\n", a.SetMilestone.Count)
+	fmt.Fprintf(w, "ListMilestones\t%d\t\n", a.ListMilestones.Count)
 	w.Flush()
 	glog.V(2).Infof("\n%v", buf)
 }
@@ -244,12 +248,13 @@ func (a analytics) print() {
 // MungeObject is the object that mungers deal with. It is a combination of
 // different github API objects.
 type MungeObject struct {
-	config   *Config
-	Issue    *github.Issue
-	pr       *github.PullRequest
-	commits  []github.RepositoryCommit
-	events   []github.IssueEvent
-	comments []github.IssueComment
+	config      *Config
+	Issue       *github.Issue
+	pr          *github.PullRequest
+	commits     []github.RepositoryCommit
+	events      []github.IssueEvent
+	comments    []github.IssueComment
+	Annotations map[string]string //annotations are things you can set yourself.
 }
 
 // DebugStats is a structure that tells information about how we have interacted
@@ -269,11 +274,12 @@ type DebugStats struct {
 // as needed
 func TestObject(config *Config, issue *github.Issue, pr *github.PullRequest, commits []github.RepositoryCommit, events []github.IssueEvent) *MungeObject {
 	return &MungeObject{
-		config:  config,
-		Issue:   issue,
-		pr:      pr,
-		commits: commits,
-		events:  events,
+		config:      config,
+		Issue:       issue,
+		pr:          pr,
+		commits:     commits,
+		events:      events,
+		Annotations: map[string]string{},
 	}
 }
 
@@ -455,6 +461,19 @@ func (obj *MungeObject) Refresh() error {
 	return nil
 }
 
+// ListMilestones will return all milestones of the given `state`
+func (config *Config) ListMilestones(state string) []github.Milestone {
+	listopts := github.MilestoneListOptions{
+		State: state,
+	}
+	milestones, resp, err := config.client.Issues.ListMilestones(config.Org, config.Project, &listopts)
+	config.analytics.ListMilestones.Call(config, resp)
+	if err != nil {
+		glog.Errorf("Error getting milestones of state %q: %v", state, err)
+	}
+	return milestones
+}
+
 // GetObject will return an object (with only the issue filled in)
 func (config *Config) GetObject(num int) (*MungeObject, error) {
 	issue, err := config.getIssue(num)
@@ -462,21 +481,32 @@ func (config *Config) GetObject(num int) (*MungeObject, error) {
 		return nil, err
 	}
 	obj := &MungeObject{
-		config: config,
-		Issue:  issue,
+		config:      config,
+		Issue:       issue,
+		Annotations: map[string]string{},
 	}
 	return obj, nil
+}
+
+// Branch returns the branch the PR is for. Return "" if this is not a PR or
+// it does not have the required information.
+func (obj *MungeObject) Branch() string {
+	pr, err := obj.GetPR()
+	if err != nil {
+		return ""
+	}
+	if pr.Base != nil && pr.Base.Ref != nil {
+		return *pr.Base.Ref
+	}
+	return ""
 }
 
 // IsForBranch return true if the object is a PR for a branch with the given
 // name. It return false if it is not a pr, it isn't against the given branch,
 // or we can't tell
 func (obj *MungeObject) IsForBranch(branch string) bool {
-	pr, err := obj.GetPR()
-	if err != nil {
-		return false
-	}
-	if pr.Base != nil && pr.Base.Ref != nil && *pr.Base.Ref == branch {
+	objBranch := obj.Branch()
+	if objBranch == branch {
 		return true
 	}
 	return false
@@ -634,6 +664,40 @@ func (obj *MungeObject) RemoveLabel(label string) error {
 	}
 	if _, err := config.client.Issues.RemoveLabelForIssue(config.Org, config.Project, prNum, label); err != nil {
 		glog.Errorf("Failed to remove %v from issue %d: %v", label, prNum, err)
+		return err
+	}
+	return nil
+}
+
+// SetMilestone will set the milestone to the value specified
+func (obj *MungeObject) SetMilestone(title string) error {
+	milestones := obj.config.ListMilestones("all")
+
+	var milestone *github.Milestone
+	for _, m := range milestones {
+		if m.Title == nil || m.Number == nil {
+			glog.Errorf("Found milestone with nil title of number: %v", m)
+			continue
+		}
+		if *m.Title == title {
+			milestone = &m
+			break
+		}
+	}
+	if milestone == nil {
+		glog.Errorf("Unable to find milestone with title %q", title)
+		return fmt.Errorf("Unable to find milestone")
+	}
+
+	obj.config.analytics.SetMilestone.Call(obj.config, nil)
+	obj.Issue.Milestone = milestone
+	if obj.config.DryRun {
+		return nil
+	}
+
+	request := &github.IssueRequest{Milestone: milestone.Number}
+	if _, _, err := obj.config.client.Issues.Edit(obj.config.Org, obj.config.Project, *obj.Issue.Number, request); err != nil {
+		glog.Errorf("Failed to set milestone %d on issue %d: %v", *milestone.Number, *obj.Issue.Number, err)
 		return err
 	}
 	return nil
@@ -1395,8 +1459,9 @@ func (config *Config) ForEachIssueDo(fn MungeFunction) error {
 			glog.V(2).Infof("----==== %d ====----", *issue.Number)
 			glog.V(8).Infof("Issue %d labels: %v isPR: %v", *issue.Number, issue.Labels, issue.PullRequestLinks != nil)
 			obj := MungeObject{
-				config: config,
-				Issue:  issue,
+				config:      config,
+				Issue:       issue,
+				Annotations: map[string]string{},
 			}
 			if err := fn(&obj); err != nil {
 				continue

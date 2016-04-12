@@ -6,7 +6,7 @@
          http_proxy="{{ http_proxy|default('') }}"
          https_proxy="{{ https_proxy|default('') }}"
          no_proxy="{{ no_proxy|default('') }}"
-         wget -O /tmp/pypy-{{ pypy_version }}-linux64.tar.bz2 {{ pypy_base_url }}pypy-{{ pypy_version }}-linux64.tar.bz2
+         wget -O /tmp/pypy-{{ pypy_version }}-linux64.tar.bz2 {{ pypy_download_url }}
 
 - name: CoreOS | Extract pypy tar to tmp
   raw: tar -xjf /tmp/pypy-{{ pypy_version }}-linux64.tar.bz2 -C /tmp

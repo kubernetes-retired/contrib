@@ -14,6 +14,7 @@
     dest="{{ local_temp_addon_dir }}/dns/skydns-rc.yaml.j2"
     force=yes
   sudo: no
+  changed_when: false
 
 - name: DNS | Convert pillar vars to ansible vars for skydns-rc.yaml
   local_action: replace
@@ -21,6 +22,7 @@
     regexp="pillar\[\'(\w*)\'\]"
     replace="\1"
   sudo: no
+  changed_when: false
 
 - name: DNS | Install Template from converted saltfile
   template:
@@ -37,6 +39,7 @@
     dest="{{ local_temp_addon_dir }}/dns/skydns-svc.yaml.j2"
     force=yes
   sudo: no
+  changed_when: false
 
 - name: DNS | Convert pillar vars to ansible vars for skydns-rc.yaml
   local_action: replace
@@ -44,6 +47,7 @@
     regexp="pillar\[\'(\w*)\'\]"
     replace="\1"
   sudo: no
+  changed_when: false
 
 - name: DNS | Install Template from converted saltfile
   template:

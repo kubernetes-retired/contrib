@@ -17,7 +17,7 @@
 
 set -e
 
-export NGINX_VERSION=1.9.12
+export NGINX_VERSION=1.9.13
 export NDK_VERSION=0.2.19
 export VTS_VERSION=0.1.9
 export SETMISC_VERSION=0.29
@@ -26,6 +26,7 @@ export LUA_CJSON_VERSION=e1ebda146f63276093970f1bec36e51f952b3dba
 export LUA_RESTY_HTTP_VERSION=0.07
 export LUA_UPSTREAM_VERSION=0.05
 export MORE_HEADERS_VERSION=0.29
+export NAXSI_VERSION=0.55rc1
 
 export BUILD_PATH=/tmp/build
 
@@ -61,11 +62,12 @@ apt-get update && apt-get install --no-install-recommends -y \
   libaio-dev \
   luajit \
   openssl \
+  libluajit-5.1 \
   libluajit-5.1-dev \
-  linux-headers-generic
+  linux-headers-generic || exit 1
 
 # download, verify and extract the source files
-get_src 1af2eb956910ed4b11aaf525a81bc37e135907e7127948f9179f5410337da042 \
+get_src f7cd529a5879cd9cd5b62e6fc4a3a7e8d8363cb12c080ab480cc718c55736609 \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
@@ -91,6 +93,9 @@ get_src 0a5f3003b5851373b03c542723eb5e7da44a01bf4c4c5f20b4de53f355a28d33 \
 
 get_src 0fdfb17083598e674680d8babe944f48a9ccd2af9f982eda030c446c93cfe72b \
         "https://github.com/openresty/lua-upstream-nginx-module/archive/v$LUA_UPSTREAM_VERSION.tar.gz"
+
+get_src 6353441ee53dca173689b63a78f1c9ac5408f3ed066ddaa3f43fd2795bd43cdd \
+        "https://github.com/nbs-system/naxsi/archive/$NAXSI_VERSION.tar.gz"
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
@@ -124,13 +129,19 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
   --with-stream_ssl_module \
   --with-threads \
   --with-file-aio \
+  --without-mail_pop3_module \
+  --without-mail_smtp_module \
+  --without-mail_imap_module \
+  --without-http_uwsgi_module \
+  --without-http_scgi_module \
   --add-module="$BUILD_PATH/ngx_devel_kit-$NDK_VERSION" \
   --add-module="$BUILD_PATH/set-misc-nginx-module-$SETMISC_VERSION" \
   --add-module="$BUILD_PATH/nginx-module-vts-$VTS_VERSION" \
   --add-module="$BUILD_PATH/lua-nginx-module-$LUA_VERSION" \
   --add-module="$BUILD_PATH/headers-more-nginx-module-$MORE_HEADERS_VERSION" \
-  --add-module="$BUILD_PATH/lua-upstream-nginx-module-$LUA_UPSTREAM_VERSION" \
-  && make && make install
+  --add-module="$BUILD_PATH/lua-upstream-nginx-module-$LUA_UPSTREAM_VERSION" || exit 1 \
+  && make || exit 1 \
+  && make install || exit 1
 
 echo "Installing CJSON module"
 cd "$BUILD_PATH/lua-cjson-$LUA_CJSON_VERSION"

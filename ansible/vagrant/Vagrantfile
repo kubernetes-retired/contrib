@@ -17,6 +17,10 @@ $os_image = (ENV['OS_IMAGE'] || "centos7").to_sym
 $coreos_update_channel = "stable"
 $coreos_image_version = "current"
 
+# Machines under VirtualBox provier use static IPs, based on VM index.
+# Master has index 0.
+VBOX_STATIC_IP_TEMPLATE = "172.32.128.1%d"
+
 VAGRANTFILE_API_VERSION = "2"
 
 # Openstack providers are best used with latest versions.
@@ -95,10 +99,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     os.server_name = n.vm.hostname
   end
 
-  def set_vbox(vb, config)
+  def set_vbox(vb, config, vm_idx)
     set_vbox_box(config)
 
-    config.vm.network "private_network", type: "dhcp"
+    config.vm.network "private_network", ip: VBOX_STATIC_IP_TEMPLATE % vm_idx
     vb.gui = false
     vb.memory = 2048
     vb.cpus = 2
@@ -117,12 +121,12 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     lv.volume_cache = 'none'
   end
 
-  def set_provider(n)
+  def set_provider(n, vm_idx)
     n.vm.provider :openstack do |os, override|
       set_openstack(os, override, n)
     end
     n.vm.provider :virtualbox do |vb, override|
-      set_vbox(vb, override)
+      set_vbox(vb, override, vm_idx)
     end
     n.vm.provider :libvirt do |lv, override|
       set_libvirt(lv, override)
@@ -158,10 +162,16 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     ansible.playbook = "../cluster.yml"
 
     if provider == :virtualbox
+      master_ip = VBOX_STATIC_IP_TEMPLATE % 0
+
       # On VirtualBox eth0 is used for NAT-ed internet connection,
       # and actual connectivity with the host and other VMs is done
       # using eth1 interface.
-      ansible.extra_vars = { flannel_opts: "--iface=eth1" }
+      ansible.extra_vars = {
+        flannel_opts: "--iface=eth1",
+        etcd_interface: "eth1",
+        kube_apiserver_bind_address: master_ip,
+      }
     end
   end
 
@@ -192,7 +202,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     nodes.push(name)
     config.vm.define "#{name}" do |n|
       n.vm.hostname = name
-      set_provider(n)
+      set_provider(n, i + 1)
     end
   end
 
@@ -206,6 +216,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
      "all_groups:children" => ["etcd","masters","nodes"],
   }
   if $os_image == :coreos
+    # Vagrant prior version 1.8.0 doesn't write group variables into inventory file:
+    # <https://github.com/mitchellh/vagrant/commit/dd4ae1a51cfb246d561bced89d3b34ee90a0a38f>
+    Vagrant.require_version ">= 1.8.0"
+
     # On CoreOS we use custom Python in Ansible.
     $groups["all_groups:vars"] = ['ansible_python_interpreter="PATH=/opt/bin:$PATH python"']
   end
@@ -213,7 +227,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.define "kube-master" do |n|
     name = "kube-master"
     n.vm.hostname = name
-    set_provider(n)
+    set_provider(n, 0)
 
     if $ansible_tags.nil?
       run_ansible_provision n do |ansible, provider|

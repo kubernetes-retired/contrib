@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/golang/glog"
@@ -32,7 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/healthz"
-	"k8s.io/kubernetes/pkg/runtime"
+	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
 const (
@@ -40,6 +42,10 @@ const (
 )
 
 var (
+	// value overwritten during build. This can be used to resolve issues.
+	version = "0.5"
+	gitRepo = "https://github.com/kubernetes/contrib"
+
 	flags = pflag.NewFlagSet("", pflag.ExitOnError)
 
 	defaultSvc = flags.String("default-backend-service", "",
@@ -50,12 +56,22 @@ var (
 	nxgConfigMap = flags.String("nginx-configmap", "",
 		`Name of the ConfigMap that containes the custom nginx configuration to use`)
 
+	inCluster = flags.Bool("running-in-cluster", true,
+		`Optional, if this controller is running in a kubernetes cluster, use the
+		 pod secrets for creating a Kubernetes client.`)
+
 	tcpConfigMapName = flags.String("tcp-services-configmap", "",
 		`Name of the ConfigMap that containes the definition of the TCP services to expose.
-		The key in the map indicates the external port to be used. The value is the name of the 
+		The key in the map indicates the external port to be used. The value is the name of the
 		service with the format namespace/serviceName and the port of the service could be a number of the
 		name of the port.
 		The ports 80 and 443 are not allowed as external ports. This ports are reserved for nginx`)
+
+	udpConfigMapName = flags.String("udp-services-configmap", "",
+		`Name of the ConfigMap that containes the definition of the UDP services to expose.
+		The key in the map indicates the external port to be used. The value is the name of the
+		service with the format namespace/serviceName and the port of the service could be a number of the
+		name of the port.`)
 
 	resyncPeriod = flags.Duration("sync-period", 30*time.Second,
 		`Relist and confirm cloud resources this often.`)
@@ -72,8 +88,12 @@ var (
 )
 
 func main() {
+	var kubeClient *unversioned.Client
 	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
+	clientConfig := kubectl_util.DefaultClientConfig(flags)
+
+	glog.Infof("Using build: %v - %v", gitRepo, version)
 
 	if *buildCfg {
 		fmt.Printf("Example of ConfigMap to customize NGINX configuration:\n%v", nginx.ConfigMapAsString())
@@ -81,30 +101,42 @@ func main() {
 	}
 
 	if *defaultSvc == "" {
-		glog.Fatalf("Please specify --default-backend")
+		glog.Fatalf("Please specify --default-backend-service")
 	}
 
-	kubeClient, err := unversioned.NewInCluster()
+	var err error
+	if *inCluster {
+		kubeClient, err = unversioned.NewInCluster()
+	} else {
+		config, connErr := clientConfig.ClientConfig()
+		if connErr != nil {
+			glog.Fatalf("error connecting to the client: %v", err)
+		}
+		kubeClient, err = unversioned.New(config)
+	}
 	if err != nil {
 		glog.Fatalf("failed to create client: %v", err)
 	}
 
-	lbInfo, err := getLBDetails(kubeClient)
-	if err != nil {
-		glog.Fatalf("unexpected error getting runtime information: %v", err)
+	runtimePodInfo := &podInfo{NodeIP: "127.0.0.1"}
+	if *inCluster {
+		runtimePodInfo, err = getPodDetails(kubeClient)
+		if err != nil {
+			glog.Fatalf("unexpected error getting runtime information: %v", err)
+		}
 	}
-
-	err = isValidService(kubeClient, *defaultSvc)
-	if err != nil {
+	if err := isValidService(kubeClient, *defaultSvc); err != nil {
 		glog.Fatalf("no service with name %v found: %v", *defaultSvc, err)
 	}
+	glog.Infof("Validated %v as the default backend", *defaultSvc)
 
-	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName, lbInfo)
+	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName, *udpConfigMapName, runtimePodInfo)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}
 
 	go registerHandlers(lbc)
+	go handleSigterm(lbc)
 
 	lbc.Run()
 
@@ -114,18 +146,21 @@ func main() {
 	}
 }
 
-// lbInfo contains runtime information about the pod
-type lbInfo struct {
-	ObjectName   string
-	DeployType   runtime.Object
-	Podname      string
-	PodIP        string
+// podInfo contains runtime information about the pod
+type podInfo struct {
+	PodName      string
 	PodNamespace string
+	NodeIP       string
 }
 
 func registerHandlers(lbc *loadBalancerController) {
 	mux := http.NewServeMux()
 	healthz.InstallHandler(mux, lbc.nginx)
+
+	http.HandleFunc("/build", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "build: %v - %v", gitRepo, version)
+	})
 
 	http.HandleFunc("/stop", func(w http.ResponseWriter, r *http.Request) {
 		lbc.Stop()
@@ -142,4 +177,19 @@ func registerHandlers(lbc *loadBalancerController) {
 		Handler: mux,
 	}
 	glog.Fatal(server.ListenAndServe())
+}
+
+func handleSigterm(lbc *loadBalancerController) {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGTERM)
+	<-signalChan
+	glog.Infof("Received SIGTERM, shutting down")
+
+	exitCode := 0
+	if err := lbc.Stop(); err != nil {
+		glog.Infof("Error during shutdown %v", err)
+		exitCode = 1
+	}
+	glog.Infof("Exiting with %v", exitCode)
+	os.Exit(exitCode)
 }

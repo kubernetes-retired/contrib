@@ -77,7 +77,9 @@ const (
 	// Size of the SSL shared cache between all worker processes.
 	// http://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_session_cache
 	sslSessionCacheSize = "10m"
+)
 
+var (
 	// Base directory that contains the mounted secrets with SSL certificates, keys and
 	sslDirectory = "/etc/nginx-ssl"
 )
@@ -93,6 +95,10 @@ type nginxConfiguration struct {
 	EnableVtsStatus bool `structs:"enable-vts-status,omitempty"`
 
 	VtsStatusZoneSize string `structs:"vts-status-zone-size,omitempty"`
+
+	// RetryNonIdempotent since 1.9.13 NGINX will not retry non-idempotent requests (POST, LOCK, PATCH)
+	// in case of an error. The previous behavior can be restored using the value true
+	RetryNonIdempotent bool `structs:"retry-non-idempotent"`
 
 	// http://nginx.org/en/docs/ngx_core_module.html#error_log
 	// Configures logging level [debug | info | notice | warn | error | crit | alert | emerg]
@@ -288,6 +294,10 @@ func NewManager(kubeClient *client.Client) *Manager {
 
 func (nginx *Manager) createCertsDir(base string) {
 	if err := os.Mkdir(base, os.ModeDir); err != nil {
+		if os.IsExist(err) {
+			glog.Infof("%v already exists", err)
+			return
+		}
 		glog.Fatalf("Couldn't create directory %v: %v", base, err)
 	}
 }

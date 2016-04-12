@@ -4,7 +4,7 @@
 
 - name: Download Kubernetes binaries
   get_url:
-    url: "{{ kube_download_url_base }}{{ item }}"
+    url: "{{ kube_download_url_base }}/{{ item }}"
     dest: "{{ kube_current_release_directory }}/{{ item }}"
     mode: 0755
     validate_certs: False

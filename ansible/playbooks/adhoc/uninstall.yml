@@ -23,14 +23,18 @@
       register: distro
       always_run: yes
 
-    - name: Init the is_coreos fact
+    - name: Initialize facts
       set_fact:
         is_coreos: false
+        etcd_svc_name: etcd
+        bin_dir: "/usr/bin"
 
-    - name: Set the is_coreos fact
+    - name: Set CoreOS facts
+      when: "'CoreOS' in distro.stdout"
       set_fact:
         is_coreos: true
-      when: "'CoreOS' in distro.stdout"
+        etcd_svc_name: etcd2
+        bin_dir: "/opt/bin"
 
     - name: Remove br0 interface
       shell: ovs-vsctl del-br br0
@@ -46,8 +50,8 @@
         - kube-proxy
         - kube-scheduler
         - kube-addons
-        - etcd
-        - etcd2
+        - flanneld
+        - "{{ etcd_svc_name }}"
       failed_when: false
 
     - name: Remove packages
@@ -58,34 +62,23 @@
         - kubernetes-node
         - kubernetes-master
         - etcd
-        - etcd2
         - kube-addons
         - atomic-enterprise
         - atomic-enterprise-master
         - atomic-enterprise-node
 
-    - name: CoreOS | Remove packages
+    - name: CoreOS | Remove bins and systemd files
       file: path={{ item }} state=absent
       when: is_coreos
       with_items:
-        - /opt/bin/flanneld
-        - /opt/bin/kubelet
-        - /opt/bin/kubectl
-        - /opt/bin/kubernetes
-        - /etc/systemd/system/flanneld.service
-        - /etc/systemd/system/etcd2.service.d
-        - /etc/systemd/system/kube-proxy.service.d
-        - /etc/systemd/system/kube-apiserver.service.d
-        - /etc/systemd/system/kube-controller-manager.service.d
-        - /etc/systemd/system/kube-scheduler.service.d
-        - /etc/systemd/system/kubelet.service.d
+        - "{{ bin_dir }}/mk-docker-opts.sh"
         - /etc/systemd/system/docker.service.d
-        - /etc/systemd/system/flanneld.service.wants
-        - /etc/systemd/system/kube-proxy.service.wants
-        - /etc/systemd/system/kube-apiserver.service.wants
-        - /etc/systemd/system/multi-user.target.wants
-        - /etc/systemd/system/delay-master-services.target
-        - /etc/systemd/system/delay-node-services.target
+        - /etc/systemd/system/etcd2.service.d
+        - /etc/systemd/system/kube-apiserver.service.d
+        - /etc/systemd/system/kube-scheduler.service.d
+        - /etc/systemd/system/kube-controller-manager.service.d/
+        - /etc/systemd/system/kubelet.service.d
+        - /etc/systemd/system/kube-proxy.service.d
 
     - name: Remove linux interfaces
       shell: ip link del "{{ item }}"
@@ -93,6 +86,7 @@
       failed_when: False
       with_items:
         - flannel.1
+        - docker0
 
     - shell: systemctl reset-failed
       changed_when: False
@@ -113,12 +107,12 @@
       with_items:
         - "~{{ ansible_ssh_user }}/.kube"
         - /root/.kube
-        - /usr/bin/kube-apiserver
-        - /usr/bin/kube-controller-manager
-        - /usr/bin/kubectl
-        - /usr/bin/kubelet
-        - /usr/bin/kube-proxy
-        - /usr/bin/kube-scheduler
+        - "{{ bin_dir }}/kube-apiserver"
+        - "{{ bin_dir }}/kube-controller-manager"
+        - "{{ bin_dir }}/kubectl"
+        - "{{ bin_dir }}/kubelet"
+        - "{{ bin_dir }}/kube-proxy"
+        - "{{ bin_dir }}/kube-scheduler"
         - /etc/kubernetes
         - /etc/systemd/system/kube-addons.service
         - /etc/systemd/system/kube-controller-manager.service
@@ -126,7 +120,7 @@
         - /etc/systemd/system/kube-apiserver.service
         - /etc/systemd/system/kubelet.service
         - /etc/systemd/system/kube-scheduler.service
-        - /etc/systemd/system/etcd.service
+        - "/etc/systemd/system/{{ etcd_svc_name }}.service"
         - /etc/init/kubelet.conf
         - /etc/init/kube-proxy.confA
         - /etc/init/etcd.conf
@@ -137,6 +131,7 @@
 
     - name: CoreOS | Recover etcd data directory
       file: path=/var/lib/etcd state=directory owner=etcd group=etcd
+      when: is_coreos
 
     - name: Reload systemd manager configuration
       command: systemctl daemon-reload
@@ -159,4 +154,3 @@
       with_items:
         - /opt/bin/python
         - /opt/bin/pypy
-        - /opt/bin/.bootstrapped

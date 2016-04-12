@@ -30,6 +30,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/client/record"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -41,6 +42,7 @@ import (
 
 const (
 	defUpstreamName = "upstream-default-backend"
+	defServerName   = "_"
 )
 
 var (
@@ -58,12 +60,19 @@ type loadBalancerController struct {
 	svcLister      cache.StoreToServiceLister
 	endpLister     cache.StoreToEndpointsLister
 	nginx          *nginx.Manager
-	lbInfo         *lbInfo
+	podInfo        *podInfo
 	defaultSvc     string
 	nxgConfigMap   string
 	tcpConfigMap   string
+	udpConfigMap   string
+
+	recorder record.EventRecorder
 
 	syncQueue *taskQueue
+
+	// taskQueue used to update the status of the Ingress rules.
+	// this avoids a sync execution in the ResourceEventHandlerFuncs
+	ingQueue *taskQueue
 
 	// stopLock is used to enforce only a single call to Stop is active.
 	// Needed because we allow stopping through an http endpoint and
@@ -75,18 +84,48 @@ type loadBalancerController struct {
 
 // newLoadBalancerController creates a controller for nginx loadbalancer
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, defaultSvc,
-	namespace, nxgConfigMapName, tcpConfigMapName string, lbRuntimeInfo *lbInfo) (*loadBalancerController, error) {
+	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName string, runtimeInfo *podInfo) (*loadBalancerController, error) {
+
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartRecordingToSink(kubeClient.Events(""))
+
 	lbc := loadBalancerController{
 		client:       kubeClient,
 		stopCh:       make(chan struct{}),
-		lbInfo:       lbRuntimeInfo,
+		podInfo:      runtimeInfo,
 		nginx:        nginx.NewManager(kubeClient),
 		nxgConfigMap: nxgConfigMapName,
 		tcpConfigMap: tcpConfigMapName,
+		udpConfigMap: udpConfigMapName,
 		defaultSvc:   defaultSvc,
+		recorder:     eventBroadcaster.NewRecorder(api.EventSource{Component: "loadbalancer-controller"}),
 	}
 
 	lbc.syncQueue = NewTaskQueue(lbc.sync)
+	lbc.ingQueue = NewTaskQueue(lbc.updateIngressStatus)
+
+	ingEventHandler := framework.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			addIng := obj.(*extensions.Ingress)
+			lbc.recorder.Eventf(addIng, api.EventTypeNormal, "CREATE", fmt.Sprintf("%s/%s", addIng.Namespace, addIng.Name))
+			lbc.ingQueue.enqueue(obj)
+			lbc.syncQueue.enqueue(obj)
+		},
+		DeleteFunc: func(obj interface{}) {
+			upIng := obj.(*extensions.Ingress)
+			lbc.recorder.Eventf(upIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
+			lbc.syncQueue.enqueue(obj)
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			if !reflect.DeepEqual(old, cur) {
+				upIng := cur.(*extensions.Ingress)
+				lbc.recorder.Eventf(upIng, api.EventTypeNormal, "UPDATE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
+				lbc.ingQueue.enqueue(cur)
+				lbc.syncQueue.enqueue(cur)
+			}
+		},
+	}
 
 	eventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -107,7 +146,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 			ListFunc:  ingressListFunc(lbc.client, namespace),
 			WatchFunc: ingressWatchFunc(lbc.client, namespace),
 		},
-		&extensions.Ingress{}, resyncPeriod, eventHandler)
+		&extensions.Ingress{}, resyncPeriod, ingEventHandler)
 
 	lbc.endpLister.Store, lbc.endpController = framework.NewInformer(
 		&cache.ListWatch{
@@ -174,6 +213,10 @@ func (lbc *loadBalancerController) getTCPConfigMap(ns, name string) (*api.Config
 	return lbc.client.ConfigMaps(ns).Get(name)
 }
 
+func (lbc *loadBalancerController) getUDPConfigMap(ns, name string) (*api.ConfigMap, error) {
+	return lbc.client.ConfigMaps(ns).Get(name)
+}
+
 func (lbc *loadBalancerController) sync(key string) {
 	if !lbc.controllersInSync() {
 		lbc.syncQueue.requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
@@ -192,12 +235,63 @@ func (lbc *loadBalancerController) sync(key string) {
 	}
 
 	ngxConfig := lbc.nginx.ReadConfig(cfg)
-	tcpServices := lbc.getTCPServices()
 	lbc.nginx.CheckAndReload(ngxConfig, nginx.IngressConfig{
 		Upstreams:    upstreams,
 		Servers:      servers,
-		TCPUpstreams: tcpServices,
+		TCPUpstreams: lbc.getTCPServices(),
+		UDPUpstreams: lbc.getUDPServices(),
 	})
+}
+
+func (lbc *loadBalancerController) updateIngressStatus(key string) {
+	if !lbc.controllersInSync() {
+		lbc.ingQueue.requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
+		return
+	}
+
+	obj, ingExists, err := lbc.ingLister.Store.GetByKey(key)
+	if err != nil {
+		lbc.ingQueue.requeue(key, err)
+		return
+	}
+
+	if !ingExists {
+		return
+	}
+
+	ing := obj.(*extensions.Ingress)
+
+	ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
+
+	currIng, err := ingClient.Get(ing.Name)
+	if err != nil {
+		glog.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
+		return
+	}
+
+	lbIPs := ing.Status.LoadBalancer.Ingress
+	if !lbc.isStatusIPDefined(lbIPs) {
+		glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
+		currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
+			IP: lbc.podInfo.NodeIP,
+		})
+		if _, err := ingClient.UpdateStatus(currIng); err != nil {
+			lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
+			return
+		}
+
+		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", lbc.podInfo.NodeIP)
+	}
+}
+
+func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIngress) bool {
+	for _, lbing := range lbings {
+		if lbing.IP == lbc.podInfo.NodeIP {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
@@ -217,10 +311,34 @@ func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
 		return []*nginx.Location{}
 	}
 
-	var tcpSvcs []*nginx.Location
+	return lbc.getServices(tcpMap.Data, api.ProtocolTCP)
+}
+
+func (lbc *loadBalancerController) getUDPServices() []*nginx.Location {
+	if lbc.udpConfigMap == "" {
+		// no configmap for TCP services
+		return []*nginx.Location{}
+	}
+
+	ns, name, err := parseNsName(lbc.udpConfigMap)
+	if err != nil {
+		glog.Warningf("%v", err)
+		return []*nginx.Location{}
+	}
+	tcpMap, err := lbc.getUDPConfigMap(ns, name)
+	if err != nil {
+		glog.V(3).Infof("no configured tcp services found: %v", err)
+		return []*nginx.Location{}
+	}
+
+	return lbc.getServices(tcpMap.Data, api.ProtocolUDP)
+}
+
+func (lbc *loadBalancerController) getServices(data map[string]string, proto api.Protocol) []*nginx.Location {
+	var svcs []*nginx.Location
 	// k -> port to expose in nginx
 	// v -> <namespace>/<service name>:<port from service to be used>
-	for k, v := range tcpMap.Data {
+	for k, v := range data {
 		port, err := strconv.Atoi(k)
 		if err != nil {
 			glog.Warningf("%v is not valid as a TCP port", k)
@@ -255,12 +373,12 @@ func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
 		var endps []nginx.UpstreamServer
 		targetPort, err := strconv.Atoi(svcPort[1])
 		if err != nil {
-			endps = lbc.getEndpoints(svc, intstr.FromString(svcPort[1]))
+			endps = lbc.getEndpoints(svc, intstr.FromString(svcPort[1]), proto)
 		} else {
 			// we need to use the TargetPort (where the endpoints are running)
 			for _, sp := range svc.Spec.Ports {
 				if sp.Port == targetPort {
-					endps = lbc.getEndpoints(svc, sp.TargetPort)
+					endps = lbc.getEndpoints(svc, sp.TargetPort, proto)
 					break
 				}
 			}
@@ -273,7 +391,7 @@ func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
 			continue
 		}
 
-		tcpSvcs = append(tcpSvcs, &nginx.Location{
+		svcs = append(svcs, &nginx.Location{
 			Path: k,
 			Upstream: nginx.Upstream{
 				Name:     fmt.Sprintf("%v-%v-%v", svcNs, svcName, port),
@@ -282,7 +400,7 @@ func (lbc *loadBalancerController) getTCPServices() []*nginx.Location {
 		})
 	}
 
-	return tcpSvcs
+	return svcs
 }
 
 func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
@@ -305,7 +423,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 
 	svc := svcObj.(*api.Service)
 
-	endps := lbc.getEndpoints(svc, svc.Spec.Ports[0].TargetPort)
+	endps := lbc.getEndpoints(svc, svc.Spec.Ports[0].TargetPort, api.ProtocolTCP)
 	if len(endps) == 0 {
 		glog.Warningf("service %v does no have any active endpoints", svcKey)
 		upstream.Backends = append(upstream.Backends, nginx.NewDefaultServer())
@@ -318,9 +436,18 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 
 func (lbc *loadBalancerController) getUpstreamServers(data []interface{}) ([]*nginx.Upstream, []*nginx.Server) {
 	upstreams := lbc.createUpstreams(data)
-	servers := lbc.createServers(data)
-
 	upstreams[defUpstreamName] = lbc.getDefaultUpstream()
+
+	servers := lbc.createServers(data)
+	// default server - no servername.
+	servers[defServerName] = &nginx.Server{
+		Name: defServerName,
+		Locations: []*nginx.Location{{
+			Path:     "/",
+			Upstream: *lbc.getDefaultUpstream(),
+		},
+		},
+	}
 
 	for _, ingIf := range data {
 		ing := ingIf.(*extensions.Ingress)
@@ -353,7 +480,7 @@ func (lbc *loadBalancerController) getUpstreamServers(data []interface{}) ([]*ng
 
 				for _, servicePort := range svc.Spec.Ports {
 					if servicePort.Port == path.Backend.ServicePort.IntValue() {
-						endps := lbc.getEndpoints(svc, servicePort.TargetPort)
+						endps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP)
 						if len(endps) == 0 {
 							glog.Warningf("service %v does no have any active endpoints", svcKey)
 						}
@@ -404,7 +531,6 @@ func (lbc *loadBalancerController) getUpstreamServers(data []interface{}) ([]*ng
 
 func (lbc *loadBalancerController) createUpstreams(data []interface{}) map[string]*nginx.Upstream {
 	upstreams := make(map[string]*nginx.Upstream)
-	upstreams[defUpstreamName] = nginx.NewUpstream(defUpstreamName)
 
 	for _, ingIf := range data {
 		ing := ingIf.(*extensions.Ingress)
@@ -475,10 +601,25 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 				continue
 			}
 
-			pemFileName := lbc.nginx.AddOrUpdateCertAndKey(secretName, string(cert), string(key))
+			pemFileName, err := lbc.nginx.AddOrUpdateCertAndKey(fmt.Sprintf("%v-%v", ing.Namespace, secretName), string(cert), string(key))
+			if err != nil {
+				glog.Errorf("No valid SSL certificate found in secret %v: %v", secretName, err)
+				continue
+			}
 			cn, err := lbc.nginx.CheckSSLCertificate(pemFileName)
 			if err != nil {
-				glog.Warningf("No valid SSL certificate found in secret %v", secretName)
+				glog.Errorf("No valid SSL certificate found in secret %v: %v", secretName, err)
+				continue
+			}
+
+			if len(tls.Hosts) == 0 {
+				if _, ok := pems["_"]; ok {
+					glog.Warningf("It is not possible to use %v secret for default SSL certificate because there is one already defined", secretName)
+					continue
+				}
+
+				pems["_"] = pemFileName
+				glog.Infof("Using the secret %v as source for the default SSL certificate", secretName)
 				continue
 			}
 
@@ -496,7 +637,7 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
-func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString) []nginx.UpstreamServer {
+func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort intstr.IntOrString, proto api.Protocol) []nginx.UpstreamServer {
 	glog.V(3).Infof("getting endpoints for service %v/%v and port %v", s.Namespace, s.Name, servicePort.String())
 	ep, err := lbc.endpLister.GetServiceEndpoints(s)
 	if err != nil {
@@ -508,6 +649,11 @@ func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort ints
 
 	for _, ss := range ep.Subsets {
 		for _, epPort := range ss.Ports {
+
+			if !reflect.DeepEqual(epPort.Protocol, proto) {
+				continue
+			}
+
 			var targetPort int
 			switch servicePort.Type {
 			case intstr.Int:
@@ -536,17 +682,59 @@ func (lbc *loadBalancerController) getEndpoints(s *api.Service, servicePort ints
 }
 
 // Stop stops the loadbalancer controller.
-func (lbc *loadBalancerController) Stop() {
+func (lbc *loadBalancerController) Stop() error {
 	// Stop is invoked from the http endpoint.
 	lbc.stopLock.Lock()
 	defer lbc.stopLock.Unlock()
 
 	// Only try draining the workqueue if we haven't already.
 	if !lbc.shutdown {
+
+		lbc.removeFromIngress()
+
 		close(lbc.stopCh)
 		glog.Infof("shutting down controller queues")
 		lbc.shutdown = true
 		lbc.syncQueue.shutdown()
+
+		return nil
+	}
+
+	return fmt.Errorf("shutdown already in progress")
+}
+
+func (lbc *loadBalancerController) removeFromIngress() {
+	ings := lbc.ingLister.Store.List()
+	glog.Infof("updating %v Ingress rule/s", len(ings))
+	for _, cur := range ings {
+		ing := cur.(*extensions.Ingress)
+
+		ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
+		currIng, err := ingClient.Get(ing.Name)
+		if err != nil {
+			glog.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
+			continue
+		}
+
+		lbIPs := ing.Status.LoadBalancer.Ingress
+		if len(lbIPs) > 0 && lbc.isStatusIPDefined(lbIPs) {
+			glog.Infof("Updating loadbalancer %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
+
+			for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
+				if lbStatus.IP == lbc.podInfo.NodeIP {
+					currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
+						currIng.Status.LoadBalancer.Ingress[idx+1:]...)
+					break
+				}
+			}
+
+			if _, err := ingClient.UpdateStatus(currIng); err != nil {
+				lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
+				continue
+			}
+
+			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", lbc.podInfo.NodeIP)
+		}
 	}
 }
 
@@ -560,6 +748,7 @@ func (lbc *loadBalancerController) Run() {
 	go lbc.svcController.Run(lbc.stopCh)
 
 	go lbc.syncQueue.run(time.Second, lbc.stopCh)
+	go lbc.ingQueue.run(time.Second, lbc.stopCh)
 
 	<-lbc.stopCh
 	glog.Infof("shutting down NGINX loadbalancer controller")

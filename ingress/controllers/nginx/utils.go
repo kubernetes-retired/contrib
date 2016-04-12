@@ -24,6 +24,8 @@ import (
 
 	"github.com/golang/glog"
 
+	"k8s.io/kubernetes/pkg/api"
+	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util/wait"
@@ -95,23 +97,44 @@ func NewTaskQueue(syncFn func(string)) *taskQueue {
 	}
 }
 
-// getLBDetails returns runtime information about the pod (name, IP) and replication
-// controller or daemonset (namespace and name).
-// This is required to watch for changes in annotations or configuration (ConfigMap)
-func getLBDetails(kubeClient *unversioned.Client) (*lbInfo, error) {
-	podIP := os.Getenv("POD_IP")
+// getPodDetails  returns runtime information about the pod: name, namespace and IP of the node
+func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 	podName := os.Getenv("POD_NAME")
 	podNs := os.Getenv("POD_NAMESPACE")
+
+	err := waitForPodRunning(kubeClient, podNs, podName, time.Millisecond*200, time.Second*30)
+	if err != nil {
+		return nil, err
+	}
 
 	pod, _ := kubeClient.Pods(podNs).Get(podName)
 	if pod == nil {
 		return nil, fmt.Errorf("Unable to get POD information")
 	}
 
-	return &lbInfo{
-		PodIP:        podIP,
-		Podname:      podName,
+	node, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	var externalIP string
+	for _, address := range node.Status.Addresses {
+		if address.Type == api.NodeExternalIP {
+			if address.Address != "" {
+				externalIP = address.Address
+				break
+			}
+		}
+
+		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
+			externalIP = address.Address
+		}
+	}
+
+	return &podInfo{
+		PodName:      podName,
 		PodNamespace: podNs,
+		NodeIP:       externalIP,
 	}, nil
 }
 
@@ -173,4 +196,38 @@ func parseNsName(input string) (string, string, error) {
 	}
 
 	return nsName[0], nsName[1], nil
+}
+
+func waitForPodRunning(kubeClient *unversioned.Client, ns, podName string, interval, timeout time.Duration) error {
+	condition := func(pod *api.Pod) (bool, error) {
+		if pod.Status.Phase == api.PodRunning {
+			return true, nil
+		}
+		return false, nil
+	}
+
+	return waitForPodCondition(kubeClient, ns, podName, condition, interval, timeout)
+}
+
+// waitForPodCondition waits for a pod in state defined by a condition (func)
+func waitForPodCondition(kubeClient *unversioned.Client, ns, podName string, condition func(pod *api.Pod) (bool, error),
+	interval, timeout time.Duration) error {
+	return wait.PollImmediate(interval, timeout, func() (bool, error) {
+		pod, err := kubeClient.Pods(ns).Get(podName)
+		if err != nil {
+			if apierrs.IsNotFound(err) {
+				return false, nil
+			}
+		}
+
+		done, err := condition(pod)
+		if err != nil {
+			return false, err
+		}
+		if done {
+			return true, nil
+		}
+
+		return false, nil
+	})
 }

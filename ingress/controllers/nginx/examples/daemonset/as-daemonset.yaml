@@ -8,8 +8,9 @@ spec:
       labels:
         name: nginx-ingress-lb
     spec:
+      terminationGracePeriodSeconds: 60      
       containers:
-      - image: gcr.io/google_containers/nginx-ingress-controller:0.4
+      - image: gcr.io/google_containers/nginx-ingress-controller:0.5
         name: nginx-ingress-lb
         imagePullPolicy: Always
         livenessProbe:
@@ -21,10 +22,6 @@ spec:
           timeoutSeconds: 5
         # use downward API
         env:
-          - name: POD_IP
-            valueFrom:
-              fieldRef:
-                fieldPath: status.podIP
           - name: POD_NAME
             valueFrom:
               fieldRef:
@@ -39,5 +36,5 @@ spec:
         - containerPort: 443
           hostPort: 4444
         args:
-        - /nginx-ingress-controller-lb
+        - /nginx-ingress-controller
         - --default-backend-service=default/default-http-backend

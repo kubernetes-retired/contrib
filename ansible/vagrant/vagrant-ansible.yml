@@ -11,8 +11,13 @@
     - public_iface: "{{ ansible_default_ipv4.interface }}"
   tasks:
     # On stock Core OS there is no /etc/hosts.
+    - name: "Check is /etc/hosts file exists"
+      stat: path=/etc/hosts
+      register: hosts
+
     - name: "Create hosts file if it is not present"
       file: path=/etc/hosts state=touch
+      when: not hosts.stat.exists
 
     - name: "Build hosts file"
       lineinfile:

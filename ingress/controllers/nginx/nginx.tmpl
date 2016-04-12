@@ -40,7 +40,7 @@ http {
     server_names_hash_bucket_size {{ $cfg.serverNameHashBucketSize }};
 
     include /etc/nginx/mime.types;
-    default_type application/octet-stream;
+    default_type text/html;
     {{ if $cfg.useGzip }}
     gzip on;
     gzip_comp_level 5;
@@ -78,11 +78,6 @@ http {
     map $http_x_forwarded_proto $pass_access_scheme {
       default $http_x_forwarded_proto;
       ''      $scheme;
-    }
-
-    map $http_x_forwarded_proto $pass_forwarded_for {
-      default $http_x_forwarded_for;
-      ''      $proxy_add_x_forwarded_for;
     }
 
     map $pass_access_scheme $sts {
@@ -146,25 +141,7 @@ http {
     error_page 504 = @custom_504;
 
     # In case of errors try the next upstream server before returning an error
-    proxy_next_upstream                     error timeout invalid_header http_502 http_503 http_504;
-
-    server {
-        listen 80 default_server{{ if $cfg.useProxyProtocol }} proxy_protocol{{ end }};
-
-        location / {
-            return 200;
-        }
-
-        location /nginx_status {
-            allow 127.0.0.1;
-            deny all;
-            
-            access_log off;
-            stub_status on;
-        }
-
-        {{ template "CUSTOM_ERRORS" $cfg }}
-    }
+    proxy_next_upstream                     error timeout invalid_header http_502 http_503 http_504 {{ if $cfg.retryNonIdempotent }}non_idempotent{{ end }};
 
     {{range $name, $upstream := .upstreams}}
     upstream {{$upstream.Name}} {
@@ -191,6 +168,7 @@ http {
             return 301 https://$host$request_uri;
         }
         {{ end }}
+
         {{ range $location := $server.Locations }}
         location {{ $location.Path }} {
             proxy_set_header Host                   $host;
@@ -202,9 +180,8 @@ http {
             proxy_set_header                        Upgrade           $http_upgrade;
             proxy_set_header                        Connection        $connection_upgrade;
 
-            proxy_set_header X-Forwarded-For        $pass_forwarded_for;
+            proxy_set_header X-Forwarded-For        $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Host       $host;
-            proxy_set_header X-Forwarded-Server     $host;
             proxy_set_header X-Forwarded-Proto      $pass_access_scheme;
 
             proxy_connect_timeout                   {{ $cfg.proxyConnectTimeout }}s;
@@ -217,6 +194,18 @@ http {
             proxy_http_version                      1.1;
 
             proxy_pass http://{{ $location.Upstream.Name }};
+        }
+        {{ end }}
+
+        {{ if eq $server.Name "_" }}
+        # this is required to avoid error if nginx is being monitored
+        # with an external software (like sysdig)
+        location /nginx_status {
+            allow 127.0.0.1;
+            deny all;
+
+            access_log off;
+            stub_status on;
         }
         {{ end }}
         {{ template "CUSTOM_ERRORS" $cfg }}
@@ -265,8 +254,10 @@ http {
     }    
 }
 
-# TCP services
+
 stream {
+
+# TCP services
 {{ range $i, $tcpServer := .tcpUpstreams }}
     upstream tcp-{{ $tcpServer.Upstream.Name }} {
         {{ range $server := $tcpServer.Upstream.Backends }}server {{ $server.Address }}:{{ $server.Port }};
@@ -280,6 +271,22 @@ stream {
         proxy_pass             tcp-{{ $tcpServer.Upstream.Name }};
     }
 {{ end }}
+
+# UDP services
+{{ range $i, $udpServer := .udpUpstreams }}
+    upstream udp-{{ $udpServer.Upstream.Name }} {
+        {{ range $server := $udpServer.Upstream.Backends }}server {{ $server.Address }}:{{ $server.Port }};
+        {{ end }}
+    }
+
+    server {
+        listen {{ $udpServer.Path }} udp;
+        proxy_timeout          10s;
+        proxy_responses        1;
+        proxy_pass             udp-{{ $udpServer.Upstream.Name }};
+    }
+{{ end }}
+
 }
 
 {{/* definition of templates to avoid repetitions */}}

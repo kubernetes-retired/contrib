@@ -19,6 +19,8 @@ package e2e
 import (
 	"bufio"
 	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -28,24 +30,33 @@ import (
 	"github.com/golang/glog"
 )
 
+// E2ETester can be queried for E2E job stability.
+type E2ETester interface {
+	GCSBasedStable() bool
+	GCSWeakStable() bool
+	GetBuildStatus() map[string]BuildInfo
+	Stable() bool
+}
+
 // BuildInfo tells the build ID and the build success
 type BuildInfo struct {
 	Status string
 	ID     string
 }
 
-// E2ETester is the object which will contact a jenkins instance and get
+// RealE2ETester is the object which will contact a jenkins instance and get
 // information about recent jobs
-type E2ETester struct {
+type RealE2ETester struct {
 	JenkinsHost        string
 	JobNames           []string
 	WeakStableJobNames []string
 
 	sync.Mutex
-	BuildStatus map[string]BuildInfo // protect by mutex
+	BuildStatus          map[string]BuildInfo // protect by mutex
+	GoogleGCSBucketUtils *utils.Utils
 }
 
-func (e *E2ETester) locked(f func()) {
+func (e *RealE2ETester) locked(f func()) {
 	e.Lock()
 	defer e.Unlock()
 	f()
@@ -53,7 +64,7 @@ func (e *E2ETester) locked(f func()) {
 
 // GetBuildStatus returns the build status. This map is a copy and is thus safe
 // for the caller to use in any way.
-func (e *E2ETester) GetBuildStatus() map[string]BuildInfo {
+func (e *RealE2ETester) GetBuildStatus() map[string]BuildInfo {
 	e.Lock()
 	defer e.Unlock()
 	out := map[string]BuildInfo{}
@@ -63,14 +74,14 @@ func (e *E2ETester) GetBuildStatus() map[string]BuildInfo {
 	return out
 }
 
-func (e *E2ETester) setBuildStatus(build, status string, id string) {
+func (e *RealE2ETester) setBuildStatus(build, status string, id string) {
 	e.Lock()
 	defer e.Unlock()
 	e.BuildStatus[build] = BuildInfo{Status: status, ID: id}
 }
 
 // Stable is called to make sure all of the jenkins jobs are stable
-func (e *E2ETester) Stable() bool {
+func (e *RealE2ETester) Stable() bool {
 	// Test if the build is stable in Jenkins
 	jenkinsClient := &jenkins.JenkinsClient{Host: e.JenkinsHost}
 
@@ -88,6 +99,7 @@ func (e *E2ETester) Stable() bool {
 			e.setBuildStatus(job, "Stable", build.ID)
 		} else {
 			e.setBuildStatus(job, "Not Stable", build.ID)
+			glog.Infof("Jenkis based check for %v build %v returned false", job, build.ID)
 			allStable = false
 		}
 	}
@@ -99,67 +111,83 @@ const (
 )
 
 // GCSBasedStable is a version of Stable function that depends on files stored in GCS instead of Jenkis
-func (e *E2ETester) GCSBasedStable() bool {
+func (e *RealE2ETester) GCSBasedStable() bool {
+	allStable := true
+
 	for _, job := range e.JobNames {
-		lastBuildNumber, err := utils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
+		thisStable := true
+		lastBuildNumber, err := e.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
 		glog.V(4).Infof("Checking status of %v, %v", job, lastBuildNumber)
 		if err != nil {
 			glog.Errorf("Error while getting data for %v: %v", job, err)
-			continue
+			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			thisStable = false
 		}
-		if stable, err := utils.CheckFinishedStatus(job, lastBuildNumber); !stable || err != nil {
-			return false
+		if stable, err := e.GoogleGCSBucketUtils.CheckFinishedStatus(job, lastBuildNumber); !stable || err != nil {
+			// TODO: decrese verbosity when we feel comfortable with this check.
+			glog.Infof("Found unstable job: %v, build number: %v", job, lastBuildNumber)
+			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			thisStable = false
+		}
+		if thisStable {
+			e.setBuildStatus(job, "Stable", strconv.Itoa(lastBuildNumber))
+		} else {
+			allStable = false
 		}
 	}
 
-	return true
+	return allStable
 }
 
 // GCSWeakStable is a version of GCSBasedStable with a slightly relaxed condition.
 // This function says that e2e's are unstable only if there were real test failures
 // (i.e. there was a test that failed, so no timeouts/cluster startup failures counts),
 // or test failed for any reason 3 times in a row.
-func (e *E2ETester) GCSWeakStable() bool {
+func (e *RealE2ETester) GCSWeakStable() bool {
+	allStable := true
 	for _, job := range e.WeakStableJobNames {
-		lastBuildNumber, err := utils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
-		glog.Infof("Checking status of %v, %v", job, lastBuildNumber)
+		lastBuildNumber, err := e.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
+		glog.V(4).Infof("Checking status of %v, %v", job, lastBuildNumber)
 		if err != nil {
 			glog.Errorf("Error while getting data for %v: %v", job, err)
+			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
 			continue
 		}
-		if stable, err := utils.CheckFinishedStatus(job, lastBuildNumber); stable && err == nil {
+		if stable, err := e.GoogleGCSBucketUtils.CheckFinishedStatus(job, lastBuildNumber); stable && err == nil {
+			e.setBuildStatus(job, "Stable", strconv.Itoa(lastBuildNumber))
 			continue
 		}
 
 		// If we're here it means that build failed, so we need to look for a reason
 		// by iterating over junit_XX.xml files and look for failures
-		i := 0
-		for {
-			i++
-			path := fmt.Sprintf("artifacts/junit_%02d.xml", i)
-			response, err := utils.GetFileFromJenkinsGoogleBucket(job, lastBuildNumber, path)
-			if err != nil {
-				glog.Errorf("Error while getting data for %v/%v/%v: %v", job, lastBuildNumber, path, err)
-				continue
-			}
-			if response.StatusCode != 200 {
-				break
-			}
-			defer response.Body.Close()
+		i := 1
+		path := fmt.Sprintf("artifacts/junit_%02d.xml", i)
+		response, err := e.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, lastBuildNumber, path)
+		if err != nil {
+			glog.Errorf("Error while getting data for %v/%v/%v: %v", job, lastBuildNumber, path, err)
+			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			continue
+		}
+		defer response.Body.Close()
+		thisStable := true
+		for response.StatusCode == http.StatusOK {
 			reader := bufio.NewReader(response.Body)
 			body, err := reader.ReadString('\n')
 			if err != nil {
 				glog.Errorf("Failed to read the response for %v/%v/%v: %v", job, lastBuildNumber, path, err)
-				continue
+				thisStable = false
+				break
 			}
 			if strings.TrimSpace(body) != expectedXMLHeader {
 				glog.Errorf("Invalid header for %v/%v/%v: %v, expected %v", job, lastBuildNumber, path, body, expectedXMLHeader)
-				continue
+				thisStable = false
+				break
 			}
 			body, err = reader.ReadString('\n')
 			if err != nil {
 				glog.Errorf("Failed to read the response for %v/%v/%v: %v", job, lastBuildNumber, path, err)
-				continue
+				thisStable = false
+				break
 			}
 			numberOfTests := 0
 			nubmerOfFailures := 0
@@ -168,18 +196,40 @@ func (e *E2ETester) GCSWeakStable() bool {
 			glog.V(4).Infof("%v, numberOfTests: %v, numberOfFailures: %v", string(body), numberOfTests, nubmerOfFailures)
 			if nubmerOfFailures > 0 {
 				glog.V(4).Infof("Found failure in %v for job %v build number %v", path, job, lastBuildNumber)
-				return false
+				thisStable = false
+				break
 			}
+
+			i++
+			path = fmt.Sprintf("artifacts/junit_%02d.xml", i)
+			response, err = e.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, lastBuildNumber, path)
+			if err != nil {
+				glog.Errorf("Error while getting data for %v/%v/%v: %v", job, lastBuildNumber, path, err)
+				continue
+			}
+			defer response.Body.Close()
+		}
+
+		if thisStable == false {
+			allStable = false
+			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			continue
 		}
 
 		// If we're here it means that we weren't able to find a test that failed, which means that the reason of build failure is comming from the infrastructure
 		// Check results of previous two builds.
-		if stable, err := utils.CheckFinishedStatus(job, lastBuildNumber-1); !stable || err != nil {
-			return false
+		if stable, err := e.GoogleGCSBucketUtils.CheckFinishedStatus(job, lastBuildNumber-1); !stable || err != nil {
+			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			allStable = false
+			continue
 		}
-		if stable, err := utils.CheckFinishedStatus(job, lastBuildNumber-2); !stable || err != nil {
-			return false
+		if stable, err := e.GoogleGCSBucketUtils.CheckFinishedStatus(job, lastBuildNumber-2); !stable || err != nil {
+			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			allStable = false
+			continue
 		}
+
+		e.setBuildStatus(job, "Stable", strconv.Itoa(lastBuildNumber))
 	}
-	return true
+	return allStable
 }

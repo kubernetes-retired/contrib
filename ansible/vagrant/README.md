@@ -20,7 +20,7 @@ vagrant plugin install vagrant-openstack-provider --plugin-version ">= 0.6.1"
 Vagrant uses Ansible to automate the Kubernetes deployment. Install Ansible (Mac OSX example):
 ```
 sudo easy_install pip
-sudo pip install ansible
+sudo pip install ansible==2.0.0.2
 ```
 
 Reference [Ansible installation](http://docs.ansible.com/ansible/intro_installation.html) for additional installation instructions.
@@ -38,6 +38,7 @@ Reference the [python-netaddr documentation](https://pythonhosted.org/netaddr/in
 
 Vagrant (1.7.x) does not properly select a provider. You will need to manually specify the provider. Refer to the Provider Specific Information section for using the proper `vagrant up` command.
 
+Vagrant prior version 1.8.0 doesn't write group variables into Ansible inventory file, which is required for using Core OS images.
 
 ## Usage
 
@@ -49,7 +50,7 @@ Note that these variables should be set for all vagrant commands invocations,
 
 If you export an env variable such as
 ```
-export NUM_MINIONS=4
+export NUM_NODES=4
 ```
 
 The system will create that number of nodes. Default is 2.

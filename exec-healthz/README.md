@@ -2,6 +2,32 @@
 
 The exec healthz server is a sidecar container meant to serve as a liveness-exec-over-http bridge. It isolates pods from the idiosyncrasies of container runtime exec implementations.
 
+## How to release:
+
+The `exechealthz` Makefile supports multiple architecures, which means it may cross-compile and build an docker image easily.
+If you are releasing a new version, please bump the `TAG` value in the `Makefile` before building the images.
+
+How to build and push all images:
+```
+# Build for linux/amd64 (default)
+$ make push TAG=1.0
+$ make push TAG=1.0 ARCH=amd64
+# ---> gcr.io/google_containers/exechealthz-amd64:1.0
+
+$ make push-legacy TAG=1.0 ARCH=amd64
+# ---> gcr.io/google_containers/exechealthz:1.0 (image with backwards compatible naming)
+
+$ make push TAG=1.0 ARCH=arm
+# ---> gcr.io/google_containers/exechealthz-arm:1.0
+
+$ make push TAG=1.0 ARCH=arm64
+# ---> gcr.io/google_containers/exechealthz-arm64:1.0
+
+$ make push TAG=1.0 ARCH=ppc64le
+# ---> gcr.io/google_containers/exechealthz-ppc64le:1.0
+```
+Of course, if you don't want to push the images, just run `make` or `make container`
+
 ## Examples:
 
 ### Run the healthz server directly on localhost:

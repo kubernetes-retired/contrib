@@ -32,6 +32,8 @@ import (
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers/e2e"
+	fake_e2e "k8s.io/contrib/mungegithub/mungers/e2e/fake"
+	"k8s.io/contrib/test-utils/utils"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/golang/glog"
@@ -50,8 +52,8 @@ const (
 	travisContext      = "continuous-integration/travis-ci/pr"
 	sqContext          = "Submit Queue"
 
-	highestMergePriority = -1 // used for e2e-not-required
-	defaultMergePriority = 3  // when an issue is unlabeled
+	e2eNotRequiredMergePriority = -1 // used for e2e-not-required
+	defaultMergePriority        = 3  // when an issue is unlabeled
 
 	githubE2EPollTime = 30 * time.Second
 )
@@ -72,6 +74,9 @@ type statusPullRequest struct {
 	Title     string
 	Login     string
 	AvatarURL string
+	Additions int
+	Deletions int
+	ExtraInfo []string
 }
 
 type userInfo struct {
@@ -89,16 +94,30 @@ type submitQueueStatus struct {
 	PRStatus map[string]submitStatus
 }
 
+// Call updateHealth on the SubmitQueue at roughly constant intervals to keep
+// this up to date. The mergeable fraction of time for the queue as a whole
+// and the individual jobs will then be NumStable[PerJob] / TotalLoops.
+type submitQueueHealth struct {
+	StartTime       time.Time
+	TotalLoops      int
+	NumStable       int
+	NumStablePerJob map[string]int
+}
+
 // SubmitQueue will merge PR which meet a set of requirements.
 //  PR must have LGTM after the last commit
 //  PR must have passed all github CI checks
 //  if user not in whitelist PR must have "ok-to-merge"
 //  The google internal jenkins instance must be passing the JobNames e2e tests
 type SubmitQueue struct {
-	githubConfig           *github.Config
-	JobNames               []string
-	WeakStableJobNames     []string
-	JenkinsHost            string
+	githubConfig       *github.Config
+	JobNames           []string
+	WeakStableJobNames []string
+
+	// If FakeE2E is true, don't try to connect to JenkinsHost, all jobs are passing.
+	FakeE2E     bool
+	JenkinsHost string
+
 	Whitelist              string
 	WhitelistOverride      string
 	Committers             string
@@ -128,7 +147,8 @@ type SubmitQueue struct {
 	githubE2EPollTime time.Duration
 
 	lastE2EStable bool // was e2e stable last time they were checked, protect by sync.Mutex
-	e2e           *e2e.E2ETester
+	e2e           e2e.E2ETester
+	health        submitQueueHealth
 }
 
 func init() {
@@ -143,6 +163,11 @@ func (sq SubmitQueue) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
 func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Features) error {
+	return sq.internalInitialize(config, features, utils.GoogleBucketURL)
+}
+
+// internalInitialize will initialize the munger for the given GCS bucket url.
+func (sq *SubmitQueue) internalInitialize(config *github.Config, features *features.Features, GCSBucketUrl string) error {
 	sq.Lock()
 	defer sq.Unlock()
 
@@ -152,13 +177,20 @@ func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Feat
 	}
 
 	sq.lastE2EStable = true
-	e2e := &e2e.E2ETester{
-		JobNames:           sq.JobNames,
-		JenkinsHost:        sq.JenkinsHost,
-		WeakStableJobNames: sq.WeakStableJobNames,
-		BuildStatus:        map[string]e2e.BuildInfo{},
+	if sq.FakeE2E {
+		sq.e2e = &fake_e2e.FakeE2ETester{
+			JobNames:           sq.JobNames,
+			WeakStableJobNames: sq.WeakStableJobNames,
+		}
+	} else {
+		sq.e2e = &e2e.RealE2ETester{
+			JobNames:             sq.JobNames,
+			JenkinsHost:          sq.JenkinsHost,
+			WeakStableJobNames:   sq.WeakStableJobNames,
+			BuildStatus:          map[string]e2e.BuildInfo{},
+			GoogleGCSBucketUtils: utils.NewUtils(GCSBucketUrl),
+		}
 	}
-	sq.e2e = e2e
 
 	if len(config.Address) > 0 {
 		if len(config.WWWRoot) > 0 {
@@ -171,6 +203,7 @@ func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Feat
 		http.Handle("/google-internal-ci", gziphandler.GzipHandler(http.HandlerFunc(sq.serveGoogleInternalStatus)))
 		http.Handle("/merge-info", gziphandler.GzipHandler(http.HandlerFunc(sq.serveMergeInfo)))
 		http.Handle("/priority-info", gziphandler.GzipHandler(http.HandlerFunc(sq.servePriorityInfo)))
+		http.Handle("/health", gziphandler.GzipHandler(http.HandlerFunc(sq.serveHealth)))
 		config.ServeDebugStats("/stats")
 		go http.ListenAndServe(config.Address, nil)
 	}
@@ -183,6 +216,9 @@ func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Feat
 		sq.githubE2EPollTime = githubE2EPollTime
 	}
 
+	sq.health.StartTime = time.Now()
+	sq.health.NumStablePerJob = map[string]int{}
+
 	go sq.handleGithubE2EAndMerge()
 	go sq.updateGoogleE2ELoop()
 	return nil
@@ -191,6 +227,7 @@ func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Feat
 // EachLoop is called at the start of every munge loop
 func (sq *SubmitQueue) EachLoop() error {
 	sq.Lock()
+	sq.updateHealth()
 	sq.RefreshWhitelist()
 	sq.lastPRStatus = sq.prStatus
 	sq.prStatus = map[string]submitStatus{}
@@ -229,18 +266,35 @@ func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().StringSliceVar(&sq.RequiredStatusContexts, "required-contexts", []string{}, "Comma separate list of status contexts required for a PR to be considered ok to merge")
 	cmd.Flags().StringVar(&sq.E2EStatusContext, "e2e-status-context", jenkinsE2EContext, "The name of the github status context for the e2e PR Builder")
 	cmd.Flags().StringVar(&sq.UnitStatusContext, "unit-status-context", jenkinsUnitContext, "The name of the github status context for the unit PR Builder")
+	cmd.Flags().BoolVar(&sq.FakeE2E, "fake-e2e", false, "Whether to use a fake for testing E2E stability.")
 	sq.addWhitelistCommand(cmd, config)
+}
+
+// Hold the lock
+func (sq *SubmitQueue) updateHealth() {
+	sq.health.TotalLoops++
+	if sq.e2e.Stable() {
+		sq.health.NumStable++
+	}
+	for job, status := range sq.e2e.GetBuildStatus() {
+		if _, ok := sq.health.NumStablePerJob[job]; !ok {
+			sq.health.NumStablePerJob[job] = 0
+		}
+		if status.Status == "Stable" {
+			sq.health.NumStablePerJob[job]++
+		}
+	}
 }
 
 func (sq *SubmitQueue) e2eStable() bool {
 	wentStable := false
 	wentUnstable := false
 
-	stable := sq.e2e.Stable()
-	gcsStable := sq.e2e.GCSBasedStable()
+	stable := sq.e2e.GCSBasedStable()
+	jenkinsStable := sq.e2e.Stable()
 
-	if stable != gcsStable {
-		glog.Errorf("GCS stable check returned different value than Jenkins.")
+	if stable != jenkinsStable {
+		glog.Errorf("GCS stable check returned different value than Jenkins: %v vs %v.", stable, jenkinsStable)
 	}
 
 	sq.Lock()
@@ -293,13 +347,48 @@ func objToStatusPullRequest(obj *github.MungeObject) *statusPullRequest {
 	if obj == nil {
 		return &statusPullRequest{}
 	}
-	return &statusPullRequest{
+	res := statusPullRequest{
 		Number:    *obj.Issue.Number,
 		URL:       *obj.Issue.HTMLURL,
 		Title:     *obj.Issue.Title,
 		Login:     *obj.Issue.User.Login,
 		AvatarURL: *obj.Issue.User.AvatarURL,
 	}
+	pr, err := obj.GetPR()
+	if err != nil {
+		return &res
+	}
+	if pr.Additions != nil {
+		res.Additions = *pr.Additions
+	}
+	if pr.Deletions != nil {
+		res.Deletions = *pr.Deletions
+	}
+
+	prio, ok := obj.Annotations["priority"]
+	if !ok {
+		var prio string
+		p := priority(obj)
+		if p == e2eNotRequiredMergePriority {
+			prio = e2eNotRequiredLabel
+		} else {
+			prio = fmt.Sprintf("P%d", p) // store it a P1, P2, P3.  Not just 1,2,3
+		}
+		obj.Annotations["priority"] = prio
+	}
+	if prio != "" {
+		res.ExtraInfo = append(res.ExtraInfo, prio)
+	}
+
+	milestone, ok := obj.Annotations["milestone"]
+	if !ok {
+		milestone = obj.ReleaseMilestone()
+		obj.Annotations["milestone"] = milestone
+	}
+	if milestone != "" {
+		res.ExtraInfo = append(res.ExtraInfo, milestone)
+	}
+	return &res
 }
 
 func reasonToState(reason string) string {
@@ -423,6 +512,12 @@ func (sq *SubmitQueue) getGoogleInternalStatus() []byte {
 	sq.Lock()
 	defer sq.Unlock()
 	return sq.marshal(sq.e2e.GetBuildStatus())
+}
+
+func (sq *SubmitQueue) getHealth() []byte {
+	sq.Lock()
+	defer sq.Unlock()
+	return sq.marshal(sq.health)
 }
 
 const (
@@ -602,7 +697,7 @@ func (sq *SubmitQueue) cleanupOldE2E(obj *github.MungeObject, reason string) {
 func priority(obj *github.MungeObject) int {
 	// jump to the front of the queue if you don't need retested
 	if obj.HasLabel(e2eNotRequiredLabel) {
-		return highestMergePriority
+		return e2eNotRequiredMergePriority
 	}
 
 	prio := obj.Priority()
@@ -797,6 +892,11 @@ func (sq *SubmitQueue) serveGithubE2EStatus(res http.ResponseWriter, req *http.R
 
 func (sq *SubmitQueue) serveGoogleInternalStatus(res http.ResponseWriter, req *http.Request) {
 	data := sq.getGoogleInternalStatus()
+	sq.serve(data, res, req)
+}
+
+func (sq *SubmitQueue) serveHealth(res http.ResponseWriter, req *http.Request) {
+	data := sq.getHealth()
 	sq.serve(data, res, req)
 }
 
