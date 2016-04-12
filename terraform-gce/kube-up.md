@@ -309,3 +309,125 @@
             --min-num-replicas "${last_min_instances}" --max-num-replicas "${last_max_instances}" ${metrics} || true
         fi
 16. Verify that/wait until cluster is up
+
+## Configure Masters (by running configure-node as part of cloud-config)
+1. Mount master drive
+          if [[ ! -e /dev/disk/by-id/google-master-pd ]]; then
+            return
+          fi
+          device_info=$(ls -l /dev/disk/by-id/google-master-pd)
+          relative_path=${device_info##* }
+          device_path="/dev/disk/by-id/${relative_path}"
+
+          # Format and mount the disk, create directories on it for all of the master's
+          # persistent data, and link them to where they're used.
+          echo "Mounting master-pd"
+          mkdir -p /mnt/master-pd
+          safe_format_and_mount=${SALT_DIR}/salt/helpers/safe_format_and_mount
+          chmod +x ${safe_format_and_mount}
+          ${safe_format_and_mount} -m "mkfs.ext4 -F" "${device_path}" /mnt/master-pd &>/var/log/master-pd-mount.log || \
+          { echo "!!! master-pd mount failed, review /var/log/master-pd-mount.log !!!"; return 1; }
+          # Contains all the data stored in etcd
+          mkdir -m 700 -p /mnt/master-pd/var/etcd
+          # Contains the dynamically generated apiserver auth certs and keys
+          mkdir -p /mnt/master-pd/srv/kubernetes
+          # Contains the cluster's initial config parameters and auth tokens
+          mkdir -p /mnt/master-pd/srv/salt-overlay
+          # Directory for kube-apiserver to store SSH key (if necessary)
+          mkdir -p /mnt/master-pd/srv/sshproxy
+
+          ln -s -f /mnt/master-pd/var/etcd /var/etcd
+          ln -s -f /mnt/master-pd/srv/kubernetes /srv/kubernetes
+          ln -s -f /mnt/master-pd/srv/sshproxy /srv/sshproxy
+          ln -s -f /mnt/master-pd/srv/salt-overlay /srv/salt-overlay
+
+          # This is a bit of a hack to get around the fact that salt has to run after the
+          # PD and mounted directory are already set up. We can't give ownership of the
+          # directory to etcd until the etcd user and group exist, but they don't exist
+          # until salt runs if we don't create them here. We could alternatively make the
+          # permissions on the directory more permissive, but this seems less bad.
+          if ! id etcd &>/dev/null; then
+            useradd -s /sbin/nologin -d /var/etcd etcd
+          fi
+          chown -R etcd /mnt/master-pd/var/etcd
+          chgrp -R etcd /mnt/master-pd/var/etcd
+2. Create Salt master auth
+          if [[ ! -e /srv/kubernetes/ca.crt ]]; then
+            if  [[ ! -z "${CA_CERT:-}" ]] && [[ ! -z "${MASTER_CERT:-}" ]] && [[ ! -z "${MASTER_KEY:-}" ]]; then
+              mkdir -p /srv/kubernetes
+              (umask 077;
+                echo "${CA_CERT}" | base64 -d > /srv/kubernetes/ca.crt;
+                echo "${MASTER_CERT}" | base64 -d > /srv/kubernetes/server.cert;
+                echo "${MASTER_KEY}" | base64 -d > /srv/kubernetes/server.key;
+                # Kubecfg cert/key are optional and included for backwards compatibility.
+                # TODO(roberthbailey): Remove these two lines once GKE no longer requires
+                # fetching clients certs from the master VM.
+                echo "${KUBECFG_CERT:-}" | base64 -d > /srv/kubernetes/kubecfg.crt;
+                echo "${KUBECFG_KEY:-}" | base64 -d > /srv/kubernetes/kubecfg.key)
+            fi
+          fi
+          if [ ! -e "${BASIC_AUTH_FILE}" ]; then
+            mkdir -p /srv/salt-overlay/salt/kube-apiserver
+            (umask 077;
+              echo "${KUBE_PASSWORD},${KUBE_USER},admin" > "${BASIC_AUTH_FILE}")
+          fi
+          if [ ! -e "${KNOWN_TOKENS_FILE}" ]; then
+            mkdir -p /srv/salt-overlay/salt/kube-apiserver
+            (umask 077;
+              echo "${KUBE_BEARER_TOKEN},admin,admin" > "${KNOWN_TOKENS_FILE}";
+              echo "${KUBELET_TOKEN},kubelet,kubelet" >> "${KNOWN_TOKENS_FILE}";
+              echo "${KUBE_PROXY_TOKEN},kube_proxy,kube_proxy" >> "${KNOWN_TOKENS_FILE}")
+
+            # Generate tokens for other "service accounts".  Append to known_tokens.
+            #
+            # NB: If this list ever changes, this script actually has to
+            # change to detect the existence of this file, kill any deleted
+            # old tokens and add any new tokens (to handle the upgrade case).
+            local -r service_accounts=("system:scheduler" "system:controller_manager" "system:logging" "system:monitoring")
+            for account in "${service_accounts[@]}"; do
+              token=$(dd if=/dev/urandom bs=128 count=1 2>/dev/null | base64 | tr -d "=+/" | dd bs=32 count=1 2>/dev/null)
+              echo "${token},${account},${account}" >> "${KNOWN_TOKENS_FILE}"
+            done
+          fi
+3. load-master-components-images
+          ${SALT_DIR}/install.sh ${KUBE_BIN_TAR}
+          ${SALT_DIR}/salt/kube-master-addons/kube-master-addons.sh
+
+          # Get the image tags.
+          KUBE_APISERVER_DOCKER_TAG=$(cat ${KUBE_BIN_DIR}/kube-apiserver.docker_tag)
+          KUBE_CONTROLLER_MANAGER_DOCKER_TAG=$(cat ${KUBE_BIN_DIR}/kube-controller-manager.docker_tag)
+          KUBE_SCHEDULER_DOCKER_TAG=$(cat ${KUBE_BIN_DIR}/kube-scheduler.docker_tag)
+4. configure-master-components
+configure-admission-controls
+          configure-etcd
+          configure-etcd-events
+          configure-kube-apiserver
+          configure-kube-scheduler
+          configure-kube-controller-manager
+          configure-master-addons
+5. configure-logging
+          if [[ "${LOGGING_DESTINATION}" == "gcp" ]];then
+            echo "Configuring fluentd-gcp"
+            # fluentd-gcp
+            evaluate-manifest ${MANIFESTS_DIR}/fluentd-gcp.yaml /etc/kubernetes/manifests/fluentd-gcp.yaml
+          elif [[ "${LOGGING_DESTINATION}" == "elasticsearch" ]];then
+            echo "Configuring fluentd-es"
+            # fluentd-es
+            evaluate-manifest ${MANIFESTS_DIR}/fluentd-es.yaml /etc/kubernetes/manifests/fluentd-es.yaml
+          fi
+
+## Configure Nodes (by running configure-node as part of cloud-config)
+1. configure-kube-proxy
+          echo "Configuring kube-proxy"
+          mkdir -p /var/lib/kube-proxy
+          evaluate-manifest ${MANIFESTS_DIR}/kubeproxy-config.yaml /var/lib/kube-proxy/kubeconfig
+2. configure-logging
+        if [[ "${LOGGING_DESTINATION}" == "gcp" ]];then
+          echo "Configuring fluentd-gcp"
+          # fluentd-gcp
+          evaluate-manifest ${MANIFESTS_DIR}/fluentd-gcp.yaml /etc/kubernetes/manifests/fluentd-gcp.yaml
+        elif [[ "${LOGGING_DESTINATION}" == "elasticsearch" ]];then
+          echo "Configuring fluentd-es"
+          # fluentd-es
+          evaluate-manifest ${MANIFESTS_DIR}/fluentd-es.yaml /etc/kubernetes/manifests/fluentd-es.yaml
+        fi
