@@ -27,8 +27,11 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/kubernetes/pkg/util"
+
 	github_util "k8s.io/contrib/mungegithub/github"
 	github_test "k8s.io/contrib/mungegithub/github/testing"
+	"k8s.io/contrib/mungegithub/mungers/e2e"
 	"k8s.io/contrib/mungegithub/mungers/jenkins"
 	"k8s.io/contrib/test-utils/utils"
 
@@ -134,21 +137,21 @@ func GithubE2EFailStatus() *github.CombinedStatus {
 	return github_test.Status("mysha", []string{travisContext, jenkinsUnitContext}, []string{jenkinsE2EContext}, nil, nil)
 }
 
-func LastBuildNumber() string {
-	return "42"
+func LastBuildNumber() int {
+	return 42
 }
 
 func SuccessGCS() utils.FinishedFile {
 	return utils.FinishedFile{
 		Result:    "SUCCESS",
-		Timestamp: 1234,
+		Timestamp: uint64(time.Now().Unix()),
 	}
 }
 
 func FailGCS() utils.FinishedFile {
 	return utils.FinishedFile{
 		Result:    "FAILURE",
-		Timestamp: 1234,
+		Timestamp: uint64(time.Now().Unix()),
 	}
 }
 
@@ -164,16 +167,31 @@ func FailJenkins() jenkins.Job {
 	}
 }
 
+func getJUnit(testsNo int, failuresNo int) []byte {
+	return []byte(fmt.Sprintf("%v\n<testsuite tests=\"%v\" failures=\"%v\" time=\"1234\">\n</testsuite>",
+		e2e.ExpectedXMLHeader, testsNo, failuresNo))
+}
+
 func getTestSQ(startThreads bool, config *github_util.Config, server *httptest.Server) *SubmitQueue {
 	sq := new(SubmitQueue)
 	sq.RequiredStatusContexts = []string{jenkinsUnitContext}
 	sq.E2EStatusContext = jenkinsE2EContext
 	sq.UnitStatusContext = jenkinsUnitContext
-	sq.JenkinsHost = server.URL
+	if server != nil {
+		sq.JenkinsHost = server.URL
+	}
 	sq.JobNames = []string{"foo"}
+	sq.WeakStableJobNames = []string{"bar"}
 	sq.WhitelistOverride = "ok-to-merge"
 	sq.githubE2EQueue = map[int]*github_util.MungeObject{}
 	sq.githubE2EPollTime = 50 * time.Millisecond
+
+	sq.clock = util.NewFakeClock(time.Time{})
+	sq.lastMergeTime = sq.clock.Now()
+	sq.lastE2EStable = true
+	sq.prStatus = map[string]submitStatus{}
+	sq.lastPRStatus = map[string]submitStatus{}
+
 	if startThreads {
 		sq.internalInitialize(config, nil, server.URL)
 		sq.EachLoop()
@@ -409,8 +427,10 @@ func TestSubmitQueue(t *testing.T) {
 		events           []github.IssueEvent
 		ciStatus         *github.CombinedStatus
 		jenkinsJob       jenkins.Job
-		lastBuildNumber  string
+		lastBuildNumber  int
 		gcsResult        utils.FinishedFile
+		weakResults      map[int]utils.FinishedFile
+		gcsJunit         map[string][]byte
 		e2ePass          bool
 		unitPass         bool
 		mergeAfterQueued bool
@@ -428,6 +448,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			e2ePass:         true,
 			unitPass:        true,
 			reason:          merged,
@@ -445,6 +466,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			// The test should never run, but if it does, make sure it fails
 			mergeAfterQueued: true,
 			reason:           merged,
@@ -461,6 +483,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			reason:          merged,
 			state:           "success",
 		},
@@ -475,6 +498,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			e2ePass:         true,
 			unitPass:        true,
 			reason:          merged,
@@ -490,6 +514,7 @@ func TestSubmitQueue(t *testing.T) {
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 		},
 		// Fail because we don't know if PR can automatically merge
 		{
@@ -501,6 +526,7 @@ func TestSubmitQueue(t *testing.T) {
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 		},
 		// Fail because the "cla: yes" label was not applied
 		{
@@ -512,6 +538,7 @@ func TestSubmitQueue(t *testing.T) {
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 		},
 		// Fail because github CI tests have failed (or at least are not success)
 		{
@@ -523,6 +550,7 @@ func TestSubmitQueue(t *testing.T) {
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 		},
 		// Fail because the user is not in the whitelist and we don't have "ok-to-merge"
 		{
@@ -535,6 +563,7 @@ func TestSubmitQueue(t *testing.T) {
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 		},
 		// Fail because missing LGTM label
 		{
@@ -547,6 +576,7 @@ func TestSubmitQueue(t *testing.T) {
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 		},
 		// Fail because we can't tell if LGTM was added before the last change
 		{
@@ -559,6 +589,7 @@ func TestSubmitQueue(t *testing.T) {
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 		},
 		// Fail because LGTM was added before the last change
 		{
@@ -582,6 +613,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      FailJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       FailGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			reason:          ghE2EQueued,
 			state:           "success",
 		},
@@ -596,6 +628,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			reason:          ghE2EFailed,
 			state:           "pending",
 		},
@@ -610,6 +643,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			reason:          ghE2EQueued,
 			// The state is unpredictable. When it goes on the queue it is success.
 			// When it fails the build it is pending. So state depends on how far along
@@ -627,6 +661,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			reason:          ghE2EFailed,
 			state:           "pending",
 		},
@@ -640,6 +675,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			e2ePass:         true,
 			unitPass:        false,
 			reason:          ghE2EFailed,
@@ -655,6 +691,7 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			e2ePass:         false,
 			unitPass:        true,
 			reason:          ghE2EFailed,
@@ -670,10 +707,91 @@ func TestSubmitQueue(t *testing.T) {
 			jenkinsJob:      SuccessJenkins(),
 			lastBuildNumber: LastBuildNumber(),
 			gcsResult:       SuccessGCS(),
+			weakResults:     map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
 			e2ePass:         true,
 			unitPass:        true,
 			reason:          noMerge,
 			state:           "pending",
+		},
+		// Should pass even though last 'weakStable' build failed, as it wasn't "strong" failure
+		// and because previous two builds succeeded.
+		{
+			name:            "Test20",
+			pr:              ValidPR(),
+			issue:           NoOKToMergeIssue(),
+			events:          NewLGTMEvents(),
+			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
+			ciStatus:        SuccessStatus(),
+			jenkinsJob:      SuccessJenkins(),
+			lastBuildNumber: LastBuildNumber(),
+			gcsResult:       SuccessGCS(),
+			weakResults: map[int]utils.FinishedFile{
+				LastBuildNumber():     FailGCS(),
+				LastBuildNumber() - 1: SuccessGCS(),
+				LastBuildNumber() - 2: SuccessGCS(),
+			},
+			gcsJunit: map[string][]byte{
+				"junit_01.xml": getJUnit(5, 0),
+				"junit_02.xml": getJUnit(6, 0),
+				"junit_03.xml": getJUnit(7, 0),
+			},
+			e2ePass:  true,
+			unitPass: true,
+			reason:   merged,
+			state:    "success",
+		},
+		// Should fail because the failure of the weakStable job is a strong failure.
+		{
+			name:            "Test21",
+			pr:              ValidPR(),
+			issue:           NoOKToMergeIssue(),
+			events:          NewLGTMEvents(),
+			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
+			ciStatus:        SuccessStatus(),
+			jenkinsJob:      SuccessJenkins(),
+			lastBuildNumber: LastBuildNumber(),
+			gcsResult:       SuccessGCS(),
+			weakResults: map[int]utils.FinishedFile{
+				LastBuildNumber():     FailGCS(),
+				LastBuildNumber() - 1: SuccessGCS(),
+				LastBuildNumber() - 2: SuccessGCS(),
+			},
+			gcsJunit: map[string][]byte{
+				"junit_01.xml": getJUnit(5, 0),
+				"junit_02.xml": getJUnit(6, 1),
+				"junit_03.xml": getJUnit(7, 0),
+			},
+			e2ePass:  true,
+			unitPass: true,
+			reason:   e2eFailure,
+			state:    "success",
+		},
+		// Should fail even though weakStable job weakly failed, because there was another failure in
+		// previous two runs.
+		{
+			name:            "Test22",
+			pr:              ValidPR(),
+			issue:           NoOKToMergeIssue(),
+			events:          NewLGTMEvents(),
+			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
+			ciStatus:        SuccessStatus(),
+			jenkinsJob:      SuccessJenkins(),
+			lastBuildNumber: LastBuildNumber(),
+			gcsResult:       SuccessGCS(),
+			weakResults: map[int]utils.FinishedFile{
+				LastBuildNumber():     FailGCS(),
+				LastBuildNumber() - 1: SuccessGCS(),
+				LastBuildNumber() - 2: FailGCS(),
+			},
+			gcsJunit: map[string][]byte{
+				"junit_01.xml": getJUnit(5, 0),
+				"junit_02.xml": getJUnit(6, 0),
+				"junit_03.xml": getJUnit(7, 0),
+			},
+			e2ePass:  true,
+			unitPass: true,
+			reason:   e2eFailure,
+			state:    "success",
 		},
 	}
 	for testNum := range tests {
@@ -726,9 +844,9 @@ func TestSubmitQueue(t *testing.T) {
 				t.Errorf("Unexpected method: %s", r.Method)
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(test.lastBuildNumber))
+			w.Write([]byte(strconv.Itoa(test.lastBuildNumber)))
 		})
-		path = fmt.Sprintf("/foo/%v/finished.json", LastBuildNumber())
+		path = fmt.Sprintf("/foo/%v/finished.json", test.lastBuildNumber)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != "GET" {
 				t.Errorf("Unexpected method: %s", r.Method)
@@ -746,6 +864,42 @@ func TestSubmitQueue(t *testing.T) {
 				test.pr.Mergeable = nil
 			}
 		})
+		path = "/bar/latest-build.txt"
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "GET" {
+				t.Errorf("Unexpected method: %s", r.Method)
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(strconv.Itoa(test.lastBuildNumber)))
+		})
+		for buildNumber := range test.weakResults {
+			path = fmt.Sprintf("/bar/%v/finished.json", buildNumber)
+			// workaround go for loop semantics
+			buildNumberCopy := buildNumber
+			mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" {
+					t.Errorf("Unexpected method: %s", r.Method)
+				}
+				w.WriteHeader(http.StatusOK)
+				data, err := json.Marshal(test.weakResults[buildNumberCopy])
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+				w.Write(data)
+			})
+		}
+		for junitFile, xml := range test.gcsJunit {
+			path = fmt.Sprintf("/bar/%v/artifacts/%v", test.lastBuildNumber, junitFile)
+			// workaround go for loop semantics
+			xmlCopy := xml
+			mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" {
+					t.Errorf("Unexpected method: %s", r.Method)
+				}
+				w.WriteHeader(http.StatusOK)
+				w.Write(xmlCopy)
+			})
+		}
 		path = fmt.Sprintf("/repos/o/r/issues/%d/comments", issueNum)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == "POST" {
@@ -828,7 +982,7 @@ func TestSubmitQueue(t *testing.T) {
 				}
 				found := false
 				for _, status := range sq.statusHistory {
-					if status.Number == issueNum && status.Reason == test.reason {
+					if status.Reason == test.reason {
 						found = true
 						break
 					}
@@ -850,6 +1004,178 @@ func TestSubmitQueue(t *testing.T) {
 
 		if test.state != "" && test.state != stateSet {
 			t.Errorf("%d:%q state set to %q but expected %q", testNum, test.name, stateSet, test.state)
+		}
+	}
+}
+
+func TestCalcMergeRate(t *testing.T) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	tests := []struct {
+		name     string // because when it fails, counting is hard
+		preRate  float64
+		interval time.Duration
+		expected func(float64) bool
+	}{
+		{
+			name:     "0One",
+			preRate:  0,
+			interval: time.Duration(time.Hour),
+			expected: func(rate float64) bool {
+				return rate > 10 && rate < 11
+			},
+		},
+		{
+			name:     "24One",
+			preRate:  24,
+			interval: time.Duration(time.Hour),
+			expected: func(rate float64) bool {
+				return rate == float64(24)
+			},
+		},
+		{
+			name:     "24Two",
+			preRate:  24,
+			interval: time.Duration(2 * time.Hour),
+			expected: func(rate float64) bool {
+				return rate > 17 && rate < 18
+			},
+		},
+		{
+			name:     "24HalfHour",
+			preRate:  24,
+			interval: time.Duration(time.Hour) / 2,
+			expected: func(rate float64) bool {
+				return rate > 31 && rate < 32
+			},
+		},
+		{
+			name:     "24Three",
+			preRate:  24,
+			interval: time.Duration(3 * time.Hour),
+			expected: func(rate float64) bool {
+				return rate > 14 && rate < 15
+			},
+		},
+		{
+			name:     "24Then24",
+			preRate:  24,
+			interval: time.Duration(24 * time.Hour),
+			expected: func(rate float64) bool {
+				return rate > 2 && rate < 3
+			},
+		},
+	}
+	for testNum, test := range tests {
+		sq := getTestSQ(false, nil, nil)
+		clock := sq.clock.(*util.FakeClock)
+		sq.mergeRate = test.preRate
+		clock.Step(test.interval)
+		sq.updateMergeRate()
+		if !test.expected(sq.mergeRate) {
+			t.Errorf("%d:%s: expected() failed: rate:%v", testNum, test.name, sq.mergeRate)
+		}
+	}
+}
+
+func TestCalcMergeRateWithTail(t *testing.T) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	tests := []struct {
+		name     string // because when it fails, counting is hard
+		preRate  float64
+		interval time.Duration
+		expected func(float64) bool
+	}{
+		{
+			name:     "ZeroPlusZero",
+			preRate:  0,
+			interval: time.Duration(0),
+			expected: func(rate float64) bool {
+				return rate == float64(0)
+			},
+		},
+		{
+			name:     "0OneHour",
+			preRate:  0,
+			interval: time.Duration(time.Hour),
+			expected: func(rate float64) bool {
+				return rate == 0
+			},
+		},
+		{
+			name:     "TinyOneHour",
+			preRate:  .001,
+			interval: time.Duration(time.Hour),
+			expected: func(rate float64) bool {
+				return rate == .001
+			},
+		},
+		{
+			name:     "TwentyFourPlusHalfHour",
+			preRate:  24,
+			interval: time.Duration(time.Hour) / 2,
+			expected: func(rate float64) bool {
+				return rate == 24
+			},
+		},
+		{
+			name:     "TwentyFourPlusOneHour",
+			preRate:  24,
+			interval: time.Duration(time.Hour),
+			expected: func(rate float64) bool {
+				return rate == 24
+			},
+		},
+		{
+			name:     "TwentyFourPlusTwoHour",
+			preRate:  24,
+			interval: time.Duration(2 * time.Hour),
+			expected: func(rate float64) bool {
+				return rate > 17 && rate < 18
+			},
+		},
+		{
+			name:     "TwentyFourPlusFourHour",
+			preRate:  24,
+			interval: time.Duration(4 * time.Hour),
+			expected: func(rate float64) bool {
+				return rate > 12 && rate < 13
+			},
+		},
+		{
+			name:     "TwentyFourPlusTwentyFourHour",
+			preRate:  24,
+			interval: time.Duration(24 * time.Hour),
+			expected: func(rate float64) bool {
+				return rate > 2 && rate < 3
+			},
+		},
+		{
+			name:     "TwentyFourPlusTiny",
+			preRate:  24,
+			interval: time.Duration(time.Nanosecond),
+			expected: func(rate float64) bool {
+				return rate == 24
+			},
+		},
+		{
+			name:     "TwentyFourPlusHuge",
+			preRate:  24,
+			interval: time.Duration(1024 * time.Hour),
+			expected: func(rate float64) bool {
+				return rate > 0 && rate < 1
+			},
+		},
+	}
+	for testNum, test := range tests {
+		sq := getTestSQ(false, nil, nil)
+		sq.mergeRate = test.preRate
+		clock := sq.clock.(*util.FakeClock)
+		clock.Step(test.interval)
+		rate := sq.calcMergeRateWithTail()
+		if !test.expected(rate) {
+			t.Errorf("%d:%s: %v", testNum, test.name, rate)
 		}
 	}
 }
