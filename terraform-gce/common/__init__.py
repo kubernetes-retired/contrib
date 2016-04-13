@@ -1,8 +1,8 @@
 import os.path
 
 
-def write_asset(node_num, filename, content):
-    dirname = os.path.join('assets', str(node_num))
+def write_asset(filename, content):
+    dirname = 'assets'
     if not os.path.exists(dirname):
         os.makedirs(dirname)
 

@@ -10,7 +10,7 @@ root_dir = os.path.abspath(
 sys.path.insert(0, root_dir)
 
 import common
-from common import write_instance_env
+from common import write_instance_env, write_asset
 
 
 def _write_addon(filename, parent, content):
@@ -25,17 +25,14 @@ def _write_addon(filename, parent, content):
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 cl_parser = argparse.ArgumentParser()
-cl_parser.add_argument('node_num', type=int, help='Specify node number')
 cl_parser.add_argument('dns_address', help='Specify DNS address')
 cl_parser.add_argument('region', help='Specify GCE region')
 cl_parser.add_argument('discovery_url', help='Specify etcd discovery URL')
 cl_parser.add_argument('public_ip', help='Specify public IP')
 args = cl_parser.parse_args()
 
-write_asset = functools.partial(common.write_asset, args.node_num)
-
 subprocess.check_call([
-    './generate-certs.py', str(args.node_num), args.dns_address, args.region,
+    './generate-certs.py', args.dns_address, args.region,
     args.public_ip,
 ])
 

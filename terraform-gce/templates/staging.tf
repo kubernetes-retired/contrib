@@ -95,32 +95,32 @@ resource "google_compute_instance" "staging_master{{instance.number}}" {
   }
 
   provisioner "file" {
-    source = "master/assets/{{instance.number}}/kubelet.service"
+    source = "master/assets/kubelet.service"
     destination = "/etc/systemd/system/kubelet.service"
   }
 
   provisioner "file" {
-    source = "master/assets/{{instance.number}}/kube-apiserver.service"
+    source = "master/assets/kube-apiserver.service"
     destination = "/etc/systemd/system/kube-apiserver.service"
   }
 
   provisioner "file" {
-    source = "master/assets/{{instance.number}}/kube-proxy.yaml"
+    source = "master/assets/kube-proxy.yaml"
     destination = "/etc/kubernetes/manifests/kube-proxy.yaml"
   }
 
   provisioner "file" {
-    source = "master/assets/{{instance.number}}/kube-podmaster.yaml"
+    source = "master/assets/kube-podmaster.yaml"
     destination = "/etc/kubernetes/manifests/kube-podmaster.yaml"
   }
 
   provisioner "file" {
-    source = "master/assets/{{instance.number}}/kube-controller-manager.yaml"
+    source = "master/assets/kube-controller-manager.yaml"
     destination = "/srv/kubernetes/manifests/kube-controller-manager.yaml"
   }
 
   provisioner "file" {
-    source = "master/assets/{{instance.number}}/kube-scheduler.yaml"
+    source = "master/assets/kube-scheduler.yaml"
     destination = "/srv/kubernetes/manifests/kube-scheduler.yaml"
   }
 
@@ -130,7 +130,7 @@ resource "google_compute_instance" "staging_master{{instance.number}}" {
   }
 
   provisioner "file" {
-    source = "master/assets/{{instance.number}}/etcd.client.conf"
+    source = "master/assets/etcd.client.conf"
     destination = "/etc/kubernetes/etcd.client.conf"
   }
 
@@ -145,42 +145,42 @@ resource "google_compute_instance" "staging_master{{instance.number}}" {
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master{{instance.number}}-master-client.pem"
+    source = "master/assets/certificates/mastermaster-client.pem"
     destination = "/etc/kubernetes/ssl/master-client.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master{{instance.number}}-master-client.pem"
+    source = "master/assets/certificates/master-client.pem"
     destination = "/etc/ssl/etcd/master-client.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master{{instance.number}}-master-client-key.pem"
+    source = "master/assets/certificates/master-client-key.pem"
     destination = "/etc/kubernetes/ssl/master-client-key.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master{{instance.number}}-master-client-key.pem"
+    source = "master/assets/certificates/master-client-key.pem"
     destination = "/etc/ssl/etcd/master-client-key.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master{{instance.number}}-master-peer.pem"
+    source = "master/assets/certificates/master-peer.pem"
     destination = "/etc/kubernetes/ssl/master-peer.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master{{instance.number}}-master-peer.pem"
+    source = "master/assets/certificates/master-peer.pem"
     destination = "/etc/ssl/etcd/master-peer.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master{{instance.number}}-master-peer-key.pem"
+    source = "master/assets/certificates/master-peer-key.pem"
     destination = "/etc/kubernetes/ssl/master-peer-key.pem"
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/master{{instance.number}}-master-peer-key.pem"
+    source = "master/assets/certificates/master-peer-key.pem"
     destination = "/etc/ssl/etcd/master-peer-key.pem"
   }
 
@@ -285,12 +285,71 @@ resource "google_compute_instance_template" "node" {
     on_host_maintenance = "MIGRATE"
     automatic_restart = true
   }
+
+  provisioner "remote-exec" {
+    script = "worker/bootstrap.sh"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/kubelet.service"
+    destination = "/etc/systemd/system/kubelet.service"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/kube-proxy.yaml"
+    destination = "/etc/kubernetes/manifests/kube-proxy.yaml"
+  }
+
+  provisioner "file" {
+    source = "common/assets/kubelet-wrapper"
+    destination = "/opt/bin/kubelet-wrapper"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/certificates/ca.pem"
+    destination = "/etc/ssl/etcd/ca.pem"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/certificates/worker-client.pem"
+    destination = "/etc/ssl/etcd/worker.pem"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/certificates/worker-client-key.pem"
+    destination = "/etc/ssl/etcd/worker-key.pem"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/certificates/ca.pem"
+    destination = "/etc/kubernetes/ssl/ca.pem"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/certificates/worker-client.pem"
+    destination = "/etc/kubernetes/ssl/worker.pem"
+  }
+
+  provisioner "file" {
+    source = "worker/assets/certificates/worker-client-key.pem"
+    destination = "/etc/kubernetes/ssl/worker-key.pem"
+  }
+
+  provisioner "remote-exec" {
+    script = "worker/finalize.sh"
+  }
+
+  connection {
+    user = "core"
+    type = "ssh"
+    private_key = "${file("~/.ssh/id_rsa")}"
+  }
 }
 
-{#resource "google_compute_instance_group_manager" "node_group_1" {
-  name = "kubernetes-node-group-1"
-  base_instance_name = "kubernetes-node"
-  target_size = {{num_workers}}
+resource "google_compute_instance_group_manager" "node_group_1" {
+  name = "staging-node-group-1"
+  base_instance_name = "staging-node"
+  target_size = {{num_nodes}}
   instance_template = "${google_compute_instance_template.node.self_link}"
   zone = "{{zone}}"
 
@@ -299,4 +358,4 @@ resource "google_compute_instance_template" "node" {
     type = "ssh"
     private_key = "${file("~/.ssh/id_rsa")}"
   }
-}#}
+}

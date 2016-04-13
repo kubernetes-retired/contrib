@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import subprocess
 import urllib.request
+from urllib.error import URLError
 import os.path
 import argparse
+import time
 
 
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
@@ -12,9 +14,20 @@ cl_parser.add_argument(
     'master_public_ip', help='Specify public IP of master')
 args = cl_parser.parse_args()
 
-with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
-        as response:
-    discovery_url = response.read().decode()
+attempt = 0
+while True:
+    attempt += 1
+    try:
+        with urllib.request.urlopen('https://discovery.etcd.io/new?size=1') \
+                as response:
+            discovery_url = response.read().decode()
+    except URLError:
+        if attempt == 5:
+            raise
+        else:
+            time.sleep(attempt)
+    else:
+        break
 
 with open(os.path.expanduser('~/.ssh/id_rsa.pub'), 'rt') as f:
     ssh_key = f.read().strip()

@@ -10,21 +10,18 @@ root_dir = os.path.abspath(
 sys.path.insert(0, root_dir)
 
 import common
-from common import write_instance_env
+from common import write_instance_env, write_asset
 
 
 os.chdir(os.path.abspath(os.path.dirname(__file__)))
 
 cl_parser = argparse.ArgumentParser()
-cl_parser.add_argument('node_num', type=int, help='Specify node number')
 cl_parser.add_argument(
     'master_public_ip', nargs='+', help='Specify master public IP(s)')
 args = cl_parser.parse_args()
 
-write_asset = functools.partial(common.write_asset, args.node_num)
-
 subprocess.check_call(
-    ['./generate-certs.py', str(args.node_num)])
+    ['./generate-certs.py', ])
 
 subprocess.check_call([
     './make-cloud-config.py',
