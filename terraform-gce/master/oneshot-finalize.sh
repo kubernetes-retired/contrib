@@ -26,23 +26,13 @@ https://127.0.0.1/api/v1/namespaces
 create_namespace && \
 echo "Creating DNS addon..." && \
 /opt/bin/kubectl create -f /tmp/dns-addon.yaml && \
-echo "Creating Elasticsearch RC..." && \
-/opt/bin/kubectl create -f /tmp/es-controller.yaml && \
-echo "Creating Elasticsearch service..." && \
-/opt/bin/kubectl create -f /tmp/es-service.yaml && \
-echo "Creating Kibana RC..." && \
-/opt/bin/kubectl create -f /tmp/kibana-controller.yaml && \
-echo "Creating Kibana service..." && \
-/opt/bin/kubectl create -f /tmp/kibana-service.yaml && \
 echo "Creating Heapster controller..." && \
 /opt/bin/kubectl create -f /tmp/heapster-controller.yaml && \
 echo "Creating Heapster service..." && \
 /opt/bin/kubectl create -f /tmp/heapster-service.yaml && \
-echo "Creating InfluxDB-Grafana controller..." && \
-/opt/bin/kubectl create -f /tmp/influxdb-grafana-controller.yaml && \
-echo "Creating InfluxDB Service..." && \
-/opt/bin/kubectl create -f /tmp/influxdb-service.yaml && \
-echo "Creating Grafana Service..." && \
-/opt/bin/kubectl create -f /tmp/grafana-service.yaml && \
+echo "Creating Dashboard controller..." && \
+/opt/bin/kubectl create -f /tmp/dashboard-controller.yaml && \
+echo "Creating Dashboard service..." && \
+/opt/bin/kubectl create -f /tmp/dashboard-service.yaml && \
 echo "Creating Quay secret..." && \
 /opt/bin/kubectl create -f /tmp/quay-io-secret.yaml

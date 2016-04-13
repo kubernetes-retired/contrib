@@ -1,3 +1,4 @@
+#!/bin/sh
 make_dir () {
   sudo mkdir -p $1 && \
   sudo chown root:admin $1 && \

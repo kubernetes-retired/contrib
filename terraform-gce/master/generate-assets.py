@@ -75,6 +75,7 @@ gcr.io/google_containers/hyperkube:v1.1.2 \\
 --cloud-provider=gce \\
 --bind-address=0.0.0.0 \\
 --insecure-bind-address=127.0.0.1 \\
+--runtime-config=extensions/v1beta1/deployments=true \\
 --etcd-config=/etc/kubernetes/etcd.client.conf \\
 --allow-privileged=true \\
 --service-cluster-ip-range=10.3.0.0/24 \\
@@ -295,32 +296,38 @@ write_asset('etcd.client.conf', """{{
    }}
 }}
 """.format(','.join(['"{}"'.format(x) for x in etcd_endpoints]),))
-# num_heapster_nodes = 1
-# metrics_memory = '{}Mi'.format(200 + num_heapster_nodes * 4)
-# eventer_memory = '{}Ki'.format(200 * 1024 + num_heapster_nodes * 500)
+# {% set num_nodes = pillar.get('num_nodes', -1) -%}
+# {% if num_nodes >= 0 -%}
+#   {% set metrics_memory = (200 + num_nodes * metrics_memory_per_node)|string + "Mi" -%}
+#   {% set eventer_memory = (200 * 1024 + num_nodes * eventer_memory_per_node)|string + "Ki" -%}
+# {% endif -%}
 metrics_memory = '200Mi'
 eventer_memory = '200Mi'
-_write_addon('heapster-controller.yaml', 'cluster-monitoring', """
-apiVersion: v1
-kind: ReplicationController
+metrics_memory_per_node = 4
+eventer_memory_per_node = 500
+_write_addon('heapster-controller.yaml', 'cluster-monitoring', """apiVersion: extensions/v1beta1
+kind: Deployment
 metadata:
-  name: heapster-v1.0.0
+  name: heapster-v1.0.2
   namespace: kube-system
   labels:
     k8s-app: heapster
     kubernetes.io/cluster-service: "true"
+    version: v1.0.2
 spec:
   replicas: 1
   selector:
-    k8s-app: heapster
+    matchLabels:
+      k8s-app: heapster
+      version: v1.0.2
   template:
     metadata:
       labels:
         k8s-app: heapster
-        kubernetes.io/cluster-service: "true"
+        version: v1.0.2
     spec:
       containers:
-        - image: gcr.io/google_containers/heapster:v1.0.0
+        - image: gcr.io/google_containers/heapster:v1.0.2
           name: heapster
           resources:
             # keep request = limit to keep this container in guaranteed class
@@ -333,9 +340,13 @@ spec:
           command:
             - /heapster
             - --source=kubernetes.summary_api:''
-            - --sink=influxdb:http://monitoring-influxdb:8086
+            - --sink=gcm
             - --metric_resolution=60s
-        - image: gcr.io/google_containers/heapster:v1.0.0
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs
+              readOnly: true
+        - image: gcr.io/google_containers/heapster:v1.0.2
           name: eventer
           resources:
             # keep request = limit to keep this container in guaranteed class
@@ -348,15 +359,72 @@ spec:
           command:
             - /eventer
             - --source=kubernetes:''
-            - --sink=influxdb:http://monitoring-influxdb:8086
-""".format(metrics_memory, eventer_memory))
-# write_asset('nginx-secret.yaml', """apiVersion: "v1"
-# kind: "Secret"
-# metadata:
-#   name: "ssl-proxy-secret"
-#   namespace: "default"
-# data:
-#   proxycert: "{}"
-#   proxykey: "{}"
-#   dhparam: "{}"
-# """.format(b64_cert, b64_key, b64_dhparam))
+            - --sink=gcl
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs
+              readOnly: true
+        - image: gcr.io/google_containers/addon-resizer:1.0
+          name: heapster-nanny
+          resources:
+            limits:
+              cpu: 50m
+              memory: 100Mi
+            requests:
+              cpu: 50m
+              memory: 100Mi
+          env:
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - /pod_nanny
+            - --cpu=100m
+            - --extra-cpu=0m
+            - --memory={0}
+            - --extra-memory={2}Mi
+            - --threshold=5
+            - --deployment=heapster-v1.0.2
+            - --container=heapster
+            - --poll-period=300000
+        - image: gcr.io/google_containers/addon-resizer:1.0
+          name: eventer-nanny
+          resources:
+            limits:
+              cpu: 50m
+              memory: 100Mi
+            requests:
+              cpu: 50m
+              memory: 100Mi
+          env:
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - /pod_nanny
+            - --cpu=100m
+            - --extra-cpu=0m
+            - --memory={1}
+            - --extra-memory={3}Ki
+            - --threshold=5
+            - --deployment=heapster-v1.0.2
+            - --container=eventer
+            - --poll-period=300000
+      volumes:
+        - name: ssl-certs
+          hostPath:
+            path: "/etc/ssl/certs"
+""".format(
+    metrics_memory, eventer_memory, metrics_memory_per_node,
+    eventer_memory_per_node
+))

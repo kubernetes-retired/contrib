@@ -201,18 +201,18 @@ resource "google_compute_instance" "staging_master{{instance.number}}" {
 
   /*TODO: Make conditional*/
   provisioner "file" {
-    source = "common/assets/fluentd-es.yaml"
-    destination = "/etc/kubernetes/manifests/fluentd-es.yaml"
+    source = "master/addons/fluentd-gcp.yaml"
+    destination = "/etc/kubernetes/manifests/fluentd-gcp.yaml"
   }
 
   /*TODO: Make conditional*/
   provisioner "file" {
-    source = "master/addons/fluentd-elasticsearch/"
+    source = "master/addons/cluster-monitoring/"
     destination = "/tmp/"
   }
 
   provisioner "file" {
-    source = "master/addons/cluster-monitoring/"
+    source = "master/addons/dashboard/"
     destination = "/tmp/"
   }
 
