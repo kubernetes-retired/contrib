@@ -97,9 +97,10 @@ coreos:
         [Service]
         Type=oneshot
         RemainAfterExit=true
+        ExecStartPre=/bin/sh -c 'until ping -c1 google.com; do sleep 1; done;'
         ExecStart=/usr/bin/mkdir -p /tmp/kubernetes-staging
-        ExecStart=wget -O /tmp/kubernetes-staging/staging.tar.gz https://storage.googleapis.com/experimentalberlin/staging.tar.gz
-        ExecStart=tar xf /tmp/kubernetes-staging/staging.tar.gz -C /tmp/kubernetes-staging/
+        ExecStart=/usr/bin/wget -O /tmp/kubernetes-staging/staging.tar.gz https://storage.googleapis.com/experimentalberlin/staging.tar.gz
+        ExecStart=/usr/bin/tar xf /tmp/kubernetes-staging/staging.tar.gz -C /tmp/kubernetes-staging/
         ExecStart=/bin/bash /tmp/kubernetes-staging/worker/bootstrap.sh
 
         [Install]
