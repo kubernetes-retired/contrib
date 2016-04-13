@@ -6,7 +6,6 @@ variables.json
 master1-master.json
 terraform.tfstate*
 assets/
-master/addons/cluster-monitoring/heapster-controller.yaml
 staging-variables.sh
 /staging.tf
 __pycache__
