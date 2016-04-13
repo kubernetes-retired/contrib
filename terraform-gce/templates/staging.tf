@@ -145,7 +145,7 @@ resource "google_compute_instance" "staging_master{{instance.number}}" {
   }
 
   provisioner "file" {
-    source = "master/assets/certificates/mastermaster-client.pem"
+    source = "master/assets/certificates/master-client.pem"
     destination = "/etc/kubernetes/ssl/master-client.pem"
   }
 
@@ -284,59 +284,6 @@ resource "google_compute_instance_template" "node" {
   scheduling {
     on_host_maintenance = "MIGRATE"
     automatic_restart = true
-  }
-
-  provisioner "remote-exec" {
-    script = "worker/bootstrap.sh"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/kubelet.service"
-    destination = "/etc/systemd/system/kubelet.service"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/kube-proxy.yaml"
-    destination = "/etc/kubernetes/manifests/kube-proxy.yaml"
-  }
-
-  provisioner "file" {
-    source = "common/assets/kubelet-wrapper"
-    destination = "/opt/bin/kubelet-wrapper"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/certificates/ca.pem"
-    destination = "/etc/ssl/etcd/ca.pem"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/certificates/worker-client.pem"
-    destination = "/etc/ssl/etcd/worker.pem"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/certificates/worker-client-key.pem"
-    destination = "/etc/ssl/etcd/worker-key.pem"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/certificates/ca.pem"
-    destination = "/etc/kubernetes/ssl/ca.pem"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/certificates/worker-client.pem"
-    destination = "/etc/kubernetes/ssl/worker.pem"
-  }
-
-  provisioner "file" {
-    source = "worker/assets/certificates/worker-client-key.pem"
-    destination = "/etc/kubernetes/ssl/worker-key.pem"
-  }
-
-  provisioner "remote-exec" {
-    script = "worker/finalize.sh"
   }
 
   connection {

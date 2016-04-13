@@ -8,6 +8,8 @@ import urllib.request
 from urllib.error import URLError
 import sys
 import time
+import tarfile
+import tempfile
 
 root_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, root_dir)
@@ -45,10 +47,13 @@ cl_parser.add_argument('zone', help='Specify GCE zone')
 cl_parser.add_argument('public_ip', help='Specify app public IP')
 cl_parser.add_argument('master_public_ip', help='Specify master public IP')
 cl_parser.add_argument('dns_address', help='Specify DNS address')
+cl_parser.add_argument('bucket_name', help='Specify bucket name')
 args = cl_parser.parse_args()
 
 master_instances = [Master(1, args.master_public_ip)]
-node_instances = [Node(i+1) for i in range(args.num_nodes)]
+node_instances = [
+    Node(i+1) for i in range(args.num_nodes)
+]
 
 env = jinja2.Environment(
     loader=jinja2.FileSystemLoader('templates'),
@@ -96,8 +101,32 @@ for master in master_instances:
         discovery_url,
         master.public_ip,
     ])
-for node in node_instances:
-    subprocess.check_call([
-        './worker/generate-assets.py',
-        args.master_public_ip,
-    ])
+
+
+def _upload_worker_assets():
+    for node in node_instances:
+        subprocess.check_call([
+            './worker/generate-assets.py',
+            args.master_public_ip,
+        ])
+
+    with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tempf:
+        with tarfile.open(fileobj=tempf, mode='w:gz') as tarf:
+            for fname in [
+                'worker/bootstrap.sh',
+                'worker/assets/kubelet.service',
+                'worker/assets/kube-proxy.yaml',
+                'common/assets/kubelet-wrapper',
+                'worker/assets/certificates/ca.pem',
+                'worker/assets/certificates/worker-client.pem',
+                'worker/assets/certificates/worker-client-key.pem',
+            ]:
+                tarf.add(fname)
+        tempf.flush()
+
+        subprocess.check_call([
+            'gsutil', 'cp', '-a', 'public-read', tempf.name,
+            'gs://{}/staging.tar.gz'.format(args.bucket_name),
+        ])
+
+_upload_worker_assets()

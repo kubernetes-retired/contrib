@@ -64,12 +64,16 @@ write_files:
 ssh_authorized_keys:
   - "{1}"
 coreos:
+  update:
+    reboot-strategy: "etcd-lock"
   units:
     - name: swap.service
       command: start
       content: |
         [Unit]
         Description=Turn on swap
+        After=bootstrap.service
+        Requires=bootstrap.service
 
         [Service]
         Type=oneshot
@@ -79,6 +83,25 @@ coreos:
         ExecStart=/usr/bin/sh -c "/sbin/swapon $(/usr/sbin/losetup -j $SWAPFILE | /usr/bin/cut -d : -f 1)"
         ExecStop=/usr/bin/sh -c "/sbin/swapoff $(/usr/sbin/losetup -j $SWAPFILE | /usr/bin/cut -d : -f 1)"
         ExecStopPost=/usr/bin/sh -c "/usr/sbin/losetup -d $(/usr/sbin/losetup -j $SWAPFILE | /usr/bin/cut -d : -f 1)"
+
+        [Install]
+        WantedBy=local.target
+    - name: bootstrap.service
+      command: start
+      content: |
+        [Unit]
+        Description=Bootstrap instance
+        After=network-online.target
+        Requires=network-online.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStartPre=/bin/sh -c 'until ping -c1 google.com; do sleep 1; done;'
+        ExecStart=/usr/bin/mkdir -p /tmp/kubernetes-staging
+        ExecStart=cd /tmp/kubernetes-staging
+        ExecStart=/bin/sh -c "cd /tmp/kubernetes-staging && wget https://storage.googleapis.com/experimentalberlin/staging.tar.gz && tar xf staging.tar.gz"
+        ExecStart=/bin/bash /tmp/kubernetes-staging/worker/bootstrap.sh
 
         [Install]
         WantedBy=local.target
