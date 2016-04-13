@@ -14,7 +14,13 @@ if not os.path.exists('assets/certificates'):
     os.makedirs('assets/certificates')
 os.chdir('assets/certificates')
 
-print(os.listdir('.'))
+shutil.copy2(
+    '../../../master/assets/certificates/ca.pem', 'ca.pem'
+)
+shutil.copy2(
+    '../../../master/assets/certificates/ca-key.pem',
+    'ca-key.pem'
+)
 
 with file('worker.json', 'wt') as f:
     f.write("""{
