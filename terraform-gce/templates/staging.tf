@@ -185,7 +185,7 @@ resource "google_compute_instance" "staging_master{{instance.number}}" {
   }
 
   provisioner "file" {
-    source = "master/kubectl-1.2.0"
+    source = "master/kubectl-1.2.2"
     destination = "/opt/bin/kubectl"
   }
 

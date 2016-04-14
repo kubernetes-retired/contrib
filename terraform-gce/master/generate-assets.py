@@ -47,7 +47,7 @@ write_instance_env(is_master=True)
 etcd_endpoints = ['https://staging-master1:2379']
 etcd_endpoints_str = ','.join(etcd_endpoints)
 write_asset('kubelet.service', """[Service]
-Environment=KUBELET_VERSION=v1.1.8_coreos.0
+Environment=KUBELET_VERSION=v1.2.0_coreos.1
 ExecStart=/opt/bin/kubelet-wrapper \\
 --cloud-provider=gce \\
 --api-servers=https://127.0.0.1:443 \\
