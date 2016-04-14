@@ -15,6 +15,7 @@
 
 . $(dirname ${BASH_SOURCE})/../util.sh
 
+run "" # wait for first input
 desc "Update the deployment"
 run "cat $(relative deployment.yaml) | sed 's/ v1/ v2/g' | kubectl --namespace=demos apply -f-"
 desc "Rollback the deployment"

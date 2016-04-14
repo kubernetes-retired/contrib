@@ -25,7 +25,7 @@ while true; do
       trap "exit" INT
       while true; do
         kubectl --namespace=demos get rs "$NAME" \
-            -o go-template='Desired: {{.spec.replicas}} Running: {{.status.replicas}}{{"\n"}}'
+            -o go-template="$target Desired: {{.spec.replicas}} Running: {{.status.replicas}}{{\"\n\"}}"
         sleep 0.3
       done
       exit 0
