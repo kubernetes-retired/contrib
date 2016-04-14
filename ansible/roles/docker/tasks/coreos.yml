@@ -7,3 +7,9 @@
   register: docker_dropin
   notify:
     - reload systemd
+
+- name: CoreOS | Add any insecure registries to docker config
+  lineinfile: dest={{ docker_config_dir }}/docker regexp=^DOCKER_OPTS= line=DOCKER_OPTS="'{% for reg in insecure_registrys %}--insecure-registry={{ reg }}{% endfor %}'"
+  when: insecure_registrys is defined and insecure_registrys > 0
+  notify:
+    - restart docker
