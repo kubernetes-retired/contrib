@@ -207,6 +207,10 @@ resource "google_compute_instance" "staging_master{{instance.number}}" {
 
   /*TODO: Make conditional*/
   provisioner "file" {
+    source = "master/assets/heapster-controller.yaml"
+    destination = "/tmp/heapster-controller.yaml"
+  }
+  provisioner "file" {
     source = "master/addons/cluster-monitoring/"
     destination = "/tmp/"
   }

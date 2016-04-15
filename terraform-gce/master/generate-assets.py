@@ -295,3 +295,130 @@ write_asset('etcd.client.conf', """{{
    }}
 }}
 """.format(','.join(['"{}"'.format(x) for x in etcd_endpoints]),))
+metrics_memory = '200Mi'
+eventer_memory = '200Mi'
+metrics_memory_per_node = 4
+eventer_memory_per_node = 500
+write_asset('heapster-controller.yaml', """apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: heapster-v1.0.2
+  namespace: kube-system
+  labels:
+    k8s-app: heapster
+    kubernetes.io/cluster-service: "true"
+    version: v1.0.2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: heapster
+      version: v1.0.2
+  template:
+    metadata:
+      labels:
+        k8s-app: heapster
+        version: v1.0.2
+    spec:
+      containers:
+        - image: gcr.io/google_containers/heapster:v1.0.2
+          name: heapster
+          resources:
+            # keep request = limit to keep this container in guaranteed class
+            limits:
+              cpu: 100m
+              memory: {0}
+            requests:
+              cpu: 100m
+              memory: {0}
+          command:
+            - /heapster
+            - --source=kubernetes.summary_api:''
+            - --sink=gcm
+            - --metric_resolution=60s
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs
+              readOnly: true
+        - image: gcr.io/google_containers/heapster:v1.0.2
+          name: eventer
+          resources:
+            # keep request = limit to keep this container in guaranteed class
+            limits:
+              cpu: 100m
+              memory: {1}
+            requests:
+              cpu: 100m
+              memory: {1}
+          command:
+            - /eventer
+            - --source=kubernetes:''
+            - --sink=gcl
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs
+              readOnly: true
+        - image: gcr.io/google_containers/addon-resizer:1.0
+          name: heapster-nanny
+          resources:
+            limits:
+              cpu: 50m
+              memory: 100Mi
+            requests:
+              cpu: 50m
+              memory: 100Mi
+          env:
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - /pod_nanny
+            - --cpu=100m
+            - --extra-cpu=0m
+            - --memory={0}
+            - --extra-memory={2}Mi
+            - --threshold=5
+            - --deployment=heapster-v1.0.2
+            - --container=heapster
+            - --poll-period=300000
+        - image: gcr.io/google_containers/addon-resizer:1.0
+          name: eventer-nanny
+          resources:
+            limits:
+              cpu: 50m
+              memory: 100Mi
+            requests:
+              cpu: 50m
+              memory: 100Mi
+          env:
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - /pod_nanny
+            - --cpu=100m
+            - --extra-cpu=0m
+            - --memory={1}
+            - --extra-memory={3}Ki
+            - --threshold=5
+            - --deployment=heapster-v1.0.2
+            - --container=eventer
+            - --poll-period=300000
+      volumes:
+        - name: ssl-certs
+          hostPath:
+            path: "/etc/ssl/certs"
+""".format(
+    metrics_memory, eventer_memory, metrics_memory_per_node,
+    eventer_memory_per_node
+))
