@@ -28,7 +28,6 @@
 
 # install flannel
 - hosts:
-    - etcd
     - masters
     - nodes
   sudo: yes
