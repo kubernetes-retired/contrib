@@ -114,14 +114,24 @@ def _upload_worker_assets():
         with tarfile.open(fileobj=tempf, mode='w:gz') as tarf:
             for fname in [
                 'worker/bootstrap.sh',
+                'worker/generate-certs.sh',
                 'worker/assets/kubelet.service',
                 'worker/assets/kube-proxy.yaml',
                 'common/assets/kubelet-wrapper',
-                'worker/assets/certificates/ca.pem',
-                'worker/assets/certificates/worker-client.pem',
-                'worker/assets/certificates/worker-client-key.pem',
             ]:
                 tarf.add(fname)
+            tarf.add(
+                'master/assets/certificates/ca.pem',
+                arcname='worker/assets/certificates/ca.pem'
+            )
+            tarf.add(
+                'master/assets/certificates/ca-key.pem',
+                arcname='worker/assets/certificates/ca-key.pem'
+            )
+            tarf.add(
+                'master/assets/certificates/ca-config.json',
+                arcname='worker/assets/certificates/ca-config.json'
+            )
         tempf.flush()
 
         subprocess.check_call([

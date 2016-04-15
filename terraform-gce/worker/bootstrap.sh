@@ -27,10 +27,12 @@ sudo mkswap /swap
 sudo cp worker/assets/kubelet.service /etc/systemd/system/kubelet.service
 sudo cp worker/assets/kube-proxy.yaml /etc/kubernetes/manifests/kube-proxy.yaml
 sudo cp common/assets/kubelet-wrapper /opt/bin/kubelet-wrapper
+
+./worker/generate-certs.sh
 sudo cp worker/assets/certificates/ca.pem /etc/ssl/etcd/ca.pem
+sudo cp worker/assets/certificates/ca.pem /etc/kubernetes/ssl/ca.pem
 sudo cp worker/assets/certificates/worker-client.pem /etc/ssl/etcd/worker.pem
 sudo cp worker/assets/certificates/worker-client-key.pem /etc/ssl/etcd/worker-key.pem
-sudo cp worker/assets/certificates/ca.pem /etc/kubernetes/ssl/ca.pem
 sudo cp worker/assets/certificates/worker-client.pem /etc/kubernetes/ssl/worker.pem
 sudo cp worker/assets/certificates/worker-client-key.pem /etc/kubernetes/ssl/worker-key.pem
 

@@ -271,6 +271,10 @@ resource "google_compute_instance_template" "node" {
 
   network_interface {
     network = "default"
+
+    // Ensure ephemeral external IP
+    access_config {
+    }
   }
 
   metadata {

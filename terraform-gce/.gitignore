@@ -10,3 +10,4 @@ staging-variables.sh
 /staging.tf
 __pycache__
 account.json
+certificates.tar.gz
