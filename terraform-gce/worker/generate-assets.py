@@ -32,7 +32,7 @@ subprocess.check_call([
 etcd_endpoints = ['https://{0}:2379'.format(args.master_public_ip)]
 api_servers = ['https://{0}:443'.format(x) for x in args.master_public_ip]
 write_asset('kubelet.service', """[Service]
-Environment=KUBELET_VERSION=v1.1.8_coreos.0
+Environment=KUBELET_VERSION=v1.2.0_coreos.1
 ExecStart=/opt/bin/kubelet-wrapper \\
 --cloud-provider=gce \\
 --api_servers={0} \\
