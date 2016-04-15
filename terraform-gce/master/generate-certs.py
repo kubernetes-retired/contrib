@@ -7,7 +7,6 @@ import shutil
 
 cl_parser = argparse.ArgumentParser()
 cl_parser.add_argument('dns_address', help='Specify app\'s DNS address')
-cl_parser.add_argument('region', help='Specify GCE region')
 cl_parser.add_argument('public_ip', help='Specify node public IP')
 args = cl_parser.parse_args()
 
@@ -41,7 +40,7 @@ with file('master.json', 'wt') as f:
   ]
 }}
 """.format(
-            args.dns_address, args.public_ip, args.region
+            args.dns_address, args.public_ip
             ))
 
 subprocess.check_call(

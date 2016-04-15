@@ -32,8 +32,7 @@ cl_parser.add_argument('public_ip', help='Specify public IP')
 args = cl_parser.parse_args()
 
 subprocess.check_call([
-    './generate-certs.py', args.dns_address, args.region,
-    args.public_ip,
+    './generate-certs.py', args.dns_address, args.public_ip,
 ])
 
 subprocess.check_call([
