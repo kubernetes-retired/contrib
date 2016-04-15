@@ -20,9 +20,6 @@ cl_parser.add_argument(
     'master_public_ip', nargs='+', help='Specify master public IP(s)')
 args = cl_parser.parse_args()
 
-subprocess.check_call(
-    ['./generate-certs.py', ])
-
 subprocess.check_call([
     './make-cloud-config.py',
     args.master_public_ip[0],
