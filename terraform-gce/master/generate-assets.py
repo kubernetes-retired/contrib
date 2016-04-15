@@ -299,26 +299,23 @@ metrics_memory = '200Mi'
 eventer_memory = '200Mi'
 metrics_memory_per_node = 4
 eventer_memory_per_node = 500
-write_asset('heapster-controller.yaml', """apiVersion: extensions/v1beta1
-kind: Deployment
+write_asset('heapster-controller.yaml', """apiVersion: v1
+kind: ReplicationController
 metadata:
   name: heapster-v1.0.2
   namespace: kube-system
   labels:
     k8s-app: heapster
     kubernetes.io/cluster-service: "true"
-    version: v1.0.2
 spec:
   replicas: 1
   selector:
-    matchLabels:
-      k8s-app: heapster
-      version: v1.0.2
+    k8s-app: heapster
   template:
     metadata:
       labels:
         k8s-app: heapster
-        version: v1.0.2
+        kubernetes.io/cluster-service: "true"
     spec:
       containers:
         - image: gcr.io/google_containers/heapster:v1.0.2
@@ -358,62 +355,6 @@ spec:
             - name: ssl-certs
               mountPath: /etc/ssl/certs
               readOnly: true
-        - image: gcr.io/google_containers/addon-resizer:1.0
-          name: heapster-nanny
-          resources:
-            limits:
-              cpu: 50m
-              memory: 100Mi
-            requests:
-              cpu: 50m
-              memory: 100Mi
-          env:
-            - name: MY_POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: MY_POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-          command:
-            - /pod_nanny
-            - --cpu=100m
-            - --extra-cpu=0m
-            - --memory={0}
-            - --extra-memory={2}Mi
-            - --threshold=5
-            - --deployment=heapster-v1.0.2
-            - --container=heapster
-            - --poll-period=300000
-        - image: gcr.io/google_containers/addon-resizer:1.0
-          name: eventer-nanny
-          resources:
-            limits:
-              cpu: 50m
-              memory: 100Mi
-            requests:
-              cpu: 50m
-              memory: 100Mi
-          env:
-            - name: MY_POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: MY_POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-          command:
-            - /pod_nanny
-            - --cpu=100m
-            - --extra-cpu=0m
-            - --memory={1}
-            - --extra-memory={3}Ki
-            - --threshold=5
-            - --deployment=heapster-v1.0.2
-            - --container=eventer
-            - --poll-period=300000
       volumes:
         - name: ssl-certs
           hostPath:
