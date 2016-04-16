@@ -67,6 +67,8 @@ type LoadBalancerController struct {
 	// allowing concurrent stoppers leads to stack traces.
 	stopLock sync.Mutex
 	shutdown bool
+	// tlsLoader loads secrets from the Kubernetes apiserver for Ingresses.
+	tlsLoader tlsLoader
 }
 
 // NewLoadBalancerController creates a controller for gce loadbalancers.
@@ -155,6 +157,7 @@ func NewLoadBalancerController(kubeClient *client.Client, clusterManager *Cluste
 		&api.Node{}, 0, nodeHandlers)
 
 	lbc.tr = &GCETranslator{&lbc}
+	lbc.tlsLoader = &apiServerTLSLoader{client: lbc.client}
 	glog.V(3).Infof("Created new loadbalancer controller")
 
 	return &lbc, nil
@@ -262,6 +265,9 @@ func (lbc *LoadBalancerController) sync(key string) {
 		glog.V(3).Infof("Finished syncing %v", key)
 	}()
 
+	// Record any errors during sync and throw a single error at the end. This
+	// allows us to free up associated cloud resources ASAP.
+	var syncError error
 	if err := lbc.CloudClusterManager.Checkpoint(lbs, nodeNames, nodePorts); err != nil {
 		// TODO: Implement proper backoff for the queue.
 		eventMsg := "GCE"
@@ -273,29 +279,34 @@ func (lbc *LoadBalancerController) sync(key string) {
 		} else {
 			err = fmt.Errorf("%v Error: %v", eventMsg, err)
 		}
-		lbc.ingQueue.requeue(key, err)
-		return
+		syncError = err
 	}
 
 	if !ingExists {
+		if syncError != nil {
+			lbc.ingQueue.requeue(key, err)
+		}
 		return
 	}
 	// Update the UrlMap of the single loadbalancer that came through the watch.
 	l7, err := lbc.CloudClusterManager.l7Pool.Get(key)
 	if err != nil {
-		lbc.ingQueue.requeue(key, err)
+		lbc.ingQueue.requeue(key, fmt.Errorf("%v, unable to get loadbalancer: %v", syncError, err))
 		return
 	}
 
 	ing := *obj.(*extensions.Ingress)
 	if urlMap, err := lbc.tr.toUrlMap(&ing); err != nil {
-		lbc.ingQueue.requeue(key, err)
+		syncError = fmt.Errorf("%v, convert to url map error %v", syncError, err)
 	} else if err := l7.UpdateUrlMap(urlMap); err != nil {
 		lbc.recorder.Eventf(&ing, api.EventTypeWarning, "UrlMap", err.Error())
-		lbc.ingQueue.requeue(key, err)
+		syncError = fmt.Errorf("%v, update url map error: %v", syncError, err)
 	} else if lbc.updateIngressStatus(l7, ing); err != nil {
 		lbc.recorder.Eventf(&ing, api.EventTypeWarning, "Status", err.Error())
-		lbc.ingQueue.requeue(key, err)
+		syncError = fmt.Errorf("%v, update ingress error: %v", syncError, err)
+	}
+	if syncError != nil {
+		lbc.ingQueue.requeue(key, syncError)
 	}
 	return
 }
@@ -353,45 +364,19 @@ func (lbc *LoadBalancerController) ListRuntimeInfo() (lbs []*loadbalancers.L7Run
 			glog.Warningf("Cannot get key for Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
 			continue
 		}
-		tls, err := lbc.loadSecrets(ing)
+		tls, err := lbc.tlsLoader.load(ing)
 		if err != nil {
 			glog.Warningf("Cannot get certs for Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
 		}
+		annotations := ingAnnotations(ing.ObjectMeta.Annotations)
 		lbs = append(lbs, &loadbalancers.L7RuntimeInfo{
-			Name:      k,
-			TLS:       tls,
-			AllowHTTP: ingAnnotations(ing.ObjectMeta.Annotations).allowHTTP(),
+			Name:         k,
+			TLS:          tls,
+			AllowHTTP:    annotations.allowHTTP(),
+			StaticIPName: annotations.staticIPName(),
 		})
 	}
 	return lbs, nil
-}
-
-func (lbc *LoadBalancerController) loadSecrets(ing *extensions.Ingress) (*loadbalancers.TLSCerts, error) {
-	if len(ing.Spec.TLS) == 0 {
-		return nil, nil
-	}
-	// GCE L7s currently only support a single cert.
-	if len(ing.Spec.TLS) > 1 {
-		glog.Warningf("Ignoring %d certs and taking the first for ingress %v/%v",
-			len(ing.Spec.TLS)-1, ing.Namespace, ing.Name)
-	}
-	secretName := ing.Spec.TLS[0].SecretName
-	// TODO: Replace this for a secret watcher.
-	glog.V(3).Infof("Retrieving secret for ing %v with name %v", ing.Name, secretName)
-	secret, err := lbc.client.Secrets(ing.Namespace).Get(secretName)
-	if err != nil {
-		return nil, err
-	}
-	cert, ok := secret.Data[api.TLSCertKey]
-	if !ok {
-		return nil, fmt.Errorf("Secret %v has no private key", secretName)
-	}
-	key, ok := secret.Data[api.TLSPrivateKeyKey]
-	if !ok {
-		return nil, fmt.Errorf("Secret %v has no cert", secretName)
-	}
-	// TODO: Validate certificate with hostnames in ingress?
-	return &loadbalancers.TLSCerts{Key: string(key), Cert: string(cert)}, nil
 }
 
 // syncNodes manages the syncing of kubernetes nodes to gce instance groups.

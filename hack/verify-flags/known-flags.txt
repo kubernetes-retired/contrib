@@ -23,6 +23,7 @@ etcd-servers
 extra-cpu
 extra-memory
 extra-storage
+fake-e2e
 forward-services
 generated-files-config
 health-check-path
@@ -51,6 +52,7 @@ right-build-number
 running-in-cluster
 shame-cc
 shame-from
+shame-reply-to
 shame-report-cmd
 source-file
 ssl-ca-cert
@@ -73,3 +75,10 @@ vrrp-password
 watch-namespace
 weak-stable-jobs
 whitelist-override-label
+dump-nginx—configuration
+nginx-configmap
+tcp-services-configmap
+udp-services-configmap
+one-time
+change-permissions
+services-configmap

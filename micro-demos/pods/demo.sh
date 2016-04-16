@@ -28,7 +28,6 @@ run "kubectl --namespace=demos get pods"
 desc "Get the pod's IP"
 run "kubectl --namespace=demos get pod pods-demo -o yaml | grep podIP"
 
-trap "" SIGINT
 IP=$(kubectl --namespace=demos get pod pods-demo -o yaml \
         | grep podIP \
         | cut -f2 -d:)

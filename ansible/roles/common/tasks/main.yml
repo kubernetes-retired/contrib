@@ -14,6 +14,20 @@
     is_atomic: true
   when: s.stat.exists
 
+- name: Determine if CoreOS
+  raw: "grep '^NAME=' /etc/os-release | sed s'/NAME=//'"
+  register: distro
+  always_run: yes
+
+- name: Init the is_coreos fact
+  set_fact:
+    is_coreos: false
+
+- name: Set the is_coreos fact
+  set_fact:
+    is_coreos: true
+  when: "'CoreOS' in distro.stdout"
+
 - name: Set docker config file directory
   set_fact:
     docker_config_dir: "/etc/sysconfig"
@@ -29,7 +43,7 @@
 - name: Set the bin directory path for CoreOS
   set_fact:
     bin_dir: "/opt/bin"
-  when: ansible_distribution == "CoreOS"
+  when: is_coreos
 
 - name: Create the directory used to store binaries
   file: path={{ bin_dir }} state=directory

@@ -1,5 +1,5 @@
 "use strict";
-angular.module('SubmitQueueModule', ['ngMaterial', 'md.data.table', 'angular-toArrayFilter']);
+angular.module('SubmitQueueModule', ['ngMaterial', 'md.data.table', 'angular-toArrayFilter', 'angularMoment']);
 
 angular.module('SubmitQueueModule').controller('SQCntl', ['DataService', '$interval', '$location', SQCntl]);
 
@@ -8,12 +8,16 @@ function SQCntl(dataService, $interval, $location) {
   self.prs = {};
   self.users = {};
   self.builds = {};
+  self.health = {};
+  self.lastMergeTime = Date();
   self.prQuerySearch = prQuerySearch;
   self.historyQuerySearch = historyQuerySearch;
   self.goToPerson = goToPerson;
   self.selectTab = selectTab;
   self.queryNum = 0;
   self.selected = 0;
+  self.OverallHealth = "";
+  self.StartTime = "";
   self.StatOrder = "-Count";
   self.location = $location;
 
@@ -73,7 +77,6 @@ function SQCntl(dataService, $interval, $location) {
         self.e2erunning = [response.data.E2ERunning];
       }
       self.e2equeue = response.data.E2EQueue;
-      document.getElementById("queue-len").innerHTML = "&nbsp;(" + self.e2equeue.length + ")"
     });
   }
 
@@ -89,11 +92,22 @@ function SQCntl(dataService, $interval, $location) {
     });
   }
 
-  // Refresh every 10 minutes
-  refreshStats();
-  $interval(refreshStats, 600000);
+  // Refresh every 30 minutes
+  refreshSQStats();
+  $interval(refreshSQStats, 1800000);
 
-  function refreshStats() {
+  function refreshSQStats() {
+    dataService.getData('sq-stats').then(function successCallback(response) {
+      self.sqStats = response.data;
+      self.lastMergeTime = new Date(response.data.LastMergeTime)
+    });
+  }
+
+  // Refresh every 10 minutes
+  refreshBotStats();
+  $interval(refreshBotStats, 600000);
+
+  function refreshBotStats() {
     dataService.getData('stats').then(function successCallback(response) {
       var nextLoop = new Date(response.data.NextLoopTime);
       document.getElementById("next-run-time").innerHTML = nextLoop.toLocaleTimeString();
@@ -115,6 +129,21 @@ function SQCntl(dataService, $interval, $location) {
   function refreshUsers() {
     dataService.getData('users').then(function successCallback(response) {
       self.users = response.data;
+    });
+  }
+
+  // Refresh every 10 minutes
+  refreshE2EHealth();
+  $interval(refreshE2EHealth, 600000)
+
+  function refreshE2EHealth() {
+    dataService.getData("health").then(function successCallback(response) {
+      self.health = response.data;
+      if (self.health.TotalLoops !== 0) {
+        var percentStable = self.health.NumStable * 100.0 / self.health.TotalLoops;
+        self.OverallHealth = Math.round(percentStable) + "%";
+        self.StartTime = new Date(self.health.StartTime).toLocaleString();
+      }
     });
   }
 
@@ -152,6 +181,14 @@ function SQCntl(dataService, $interval, $location) {
         obj.color = 'red';
         obj.msg = job.Status;
         failedBuild = true;
+      }
+      if (self.health.TotalLoops !== 0 &&
+          self.health.NumStablePerJob !== undefined &&
+          key in self.health.NumStablePerJob) {
+        var percentStable = self.health.NumStablePerJob[key] * 100.0 / self.health.TotalLoops;
+        obj.stability = Math.round(percentStable) + "%"
+      } else {
+        obj.stability = '';
       }
       result.push(obj);
     });

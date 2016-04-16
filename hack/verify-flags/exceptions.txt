@@ -1,11 +1,12 @@
-ingress/controllers/nginx-third-party/nginx.tmpl:        require("error_page")
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 403 @custom_403;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 404 @custom_404;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 405 @custom_405;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 408 @custom_408;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 413 @custom_413;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 500 @custom_500;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 501 @custom_501;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 502 @custom_502;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 503 @custom_503;
-ingress/controllers/nginx-third-party/nginx.tmpl:    error_page 504 @custom_504;
+ingress/controllers/nginx/nginx.tmpl:        require("error_page")
+ingress/controllers/nginx/nginx.tmpl:    error_page 403 = @custom_403;
+ingress/controllers/nginx/nginx.tmpl:    error_page 404 = @custom_404;
+ingress/controllers/nginx/nginx.tmpl:    error_page 405 = @custom_405;
+ingress/controllers/nginx/nginx.tmpl:    error_page 408 = @custom_408;
+ingress/controllers/nginx/nginx.tmpl:    error_page 413 = @custom_413;
+ingress/controllers/nginx/nginx.tmpl:    error_page 501 = @custom_501;
+ingress/controllers/nginx/nginx.tmpl:    error_page 502 = @custom_502;
+ingress/controllers/nginx/nginx.tmpl:    error_page 503 = @custom_503;
+ingress/controllers/nginx/nginx.tmpl:    error_page 504 = @custom_504;
+mungegithub/mungers/submit-queue.go:		sq.e2e = &fake_e2e.FakeE2ETester{
+mungegithub/mungers/submit-queue.go:	fake_e2e "k8s.io/contrib/mungegithub/mungers/e2e/fake"

@@ -1,5 +1,5 @@
 # Version of Kubernetes binaries
-kube_version: 1.1.4
+kube_version: 1.2.2
 
 # The port that the Kubernetes apiserver component listens on.
 kube_master_api_port: 443
@@ -18,7 +18,20 @@ kube_script_dir: /usr/libexec/kubernetes
 kube_config_dir: /etc/kubernetes
 
 # The URL to download Kubernetes binaries from.
-kube_download_url: https://github.com/kubernetes/kubernetes/releases/download/v{{ kube_version }}/kubernetes.tar.gz
+kube_download_url_base: https://storage.googleapis.com/kubernetes-release/release/v{{ kube_version }}/bin/linux/amd64
+
+# List of Kubernetes binaries to download and install.
+kube_binaries:
+  - kube-apiserver
+  - kube-controller-manager
+  - kube-proxy
+  - kube-scheduler
+  - kubectl
+  - kubelet
+
+# Directory to store downloaded Kubernetes releases
+kube_releases_directory: /opt/kubernetes
+kube_current_release_directory: "{{ kube_releases_directory }}/{{ kube_version }}"
 
 # This is where all the cert scripts and certs will be located
 kube_cert_dir: "{{ kube_config_dir }}/certs"

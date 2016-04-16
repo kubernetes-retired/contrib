@@ -4,19 +4,25 @@ metadata:
   name: deployment-demo
   namespace: demos
 spec:
+  selector:
+    matchLabels:
+      demo: deployment
   replicas: 3
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
   template:
     metadata:
       labels:
         demo: deployment
+        version: v1
     spec:
       containers:
       - name: busybox
         image: busybox
-        command:
-        - sh
-        - -c
-        - while true; do echo "$(hostname) v1" > /data/index.html; sleep 60; done
+        command: [ "sh", "-c", "while true; do echo $(hostname) v1 > /data/index.html; sleep 60; done" ]
         volumeMounts:
         - name: content
           mountPath: /data

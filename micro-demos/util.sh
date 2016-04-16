@@ -17,6 +17,7 @@ readonly  reset=$(tput sgr0)
 readonly  green=$(tput bold; tput setaf 2)
 readonly yellow=$(tput bold; tput setaf 3)
 readonly   blue=$(tput bold; tput setaf 6)
+readonly timeout=$(if [ "$(uname)" == "Darwin" ]; then echo "1"; else echo "0.1"; fi) 
 
 function desc() {
     maybe_first_prompt
@@ -36,6 +37,10 @@ function maybe_first_prompt() {
     fi
 }
 
+# After a `run` this variable will hold the stdout of the command that was run.
+# If the command was interactive, this will likely be garbage.
+DEMO_RUN_STDOUT=""
+
 function run() {
     maybe_first_prompt
     rate=25
@@ -46,13 +51,15 @@ function run() {
     if [ -n "$DEMO_RUN_FAST" ]; then
       sleep 0.5
     fi
-    eval "$1"
+    OFILE="$(mktemp -t $(basename $0).XXXXXX)"
+    script -eq -c "$1" -f "$OFILE"
     r=$?
-    read -d '' -t 0.1 -n 10000 # clear stdin
+    read -d '' -t "${timeout}" -n 10000 # clear stdin
     prompt
     if [ -z "$DEMO_AUTO_RUN" ]; then
       read -s
     fi
+    DEMO_RUN_STDOUT="$(tail -n +2 $OFILE | sed 's/\r//g')"
     return $r
 }
 

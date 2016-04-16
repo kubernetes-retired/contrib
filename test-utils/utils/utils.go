@@ -22,19 +22,49 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/golang/glog"
 )
 
 const (
-	urlPrefix     = "https://storage.googleapis.com/kubernetes-jenkins/logs"
-	successString = "SUCCESS"
+	// GoogleBucketURL is an url go GCS bucket with results of Google-run tests.
+	GoogleBucketURL = "https://storage.googleapis.com/kubernetes-jenkins/logs"
+	successString   = "SUCCESS"
+	retries         = 3
+	retryWait       = 100 * time.Millisecond
 )
+
+// Utils is a struct handling all communication with a given bucket
+type Utils struct {
+	bucketURL string
+}
+
+// NewUtils returnes new Utils struct for a given bucket url
+func NewUtils(bucketURL string) *Utils {
+	return &Utils{bucketURL: bucketURL}
+}
+
+func (u *Utils) getResponseWithRetry(url string) (*http.Response, error) {
+	var response *http.Response
+	var err error
+	for i := 0; i < retries; i++ {
+		response, err = http.Get(url)
+		if err != nil {
+			return nil, err
+		}
+		if response.StatusCode == http.StatusOK {
+			return response, nil
+		}
+		time.Sleep(retryWait)
+	}
+	return response, nil
+}
 
 // GetFileFromJenkinsGoogleBucket reads data from Google project's GCS bucket for the given job and buildNumber.
 // Returns a response with file stored under a given (relative) path or an error.
-func GetFileFromJenkinsGoogleBucket(job string, buildNumber int, path string) (*http.Response, error) {
-	response, err := http.Get(fmt.Sprintf("%v/%v/%v/%v", urlPrefix, job, buildNumber, path))
+func (u *Utils) GetFileFromJenkinsGoogleBucket(job string, buildNumber int, path string) (*http.Response, error) {
+	response, err := u.getResponseWithRetry(fmt.Sprintf("%v/%v/%v/%v", u.bucketURL, job, buildNumber, path))
 	if err != nil {
 		return nil, err
 	}
@@ -43,13 +73,17 @@ func GetFileFromJenkinsGoogleBucket(job string, buildNumber int, path string) (*
 
 // GetLastestBuildNumberFromJenkinsGoogleBucket reads a the number
 // of last completed build of the given job from the Google project's GCS bucket .
-func GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, error) {
-	response, err := http.Get(fmt.Sprintf("%v/%v/latest-build.txt", urlPrefix, job))
+func (u *Utils) GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, error) {
+	response, err := u.getResponseWithRetry(fmt.Sprintf("%v/%v/latest-build.txt", u.bucketURL, job))
 	if err != nil {
 		return -1, err
 	}
 	body := response.Body
 	defer body.Close()
+	if response.StatusCode != http.StatusOK {
+		glog.Infof("Got a non-success response %v while reading data for %v/latest-build.txt", response.StatusCode, job)
+		return -1, err
+	}
 	scanner := bufio.NewScanner(body)
 	scanner.Scan()
 	var lastBuildNo int
@@ -57,15 +91,16 @@ func GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, error) {
 	return lastBuildNo, nil
 }
 
-type finishedFile struct {
+// FinishedFile is a type in which we store test result in GCS as finished.json
+type FinishedFile struct {
 	Result    string `json:"result"`
 	Timestamp uint64 `json:"timestamp"`
 }
 
 // CheckFinishedStatus reads the finished.json file for a given job and build number.
 // It returns true if the result stored there is success, and false otherwise.
-func CheckFinishedStatus(job string, buildNumber int) (bool, error) {
-	response, err := GetFileFromJenkinsGoogleBucket(job, buildNumber, "finished.json")
+func (u *Utils) CheckFinishedStatus(job string, buildNumber int) (bool, error) {
+	response, err := u.GetFileFromJenkinsGoogleBucket(job, buildNumber, "finished.json")
 	if err != nil {
 		glog.Errorf("Error while getting data for %v/%v/%v: %v", job, buildNumber, "finished.json", err)
 		return false, err
@@ -73,10 +108,10 @@ func CheckFinishedStatus(job string, buildNumber int) (bool, error) {
 
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		glog.Infof("Got a non-success response %v while reading data for %v/%v/%v", response.StatusCode, job, buildNumber, "finished.json")
+		glog.Errorf("Got a non-success response %v while reading data for %v/%v/%v", response.StatusCode, job, buildNumber, "finished.json")
 		return false, err
 	}
-	result := finishedFile{}
+	result := FinishedFile{}
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		glog.Errorf("Failed to read the response for %v/%v/%v: %v", job, buildNumber, "finished.json", err)

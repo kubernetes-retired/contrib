@@ -12,13 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.3
+FROM gcr.io/google_containers/ubuntu-slim:0.1
 
-RUN echo "http://dl-4.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
-  apk add -U --repository http://dl-3.alpinelinux.org/alpine/edge/testing/ --allow-untrusted \
-  bash curl ipvsadm iproute2 keepalived && \
-  rm -rf /var/cache/apk/* /etc/keepalived/keepalived.conf
-  
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  libssl1.0.0 \
+  libnl-3-200 \
+  libnl-route-3-200 \
+  libnl-genl-3-200 \
+  iptables \
+  libnfnetlink0 \
+  libiptcdata0 \
+  libipset3 \
+  libipset-dev \
+  libsnmp30 \
+  kmod \
+  ca-certificates \
+  iproute2 \
+  ipvsadm && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+ADD keepalived.tar.gz /
+
+RUN mkdir -p /etc/keepalived && \
+  ln -s /keepalived/sbin/keepalived /usr/sbin && \
+  ln -s /keepalived/bin/genhash /usr/sbin
+
 COPY kube-keepalived-vip /kube-keepalived-vip
+COPY keepalived.tmpl /keepalived.tmpl
 
 ENTRYPOINT ["/kube-keepalived-vip"]

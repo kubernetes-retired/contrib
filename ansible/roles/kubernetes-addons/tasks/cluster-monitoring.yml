@@ -20,6 +20,7 @@
     - heapster-service.yaml
     - influxdb-grafana-controller.yaml
     - influxdb-service.yaml
+  changed_when: false
 
 - name: MONITORING | Remove instances of getting pillar dicts
   local_action: lineinfile
@@ -33,6 +34,7 @@
     - heapster-service.yaml
     - influxdb-grafana-controller.yaml
     - influxdb-service.yaml
+  changed_when: false
 
 - name: MONITORING | Add tests for pillar vars converted to ansible vars
   local_action: lineinfile
@@ -47,6 +49,7 @@
     - heapster-service.yaml
     - influxdb-grafana-controller.yaml
     - influxdb-service.yaml
+  changed_when: false
 
 - name: MONITORING | Install template from converted saltfile
   template:

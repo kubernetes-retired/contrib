@@ -39,6 +39,7 @@ export DOCKER_HOST=unix:///var/run/docker.sock
 export DOCKER_REGISTRY=docker-registry.yourcompany.com
 # the docker container defaulted to job/branch for jenkins
 export CONTAINER1=$(tr [A-Z] [a-z] <<< ${JOB_NAME:0:8})/$(tr [A-Z] [a-z] <<< ${GIT_BRANCH:0:15}| tr -d '_-' | sed 's/\//-/g')
+#export https_proxy=https://xxx.xxx.xxx.xxx:8080/ #uncomment if a proxy needed to access kubernetes api
 
 #login to docker repo
 #dockeruser and dockerpass are coming from a jenkins credential in this example
@@ -59,6 +60,9 @@ chmod +x ./deploy/deploy-service.sh && ./deploy/deploy-service.sh ${KUBECONTEXTQ
 
 #put integration tests here
 echo "put integration tests here"
+
+#uncomment to force update of kubectl client
+#rm ~/.kube/kubectl
 
 #deploy to production cluster
 ./deploy/deploy-service.sh ${KUBECONTEXTPROD} ${KUBEDEPLOYMENTDIR}

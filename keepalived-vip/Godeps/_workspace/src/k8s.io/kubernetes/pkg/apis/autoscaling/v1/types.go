@@ -41,6 +41,7 @@ type HorizontalPodAutoscalerSpec struct {
 	// upper limit for the number of pods that can be set by the autoscaler; cannot be smaller than MinReplicas.
 	MaxReplicas int32 `json:"maxReplicas"`
 	// target average CPU utilization (represented as a percentage of requested CPU) over all the pods;
+	// if not specified the default autoscaling policy will be used.
 	TargetCPUUtilizationPercentage *int32 `json:"targetCPUUtilizationPercentage,omitempty"`
 }
 
@@ -85,4 +86,35 @@ type HorizontalPodAutoscalerList struct {
 
 	// list of horizontal pod autoscaler objects.
 	Items []HorizontalPodAutoscaler `json:"items"`
+}
+
+// Scale represents a scaling request for a resource.
+type Scale struct {
+	unversioned.TypeMeta `json:",inline"`
+	// Standard object metadata; More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata.
+	v1.ObjectMeta `json:"metadata,omitempty"`
+
+	// defines the behavior of the scale. More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#spec-and-status.
+	Spec ScaleSpec `json:"spec,omitempty"`
+
+	// current status of the scale. More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#spec-and-status. Read-only.
+	Status ScaleStatus `json:"status,omitempty"`
+}
+
+// ScaleSpec describes the attributes of a scale subresource.
+type ScaleSpec struct {
+	// desired number of instances for the scaled object.
+	Replicas int32 `json:"replicas,omitempty"`
+}
+
+// ScaleStatus represents the current status of a scale subresource.
+type ScaleStatus struct {
+	// actual number of observed instances of the scaled object.
+	Replicas int32 `json:"replicas"`
+
+	// label query over pods that should match the replicas count. This is same
+	// as the label selector but in the string format to avoid introspection
+	// by clients. The string will be in the same format as the query-param syntax.
+	// More info about label selectors: http://releases.k8s.io/HEAD/docs/user-guide/labels.md#label-selectors
+	Selector string `json:"selector,omitempty"`
 }

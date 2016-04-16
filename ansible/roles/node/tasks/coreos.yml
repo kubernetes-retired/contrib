@@ -3,16 +3,6 @@
   set_fact:
     source_type: "github-release"
 
-- name: CoreOS | Create symlinks
-  file:
-    src: "{{ bin_dir }}/kubernetes/server/bin/{{ item }}"
-    dest: "{{ bin_dir }}/{{ item }}"
-    state: link
-  with_items:
-    - kubelet
-    - kube-proxy
-    - kubectl
-
 - name: CoreOS | Get Systemd Unit Files from Kubernetes repository
   get_url:
     url=https://raw.githubusercontent.com/kubernetes/contrib/master/init/systemd/{{ item }}.service
@@ -27,6 +17,7 @@
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
 
 - name: CoreOS | Create dropin directories for Kubernetes Node services
   file: path=/etc/systemd/system/{{ item }}.service.d state=directory mode=0755

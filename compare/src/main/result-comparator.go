@@ -54,8 +54,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Need both left and right build numbers")
 		return
 	}
+	googleGCSBucketUtils := utils.NewUtils(utils.GoogleBucketURL)
 
-	leftResp, err := utils.GetFileFromJenkinsGoogleBucket(job, leftBuildNumber, buildFilePath)
+	leftResp, err := googleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, leftBuildNumber, buildFilePath)
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +65,7 @@ func main() {
 	leftBodyScanner := bufio.NewScanner(leftBody)
 	leftLogs, leftResources, leftMetrics := src.ProcessSingleTest(leftBodyScanner, leftBuildNumber)
 
-	rightResp, err := utils.GetFileFromJenkinsGoogleBucket(job, rightBuildNumber, buildFilePath)
+	rightResp, err := googleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, rightBuildNumber, buildFilePath)
 	if err != nil {
 		panic(err)
 	}

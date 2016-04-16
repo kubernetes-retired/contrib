@@ -17,18 +17,21 @@
 
 desc "Run some pods under a replication controller"
 run "kubectl --namespace=demos run yes-autoscaler-demo \\
-    --image=busybox --replicas=1 \\
+    --image=busybox \\
+    --replicas=1 \\
     --limits=cpu=100m \\
+    -o name \\
     -- sh -c 'sleep 5; yes > /dev/null'"
+WHAT_WAS_RUN="$DEMO_RUN_STDOUT"
 
 desc "Look what I made!"
-run "kubectl --namespace=demos describe rc yes-autoscaler-demo"
+run "kubectl --namespace=demos describe $WHAT_WAS_RUN"
 
 desc "One pod was created"
 run "kubectl --namespace=demos get pods -l run=yes-autoscaler-demo"
 
 desc "Create a pod autoscaler"
-run "kubectl --namespace=demos autoscale rc yes-autoscaler-demo --min=1 --max=10 --cpu-percent=25"
+run "kubectl --namespace=demos autoscale $WHAT_WAS_RUN --min=1 --max=10 --cpu-percent=25"
 
 desc "Watch pods get created"
 while true; do

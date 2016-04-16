@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 
 	compute "google.golang.org/api/compute/v1"
@@ -130,6 +131,11 @@ func (l *L7s) Add(ri *L7RuntimeInfo) (err error) {
 		if err != nil {
 			return err
 		}
+	} else {
+		if !reflect.DeepEqual(lb.runtimeInfo, ri) {
+			glog.Infof("LB %v runtime info changed, old %+v new %+v", lb.Name, lb.runtimeInfo, ri)
+			lb.runtimeInfo = ri
+		}
 	}
 	// Add the lb to the pool, in case we create an UrlMap but run out
 	// of quota in creating the ForwardingRule we still need to cleanup
@@ -168,7 +174,7 @@ func (l *L7s) Sync(lbs []*L7RuntimeInfo) error {
 
 	// The default backend is completely managed by the l7 pool.
 	// This includes recreating it if it's deleted, or fixing broken links.
-	if err := l.defaultBackendPool.Sync([]int64{l.defaultBackendNodePort}); err != nil {
+	if err := l.defaultBackendPool.Add(l.defaultBackendNodePort); err != nil {
 		return err
 	}
 	// create new loadbalancers, perform an edge hop for existing
@@ -242,6 +248,9 @@ type L7RuntimeInfo struct {
 	// AllowHTTP will not setup :80, if TLS is nil and AllowHTTP is set,
 	// no loadbalancer is created.
 	AllowHTTP bool
+	// The name of a Global Static IP. If specified, the IP associated with
+	// this name is used in the Forwarding Rules for this loadbalancer.
+	StaticIPName string
 }
 
 // L7 represents a single L7 loadbalancer.
@@ -413,15 +422,50 @@ func (l *L7) checkForwardingRule(name, proxyLink, ip, portRange string) (fw *com
 	return fw, nil
 }
 
+// getEffectiveIP returns a string with the IP to use in the HTTP and HTTPS
+// forwarding rules, and a boolean indicating if this is an IP the controller
+// should manage or not.
+func (l *L7) getEffectiveIP() (string, bool) {
+
+	// A note on IP management:
+	// User specifies a different IP on startup:
+	//	- We create a forwarding rule with the given IP.
+	//		- If this ip doesn't exist in GCE, we create another one in the hope
+	//		  that they will rectify it later on.
+	//	- In the happy case, no static ip is created or deleted by this controller.
+	// Controller allocates a staticIP/ephemeralIP, but user changes it:
+	//  - We still delete the old static IP, but only when we tear down the
+	//	  Ingress in Cleanup(). Till then the static IP stays around, but
+	//    the forwarding rules get deleted/created with the new IP.
+	//  - There will be a period of downtime as we flip IPs.
+	// User specifies the same static IP to 2 Ingresses:
+	//  - GCE will throw a 400, and the controller will keep trying to use
+	//    the IP in the hope that the user manually resolves the conflict
+	//    or deletes/modifies the Ingress.
+	// TODO: Handle the last case better.
+
+	if l.runtimeInfo.StaticIPName != "" {
+		// Existing static IPs allocated to forwarding rules will get orphaned
+		// till the Ingress is torn down.
+		if ip, err := l.cloud.GetGlobalStaticIP(l.runtimeInfo.StaticIPName); err != nil || ip == nil {
+			glog.Warningf("The given static IP name %v doesn't translate to an existing global static IP, ignoring it and allocating a new IP: %v",
+				l.runtimeInfo.StaticIPName, err)
+		} else {
+			return ip.Address, false
+		}
+	}
+	if l.ip != nil {
+		return l.ip.Address, true
+	}
+	return "", true
+}
+
 func (l *L7) checkHttpForwardingRule() (err error) {
 	if l.tp == nil {
 		return fmt.Errorf("Cannot create forwarding rule without proxy.")
 	}
-	var address string
-	if l.ip != nil {
-		address = l.ip.Address
-	}
 	name := l.namer.Truncate(fmt.Sprintf("%v-%v", forwardingRulePrefix, l.Name))
+	address, _ := l.getEffectiveIP()
 	fw, err := l.checkForwardingRule(name, l.tp.SelfLink, address, httpDefaultPortRange)
 	if err != nil {
 		return err
@@ -435,11 +479,8 @@ func (l *L7) checkHttpsForwardingRule() (err error) {
 		glog.V(3).Infof("No https target proxy for %v, not created https forwarding rule", l.Name)
 		return nil
 	}
-	var address string
-	if l.ip != nil {
-		address = l.ip.Address
-	}
 	name := l.namer.Truncate(fmt.Sprintf("%v-%v", httpsForwardingRulePrefix, l.Name))
+	address, _ := l.getEffectiveIP()
 	fws, err := l.checkForwardingRule(name, l.tps.SelfLink, address, httpsDefaultPortRange)
 	if err != nil {
 		return err
@@ -448,9 +489,15 @@ func (l *L7) checkHttpsForwardingRule() (err error) {
 	return nil
 }
 
+// checkStaticIP reserves a static IP allocated to the Forwarding Rule.
 func (l *L7) checkStaticIP() (err error) {
 	if l.fw == nil || l.fw.IPAddress == "" {
 		return fmt.Errorf("Will not create static IP without a forwarding rule.")
+	}
+	// Don't manage staticIPs if the user has specified an IP.
+	if address, manageStaticIP := l.getEffectiveIP(); !manageStaticIP {
+		glog.V(3).Infof("Not managing user specified static IP %v", address)
+		return nil
 	}
 	staticIPName := l.namer.Truncate(fmt.Sprintf("%v-%v", forwardingRulePrefix, l.Name))
 	ip, _ := l.cloud.GetGlobalStaticIP(staticIPName)
@@ -595,48 +642,29 @@ func (l *L7) UpdateUrlMap(ingressRules utils.GCEURLMap) error {
 	}
 	glog.V(3).Infof("Updating url map %+v", ingressRules)
 
-	for hostname, urlToBackend := range ingressRules {
-		// Find the hostrule
-		// Find the path matcher
-		// Add all given endpoint:backends to pathRules in path matcher
-		var hostRule *compute.HostRule
-		pmName := getNameForPathMatcher(hostname)
-		for _, hr := range l.um.HostRules {
-			// TODO: Hostnames must be exact match?
-			if hr.Hosts[0] == hostname {
-				hostRule = hr
-				break
-			}
-		}
-		if hostRule == nil {
-			// This is a new host
-			hostRule = &compute.HostRule{
-				Hosts:       []string{hostname},
-				PathMatcher: pmName,
-			}
-			// Why not just clobber existing host rules?
-			// Because we can have multiple loadbalancers point to a single
-			// gce url map when we have IngressClaims.
-			l.um.HostRules = append(l.um.HostRules, hostRule)
-		}
-		var pathMatcher *compute.PathMatcher
-		for _, pm := range l.um.PathMatchers {
-			if pm.Name == hostRule.PathMatcher {
-				pathMatcher = pm
-				break
-			}
-		}
-		if pathMatcher == nil {
-			// This is a dangling or new host
-			pathMatcher = &compute.PathMatcher{Name: pmName}
-			l.um.PathMatchers = append(l.um.PathMatchers, pathMatcher)
-		}
-		pathMatcher.DefaultService = l.um.DefaultService
+	// Every update replaces the entire urlmap.
+	// TODO:  when we have multiple loadbalancers point to a single gce url map
+	// this needs modification. For now, there is a 1:1 mapping of urlmaps to
+	// Ingresses, so if the given Ingress doesn't have a host rule we should
+	// delete the path to that backend.
+	l.um.HostRules = []*compute.HostRule{}
+	l.um.PathMatchers = []*compute.PathMatcher{}
 
-		// TODO: Every update replaces the entire path map. This will need to
-		// change when we allow joining. Right now we call a single method
-		// to verify current == desired and add new url mappings.
-		pathMatcher.PathRules = []*compute.PathRule{}
+	for hostname, urlToBackend := range ingressRules {
+		// Create a host rule
+		// Create a path matcher
+		// Add all given endpoint:backends to pathRules in path matcher
+		pmName := getNameForPathMatcher(hostname)
+		l.um.HostRules = append(l.um.HostRules, &compute.HostRule{
+			Hosts:       []string{hostname},
+			PathMatcher: pmName,
+		})
+
+		pathMatcher := &compute.PathMatcher{
+			Name:           pmName,
+			DefaultService: l.um.DefaultService,
+			PathRules:      []*compute.PathRule{},
+		}
 
 		// Longest prefix wins. For equal rules, first hit wins, i.e the second
 		// /foo rule when the first is deleted.
@@ -644,6 +672,7 @@ func (l *L7) UpdateUrlMap(ingressRules utils.GCEURLMap) error {
 			pathMatcher.PathRules = append(
 				pathMatcher.PathRules, &compute.PathRule{Paths: []string{expr}, Service: be.SelfLink})
 		}
+		l.um.PathMatchers = append(l.um.PathMatchers, pathMatcher)
 	}
 	um, err := l.cloud.UpdateUrlMap(l.um)
 	if err != nil {

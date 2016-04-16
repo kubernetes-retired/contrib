@@ -33,13 +33,15 @@ const (
 
 // GoogleGCSDownloader that gets data about Google results from the GCS repository
 type GoogleGCSDownloader struct {
-	startFrom int
+	startFrom            int
+	GoogleGCSBucketUtils *utils.Utils
 }
 
 // NewGoogleGCSDownloader creates a new GoogleGCSDownloader
 func NewGoogleGCSDownloader(startFrom int) *GoogleGCSDownloader {
 	return &GoogleGCSDownloader{
-		startFrom: startFrom,
+		startFrom:            startFrom,
+		GoogleGCSBucketUtils: utils.NewUtils(utils.GoogleBucketURL),
 	}
 }
 
@@ -50,7 +52,7 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, sets.String, sets.Stri
 	methods := sets.NewString()
 
 	buildNumber := g.startFrom
-	lastBuildNo, err := utils.GetLastestBuildNumberFromJenkinsGoogleBucket(jobName)
+	lastBuildNo, err := g.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(jobName)
 	if err != nil {
 		return buildLatency, resources, methods, err
 	}
@@ -60,7 +62,7 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, sets.String, sets.Stri
 
 	for ; buildNumber <= lastBuildNo; buildNumber++ {
 		fmt.Printf("Fetching build %v...\n", buildNumber)
-		testDataResponse, err := utils.GetFileFromJenkinsGoogleBucket(jobName, buildNumber, logFile)
+		testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(jobName, buildNumber, logFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
 			continue

@@ -27,33 +27,42 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers/e2e"
+	fake_e2e "k8s.io/contrib/mungegithub/mungers/e2e/fake"
+	"k8s.io/contrib/test-utils/utils"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
 const (
+	lgtmLabel           = "lgtm"
+	okToMergeLabel      = "ok-to-merge"
 	needsOKToMergeLabel = "needs-ok-to-merge"
 	e2eNotRequiredLabel = "e2e-not-required"
 	doNotMergeLabel     = "do-not-merge"
-	claYes              = "cla: yes"
-	claHuman            = "cla: human-approved"
+	claYesLabel         = "cla: yes"
+	claHumanLabel       = "cla: human-approved"
 
 	jenkinsE2EContext  = "Jenkins GCE e2e"
 	jenkinsUnitContext = "Jenkins unit/integration"
 	travisContext      = "continuous-integration/travis-ci/pr"
 	sqContext          = "Submit Queue"
 
-	highestMergePriority = -1 // used for e2e-not-required
-	defaultMergePriority = 3  // when an issue is unlabeled
+	e2eNotRequiredMergePriority = -1 // used for e2eNotRequiredLabel
+	defaultMergePriority        = 3  // when an issue is unlabeled
 
 	githubE2EPollTime = 30 * time.Second
+
+	notInWhitelistBody    = "The author of this PR is not in the whitelist for merge, can one of the admins add the '" + okToMergeLabel + "' label?"
+	verifySafeToMergeBody = "@k8s-bot test this [submit-queue is verifying that this PR is safe to merge]"
 )
 
 var (
@@ -72,6 +81,9 @@ type statusPullRequest struct {
 	Title     string
 	Login     string
 	AvatarURL string
+	Additions int
+	Deletions int
+	ExtraInfo []string
 }
 
 type userInfo struct {
@@ -89,18 +101,39 @@ type submitQueueStatus struct {
 	PRStatus map[string]submitStatus
 }
 
+// Information about the e2e test health. Call updateHealth on the SubmitQueue
+// at roughly constant intervals to keep this up to date. The mergeable fraction
+// of time for the queue as a whole and the individual jobs will then be
+// NumStable[PerJob] / TotalLoops.
+type submitQueueHealth struct {
+	StartTime       time.Time
+	TotalLoops      int
+	NumStable       int
+	NumStablePerJob map[string]int
+}
+
+// information about the sq itself including how fast things are merging and
+// how long since the last merge
+type submitQueueStats struct {
+	LastMergeTime time.Time
+	MergeRate     float64
+}
+
 // SubmitQueue will merge PR which meet a set of requirements.
 //  PR must have LGTM after the last commit
 //  PR must have passed all github CI checks
-//  if user not in whitelist PR must have "ok-to-merge"
+//  if user not in whitelist PR must have okToMergeLabel"
 //  The google internal jenkins instance must be passing the JobNames e2e tests
 type SubmitQueue struct {
-	githubConfig           *github.Config
-	JobNames               []string
-	WeakStableJobNames     []string
-	JenkinsHost            string
+	githubConfig       *github.Config
+	JobNames           []string
+	WeakStableJobNames []string
+
+	// If FakeE2E is true, don't try to connect to JenkinsHost, all jobs are passing.
+	FakeE2E     bool
+	JenkinsHost string
+
 	Whitelist              string
-	WhitelistOverride      string
 	Committers             string
 	E2EStatusContext       string
 	UnitStatusContext      string
@@ -122,17 +155,32 @@ type SubmitQueue struct {
 	userInfo      map[string]userInfo     //proteted by sync.Mutex
 	statusHistory []submitStatus          // protected by sync.Mutex
 
-	// Every time a PR is added to githubE2EQueue also notify the channel
+	clock         util.Clock
+	lastMergeTime time.Time
+	mergeRate     float64 // per 24 hours
+
 	githubE2ERunning  *github.MungeObject         // protect by sync.Mutex!
 	githubE2EQueue    map[int]*github.MungeObject // protected by sync.Mutex!
 	githubE2EPollTime time.Duration
 
 	lastE2EStable bool // was e2e stable last time they were checked, protect by sync.Mutex
-	e2e           *e2e.E2ETester
+	e2e           e2e.E2ETester
+	health        submitQueueHealth
 }
 
 func init() {
-	RegisterMungerOrDie(&SubmitQueue{})
+	clock := util.RealClock{}
+	sq := &SubmitQueue{
+		clock:          clock,
+		lastMergeTime:  clock.Now(),
+		lastE2EStable:  true,
+		prStatus:       map[string]submitStatus{},
+		lastPRStatus:   map[string]submitStatus{},
+		githubE2EQueue: map[int]*github.MungeObject{},
+	}
+	RegisterMungerOrDie(sq)
+	registerShouldDeleteCommentFunc(sq.isStaleWhitelistComment)
+	registerShouldDeleteCommentFunc(sq.isStaleSafeToMergeComment)
 }
 
 // Name is the name usable in --pr-mungers
@@ -141,8 +189,96 @@ func (sq SubmitQueue) Name() string { return "submit-queue" }
 // RequiredFeatures is a slice of 'features' that must be provided
 func (sq SubmitQueue) RequiredFeatures() []string { return []string{} }
 
+func round(num float64) int {
+	return int(num + math.Copysign(0.5, num))
+}
+
+func toFixed(num float64) float64 {
+	output := math.Pow(10, float64(3))
+	return float64(round(num*output)) / output
+}
+
+// This is the calculation of the exponential smoothing factor. It tries to
+// make sure that if we get lots of fast merges we don't race the 'daily'
+// avg really high really fast. But more importantly it means that if merges
+// start going slowly the 'daily' average will get pulled down a lot by one
+// slow merge instead of requiring numerous merges to get pulled down
+func getSmoothFactor(dur time.Duration) float64 {
+	hours := dur.Hours()
+	smooth := .155*math.Log(hours) + .422
+	if smooth < .1 {
+		return .1
+	}
+	if smooth > .999 {
+		return .999
+	}
+	return smooth
+}
+
+// This calculates an exponentially smoothed merge Rate based on the formula
+//   newRate = (1-smooth)oldRate + smooth*newRate
+// Which is really great and simple for constant time series data. But of course
+// ours isn't time series data so I vary the smoothing factor based on how long
+// its been since the last entry. See the comments on the `getSmoothFactor` for
+// a discussion of why.
+//    This whole thing was dreamed up by eparis one weekend via a combination
+//    of guess-and-test and intuition. Someone who knows about this stuff
+//    is likely to laugh at the naivete. Point him to where someone intelligent
+//    has thought about this stuff and he will gladly do something smart.
+func calcMergeRate(oldRate float64, last, now time.Time) float64 {
+	since := now.Sub(last)
+	var rate float64
+	if since == 0 {
+		rate = 96
+	} else {
+		rate = 24.0 * time.Hour.Hours() / since.Hours()
+	}
+	smoothingFactor := getSmoothFactor(since)
+	mergeRate := ((1.0 - smoothingFactor) * oldRate) + (smoothingFactor * rate)
+	return toFixed(mergeRate)
+}
+
+// updates a smoothed rate at which PRs are merging per day.
+// returns 'Now()' and the rate.
+func (sq *SubmitQueue) updateMergeRate() {
+	now := sq.clock.Now()
+
+	sq.mergeRate = calcMergeRate(sq.mergeRate, sq.lastMergeTime, now)
+	sq.lastMergeTime = now
+}
+
+// This calculated the smoothed merge rate BUT it looks at the time since
+// the last merge vs 'Now'. If we have not passed the next 'expected' time
+// for a merge this just returns previous calculations. If 'Now' is later
+// than we would expect given the existing mergeRate then pretend a merge
+// happened right now and return the new merge rate. This way the merge rate
+// is lower even if no merge has happened in a long time.
+func (sq *SubmitQueue) calcMergeRateWithTail() float64 {
+	now := sq.clock.Now()
+
+	if sq.mergeRate == 0 {
+		return 0
+	}
+	// Figure out when we think the next merge would happen given the history
+	next := time.Duration(24/sq.mergeRate*time.Hour.Hours()) * time.Hour
+	expectedMergeTime := sq.lastMergeTime.Add(next)
+
+	// If we aren't there yet, just return the history
+	if !now.After(expectedMergeTime) {
+		return sq.mergeRate
+	}
+
+	// Pretend as though a merge happened right now to pull down the rate
+	return calcMergeRate(sq.mergeRate, sq.lastMergeTime, now)
+}
+
 // Initialize will initialize the munger
 func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Features) error {
+	return sq.internalInitialize(config, features, utils.GoogleBucketURL)
+}
+
+// internalInitialize will initialize the munger for the given GCS bucket url.
+func (sq *SubmitQueue) internalInitialize(config *github.Config, features *features.Features, GCSBucketUrl string) error {
 	sq.Lock()
 	defer sq.Unlock()
 
@@ -151,14 +287,20 @@ func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Feat
 		glog.Fatalf("--jenkins-host is required.")
 	}
 
-	sq.lastE2EStable = true
-	e2e := &e2e.E2ETester{
-		JobNames:           sq.JobNames,
-		JenkinsHost:        sq.JenkinsHost,
-		WeakStableJobNames: sq.WeakStableJobNames,
-		BuildStatus:        map[string]e2e.BuildInfo{},
+	if sq.FakeE2E {
+		sq.e2e = &fake_e2e.FakeE2ETester{
+			JobNames:           sq.JobNames,
+			WeakStableJobNames: sq.WeakStableJobNames,
+		}
+	} else {
+		sq.e2e = &e2e.RealE2ETester{
+			JobNames:             sq.JobNames,
+			JenkinsHost:          sq.JenkinsHost,
+			WeakStableJobNames:   sq.WeakStableJobNames,
+			BuildStatus:          map[string]e2e.BuildInfo{},
+			GoogleGCSBucketUtils: utils.NewUtils(GCSBucketUrl),
+		}
 	}
-	sq.e2e = e2e
 
 	if len(config.Address) > 0 {
 		if len(config.WWWRoot) > 0 {
@@ -171,17 +313,18 @@ func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Feat
 		http.Handle("/google-internal-ci", gziphandler.GzipHandler(http.HandlerFunc(sq.serveGoogleInternalStatus)))
 		http.Handle("/merge-info", gziphandler.GzipHandler(http.HandlerFunc(sq.serveMergeInfo)))
 		http.Handle("/priority-info", gziphandler.GzipHandler(http.HandlerFunc(sq.servePriorityInfo)))
+		http.Handle("/health", gziphandler.GzipHandler(http.HandlerFunc(sq.serveHealth)))
+		http.Handle("/sq-stats", gziphandler.GzipHandler(http.HandlerFunc(sq.serveSQStats)))
 		config.ServeDebugStats("/stats")
 		go http.ListenAndServe(config.Address, nil)
 	}
 
-	sq.prStatus = map[string]submitStatus{}
-	sq.lastPRStatus = map[string]submitStatus{}
-
-	sq.githubE2EQueue = map[int]*github.MungeObject{}
 	if sq.githubE2EPollTime == 0 {
 		sq.githubE2EPollTime = githubE2EPollTime
 	}
+
+	sq.health.StartTime = sq.clock.Now()
+	sq.health.NumStablePerJob = map[string]int{}
 
 	go sq.handleGithubE2EAndMerge()
 	go sq.updateGoogleE2ELoop()
@@ -191,6 +334,7 @@ func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Feat
 // EachLoop is called at the start of every munge loop
 func (sq *SubmitQueue) EachLoop() error {
 	sq.Lock()
+	sq.updateHealth()
 	sq.RefreshWhitelist()
 	sq.lastPRStatus = sq.prStatus
 	sq.prStatus = map[string]submitStatus{}
@@ -212,6 +356,7 @@ func (sq *SubmitQueue) EachLoop() error {
 // AddFlags will add any request flags to the cobra `cmd`
 func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().StringSliceVar(&sq.JobNames, "jenkins-jobs", []string{
+		"kubelet-gce-e2e-ci",
 		"kubernetes-build",
 		"kubernetes-test-go",
 		"kubernetes-e2e-gce",
@@ -221,25 +366,47 @@ func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 		"kubernetes-e2e-gce-scalability",
 		"kubernetes-kubemark-5-gce",
 	}, "Comma separated list of jobs in Jenkins to use for stability testing")
-	cmd.Flags().StringSliceVar(&sq.WeakStableJobNames, "weak-stable-jobs", []string{
-		"kubernetes-kubemark-500-gce",
-	}, "Comma separated list of jobs in Jenkins to use for stability testing that needs only weak success")
+	cmd.Flags().StringSliceVar(&sq.WeakStableJobNames, "weak-stable-jobs",
+		[]string{"kubernetes-kubemark-500-gce"},
+		"Comma separated list of jobs in Jenkins to use for stability testing that needs only weak success")
 	cmd.Flags().StringVar(&sq.JenkinsHost, "jenkins-host", "http://jenkins-master:8080", "The URL for the jenkins job to watch")
 	cmd.Flags().StringSliceVar(&sq.RequiredStatusContexts, "required-contexts", []string{}, "Comma separate list of status contexts required for a PR to be considered ok to merge")
 	cmd.Flags().StringVar(&sq.E2EStatusContext, "e2e-status-context", jenkinsE2EContext, "The name of the github status context for the e2e PR Builder")
 	cmd.Flags().StringVar(&sq.UnitStatusContext, "unit-status-context", jenkinsUnitContext, "The name of the github status context for the unit PR Builder")
+	cmd.Flags().BoolVar(&sq.FakeE2E, "fake-e2e", false, "Whether to use a fake for testing E2E stability.")
 	sq.addWhitelistCommand(cmd, config)
+}
+
+// Hold the lock
+func (sq *SubmitQueue) updateHealth() {
+	sq.health.TotalLoops++
+	if sq.e2e.Stable() {
+		sq.health.NumStable++
+	}
+	for job, status := range sq.e2e.GetBuildStatus() {
+		if _, ok := sq.health.NumStablePerJob[job]; !ok {
+			sq.health.NumStablePerJob[job] = 0
+		}
+		if status.Status == "Stable" {
+			sq.health.NumStablePerJob[job]++
+		}
+	}
 }
 
 func (sq *SubmitQueue) e2eStable() bool {
 	wentStable := false
 	wentUnstable := false
 
-	stable := sq.e2e.Stable()
-	gcsStable := sq.e2e.GCSBasedStable()
+	stable := sq.e2e.GCSBasedStable()
+	jenkinsStable := sq.e2e.Stable()
 
-	if stable != gcsStable {
-		glog.Errorf("GCS stable check returned different value than Jenkins.")
+	if stable != jenkinsStable {
+		glog.Errorf("GCS stable check returned different value than Jenkins: %v vs %v.", stable, jenkinsStable)
+	}
+
+	weakStable := sq.e2e.GCSWeakStable()
+	if !weakStable {
+		glog.Errorf("E2E is not stable because weak stable check failed.")
 	}
 
 	sq.Lock()
@@ -264,7 +431,7 @@ func (sq *SubmitQueue) e2eStable() bool {
 	}
 	if reason != "" {
 		submitStatus := submitStatus{
-			Time: time.Now(),
+			Time: sq.clock.Now(),
 			statusPullRequest: statusPullRequest{
 				Title:     reason,
 				AvatarURL: avatar,
@@ -292,13 +459,48 @@ func objToStatusPullRequest(obj *github.MungeObject) *statusPullRequest {
 	if obj == nil {
 		return &statusPullRequest{}
 	}
-	return &statusPullRequest{
+	res := statusPullRequest{
 		Number:    *obj.Issue.Number,
 		URL:       *obj.Issue.HTMLURL,
 		Title:     *obj.Issue.Title,
 		Login:     *obj.Issue.User.Login,
 		AvatarURL: *obj.Issue.User.AvatarURL,
 	}
+	pr, err := obj.GetPR()
+	if err != nil {
+		return &res
+	}
+	if pr.Additions != nil {
+		res.Additions = *pr.Additions
+	}
+	if pr.Deletions != nil {
+		res.Deletions = *pr.Deletions
+	}
+
+	prio, ok := obj.Annotations["priority"]
+	if !ok {
+		var prio string
+		p := priority(obj)
+		if p == e2eNotRequiredMergePriority {
+			prio = e2eNotRequiredLabel
+		} else {
+			prio = fmt.Sprintf("P%d", p) // store it a P1, P2, P3.  Not just 1,2,3
+		}
+		obj.Annotations["priority"] = prio
+	}
+	if prio != "" {
+		res.ExtraInfo = append(res.ExtraInfo, prio)
+	}
+
+	milestone, ok := obj.Annotations["milestone"]
+	if !ok {
+		milestone = obj.ReleaseMilestone()
+		obj.Annotations["milestone"] = milestone
+	}
+	if milestone != "" {
+		res.ExtraInfo = append(res.ExtraInfo, milestone)
+	}
+	return &res
 }
 
 func reasonToState(reason string) string {
@@ -328,7 +530,7 @@ func reasonToState(reason string) string {
 func (sq *SubmitQueue) SetMergeStatus(obj *github.MungeObject, reason string) {
 	glog.V(4).Infof("SubmitQueue not merging %d because %q", *obj.Issue.Number, reason)
 	submitStatus := submitStatus{
-		Time:              time.Now(),
+		Time:              sq.clock.Now(),
 		statusPullRequest: *objToStatusPullRequest(obj),
 		Reason:            reason,
 	}
@@ -424,11 +626,17 @@ func (sq *SubmitQueue) getGoogleInternalStatus() []byte {
 	return sq.marshal(sq.e2e.GetBuildStatus())
 }
 
+func (sq *SubmitQueue) getHealth() []byte {
+	sq.Lock()
+	defer sq.Unlock()
+	return sq.marshal(sq.health)
+}
+
 const (
 	unknown                 = "unknown failure"
-	noCLA                   = "PR does not have " + claYes + " or " + claHuman
+	noCLA                   = "PR does not have " + claYesLabel + " or " + claHumanLabel
 	noLGTM                  = "PR does not have LGTM."
-	needsok                 = "PR does not have 'ok-to-merge' label"
+	needsok                 = "PR does not have '" + okToMergeLabel + "' label"
 	lgtmEarly               = "The PR was changed after the LGTM label was added."
 	unmergeable             = "PR is unable to be automatically merged. Needs rebase."
 	undeterminedMergability = "Unable to determine is PR is mergeable. Will try again later."
@@ -479,7 +687,7 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	userSet := sq.userWhitelist
 
 	// Must pass CLA checks
-	if !obj.HasLabels([]string{claYes}) && !obj.HasLabels([]string{claHuman}) {
+	if !obj.HasLabel(claYesLabel) && !obj.HasLabel(claHumanLabel) {
 		sq.SetMergeStatus(obj, noCLA)
 		return false
 	}
@@ -501,11 +709,10 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	}
 
 	// The user either must be on the whitelist or have ok-to-merge
-	if !obj.HasLabel(sq.WhitelistOverride) && !userSet.Has(*obj.Issue.User.Login) {
+	if !obj.HasLabel(okToMergeLabel) && !userSet.Has(*obj.Issue.User.Login) {
 		if !obj.HasLabel(needsOKToMergeLabel) {
 			obj.AddLabels([]string{needsOKToMergeLabel})
-			body := "The author of this PR is not in the whitelist for merge, can one of the admins add the 'ok-to-merge' label?"
-			obj.WriteComment(body)
+			obj.WriteComment(notInWhitelistBody)
 		}
 		sq.SetMergeStatus(obj, needsok)
 		return false
@@ -517,14 +724,14 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	}
 
 	// Clearly
-	if !obj.HasLabels([]string{"lgtm"}) {
+	if !obj.HasLabel(lgtmLabel) {
 		sq.SetMergeStatus(obj, noLGTM)
 		return false
 	}
 
 	// PR cannot change since LGTM was added
 	lastModifiedTime := obj.LastModifiedTime()
-	lgtmTime := obj.LabelTime("lgtm")
+	lgtmTime := obj.LabelTime(lgtmLabel)
 
 	if lastModifiedTime == nil || lgtmTime == nil {
 		glog.Errorf("PR %d was unable to determine when LGTM was added or when last modified", *obj.Issue.Number)
@@ -601,7 +808,7 @@ func (sq *SubmitQueue) cleanupOldE2E(obj *github.MungeObject, reason string) {
 func priority(obj *github.MungeObject) int {
 	// jump to the front of the queue if you don't need retested
 	if obj.HasLabel(e2eNotRequiredLabel) {
-		return highestMergePriority
+		return e2eNotRequiredMergePriority
 	}
 
 	prio := obj.Priority()
@@ -722,8 +929,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) {
 		return
 	}
 
-	body := "@k8s-bot test this [submit-queue is verifying that this PR is safe to merge]"
-	if err := obj.WriteComment(body); err != nil {
+	if err := obj.WriteComment(verifySafeToMergeBody); err != nil {
 		glog.Errorf("%d: unknown err: %v", *obj.Issue.Number, err)
 		sq.SetMergeStatus(obj, unknown)
 		return
@@ -759,6 +965,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) {
 	}
 
 	obj.MergePR("submit-queue")
+	sq.updateMergeRate()
 	sq.SetMergeStatus(obj, merged)
 	return
 }
@@ -799,13 +1006,26 @@ func (sq *SubmitQueue) serveGoogleInternalStatus(res http.ResponseWriter, req *h
 	sq.serve(data, res, req)
 }
 
+func (sq *SubmitQueue) serveHealth(res http.ResponseWriter, req *http.Request) {
+	data := sq.getHealth()
+	sq.serve(data, res, req)
+}
+
+func (sq *SubmitQueue) serveSQStats(res http.ResponseWriter, req *http.Request) {
+	data := submitQueueStats{
+		LastMergeTime: sq.lastMergeTime,
+		MergeRate:     sq.calcMergeRateWithTail(),
+	}
+	sq.serve(sq.marshal(data), res, req)
+}
+
 func (sq *SubmitQueue) serveMergeInfo(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-type", "text/plain")
 	res.WriteHeader(http.StatusOK)
 	var out bytes.Buffer
 	out.WriteString("PRs must meet the following set of conditions to be considered for automatic merging by the submit queue.")
 	out.WriteString("<ol>")
-	out.WriteString(fmt.Sprintf("<li>The PR must have the label %q or %q</li>", claYes, claHuman))
+	out.WriteString(fmt.Sprintf("<li>The PR must have the label %q or %q</li>", claYesLabel, claHumanLabel))
 	out.WriteString("<li>The PR must be mergeable. aka cannot need a rebase</li>")
 	contexts := sq.RequiredStatusContexts
 	exceptStr := ""
@@ -825,9 +1045,9 @@ func (sq *SubmitQueue) serveMergeInfo(res http.ResponseWriter, req *http.Request
 		out.WriteString("</ul>")
 		out.WriteString(fmt.Sprintf("%s</li>", exceptStr))
 	}
-	out.WriteString(fmt.Sprintf("<li>The PR either needs the label %q or the creator of the PR must be in the 'Users' list seen on the 'Info' tab.</li>", sq.WhitelistOverride))
-	out.WriteString(fmt.Sprintf(`<li>The PR must have the %q label</li>`, "lgtm"))
-	out.WriteString(fmt.Sprintf("<li>The PR must not have been updated since the %q label was applied</li>", "lgtm"))
+	out.WriteString(fmt.Sprintf("<li>The PR either needs the label %q or the creator of the PR must be in the 'Users' list seen on the 'Info' tab.</li>", okToMergeLabel))
+	out.WriteString(fmt.Sprintf(`<li>The PR must have the %q label</li>`, lgtmLabel))
+	out.WriteString(fmt.Sprintf("<li>The PR must not have been updated since the %q label was applied</li>", lgtmLabel))
 	out.WriteString(fmt.Sprintf("<li>The PR must not have the %q label</li>", doNotMergeLabel))
 	out.WriteString(`</ol><br>`)
 	out.WriteString("The PR can then be queued to re-test before merge. Once it reaches the top of the queue all of the above conditions must be true but so must the following:")
@@ -850,6 +1070,7 @@ func (sq *SubmitQueue) servePriorityInfo(res http.ResponseWriter, req *http.Requ
       <li>Determined by a label of the form 'priority/pX'
       <li>P0 -&gt; P1 -&gt; P2</li>
       <li>A PR with no priority label is considered equal to a P3</li>
+      <li>A PR with the '` + e2eNotRequiredLabel + `' label will come first, before even P0</li>
     </ul>
   </li>
   <li>Release milestone due date
@@ -861,4 +1082,26 @@ func (sq *SubmitQueue) servePriorityInfo(res http.ResponseWriter, req *http.Requ
   </li>
   <li>PR number</li>
 </ol> `))
+}
+
+func (sq *SubmitQueue) isStaleWhitelistComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+	if *comment.Body != notInWhitelistBody {
+		return false
+	}
+	stale := obj.HasLabel(okToMergeLabel)
+	if stale {
+		glog.V(6).Infof("Found stale SubmitQueue Whitelist comment")
+	}
+	return stale
+}
+
+func (sq *SubmitQueue) isStaleSafeToMergeComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+	if *comment.Body != verifySafeToMergeBody {
+		return false
+	}
+	stale := commentBeforeLastCI(obj, comment)
+	if stale {
+		glog.V(6).Infof("Found stale SubmitQueue safe to merge comment")
+	}
+	return stale
 }

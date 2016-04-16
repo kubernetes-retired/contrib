@@ -20,7 +20,7 @@ KUBE_SERVICE_ADDRESSES="--service-cluster-ip-range={{ kube_service_addresses }}"
 KUBE_ETCD_SERVERS="--etcd-servers={% for node in groups['etcd'] %}http://{{ node }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
 
 # default admission control policies
-KUBE_ADMISSION_CONTROL="--admission-control=NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota"
+KUBE_ADMISSION_CONTROL="--admission-control={{ admission_controllers }}"
 
 # Add your own!
-KUBE_API_ARGS="{{ apiserver_extra_args | default('') }} --tls-cert-file={{ kube_cert_dir }}/server.crt --tls-private-key-file={{ kube_cert_dir }}/server.key --client-ca-file={{ kube_cert_dir }}/ca.crt --token-auth-file={{ kube_token_dir }}/known_tokens.csv --service-account-key-file={{ kube_cert_dir }}/server.crt"
+KUBE_API_ARGS="{{ apiserver_extra_args | default('') }} --tls-cert-file={{ kube_cert_dir }}/server.crt --tls-private-key-file={{ kube_cert_dir }}/server.key --client-ca-file={{ kube_cert_dir }}/ca.crt --token-auth-file={{ kube_token_dir }}/known_tokens.csv --service-account-key-file={{ kube_cert_dir }}/server.crt --bind-address={{ kube_apiserver_bind_address }}"
