@@ -124,7 +124,6 @@ metadata:
   name: myservice
   annotations:
     serviceloadbalancer/lb.sslTerm: "true"
-    serviceloadbalancer/lb.aclMatch: "-i /t1 /t2"
   labels:
 ```
 
