@@ -117,24 +117,24 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 		return nil, err
 	}
 
-	var externalIP string
+	var internalIP string
 	for _, address := range node.Status.Addresses {
-		if address.Type == api.NodeExternalIP {
+		if address.Type == api.NodeInternalIP {
 			if address.Address != "" {
-				externalIP = address.Address
+				internalIP = address.Address
 				break
 			}
 		}
 
-		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
-			externalIP = address.Address
+		if internalIP == "" && address.Type == api.NodeLegacyHostIP {
+			internalIP = address.Address
 		}
 	}
 
 	return &podInfo{
 		PodName:      podName,
 		PodNamespace: podNs,
-		NodeIP:       externalIP,
+		NodeIP:       internalIP,
 	}, nil
 }
 
