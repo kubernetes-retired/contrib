@@ -17,37 +17,37 @@ limitations under the License.
 package main
 
 import (
-	"k8s.io/kubernetes/pkg/util/sets"
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	"k8s.io/kubernetes/test/e2e/perftype"
 )
-
-// Histogram is a map from bucket to latency (e.g. "Perc90" -> 23.5)
-type Histogram map[string]float64
-
-// APICallLatency represents the latency data for a (resource, verb) tuple
-type APICallLatency struct {
-	Latency  Histogram `json:"latency"`
-	Resource string    `json:"resource"`
-	Verb     string    `json:"verb"`
-}
-
-// LatencyData represents the latency data for a set of RESTful API calls
-type LatencyData struct {
-	APICalls []APICallLatency `json:"apicalls"`
-}
-
-// ResourceToHistogram is a map from resource names (e.g. "pods") to the relevant latency data
-type ResourceToHistogram map[string][]APICallLatency
-
-// TestToHistogram is a map from test name to ResourceToHistogram
-type TestToHistogram map[string]ResourceToHistogram
-
-// BuildLatencyData is a map from build number to latency data
-type BuildLatencyData map[string]ResourceToHistogram
-
-// TestToBuildData is a map from test name to BuildLatencyData
-type TestToBuildData map[string]BuildLatencyData
 
 // Downloader is the interface that gets a data from a predefined source.
 type Downloader interface {
-	getData() (TestToBuildData, sets.String, sets.String, error)
+	getData() (TestToBuildData, error)
+}
+
+// BuildData contains job name and a map from build number to perf data
+type BuildData struct {
+	Builds map[string][]perftype.DataItem `json:"builds"`
+	Job    string                         `json:"job"`
+}
+
+// TestToBuildData is a map from test name to BuildData
+// TODO(random-liu): Use a more complex data structure if we need to support more test in the future.
+type TestToBuildData map[string]BuildData
+
+func (b *TestToBuildData) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	data, err := json.Marshal(b)
+	if err != nil {
+		res.Header().Set("Content-type", "text/html")
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write([]byte(fmt.Sprintf("<h3>Internal Error</h3><p>%v", err)))
+		return
+	}
+	res.Header().Set("Content-type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write(data)
 }
