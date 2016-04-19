@@ -15,5 +15,5 @@ script
 
     mkdir -p /var/etcd
     chdir /var/etcd
-    exec /usr/local/bin/etcd >>/var/log/etcd.log 2>&1
+    exec /usr/bin/etcd >>/var/log/etcd.log 2>&1
 end script
