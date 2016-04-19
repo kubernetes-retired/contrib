@@ -1,0 +1,40 @@
+# This is the ip address of the interface used for control communication within the cluster. It
+# needs to be reachable from all nodes.
+# Defaults to the address used by ansible to reach the node.
+# If using vagrant, this will need to be overriden or edited here.
+contiv_control_ip: "{{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+
+# This is the host interface that contiv uses for all inter-host tenant traffic. Typically set
+# in the inventory file.
+#contiv_network_if: ethX
+
+# Generic way to specify the bin path
+bin_dir: ~/go/bin
+
+# This is the path where contiv build output is kept
+contiv_bin_path: {{ bin_dir }}
+
+# This is the path where contiv binaries are placed on the target
+contiv_bin_dest: /usr/bin
+
+# This is where kubelet looks for plugin files
+kube_plugin_dir: /usr/libexec/kubernetes/kubelet-plugins/net/exec
+
+# Specifies routed mode vs bridged mode for networking (bridge | routing)
+# if you are using an external router for all routing, you should select bridge here
+contiv_fwd_mode: routing
+
+# contiv_def_subnet is the subnet pods will be assigned by default (i.e. pod spec does not
+# specify a network)
+contiv_def_subnet: "20.1.1.0/24"
+contiv_defnet_gw: 20.1.1.254
+
+# The following are aci specific parameters. These must be set only if aci integration
+# is desired. Otherwise, you can ignore these.
+apic_url: ""
+apic_username: ""
+apic_password: ""
+apic_leaf_nodes: ""
+apic_phys_dom: ""
+apic_contracts_unrestricted_mode: no
+apic_epg_bridge_domain: not_specified

@@ -3,6 +3,7 @@
 etcd_source_type: package
 
 etcd_client_port: 2379
+etcd_client_extra: 4001
 etcd_peer_port: 2380
 etcd_peers_group: etcd
 etcd_url_scheme: http
@@ -32,3 +33,4 @@ etcd_advertise_client_urls: "{{ etcd_url_scheme }}://{{ etcd_machine_address }}:
 etcd_listen_client_urls: "{{ etcd_url_scheme }}://0.0.0.0:{{ etcd_client_port }}"
 
 etcd_data_dir: /var/lib/etcd
+etcd_proxy_mode: off
