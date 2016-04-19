@@ -5,17 +5,16 @@ metadata:
   namespace: default
   labels:
     app: perfdash
-    version: "0.4"
+    version: "0.5"
 spec:
   containers:
-  - image: gcr.io/google_containers/perfdash:0.4
+  - image: gcr.io/google_containers/perfdash:0.5
     command:
       - /perfdash
-      -   --jenkins-host=http://jenkins-master:8080
       -   --www=true
       -   --dir=/www
       -   --address=0.0.0.0:8080
-      -   --start-from=4500
+      -   --builds=100
     imagePullPolicy: Always
     name: perfdash
     ports:

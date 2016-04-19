@@ -22,65 +22,56 @@ import (
 	"os"
 
 	"k8s.io/contrib/test-utils/utils"
-	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 // constants to use for downloading data.
 const (
-	jobName = "kubernetes-e2e-gce-scalability"
 	logFile = "build-log.txt"
 )
 
 // GoogleGCSDownloader that gets data about Google results from the GCS repository
 type GoogleGCSDownloader struct {
-	startFrom            int
+	Builds               int
 	GoogleGCSBucketUtils *utils.Utils
 }
 
 // NewGoogleGCSDownloader creates a new GoogleGCSDownloader
-func NewGoogleGCSDownloader(startFrom int) *GoogleGCSDownloader {
+func NewGoogleGCSDownloader(builds int) *GoogleGCSDownloader {
 	return &GoogleGCSDownloader{
-		startFrom:            startFrom,
+		Builds:               builds,
 		GoogleGCSBucketUtils: utils.NewUtils(utils.GoogleBucketURL),
 	}
 }
 
-func (g *GoogleGCSDownloader) getData() (TestToBuildData, sets.String, sets.String, error) {
+// TODO(random-liu): Only download and update new data each time.
+func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 	fmt.Print("Getting Data from GCS...\n")
-	buildLatency := TestToBuildData{}
-	resources := sets.NewString()
-	methods := sets.NewString()
-
-	buildNumber := g.startFrom
-	lastBuildNo, err := g.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(jobName)
-	if err != nil {
-		return buildLatency, resources, methods, err
-	}
-	if buildNumber < lastBuildNo-100 {
-		buildNumber = lastBuildNo - 100
-	}
-
-	for ; buildNumber <= lastBuildNo; buildNumber++ {
-		fmt.Printf("Fetching build %v...\n", buildNumber)
-		testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(jobName, buildNumber, logFile)
+	result := make(TestToBuildData)
+	for job, tests := range TestConfig[utils.GoogleBucketURL] {
+		lastBuildNo, err := g.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
-			continue
+			return result, err
 		}
-
-		testDataBody := testDataResponse.Body
-		defer testDataBody.Close()
-		testDataScanner := bufio.NewScanner(testDataBody)
-
-		hist := parseTestOutput(testDataScanner, buildNumber, resources, methods)
-
-		for k, v := range hist {
-			if _, ok := buildLatency[k]; !ok {
-				buildLatency[k] = make(BuildLatencyData)
+		fmt.Printf("Last build no: %v\n", lastBuildNo)
+		var buildNumber int
+		if lastBuildNo >= g.Builds {
+			buildNumber = lastBuildNo - g.Builds + 1
+		} else {
+			buildNumber = 1
+		}
+		for ; buildNumber <= lastBuildNo; buildNumber++ {
+			fmt.Printf("Fetching build %v...\n", buildNumber)
+			testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, logFile)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
+				continue
 			}
-			buildLatency[k][fmt.Sprintf("%d", buildNumber)] = v
+
+			testDataBody := testDataResponse.Body
+			defer testDataBody.Close()
+			testDataScanner := bufio.NewScanner(testDataBody)
+			parseTestOutput(testDataScanner, job, tests, buildNumber, result)
 		}
 	}
-
-	return buildLatency, resources, methods, nil
+	return result, nil
 }
