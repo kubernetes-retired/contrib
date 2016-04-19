@@ -70,7 +70,7 @@ $ kubectl create -f vip-daemonset.yaml
 daemonset "kube-keepalived-vip" created
 $ kubectl get daemonset
 NAME                  CONTAINER(S)          IMAGE(S)                         SELECTOR                        NODE-SELECTOR
-kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.4   name in (kube-keepalived-vip)   type=worker
+kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.5   name in (kube-keepalived-vip)   type=worker
 ```
 
 **Note: the daemonset yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**

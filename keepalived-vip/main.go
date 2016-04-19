@@ -45,6 +45,11 @@ var (
 		service with the format namespace/serviceName and the port of the service could be a number or the
 		name of the port.`)
 
+	nodeSelector = flags.String("node-selector", "", `In some cases could be required to run keepalived in a
+		subset of nodes in the cluster. Using nodeSelector in the ReplicatonController or DaemonSet manifest
+		is possible to specify this condition using labels in the nodes.
+		If nodeSelector is used this flag should contain the same value, ie --node-selector="type=vip"`)
+
 	// sysctl changes required by keepalived
 	sysctlAdjustments = map[string]int{
 		// allows processes to bind() to non-local IP addresses
@@ -110,7 +115,7 @@ func main() {
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *nodeSelector)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 

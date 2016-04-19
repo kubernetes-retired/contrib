@@ -245,7 +245,7 @@ func (ipvsc *ipvsControllerController) sync() {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string) *ipvsControllerController {
+func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName, nodeSelector string) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: util.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
@@ -253,7 +253,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		configMapName:     configMapName,
 	}
 
-	clusterNodes := getClusterNodesIP(kubeClient)
+	clusterNodes := getClusterNodesIP(kubeClient, nodeSelector)
 
 	nodeInfo, err := getNodeInfo(clusterNodes)
 	if err != nil {
