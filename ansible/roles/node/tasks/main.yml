@@ -2,6 +2,9 @@
 - include: coreos.yml
   when: is_coreos
 
+- include: ubuntu-14.04.yml
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
+
 - name: Set selinux permissive because tokens and selinux don't work together
   selinux: state=permissive policy={{ ansible_selinux.type }}
   when: ansible_selinux is defined and ansible_selinux.status == "enabled"
@@ -79,9 +82,11 @@
 
 - name: write the delay-node-services target
   copy: src=delay-node-services.target dest=/etc/systemd/system/ mode=0644
+  when: not ansible_distribution == 'Ubuntu' and not ansible_distribution_major_version|int < 15
 
 - name: Enable delay-node-services
   service: name=delay-node-services.target enabled=yes
+  when: not ansible_distribution == 'Ubuntu' and not ansible_distribution_major_version|int < 15
 
 - include: firewalld.yml
   when: has_firewalld
