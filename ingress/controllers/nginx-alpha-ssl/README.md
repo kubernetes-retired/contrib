@@ -27,7 +27,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   namespace: kube-system
-  name: ingress-token
+  name: ingress-read-only
 data:
   ingress-read-only: %%TOKEN%%
 ```
@@ -44,6 +44,7 @@ path "secret/ssl/*" {
   policy = "read"
 }
 ```
+You may also pass in an alternative file as an env var $VAULT_TOKEN_FILE, or pass in the TOKEN directly as $VAULT_TOKEN.
 
 The key contents themselves should already have been written to Vault as follows:
 
@@ -97,7 +98,7 @@ spec:
       volumes:
         - name: vault-volume
           secret:
-              secretName: ingress-token
+              secretName: ingress-read-only
       nodeSelector:
         role: loadbalancer
 ```
