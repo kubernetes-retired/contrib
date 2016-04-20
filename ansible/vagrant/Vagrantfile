@@ -170,6 +170,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       ansible.extra_vars = {
         flannel_opts: "--iface=eth1",
         etcd_interface: "eth1",
+        netplugin_interface: "eth1",
+        netmaster_interface: "eth1",
         kube_apiserver_bind_address: master_ip,
       }
     end
