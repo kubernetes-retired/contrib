@@ -36,3 +36,7 @@ echo "Creating Dashboard service..." && \
 /opt/bin/kubectl create -f /tmp/dashboard-service.yaml && \
 echo "Creating Quay secret..." && \
 /opt/bin/kubectl create -f /tmp/quay-io-secret.yaml
+echo "Creating GLBC controller..." && \
+/opt/bin/kubectl create -f /tmp/glbc-controller.yaml
+echo "Creating GLBC service..." && \
+/opt/bin/kubectl create -f /tmp/glbc-service.yaml

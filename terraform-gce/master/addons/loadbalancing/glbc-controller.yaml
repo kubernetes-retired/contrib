@@ -1,0 +1,68 @@
+
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  labels:
+    k8s-app: glbc
+    kubernetes.io/cluster-service: "true"
+    kubernetes.io/name: GLBC
+    version: v0.6.0
+  name: l7-lb-controller-v0.6.0
+  namespace: kube-system
+  uid: 6a031483-f71c-11e5-bb26-42010af000cd
+spec:
+  replicas: 1
+  selector:
+    k8s-app: glbc
+    version: v0.6.0
+  template:
+    metadata:
+      labels:
+        k8s-app: glbc
+        kubernetes.io/cluster-service: "true"
+        name: glbc
+        version: v0.6.0
+    spec:
+      terminationGracePeriodSeconds: 600
+      containers:
+      - image: eu.gcr.io/google_containers/defaultbackend:1.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        name: default-http-backend
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: 10m
+            memory: 20Mi
+          requests:
+            cpu: 10m
+            memory: 20Mi
+      - args:
+        - --default-backend-service=kube-system/default-http-backend
+        - --sync-period=300s
+        image: eu.gcr.io/google_containers/glbc:0.6.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+            scheme: HTTP
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        name: l7-lb-controller
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 50Mi
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 600
