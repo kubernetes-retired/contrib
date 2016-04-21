@@ -22,4 +22,4 @@ while kubectl get namespace demos >/dev/null 2>&1; do
 done
 run "kubectl get namespace demos"
 run "kubectl get namespaces"
-run "tmux kill-session -t my-session"
+tmux kill-session -t my-session >/dev/null 2>&1
