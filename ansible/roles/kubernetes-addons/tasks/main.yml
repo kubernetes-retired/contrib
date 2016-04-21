@@ -42,6 +42,11 @@
     url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addons.sh
     dest={{ kube_script_dir }}/kube-addons.sh mode=0755
     force=yes
+    validate_certs=False
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
   notify:
     - restart kube-addons
 
@@ -50,6 +55,11 @@
     url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addon-update.sh
     dest={{ kube_script_dir }}/kube-addon-update.sh mode=0755
     force=yes
+    validate_certs=False
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
   notify:
     - restart kube-addons
 
