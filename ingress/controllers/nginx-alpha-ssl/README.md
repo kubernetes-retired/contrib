@@ -84,9 +84,14 @@ spec:
         name: nginx-ingress
         env:
           - name: "VAULT_ADDR"
-            value: "http://vault.kube-system.svc.cluster.local:8243"
+            value: "https://vault.kube-system.svc.cluster.local:8243"
           - name: "VAULT_SKIP_VERIFY"
             value: "false"
+          - name: "VAULT_SSL_SIGNER"
+            value: >
+                   "-----BEGIN CERTIFICATE-----
+                   ...
+                   -----END CERTIFICATE-----"
         ports:
         - containerPort: 80
           hostPort: 80
@@ -122,10 +127,10 @@ spec:
       paths:
       - backend:
           serviceName: example
-          servicePort: 8080
+          servicePort: 8043
         path: /
 ```
-You should be able to access the Services on the public IP of the node the nginx pod lands on.
+You should be able to access the Services on the public IP of the node the nginx pod lands on. If using ssl: true the backend service must be https:// as well.
 
 Note the `ssl: true` label.
 
