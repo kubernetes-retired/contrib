@@ -1,7 +1,7 @@
 all: push
 
 # 0.0 shouldn't clobber any release builds, current "latest" is 0.1
-TAG = 0.1
+TAG = 0.2
 PREFIX = gcr.io/google_containers/ubuntu-slim
 BUILD_IMAGE = ubuntu-build
 TAR_FILE = rootfs.tar
