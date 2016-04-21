@@ -14,4 +14,8 @@ if [ -z ${VAULT_TOKEN} ]; then
   [ -f ${VAULT_TOKEN_FILE} ] && export VAULT_TOKEN=`cat ${VAULT_TOKEN_FILE}`
 fi
 
+if [ ! -z "${VAULT_SSL_SIGNER}" ]; then
+  echo "${VAULT_SSL_SIGNER}" | sed -e 's/\"//g' | sed -e 's/^[ \t]*//g' | sed -e 's/[ \t]$//g' >> /etc/ssl/certs/ca-certificates.crt
+fi
+
 /controller
