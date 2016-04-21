@@ -56,7 +56,7 @@ JINJA_ENVIRONMENT = jinja2.Environment(
     extensions=['jinja2.ext.autoescape'],
     trim_blocks=True,
     autoescape=True)
-
+JINJA_ENVIRONMENT.line_statement_prefix = '%'
 filters.register(JINJA_ENVIRONMENT.filters)
 
 
@@ -100,7 +100,6 @@ def memcache_memoize(prefix, exp=60 * 60, neg_exp=60):
     return wrapper
 
 
-@memcache_memoize('gs://')
 def gcs_read(path):
     """Read a file from GCS. Returns None on errors."""
     try:
