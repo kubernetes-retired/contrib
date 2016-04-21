@@ -1,0 +1,51 @@
+- include: coreos.yml
+  when: is_coreos
+
+- name: write the config file for the api server
+  template: src=apiserver.j2 dest={{ kube_config_dir }}/apiserver
+  notify:
+    - restart apiserver
+
+- name: add cap_net_bind_service to kube-apiserver
+  capabilities: path=/usr/bin/kube-apiserver capability=cap_net_bind_service=ep state=present
+  when: not is_atomic and not is_coreos
+
+- name: Enable apiserver
+  service: name=kube-apiserver enabled=yes state=started
+
+- name: write the config file for the controller-manager
+  template: src=controller-manager.j2 dest={{ kube_config_dir }}/controller-manager
+  notify:
+    - restart controller-manager
+
+- name: Enable controller-manager
+  service: name=kube-controller-manager enabled=yes state=started
+
+- name: write the config file for the scheduler
+  template: src=scheduler.j2 dest={{ kube_config_dir }}/scheduler
+  notify:
+    - restart scheduler
+
+- name: Enable scheduler
+  service: name=kube-scheduler enabled=yes state=started
+
+- name: write the config files for kubelet
+  template: src=kubelet.j2 dest={{ kube_config_dir }}/kubelet
+  notify:
+    - restart kubelet
+  when: networking == 'opencontrail'
+
+- name: Enable kubelet
+  service: name=kubelet enabled=yes state=started
+  when: networking == 'opencontrail'
+
+# Enable kubelet on master only when OpenContrail is in use; see
+# https://github.com/kubernetes/contrib/pull/183
+- name: write the delay-master-services target
+  copy: src=delay-master-services.target dest=/etc/systemd/system/ mode=0644
+
+- name: Reload systemd configuration prior to master-services
+  command: systemctl daemon-reload
+
+- name: Enable delay-master-services
+  service: name=delay-master-services.target enabled=yes

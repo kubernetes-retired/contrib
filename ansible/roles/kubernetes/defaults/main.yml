@@ -46,6 +46,11 @@ kube_token_dir: "{{ kube_config_dir }}/tokens"
 # pods on startup
 kube_manifest_dir: "{{ kube_config_dir }}/manifests"
 
+# This is where you can drop yaml/json files for podmaster to copy into kube_manifest_dir to be started by kubelet
+# Podmaster containers provide leader election for each pod in this directory, so that each cluster
+# only runs one pod of each type (e.g. controller-manager & scheduler, or other state-modifying services)
+kube_standby_manifest_dir: "{{ kube_config_dir }}/standby_manifests"
+
 # This is the group that the cert creation scripts chgrp the
 # cert files to. Not really changeable...
 kube_cert_group: kube-cert

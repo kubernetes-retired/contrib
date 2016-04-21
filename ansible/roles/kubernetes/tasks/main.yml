@@ -21,6 +21,12 @@
 - name: Create kubernetes config directory
   file: path={{ kube_config_dir }} state=directory
 
+- name: Create manifests directory
+  file: path={{ kube_manifest_dir }} state=directory mode=0755
+
+- name: Create standby-manifests directory
+  file: path={{ kube_standby_manifest_dir }} state=directory mode=0755
+
 - name: Create kubernetes script directory
   file: path={{ kube_script_dir }} state=directory
 
