@@ -18,7 +18,7 @@ $CERTSDIR/master-client-key.pem https://127.0.0.1/version
 
   echo Creating kube-system namespace...
   curl --cacert $CERTSDIR/ca.pem --cert $CERTSDIR/master-client.pem --key \
-$CERTSDIR/master-client-key.pem -XPOST \
+$CERTSDIR/master-client-key.pem -H "Content-Type: application/json" -XPOST \
 -d'{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"kube-system"}}' \
 https://127.0.0.1/api/v1/namespaces
 }
