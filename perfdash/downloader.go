@@ -31,8 +31,9 @@ type Downloader interface {
 
 // BuildData contains job name and a map from build number to perf data
 type BuildData struct {
-	Builds map[string][]perftype.DataItem `json:"builds"`
-	Job    string                         `json:"job"`
+	Builds  map[string][]perftype.DataItem `json:"builds"`
+	Job     string                         `json:"job"`
+	Version string                         `json:"version"`
 }
 
 // TestToBuildData is a map from test name to BuildData

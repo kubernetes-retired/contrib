@@ -16,8 +16,8 @@
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/test/e2e/perftype",
-			"Comment": "v1.3.0-alpha.0-427-gdac367f",
-			"Rev": "dac367f5eaeb9f703d6658f09fb6255a6df20e52"
+			"Comment": "v1.3.0-alpha.2-402-g2cd65f7",
+			"Rev": "2cd65f7153e78e270ddb23e962e5e4ab6608a33a"
 		}
 	]
 }

@@ -49,24 +49,29 @@ func parseTestOutput(scanner *bufio.Scanner, job string, tests Tests, buildNumbe
 				continue
 			}
 			state = inTest
-			if _, found := result[testName]; !found {
-				result[testName] = BuildData{Job: job, Builds: map[string][]perftype.DataItem{}}
-			} else if result[testName].Job != job {
+			if _, found := result[testName]; found && result[testName].Job != job {
 				// If the job is different, we'll skip the test and keep the old result
 				state = scanning
 			}
 		}
 		if state == processing {
-			// TODO(random-liu): This is brittle, we should emit a tail delimiter too
-			if strings.Contains(line, "INFO") || strings.Contains(line, "STEP") || strings.Contains(line, "Failure") || strings.Contains(line, "[AfterEach]") {
+			// TODO(random-liu): Deprecate the old label when all latest 100 builds have the perftype.PerfResultEnd
+			if strings.Contains(line, perftype.PerfResultEnd) || strings.Contains(line, "INFO") || strings.Contains(line, "STEP") || strings.Contains(line, "Failure") ||
+				strings.Contains(line, "[AfterEach]") {
 				state = inTest
 				obj := perftype.PerfData{}
 				if err := json.Unmarshal(buff.Bytes(), &obj); err != nil {
 					fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, buff.String())
 					continue
 				}
-
-				result[testName].Builds[build] = append(result[testName].Builds[build], obj.DataItems...)
+				// Only support the latest version of performance data.
+				// TODO(random-liu): Also show older version data if there is any.
+				if _, found := result[testName]; !found {
+					result[testName] = BuildData{Job: job, Version: obj.Version, Builds: map[string][]perftype.DataItem{}}
+				}
+				if result[testName].Version == obj.Version {
+					result[testName].Builds[build] = append(result[testName].Builds[build], obj.DataItems...)
+				}
 
 				buff.Reset()
 			}
