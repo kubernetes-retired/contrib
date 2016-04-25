@@ -34,9 +34,9 @@ vrrp_instance vips {
 virtual_server {{ $svc.IP }} {{ $svc.Port }} {
   delay_loop 5
   lvs_sched wlc
-  lvs_method NAT
+  lvs_method {{ $svc.LVSMethod }}
   persistence_timeout 1800
-  protocol TCP
+  protocol {{ $svc.Protocol }}
 
   {{ range $j, $backend := $svc.Backends }}
   real_server {{ $backend.IP }} {{ $backend.Port }} {

@@ -24,21 +24,24 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
+	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/labels"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/node"
 	"k8s.io/kubernetes/pkg/util/sysctl"
-)
-
-const (
-	vethRegex = "^veth.*"
+	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 var (
 	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
+	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
+	vethRegex     = regexp.MustCompile(`^veth.*`)
+	lvsRegex      = regexp.MustCompile(`NAT`)
 )
 
 type nodeInfo struct {
@@ -47,40 +50,70 @@ type nodeInfo struct {
 	netmask int
 }
 
-// getNodeInfo returns information of the node where the pod is running
-func getNodeInfo(nodes []string) (*nodeInfo, error) {
-	ip, err := myIP(nodes)
-	if err != nil {
-		return &nodeInfo{}, err
-	}
-
+// getNetworkInfo returns information of the node where the pod is running
+func getNetworkInfo(ip string) (*nodeInfo, error) {
+	iface, _, mask := interfaceByIP(ip)
 	return &nodeInfo{
-		iface:   interfaceByIP(ip),
+		iface:   iface,
 		ip:      ip,
-		netmask: maskForLocalIP(ip),
+		netmask: mask,
 	}, nil
 }
 
-// myIP returns the local IP address of this node comparing the
-// local addresses with the published by the cluster nodes
-func myIP(nodes []string) (string, error) {
-	var err error
-	for _, iface := range netInterfaces() {
-		ip, _, err := ipByInterface(iface.Name)
-		if err == nil && stringSlice(nodes).pos(ip) != -1 {
-			return ip, nil
+type podInfo struct {
+	PodName      string
+	PodNamespace string
+	NodeIP       string
+}
+
+// getPodDetails  returns runtime information about the pod: name, namespace and IP of the node
+func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
+	podName := os.Getenv("POD_NAME")
+	podNs := os.Getenv("POD_NAMESPACE")
+
+	if podName == "" || podNs == "" {
+		return nil, fmt.Errorf("Please check the manifest (for missing POD_NAME or POD_NAMESPACE env variables)")
+	}
+
+	err := waitForPodRunning(kubeClient, podNs, podName, time.Millisecond*200, time.Second*30)
+	if err != nil {
+		return nil, err
+	}
+
+	pod, _ := kubeClient.Pods(podNs).Get(podName)
+	if pod == nil {
+		return nil, fmt.Errorf("Unable to get POD information")
+	}
+
+	node, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	var externalIP string
+	for _, address := range node.Status.Addresses {
+		if address.Type == api.NodeExternalIP {
+			if address.Address != "" {
+				externalIP = address.Address
+				break
+			}
+		}
+
+		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
+			externalIP = address.Address
 		}
 	}
 
-	glog.Errorf("error getting local IP: %v", err)
-	return "", err
+	return &podInfo{
+		PodName:      podName,
+		PodNamespace: podNs,
+		NodeIP:       externalIP,
+	}, nil
 }
 
 // netInterfaces returns a slice containing the local network interfaces
 // excluding lo, docker0, flannel.1 and veth interfaces.
 func netInterfaces() []net.Interface {
-	r, _ := regexp.Compile(vethRegex)
-
 	validIfaces := []net.Interface{}
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -88,7 +121,7 @@ func netInterfaces() []net.Interface {
 	}
 
 	for _, iface := range ifaces {
-		if !r.MatchString(iface.Name) && stringSlice(invalidIfaces).pos(iface.Name) == -1 {
+		if !vethRegex.MatchString(iface.Name) && stringSlice(invalidIfaces).pos(iface.Name) == -1 {
 			validIfaces = append(validIfaces, iface)
 		}
 	}
@@ -98,26 +131,15 @@ func netInterfaces() []net.Interface {
 
 // interfaceByIP returns the local network interface name that is using the
 // specified IP address. If no interface is found returns an empty string.
-func interfaceByIP(ip string) string {
-	for _, iface := range netInterfaces() {
-		ifaceIP, _, err := ipByInterface(iface.Name)
-		if err == nil && ip == ifaceIP {
-			return iface.Name
-		}
-	}
-
-	return ""
-}
-
-func maskForLocalIP(ip string) int {
+func interfaceByIP(ip string) (string, string, int) {
 	for _, iface := range netInterfaces() {
 		ifaceIP, mask, err := ipByInterface(iface.Name)
 		if err == nil && ip == ifaceIP {
-			return mask
+			return iface.Name, ip, mask
 		}
 	}
 
-	return 32
+	return "", "", 0
 }
 
 func ipByInterface(name string) (string, int, error) {
@@ -160,8 +182,18 @@ func (slice stringSlice) pos(value string) int {
 }
 
 // getClusterNodesIP returns the IP address of each node in the kubernetes cluster
-func getClusterNodesIP(kubeClient *unversioned.Client) (clusterNodes []string) {
-	nodes, err := kubeClient.Nodes().List(api.ListOptions{})
+func getClusterNodesIP(kubeClient *unversioned.Client, nodeSelector string) (clusterNodes []string) {
+	listOpts := api.ListOptions{}
+
+	if nodeSelector != "" {
+		label, err := labels.Parse(nodeSelector)
+		if err != nil {
+			glog.Fatalf("'%v' is not a valid selector: %v", nodeSelector, err)
+		}
+		listOpts.LabelSelector = label
+	}
+
+	nodes, err := kubeClient.Nodes().List(listOpts)
 	if err != nil {
 		glog.Fatalf("Error getting running nodes: %v", err)
 	}
@@ -238,4 +270,88 @@ func parseNsName(input string) (string, string, error) {
 	}
 
 	return nsName[0], nsName[1], nil
+}
+
+func parseNsSvcLVS(input string) (string, string, string, error) {
+	nsSvcLb := nsSvcLbRegex.FindStringSubmatch(input)
+	if len(nsSvcLb) != 6 {
+		return "", "", "", fmt.Errorf("invalid format (namespace/service name[:NAT|DR]) found in '%v'", input)
+	}
+
+	ns := nsSvcLb[1]
+	svc := nsSvcLb[2]
+	kind := nsSvcLb[3]
+
+	if ns == "" {
+		ns = nsSvcLb[4]
+	}
+
+	if svc == "" {
+		svc = nsSvcLb[5]
+	}
+
+	if kind == "" {
+		kind = "NAT"
+	}
+
+	if !lvsRegex.MatchString(kind) {
+		return "", "", "", fmt.Errorf("invalid LVS method. Only NAT and DR are supported: %v", kind)
+	}
+
+	return ns, svc, kind, nil
+}
+
+type nodeSelector map[string]string
+
+func (ns nodeSelector) String() string {
+	kv := []string{}
+	for key, val := range ns {
+		kv = append(kv, fmt.Sprintf("%v=%v", key, val))
+	}
+
+	return strings.Join(kv, ",")
+}
+
+func parseNodeSelector(data map[string]string) string {
+	return nodeSelector(data).String()
+}
+
+func waitForPodRunning(kubeClient *unversioned.Client, ns, podName string, interval, timeout time.Duration) error {
+	condition := func(pod *api.Pod) (bool, error) {
+		if pod.Status.Phase == api.PodRunning {
+			return true, nil
+		}
+		return false, nil
+	}
+
+	return waitForPodCondition(kubeClient, ns, podName, condition, interval, timeout)
+}
+
+// waitForPodCondition waits for a pod in state defined by a condition (func)
+func waitForPodCondition(kubeClient *unversioned.Client, ns, podName string, condition func(pod *api.Pod) (bool, error),
+	interval, timeout time.Duration) error {
+	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
+		pod, err := kubeClient.Pods(ns).Get(podName)
+		if err != nil {
+			if apierrs.IsNotFound(err) {
+				return false, nil
+			}
+		}
+
+		done, err := condition(pod)
+		if err != nil {
+			return false, err
+		}
+		if done {
+			return true, nil
+		}
+
+		return false, nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("timed out waiting to observe own status as Running")
+	}
+
+	return nil
 }

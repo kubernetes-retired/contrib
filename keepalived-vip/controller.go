@@ -66,11 +66,12 @@ func (c serviceByIPPort) Less(i, j int) bool {
 }
 
 type vip struct {
-	Name     string
-	IP       string
-	Port     int
-	Protocol string
-	Backends []service
+	Name      string
+	IP        string
+	Port      int
+	Protocol  string
+	LVSMethod string
+	Backends  []service
 }
 
 type vipByNameIPPort []vip
@@ -165,14 +166,15 @@ func (ipvsc *ipvsControllerController) getServices() []vip {
 	}
 
 	// k -> IP to use
-	// v -> <namespace>/<service name>:<port from service to be used>
-	for externalIP, nsSvc := range cfgMap.Data {
-		_, _, err := parseNsName(nsSvc)
+	// v -> <namespace>/<service name>:<lvs method>
+	for externalIP, nsSvcLvs := range cfgMap.Data {
+		ns, svc, lvsm, err := parseNsSvcLVS(nsSvcLvs)
 		if err != nil {
 			glog.Warningf("%v", err)
 			continue
 		}
 
+		nsSvc := fmt.Sprintf("%v/%v", ns, svc)
 		svcObj, svcExists, err := ipvsc.svcLister.Store.GetByKey(nsSvc)
 		if err != nil {
 			glog.Warningf("error getting service %v: %v", nsSvc, err)
@@ -195,11 +197,12 @@ func (ipvsc *ipvsControllerController) getServices() []vip {
 			sort.Sort(serviceByIPPort(ep))
 
 			svcs = append(svcs, vip{
-				Name:     fmt.Sprintf("%v/%v", s.Namespace, s.Name),
-				IP:       externalIP,
-				Port:     servicePort.Port,
-				Backends: ep,
-				Protocol: fmt.Sprintf("%v", servicePort.Protocol),
+				Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
+				IP:        externalIP,
+				Port:      servicePort.Port,
+				LVSMethod: lvsm,
+				Backends:  ep,
+				Protocol:  fmt.Sprintf("%v", servicePort.Protocol),
 			})
 			glog.V(2).Infof("found service: %v:%v", s.Name, servicePort.Port)
 		}
@@ -253,9 +256,20 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		configMapName:     configMapName,
 	}
 
-	clusterNodes := getClusterNodesIP(kubeClient)
+	podInfo, err := getPodDetails(kubeClient)
+	if err != nil {
+		glog.Fatalf("Error getting POD information: %v", err)
+	}
 
-	nodeInfo, err := getNodeInfo(clusterNodes)
+	pod, err := kubeClient.Pods(podInfo.PodNamespace).Get(podInfo.PodName)
+	if err != nil {
+		glog.Fatalf("Error getting %v: %v", podInfo.PodName, err)
+	}
+
+	selector := parseNodeSelector(pod.Spec.NodeSelector)
+	clusterNodes := getClusterNodesIP(kubeClient, selector)
+
+	nodeInfo, err := getNetworkInfo(podInfo.NodeIP)
 	if err != nil {
 		glog.Fatalf("Error getting local IP from nodes in the cluster: %v", err)
 	}
