@@ -24,20 +24,18 @@ With 2 or more instance of the pod running in the cluster is possible to provide
 This should be considered a complement, not a replacement for HAProxy or nginx. The goal using keepalived is to provide high availability and to bring certainty about how an exposed service can be reached (beforehand we know the ip address independently of the node where is running). For instance keepalived can use used to expose the service-loadbalancer or nginx ingress controller in the LAN using one IP address.
 
 
-
 ## Requirements
 
 [Daemonsets](https://github.com/kubernetes/kubernetes/blob/master/docs/design/daemon.md) enabled is the only requirement. Check this [guide](https://github.com/kubernetes/kubernetes/blob/master/docs/api.md#enabling-resources-in-the-extensions-group) with the required flags in kube-apiserver.
 
 
-
 ## Configuration
 
-To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`.
+To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`. Optionally is possible to specify forwarding method using `:` after the service name. The valid options are `NAT` and `DR`. For instance `external IP -> namespace/serviceName:DR`.
+By default if the method is not specified it will use NAT.
+
 This IP must be routable inside the LAN and must be available. 
 By default the IP address of the pods are used to route the traffic. This means that is one pod dies or a new one is created by a scale event the keepalived configuration file will be updated and reloaded.
-
-
 
 ## Example
 
@@ -70,7 +68,7 @@ $ kubectl create -f vip-daemonset.yaml
 daemonset "kube-keepalived-vip" created
 $ kubectl get daemonset
 NAME                  CONTAINER(S)          IMAGE(S)                         SELECTOR                        NODE-SELECTOR
-kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.4   name in (kube-keepalived-vip)   type=worker
+kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.5   name in (kube-keepalived-vip)   type=worker
 ```
 
 **Note: the daemonset yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**
@@ -300,10 +298,6 @@ virtual_server 10.4.0.50 80 {
 
 }
 ```
-
-## TODO
-- custom weight?
-- quorum rules
 
 ## Related projects
 
