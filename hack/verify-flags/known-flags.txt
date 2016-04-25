@@ -82,3 +82,4 @@ udp-services-configmap
 one-time
 change-permissions
 services-configmap
+node-selector

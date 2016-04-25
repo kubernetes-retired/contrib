@@ -1,3 +1,6 @@
+## 0.5
+- New flag `--node-selector`
+
 ## 0.4
 - Update keepalived to 1.2.20
 - Use iptables parameter to not respond on addresses that it does not own

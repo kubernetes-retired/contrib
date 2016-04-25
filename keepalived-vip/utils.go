@@ -28,6 +28,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/labels"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/node"
 	"k8s.io/kubernetes/pkg/util/sysctl"
@@ -160,8 +161,18 @@ func (slice stringSlice) pos(value string) int {
 }
 
 // getClusterNodesIP returns the IP address of each node in the kubernetes cluster
-func getClusterNodesIP(kubeClient *unversioned.Client) (clusterNodes []string) {
-	nodes, err := kubeClient.Nodes().List(api.ListOptions{})
+func getClusterNodesIP(kubeClient *unversioned.Client, nodeSelector string) (clusterNodes []string) {
+	listOpts := api.ListOptions{}
+
+	if nodeSelector != "" {
+		label, err := labels.Parse(nodeSelector)
+		if err != nil {
+			glog.Fatalf("'%v' is not a valid selector: %v", nodeSelector, err)
+		}
+		listOpts.LabelSelector = label
+	}
+
+	nodes, err := kubeClient.Nodes().List(listOpts)
 	if err != nil {
 		glog.Fatalf("Error getting running nodes: %v", err)
 	}
