@@ -33,6 +33,7 @@ set -e
 
 case "${CNI_COMMAND}" in
     (ADD)
+
         # Pick the desired network name out of the config.
         thenet="$(jq -r .name < "${INPFN}")"
 
@@ -63,14 +64,19 @@ case "${CNI_COMMAND}" in
 }
 EOF
         ;;
+
     (DEL)
-        docker network disconnect "${thenet}" "${CNI_CONTAINERID}"
+
+        # Nothing needs to be done, the Docker container delete will
+        # handle it all.
+
         cat > "${OUTFN}" <<EOF
 {
   "cniVersion": "0.1.0"
 }
 EOF
         ;;
+
     (*)
         echo "Unexpected CNI_COMMAND ($CNI_COMMAND)!" >& 2
         exit 2
