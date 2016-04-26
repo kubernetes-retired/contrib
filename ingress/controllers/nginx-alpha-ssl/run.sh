@@ -5,7 +5,7 @@ if [ -z ${VAULT_SKIP_VERIFY} ]; then
 fi
 
 if [ -z ${VAULT_TOKEN_FILE} ]; then
-  export VAULT_TOKEN_FILE="/etc/vault-token/ingress-read-only"
+  export VAULT_TOKEN_FILE="/etc/vault-token/vault-ingress-read-only"
 fi
 
 export VAULT_SKIP_VERIFY=true
