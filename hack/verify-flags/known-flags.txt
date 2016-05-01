@@ -75,7 +75,7 @@ vrrp-password
 watch-namespace
 weak-stable-jobs
 whitelist-override-label
-dump-nginx—configuration
+dump-nginx-configuration
 nginx-configmap
 tcp-services-configmap
 udp-services-configmap
