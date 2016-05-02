@@ -1,8 +1,4 @@
 ---
-- name: etcd version
-  set_fact:
-    etcd_version: "v2.2.3"
-
 - name: Create download dir
   file: path="/tmp/.ansible/files" state=directory
 
