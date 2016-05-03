@@ -1,3 +1,4 @@
+allowed-shame-domains
 api-token
 balance-algorithm
 block-path-config
