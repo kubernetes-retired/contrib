@@ -1,0 +1,25 @@
+---
+- name: Create etcd config directory
+  file: path={{ etcd_conf_dir }} state=directory
+
+- name: Write etcd config file
+  template: src=etcd.conf.j2 dest=/etc/etcd/etcd.conf
+  notify:
+    - restart etcd
+  when: not is_coreos
+
+- name: Write etcd systemd unit file for Debian
+  copy: src=etcd.service dest=/etc/systemd/system
+  notify:
+    - reload systemd
+    - restart etcd
+  when: ansible_distribution == "Debian"
+
+- include: etcd-coreos-configure.yml
+  when: is_coreos
+
+- include: etcd-configure-firewalld.yml
+  when: has_firewalld
+
+- include: etcd-configure-iptables.yml
+  when: not has_firewalld and has_iptables
