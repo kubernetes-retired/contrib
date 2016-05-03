@@ -1,5 +1,5 @@
 {
-  "K8S_API_SERVER": "https://{{ groups['masters'][0] }}:{{ kube_master_api_port }}",
+  "K8S_API_SERVER": "https://{% if groups['masters']|length > 1 %}{{ kube_apiserver_vip }}{% else %}{{ groups['masters'][0] }}{% endif %}:{{ kube_master_api_port }}",
   "K8S_CA": "{{ kube_cert_dir }}/ca.crt",
   "K8S_KEY": "{{ kube_cert_dir }}/kubecfg.key",
   "K8S_CERT": "{{ kube_cert_dir }}/kubecfg.crt"

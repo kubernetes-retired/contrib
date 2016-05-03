@@ -1,0 +1,40 @@
+#
+# {{ ansible_managed }}
+#
+global
+    log /dev/log    local0
+    log /dev/log    local1 notice
+    chroot /var/lib/haproxy
+    user haproxy
+    group haproxy
+    daemon
+    stats socket /var/lib/haproxy/stats level admin
+
+defaults
+    log global
+    option  dontlognull
+    timeout connect 5000
+    timeout client 50000
+    timeout server 50000
+
+frontend apiserver-incoming
+    bind {{ kube_apiserver_vip }}:{{ kube_master_api_port }}
+    mode tcp
+    option tcplog
+    default_backend apiserver
+
+backend apiserver
+    mode tcp
+    balance roundrobin
+    option ssl-hello-chk
+{% for host in groups['masters'] %}
+    server {{ hostvars[host].ansible_hostname }} {{ hostvars[host]['ansible_' + kube_apiserver_interface].ipv4.address }}:{{ kube_master_api_port }} check
+{% endfor %}
+
+listen stats
+    bind *:{{ haproxy_stats_port }}
+    mode http
+    stats enable
+    stats hide-version
+    stats realm Haproxy\ Statistics
+    stats uri /

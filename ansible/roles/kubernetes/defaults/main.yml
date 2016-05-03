@@ -37,7 +37,7 @@ kube_current_release_directory: "{{ kube_releases_directory }}/{{ kube_version }
 kube_cert_dir: "{{ kube_config_dir }}/certs"
 
 # The IP(s) for which the certificate will be valid
-kube_cert_ip: "{{ hostvars[inventory_hostname]['ansible_all_ipv4_addresses'] | join (',IP:') }}"
+kube_cert_ip: "{{ (hostvars[inventory_hostname]['ansible_all_ipv4_addresses'] | join (',IP:'))}}{% if kube_apiserver_vip %},IP:{{ kube_apiserver_vip }}{% endif %}"
 
 # This is where all of the bearer tokens will be stored
 kube_token_dir: "{{ kube_config_dir }}/tokens"

@@ -1,0 +1,7 @@
+keepalived_config_dir: /etc/keepalived
+kube_keepalived_password: kube-pass
+
+haproxy_config_dir: /etc/haproxy
+haproxy_stats_port: 9999
+
+kube_apiserver_interface: "{{ kube_apiserver_interface|default(ansible_default_ipv4.interface) }}"

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: haproxy
+spec:
+  hostNetwork: true
+  containers:
+  - name: haproxy
+    image: million12/haproxy:1.6.3 # From https://hub.docker.com/r/million12/haproxy/
+    ports:
+    # Note: Ports for kube-api manifest would need to change if running haproxy/kube-api on same kubelet.
+    - containerPort: {{ kube_master_api_port }}
+      hostPort: {{ kube_master_api_port }}
+      name: https
+    - containerPort: {{ kube_api_insecure_port }}
+      hostPort: {{ kube_api_insecure_port }}
+      name: http
+    volumeMounts:
+    - mountPath: /etc/haproxy
+      name: haproxycfg
+    - mountPath: {{ kube_cert_dir }}
+      name: srvkube
+      readOnly: true
+  volumes:
+  - hostPath:
+      path: {{ haproxy_config_dir }}
+    name: haproxycfg
+    readOnly: true
+  - hostPath:
+      path: {{ kube_cert_dir }}
+    name: srvkube
+    readOnly: true

@@ -1,0 +1,33 @@
+#check that haproxy is runnning on this machine
+vrrp_script chk_haproxy {
+  script "pidof haproxy"
+  interval 2
+  weight 2
+}
+
+vrrp_instance VI_1 {
+  interface {{ kube_apiserver_interface }}
+  state MASTER
+  virtual_router_id 51
+  priority {% if inventory_hostname == groups['masters'][0] %} 101 {% else %} 100 {% endif %} # 101 on master, 100 on backups
+
+  #use unicast so we don't have to tool with multicast
+  unicast_peer {
+    {% for master in groups['masters'] %}
+    {{ hostvars[master]['ansible_' + kube_apiserver_interface].ipv4.address }}
+    {% endfor %}
+  }
+
+  virtual_ipaddress {
+    {{ kube_apiserver_vip }}
+  }
+
+  track_script {
+    chk_haproxy
+  }
+
+  authentication {
+    auth_type PASS
+    auth_pass {{ kube_keepalived_password }}
+  }
+}
