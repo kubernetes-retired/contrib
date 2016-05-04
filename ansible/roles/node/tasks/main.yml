@@ -59,7 +59,7 @@
     - restart kubelet
 
 - name: Enable kubelet
-  service: name=kubelet enabled=yes 
+  service: name=kubelet enabled=yes state=started 
   notify:
     - restart kubelet
 
