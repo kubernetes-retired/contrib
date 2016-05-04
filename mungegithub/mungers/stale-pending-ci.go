@@ -30,7 +30,7 @@ import (
 
 const (
 	stalePendingCIHours = 24
-	pendingMsgFormat    = `@k8s-bot test this issue: #IGNORE
+	pendingMsgFormat    = `@` + jenkinsBotName + ` test this issue: #IGNORE
 
 Tests have been pending for %d hours`
 )
@@ -39,7 +39,7 @@ var (
 	pendingMsgBody = fmt.Sprintf(pendingMsgFormat, stalePendingCIHours)
 )
 
-// StalePendingCI will ask the k8s-bot to test any PR with a LGTM that has
+// StalePendingCI will ask the testBot-to test any PR with a LGTM that has
 // been pending for more than 24 hours. This can happen when the jenkins VM
 // is restarted.
 //
@@ -58,7 +58,7 @@ type StalePendingCI struct{}
 func init() {
 	s := StalePendingCI{}
 	RegisterMungerOrDie(s)
-	registerShouldDeleteCommentFunc(s.isStaleComment)
+	RegisterStaleComments(s)
 }
 
 // Name is the name usable in --pr-mungers
@@ -112,7 +112,10 @@ func (StalePendingCI) Munge(obj *github.MungeObject) {
 	}
 }
 
-func (StalePendingCI) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+func (StalePendingCI) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
 	if *comment.Body != pendingMsgBody {
 		return false
 	}
@@ -121,4 +124,9 @@ func (StalePendingCI) isStaleComment(obj *github.MungeObject, comment *githubapi
 		glog.V(6).Infof("Found stale StalePendingCI comment")
 	}
 	return stale
+}
+
+// StaleComments returns a slice of stale comments
+func (s StalePendingCI) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, s.isStaleComment)
 }

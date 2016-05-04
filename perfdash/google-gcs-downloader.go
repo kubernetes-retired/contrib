@@ -53,13 +53,7 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 			return result, err
 		}
 		fmt.Printf("Last build no: %v\n", lastBuildNo)
-		var buildNumber int
-		if lastBuildNo >= g.Builds {
-			buildNumber = lastBuildNo - g.Builds + 1
-		} else {
-			buildNumber = 1
-		}
-		for ; buildNumber <= lastBuildNo; buildNumber++ {
+		for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
 			fmt.Printf("Fetching build %v...\n", buildNumber)
 			testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, logFile)
 			if err != nil {

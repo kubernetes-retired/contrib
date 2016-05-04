@@ -17,11 +17,12 @@
 
 set -e
 
-export NGINX_VERSION=1.9.13
+export NGINX_VERSION=1.10.0
 export NDK_VERSION=0.2.19
 export VTS_VERSION=0.1.9
 export SETMISC_VERSION=0.29
 export LUA_VERSION=0.10.2
+export STICKY_SESSIONS_VERSION=c78b7dd79d0d
 export LUA_CJSON_VERSION=e1ebda146f63276093970f1bec36e51f952b3dba
 export LUA_RESTY_HTTP_VERSION=0.07
 export LUA_UPSTREAM_VERSION=0.05
@@ -67,7 +68,7 @@ apt-get update && apt-get install --no-install-recommends -y \
   linux-headers-generic || exit 1
 
 # download, verify and extract the source files
-get_src f7cd529a5879cd9cd5b62e6fc4a3a7e8d8363cb12c080ab480cc718c55736609 \
+get_src 8ed647c3dd65bc4ced03b0e0f6bf9e633eff6b01bac772bcf97077d58bc2be4d \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
@@ -96,6 +97,9 @@ get_src 0fdfb17083598e674680d8babe944f48a9ccd2af9f982eda030c446c93cfe72b \
 
 get_src 6353441ee53dca173689b63a78f1c9ac5408f3ed066ddaa3f43fd2795bd43cdd \
         "https://github.com/nbs-system/naxsi/archive/$NAXSI_VERSION.tar.gz"
+
+get_src 8b1277e41407e893b5488bd953612f4e7bf9e241f9494faf71d93f1b1d5beefa \
+        "https://bitbucket.org/nginx-goodies/nginx-sticky-module-ng/get/$STICKY_SESSIONS_VERSION.tar.gz"
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
@@ -139,6 +143,7 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
   --add-module="$BUILD_PATH/nginx-module-vts-$VTS_VERSION" \
   --add-module="$BUILD_PATH/lua-nginx-module-$LUA_VERSION" \
   --add-module="$BUILD_PATH/headers-more-nginx-module-$MORE_HEADERS_VERSION" \
+  --add-module="$BUILD_PATH/nginx-goodies-nginx-sticky-module-ng-$STICKY_SESSIONS_VERSION" \
   --add-module="$BUILD_PATH/lua-upstream-nginx-module-$LUA_UPSTREAM_VERSION" || exit 1 \
   && make || exit 1 \
   && make install || exit 1

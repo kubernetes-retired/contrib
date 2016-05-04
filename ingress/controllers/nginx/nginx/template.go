@@ -29,6 +29,7 @@ import (
 
 var (
 	camelRegexp = regexp.MustCompile("[0-9A-Za-z]+")
+	tmplPath    = "/etc/nginx/template/nginx.tmpl"
 
 	funcMap = template.FuncMap{
 		"empty": func(input interface{}) bool {
@@ -43,15 +44,11 @@ var (
 )
 
 func (ngx *Manager) loadTemplate() {
-	tmpl, _ := template.New("nginx.tmpl").Funcs(funcMap).ParseFiles("./nginx.tmpl")
+	tmpl, _ := template.New("nginx.tmpl").Funcs(funcMap).ParseFiles(tmplPath)
 	ngx.template = tmpl
 }
 
 func (ngx *Manager) writeCfg(cfg nginxConfiguration, ingressCfg IngressConfig) (bool, error) {
-	fromMap := structs.Map(cfg)
-	toMap := structs.Map(ngx.defCfg)
-	curNginxCfg := merge(toMap, fromMap)
-
 	conf := make(map[string]interface{})
 	conf["upstreams"] = ingressCfg.Upstreams
 	conf["servers"] = ingressCfg.Servers
@@ -59,7 +56,7 @@ func (ngx *Manager) writeCfg(cfg nginxConfiguration, ingressCfg IngressConfig) (
 	conf["udpUpstreams"] = ingressCfg.UDPUpstreams
 	conf["defResolver"] = ngx.defResolver
 	conf["sslDHParam"] = ngx.sslDHParam
-	conf["cfg"] = fixKeyNames(curNginxCfg)
+	conf["cfg"] = fixKeyNames(structs.Map(cfg))
 
 	buffer := new(bytes.Buffer)
 	err := ngx.template.Execute(buffer, conf)

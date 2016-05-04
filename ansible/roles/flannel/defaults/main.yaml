@@ -8,6 +8,12 @@ flannel_source_type: package
 # (in case of using github-releases).
 flannel_releases_dir: /opt
 
+#flannel_version
+flannel_version: 0.5.5
+
+#The backend that flannel should use
+flannel_backend: vxlan
+
 #The default url to download the flannel tar from
 flannel_download_url_base: "https://github.com/coreos/flannel/releases/download/v{{ flannel_version }}"
 flannel_download_url: "{{ flannel_download_url_base }}/flannel-{{ flannel_version }}-linux-amd64.tar.gz"

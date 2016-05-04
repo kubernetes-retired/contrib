@@ -43,7 +43,7 @@ const (
 
 var (
 	// value overwritten during build. This can be used to resolve issues.
-	version = "0.5"
+	version = "0.6"
 	gitRepo = "https://github.com/kubernetes/contrib"
 
 	flags = pflag.NewFlagSet("", pflag.ExitOnError)
@@ -81,7 +81,7 @@ var (
 
 	healthzPort = flags.Int("healthz-port", healthPort, "port for healthz endpoint.")
 
-	buildCfg = flags.Bool("dump-nginx—configuration", false, `Returns a ConfigMap with the default nginx conguration.
+	buildCfg = flags.Bool("dump-nginx-configuration", false, `Returns a ConfigMap with the default nginx conguration.
 		This can be used as a guide to create a custom configuration.`)
 
 	profiling = flags.Bool("profiling", true, `Enable profiling via web interface host:port/debug/pprof/`)
