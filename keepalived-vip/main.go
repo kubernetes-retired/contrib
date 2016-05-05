@@ -47,6 +47,12 @@ var (
 		service with the format namespace/serviceName and the port of the service could be a number or the
 		name of the port.`)
 
+	proxyMode = flags.Bool("proxy-protocol-mode", false, `If true, it will use keepalived to announce the virtual
+		IP address/es and HAProxy with proxy protocol to forward traffic to the endpoints.
+		Please check http://blog.haproxy.com/haproxy/proxy-protocol
+		Be sure that both endpoints of the connection support proxy protocol.
+		`)
+
 	// sysctl changes required by keepalived
 	sysctlAdjustments = map[string]int{
 		// allows processes to bind() to non-local IP addresses
@@ -108,11 +114,15 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 
+	if *proxyMode {
+		copyHaproxyCfg()
+	}
+
 	glog.Info("starting LVS configuration")
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *proxyMode)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 
