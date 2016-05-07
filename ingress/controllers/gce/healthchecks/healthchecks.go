@@ -26,16 +26,17 @@ import (
 
 // HealthChecks manages health checks.
 type HealthChecks struct {
-	cloud       SingleHealthCheck
-	defaultPath string
-	namer       utils.Namer
+	cloud           SingleHealthCheck
+	defaultInterval int64
+	defaultPath     string
+	namer           utils.Namer
 }
 
 // NewHealthChecker creates a new health checker.
 // cloud: the cloud object implementing SingleHealthCheck.
 // defaultHealthCheckPath: is the HTTP path to use for health checks.
-func NewHealthChecker(cloud SingleHealthCheck, defaultHealthCheckPath string, namer utils.Namer) HealthChecker {
-	return &HealthChecks{cloud, defaultHealthCheckPath, namer}
+func NewHealthChecker(cloud SingleHealthCheck, defaultHealthCheckInterval int64, defaultHealthCheckPath string, namer utils.Namer) HealthChecker {
+	return &HealthChecks{cloud, defaultHealthCheckInterval, defaultHealthCheckPath, namer}
 }
 
 // Add adds a healthcheck if one for the same port doesn't already exist.
@@ -54,7 +55,7 @@ func (h *HealthChecks) Add(port int64, path string) error {
 				RequestPath: path,
 				Description: "Default kubernetes L7 Loadbalancing health check.",
 				// How often to health check.
-				CheckIntervalSec: 1,
+				CheckIntervalSec: h.defaultInterval,
 				// How long to wait before claiming failure of a health check.
 				TimeoutSec: 1,
 				// Number of healthchecks to pass for a vm to be deemed healthy.

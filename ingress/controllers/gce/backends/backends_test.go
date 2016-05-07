@@ -31,7 +31,7 @@ func newBackendPool(f BackendServices, fakeIGs instances.InstanceGroups, syncWit
 	namer := utils.Namer{}
 	return NewBackendPool(
 		f,
-		healthchecks.NewHealthChecker(healthchecks.NewFakeHealthChecks(), "/", namer),
+		healthchecks.NewHealthChecker(healthchecks.NewFakeHealthChecks(), 1, "/", namer),
 		instances.NewNodePool(fakeIGs, "default-zone"), namer, []int64{}, syncWithCloud)
 }
 

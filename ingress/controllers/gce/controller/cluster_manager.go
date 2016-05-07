@@ -34,8 +34,9 @@ import (
 )
 
 const (
-	defaultPort            = 80
-	defaultHealthCheckPath = "/"
+	defaultPort                = 80
+	defaultHealthCheckInterval = 1
+	defaultHealthCheckPath     = "/"
 
 	// A single instance-group is created per cluster manager.
 	// Tagged with the name of the controller.
@@ -215,10 +216,12 @@ func getGCEClient() *gce.GCECloud {
 //   string passed to glbc via --gce-cluster-name.
 // - defaultBackendNodePort: is the node port of glbc's default backend. This is
 //	 the kubernetes Service that serves the 404 page if no urls match.
+// - defaultHealthCheckInterval: is the default interval use for L7 health checks eg: 1
 // - defaultHealthCheckPath: is the default path used for L7 health checks, eg: "/healthz"
 func NewClusterManager(
 	name string,
 	defaultBackendNodePort int64,
+	defaultHealthCheckInterval int64,
 	defaultHealthCheckPath string) (*ClusterManager, error) {
 
 	// TODO: Make this more resilient. Currently we create the cloud client
@@ -233,12 +236,13 @@ func NewClusterManager(
 		return nil, err
 	}
 	cluster.instancePool = instances.NewNodePool(cloud, zone.FailureDomain)
-	healthChecker := healthchecks.NewHealthChecker(cloud, defaultHealthCheckPath, cluster.ClusterNamer)
+	healthChecker := healthchecks.NewHealthChecker(
+		cloud, defaultHealthCheckInterval, defaultHealthCheckPath, cluster.ClusterNamer)
 
 	// TODO: This needs to change to a consolidated management of the default backend.
 	cluster.backendPool = backends.NewBackendPool(
 		cloud, healthChecker, cluster.instancePool, cluster.ClusterNamer, []int64{defaultBackendNodePort}, true)
-	defaultBackendHealthChecker := healthchecks.NewHealthChecker(cloud, "/healthz", cluster.ClusterNamer)
+	defaultBackendHealthChecker := healthchecks.NewHealthChecker(cloud, defaultHealthCheckInterval, "/healthz", cluster.ClusterNamer)
 	defaultBackendPool := backends.NewBackendPool(
 		cloud, defaultBackendHealthChecker, cluster.instancePool, cluster.ClusterNamer, []int64{}, false)
 	cluster.defaultBackendNodePort = defaultBackendNodePort

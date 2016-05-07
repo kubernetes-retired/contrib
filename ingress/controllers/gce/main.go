@@ -100,6 +100,11 @@ var (
 		`Path used to health-check a backend service. All Services must serve
 		a 200 page on this path. Currently this is only configurable globally.`)
 
+	healthCheckInterval = flags.Int64("health-check-interval", 1,
+		`Interval in seconds used to health-check a backend service. This might
+		result in services taking longer to be marked healthy or unhealthy.
+		Currently this is only configurable globally.`)
+
 	watchNamespace = flags.String("watch-namespace", api.NamespaceAll,
 		`Namespace to watch for Ingress/Services/Endpoints.`)
 
@@ -188,7 +193,7 @@ func main() {
 	if *inCluster || *useRealCloud {
 		// Create cluster manager
 		clusterManager, err = controller.NewClusterManager(
-			*clusterName, defaultBackendNodePort, *healthCheckPath)
+			*clusterName, defaultBackendNodePort, *healthCheckInterval, *healthCheckPath)
 		if err != nil {
 			glog.Fatalf("%v", err)
 		}
