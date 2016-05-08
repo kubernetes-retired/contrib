@@ -1,3 +1,7 @@
+## 0.5
+- Respect nodeSelector to build the list of peer nodes when --use-unicast is true 
+- Add support for UDP services
+
 ## 0.4
 - Update keepalived to 1.2.20
 - Use iptables parameter to not respond on addresses that it does not own

@@ -1,7 +1,7 @@
 all: push
 
-# 0.0 shouldn't clobber any release builds, current "latest" is 0.4
-TAG = 0.4
+# 0.0 shouldn't clobber any release builds, current "latest" is 0.5
+TAG = 0.5
 PREFIX = gcr.io/google_containers/kube-keepalived-vip
 BUILD_IMAGE = build-keepalived
 
