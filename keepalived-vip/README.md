@@ -303,9 +303,10 @@ The [PROXY Protocol](http://haproxy.1wt.eu/download/1.6/doc/proxy-protocol.txt) 
 There is only one caveat using this protocol: the destination must "understand" the protocol. Without this is not possible to read the traffic.
 To enable this feature the flag `--proxy-protocol-mode=true` is required.
 
-**Using this flag implies that ALL the VIP created by keepalived will use PROXY protocol**
+**Using this flag implies that HAProxy will be responsible of handling the load balancing in TCP mode**
 
-[HAProxy](http://haproxy.1wt.eu is used to in conjunction win Keepalived so send proxy packets.
+[HAProxy](http://haproxy.1wt.eu) is used to in conjunction win Keepalived so send proxy packets.
+
 
 Example:
 
@@ -313,7 +314,8 @@ First create a configmap with the VIP mapping
 ```
 echo "apiVersion: v1
 data:
-  10.4.0.50: default/nginx-ingress-lb
+  10.4.0.50: default/nginx-ingress-lb:PROXY
+  10.4.0.51: default/echoheaders
 kind: ConfigMap
 metadata:
   name: vip-configmap

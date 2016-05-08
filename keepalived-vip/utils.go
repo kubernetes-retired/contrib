@@ -42,7 +42,7 @@ var (
 	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
 	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
 	vethRegex     = regexp.MustCompile(`^veth.*`)
-	lvsRegex      = regexp.MustCompile(`NAT`)
+	lvsRegex      = regexp.MustCompile(`NAT|PROXY`)
 )
 
 type nodeInfo struct {
@@ -273,7 +273,7 @@ func parseNsName(input string) (string, string, error) {
 func parseNsSvcLVS(input string) (string, string, string, error) {
 	nsSvcLb := nsSvcLbRegex.FindStringSubmatch(input)
 	if len(nsSvcLb) != 6 {
-		return "", "", "", fmt.Errorf("invalid format (namespace/service name[:NAT|DR]) found in '%v'", input)
+		return "", "", "", fmt.Errorf("invalid format (namespace/service name[:NAT|PROXY]) found in '%v'", input)
 	}
 
 	ns := nsSvcLb[1]
@@ -293,7 +293,7 @@ func parseNsSvcLVS(input string) (string, string, string, error) {
 	}
 
 	if !lvsRegex.MatchString(kind) {
-		return "", "", "", fmt.Errorf("invalid LVS method. Only NAT and DR are supported: %v", kind)
+		return "", "", "", fmt.Errorf("invalid LVS method. Only NAT and PROXY are supported: %v", kind)
 	}
 
 	return ns, svc, kind, nil

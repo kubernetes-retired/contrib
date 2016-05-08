@@ -28,6 +28,6 @@ listen {{ $svc.Name }}-{{ $svc.Port }}
   timeout   queue 5s
   timeout   client 1200s
   timeout   server 1200s
-  {{ range $j, $backend := $svc.Backends }}server {{ $backend.IP }} {{ $backend.IP }}:{{ $backend.Port }} check send-proxy inter 5000
+  {{ range $j, $backend := $svc.Backends }}server {{ $backend.IP }} {{ $backend.IP }}:{{ $backend.Port }} check {{ if eq $svc.LVSMethod "PROXY" }}send-proxy{{ end }} inter 5000
   {{ end }}
 {{ end }}
