@@ -13,7 +13,7 @@
 
 - name: Make sure the system services namespace exists
   get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/saltbase/salt/kube-addons/namespace.yaml
+    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/{{ kube_addons_download_source_dir }}/namespace.yaml
     dest="{{ kube_config_dir }}/addons/"
     force=yes
     validate_certs=False
@@ -39,7 +39,7 @@
 
 - name: Get kube-addons script from Kubernetes
   get_url:
-    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addons.sh
+    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/{{ kube_addons_download_source_dir }}/kube-addons.sh
     dest={{ kube_script_dir }}/kube-addons.sh mode=0755
     force=yes
     validate_certs=False
@@ -52,7 +52,7 @@
 
 - name: Get kube-addon-update script from Kubernetes
   get_url:
-    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/saltbase/salt/kube-addons/kube-addon-update.sh
+    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/{{ kube_addons_download_source_dir }}/kube-addon-update.sh
     dest={{ kube_script_dir }}/kube-addon-update.sh mode=0755
     force=yes
     validate_certs=False
