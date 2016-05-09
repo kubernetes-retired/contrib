@@ -16,7 +16,7 @@ install:
   - hack/for-go-proj.sh install
 
 script:
-  - hack/verify-all.sh
+  - hack/verify-all.sh -v
   - hack/for-go-proj.sh test
 
 notifications:
