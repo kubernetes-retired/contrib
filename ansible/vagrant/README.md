@@ -62,6 +62,9 @@ Vagrant prior version 1.8.0 doesn't write group variables into Ansible inventory
 
 You can change some aspects of configuration using environment variables.
 Note that these variables should be set for all vagrant commands invocations,
+
+If this is a first time deployment run the `setup.sh` script to point the vagrant environment at the group_vars directory that lives in `ansible/inventory/group_vars`
+
 `vagrant up`, `vagrant provision`, `vagrant destroy`, etc.
 
 ### Configure number of nodes
