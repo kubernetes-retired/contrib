@@ -14,7 +14,7 @@
 - name: Make sure the system services namespace exists
   get_url:
     url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/{{ kube_addons_download_source_dir }}/namespace.yaml
-    dest="{{ kube_config_dir }}/addons/"
+    dest=/opt
     force=yes
     validate_certs=False
   environment:
