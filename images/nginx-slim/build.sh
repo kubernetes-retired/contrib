@@ -17,18 +17,18 @@
 
 set -e
 
-export NGINX_VERSION=1.10.0
-export NDK_VERSION=0.2.19
+export NGINX_VERSION=1.11.0
+export NDK_VERSION=0.3.0
 export VTS_VERSION=0.1.9
-export SETMISC_VERSION=0.29
-export LUA_VERSION=0.10.2
+export SETMISC_VERSION=0.30
+export LUA_VERSION=0.10.3
 export STICKY_SESSIONS_VERSION=c78b7dd79d0d
-export LUA_CJSON_VERSION=e1ebda146f63276093970f1bec36e51f952b3dba
+export LUA_CJSON_VERSION=2.1.0.4
 export LUA_RESTY_HTTP_VERSION=0.07
 export LUA_UPSTREAM_VERSION=0.05
-export MORE_HEADERS_VERSION=0.29
+export MORE_HEADERS_VERSION=0.30
 export NAXSI_VERSION=0.55rc1
-
+export NGINX_DIGEST_AUTH=f85f5d6fdcc06002ff879f5cbce930999c287011
 export BUILD_PATH=/tmp/build
 
 get_src()
@@ -68,28 +68,28 @@ apt-get update && apt-get install --no-install-recommends -y \
   linux-headers-generic || exit 1
 
 # download, verify and extract the source files
-get_src 8ed647c3dd65bc4ced03b0e0f6bf9e633eff6b01bac772bcf97077d58bc2be4d \
+get_src 6ca0e7bf540cdae387ce9470568c2c3a826bc7e7f12def1ae7d20b66f4065a99 \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
-get_src 501f299abdb81b992a980bda182e5de5a4b2b3e275fbf72ee34dd7ae84c4b679 \
+get_src 88e05a99a8a7419066f5ae75966fb1efc409bad4522d14986da074554ae61619 \
         "https://github.com/simpl/ngx_devel_kit/archive/v$NDK_VERSION.tar.gz"
 
-get_src 8d280fc083420afb41dbe10df9a8ceec98f1d391bd2caa42ebae67d5bc9295d8 \
+get_src 59920dd3f92c2be32627121605751b52eae32b5884be09f2e4c53fb2fae8aabc \
         "https://github.com/openresty/set-misc-nginx-module/archive/v$SETMISC_VERSION.tar.gz"
 
 get_src ddd297a5f894d966cae19f112c79f99ec9fa13612c3d324c19533247c4953980 \
         "https://github.com/vozlt/nginx-module-vts/archive/v$VTS_VERSION.tar.gz"
 
-get_src 155feeff08a0b2efaf980705b9ef83d0b341e6d011adad8e2679ea4105668134 \
+get_src a69504c25de67bce968242d331d2e433c021405a6dba7bca0306e6e0b040bb50 \
         "https://github.com/openresty/lua-nginx-module/archive/v$LUA_VERSION.tar.gz"
 
-get_src ec2a5ab856ad0168e840abfe394b9e6765fd7d209187c5599054b7f2768f2468 \
+get_src 5417991b6db4d46383da2d18f2fd46b93fafcebfe87ba87f7cfeac4c9bcb0224 \
         "https://github.com/openresty/lua-cjson/archive/$LUA_CJSON_VERSION.tar.gz"
 
 get_src 1c6aa06c9955397c94e9c3e0c0fba4e2704e85bee77b4512fb54ae7c25d58d86 \
         "https://github.com/pintsized/lua-resty-http/archive/v$LUA_RESTY_HTTP_VERSION.tar.gz"
 
-get_src 0a5f3003b5851373b03c542723eb5e7da44a01bf4c4c5f20b4de53f355a28d33 \
+get_src 2aad309a9313c21c7c06ee4e71a39c99d4d829e31c8b3e7d76f8c964ea8047f5 \
         "https://github.com/openresty/headers-more-nginx-module/archive/v$MORE_HEADERS_VERSION.tar.gz"
 
 get_src 0fdfb17083598e674680d8babe944f48a9ccd2af9f982eda030c446c93cfe72b \
@@ -100,6 +100,11 @@ get_src 6353441ee53dca173689b63a78f1c9ac5408f3ed066ddaa3f43fd2795bd43cdd \
 
 get_src 8b1277e41407e893b5488bd953612f4e7bf9e241f9494faf71d93f1b1d5beefa \
         "https://bitbucket.org/nginx-goodies/nginx-sticky-module-ng/get/$STICKY_SESSIONS_VERSION.tar.gz"
+
+get_src 618de9d87cbb4e6ad21cc4a1a178bbfdabddba9ad07ddee4c1190d23c12887ee \
+        "https://github.com/atomx/nginx-http-auth-digest/archive/$NGINX_DIGEST_AUTH.tar.gz"
+
+
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
@@ -138,12 +143,14 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
   --without-mail_imap_module \
   --without-http_uwsgi_module \
   --without-http_scgi_module \
+  --with-cc-opt='-O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -mtune=generic' \
   --add-module="$BUILD_PATH/ngx_devel_kit-$NDK_VERSION" \
   --add-module="$BUILD_PATH/set-misc-nginx-module-$SETMISC_VERSION" \
   --add-module="$BUILD_PATH/nginx-module-vts-$VTS_VERSION" \
   --add-module="$BUILD_PATH/lua-nginx-module-$LUA_VERSION" \
   --add-module="$BUILD_PATH/headers-more-nginx-module-$MORE_HEADERS_VERSION" \
   --add-module="$BUILD_PATH/nginx-goodies-nginx-sticky-module-ng-$STICKY_SESSIONS_VERSION" \
+  --add-module="$BUILD_PATH/nginx-http-auth-digest-$NGINX_DIGEST_AUTH" \
   --add-module="$BUILD_PATH/lua-upstream-nginx-module-$LUA_UPSTREAM_VERSION" || exit 1 \
   && make || exit 1 \
   && make install || exit 1

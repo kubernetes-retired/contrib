@@ -15,7 +15,7 @@ This image does provides a default configuration file with no backend servers.
 
 *Using docker*
 ```
-$ docker run -v /some/nginx.con:/etc/nginx/nginx.conf:ro gcr.io/google_containers/nginx-slim:0.6
+$ docker run -v /some/nginx.con:/etc/nginx/nginx.conf:ro gcr.io/google_containers/nginx-slim:0.7
 ```
 
 *Creating a replication controller*
