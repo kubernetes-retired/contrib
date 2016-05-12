@@ -1,7 +1,7 @@
 ---
 - name: Download tar file
   get_url:
-    url: "https://github.com/coreos/etcd/releases/download/{{ etcd_version }}/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
+    url: "{{ etcd_download_url }}"
     dest: "{{ ansible_temp_dir }}"
     validate_certs: False
   environment:

@@ -1,7 +1,7 @@
 ---
 # etcd_source_type: package | github-release
 etcd_source_type: package
-etcd_version: v2.2.3
+etcd_version: 2.2.3
 
 etcd_client_port: 2379
 etcd_peer_port: 2380
@@ -43,3 +43,6 @@ etcd_advertise_client_legacy_urls: "{{ etcd_url_scheme }}://{{ etcd_machine_addr
 etcd_listen_client_legacy_urls: "{{ etcd_url_scheme }}://0.0.0.0:{{ etcd_client_port }},{{ etcd_url_scheme }}://0.0.0.0:{{ etcd_client_legacy_port }}"
 
 etcd_data_dir: /var/lib/etcd
+
+etcd_download_url_base: "https://github.com/coreos/etcd/releases/download/v{{ etcd_version }}"
+etcd_download_url: "{{ etcd_download_url_base }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
