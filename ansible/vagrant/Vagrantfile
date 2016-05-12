@@ -203,7 +203,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     set_common_ansible_options(ansible)
 
     # This sets up both flannel and kube.
-    ansible.playbook = "../deploy-cluster.yml"
+    ansible.playbook = "../playbooks/deploy-cluster.yml"
 
     if provider == :virtualbox
       master_ip = VBOX_STATIC_IP_TEMPLATE % 0
