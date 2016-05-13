@@ -32,7 +32,6 @@ all: container
 container:
 	cp $(KUBE_ROOT)/dnsmasq/Dockerfile $(TEMP_DIR)
 	cp $(KUBE_ROOT)/dnsmasq/dnsmasq.conf $(TEMP_DIR)
-	cp $(KUBE_ROOT)/dnsmasq/default $(TEMP_DIR)
 
 	# Replace Nameserver in the dnsmasq.conf file
 	cd $(TEMP_DIR) && sed -i "s|__NAMESERVER__|$(NAMESERVER)|g" dnsmasq.conf
@@ -41,8 +40,7 @@ container:
 	docker build -t $(REGISTRY)/dnsmasq:$(TAG) $(TEMP_DIR)
 
 	# delete temp dir
-	#rm -rf $(TEMP_DIR)
-	echo $(TEMP_DIR)
+	rm -rf $(TEMP_DIR)
 
 push: container
 	ifeq ($(REGISTRY),gcr.io/google_containers)
