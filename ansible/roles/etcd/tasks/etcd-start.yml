@@ -1,0 +1,12 @@
+---
+- name: Enable etcd
+  service: name=etcd enabled=yes
+  when: not is_coreos
+
+- name: Start etcd
+  service: name=etcd state=started
+  register: etcd_started
+  when: not is_coreos
+
+- include: etcd-coreos-start.yml
+  when: is_coreos

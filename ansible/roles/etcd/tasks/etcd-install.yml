@@ -1,0 +1,18 @@
+---
+- name: Install etcd
+  action: "{{ ansible_pkg_mgr }}"
+  args:
+        name: etcd
+        state: latest
+  notify:
+    - restart etcd
+  when: not is_atomic and ansible_distribution != "Ubuntu" and not is_coreos
+
+- name: Force etcd_source_type to github when packages are not available
+  set_fact:
+    etcd_source_type: "github-release"
+  when: ansible_distribution == "Ubuntu"
+
+- name: Install etcd from github
+  include: etcd-install-github-release.yml
+  when: etcd_source_type == "github-release"

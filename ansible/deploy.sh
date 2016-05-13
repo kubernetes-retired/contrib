@@ -14,6 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-inventory=${INVENTORY:-inventory}
+inventory=${INVENTORY:-../inventory}
 
-ansible-playbook -i ${inventory} cluster.yml $@
+ansible-playbook -i ${inventory} deploy.yml $@
