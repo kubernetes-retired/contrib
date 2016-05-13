@@ -35,6 +35,7 @@ import (
 )
 
 const (
+	version = "1.6"
 	nginxConf = `
 daemon off;
 
@@ -49,58 +50,43 @@ http {
 	# bite-460
 	client_max_body_size 128m;
 
-	log_format default '$host $remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\"';
-	error_log /dev/stdout info;
-	access_log /dev/stdout default;
-{{range $ing := .Items}}
-{{range $rule := $ing.Spec.Rules}}
-{{if $rule.Host}}
+	log_format proxied_combined '"$http_x_forwarded_for" - $remote_user [$time_local] "$request" '
+											'$status $body_bytes_sent "$http_referer" '
+											'"$http_user_agent"';
+	
+	error_log /dev/stderr info;
+	access_log /dev/stdout proxied_combined;
+
 	server {
-		server_name {{$rule.Host}};
-		listen 80;
-{{ range $path := $rule.HTTP.Paths }}
-		location {{$path.Path}} {
-			proxy_set_header Host $host;
-			proxy_pass http://{{$path.Backend.ServiceName}}.{{$ing.Namespace}}.svc.cluster.local:{{$path.Backend.ServicePort}};
-		}{{end}}
-	}{{end}}{{end}}{{end}}
-}`
-	nginxSslConf = `
-daemon off;
 
-events {
-	worker_connections 1024;
-}
-http {
-	# http://nginx.org/en/docs/http/ngx_http_core_module.html
-	types_hash_max_size 2048;
-	server_names_hash_max_size 512;
-	server_names_hash_bucket_size 64;
-	# bite-460
-  client_max_body_size 128m;
+		listen 443 ssl default_server;
+		ssl_certificate /etc/nginx/certs/localhost.crt;
+		ssl_certificate_key /etc/nginx/certs/localhost.key;
 
-	log_format default '$host $remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\"';
-	error_log /dev/stdout info;
-	access_log /dev/stdout default;
+		listen	 80 default_server;
 
-{{range $ing := .Items}}
-{{range $rule := $ing.Spec.Rules}}
-{{if $rule.Host}}
+		location / {
+			root	 /usr/share/nginx/html;
+			index	index.html index.htm;
+		}
+	}
+
+{{range $i := .Items}}
 	server {
-		server_name {{$rule.Host}};
-{{range $key, $val := $ing.Labels}}
-{{if (and (eq $key "ssl") (eq $val "true"))}}
+		server_name {{$i.host}};
+{{if $i.ssl}}
 		listen 443 ssl;
-		ssl_certificate	/etc/nginx/certs/{{$rule.Host}}.crt;
-		ssl_certificate_key	/etc/nginx/certs/{{$rule.Host}}.key;
-{{- end}}{{end}}
-		listen 80;
-{{ range $path := $rule.HTTP.Paths }}
-		location {{$path.Path}} {
+		ssl_certificate		/etc/nginx/certs/{{$i.host}}.crt;
+		ssl_certificate_key	/etc/nginx/certs/{{$i.host}}.key;
+{{end}}
+{{if $i.nonssl}}listen 80;{{end}}
+{{ range $path := $i.paths }}
+		location {{$path.location}} {
 			proxy_set_header Host $host;
-			proxy_pass https://{{$path.Backend.ServiceName}}.{{$ing.Namespace}}.svc.cluster.local:{{$path.Backend.ServicePort}};
-		}{{end}}
-	}{{end}}{{end}}{{end}}
+			proxy_pass {{$i.scheme}}://{{$path.service}}.{{$i.namespace}}.svc.cluster.local:{{$path.port}};
+		}
+{{end}}
+	}{{end}}
 }`
 )
 
@@ -124,6 +110,21 @@ func shellOut(shellCmd string, args []string) {
 	}
 }
 
+type Path struct {
+	location	string
+	service		string
+	port			int32
+}
+
+type Ingress struct {
+	host			string
+	namespace	string
+	paths 		[]*Path
+	ssl				bool
+	nonssl		bool
+	scheme		string
+}
+
 func main() {
 	var ingClient client.IngressInterface
 	if kubeClient, err := client.NewInCluster(); err != nil {
@@ -144,50 +145,47 @@ func main() {
 	vaultEnabledFlag := os.Getenv("VAULT_ENABLED")
 	vaultAddress := os.Getenv("VAULT_ADDR")
 	vaultToken := os.Getenv("VAULT_TOKEN")
+	debug := os.Getenv("DEBUG")
 
-	vaultEnabled := "true"
-
-
-	if vaultEnabledFlag == "" {
-  	vaultEnabled = "true"
-	} else {
-		vaultEnabled = vaultEnabledFlag
-	}
- 
-	if vaultAddress == "" || vaultToken == "" {
-		vaultEnabled = "false"
-	}
-
-  if vaultEnabled == "true" {
-		nginxTemplate = nginxSslConf
-  }
-
-	config := vault.DefaultConfig()
-	config.Address = vaultAddress
-
-	vault, err := vault.NewClient(config)
-	if err != nil {
-		fmt.Printf("WARN: Vault config failedt\n")
-		vaultEnabled = "false"
-	}
-	if vaultEnabled == "true" {
-		nginxTemplate = nginxSslConf
-	}
-
-	token := vaultToken
-    _ = token
-
-	tmpl, _ := template.New("nginx").Parse(nginxTemplate)
-	rateLimiter := util.NewTokenBucketRateLimiter(0.1, 1)
-	known := &extensions.IngressList{}
-
-	// Controller loop
 	nginxArgs := []string{
 		"-c",
 		nginxConfDir + "/nginx.conf",
 	}
 
 	shellOut(nginxCommand, nginxArgs)
+
+	vaultEnabled := "true"
+
+	fmt.Printf("\n Ingress Controller version: %v\n", version)
+
+	if vaultEnabledFlag == "" {
+		vaultEnabled = "true"
+	} else {
+		vaultEnabled = vaultEnabledFlag
+	}
+ 
+	if vaultAddress == "" || vaultToken == "" {
+		fmt.Printf("\nVault not configured\n")
+		vaultEnabled = "false"
+	}
+
+	config := vault.DefaultConfig()
+	config.Address = vaultAddress
+
+	vault, err := vault.NewClient(config)
+	if err != nil {
+		fmt.Printf("WARN: Vault config failed.\n")
+		vaultEnabled = "false"
+	}
+
+	token := vaultToken
+		_ = token
+
+	tmpl, _ := template.New("nginx").Parse(nginxTemplate)
+	rateLimiter := util.NewTokenBucketRateLimiter(0.1, 1)
+	known := &extensions.IngressList{}
+
+	// Controller loop
 	for {
 		rateLimiter.Accept()
 		ingresses, err := ingClient.List(api.ListOptions{})
@@ -200,24 +198,54 @@ func main() {
 		}
 		known = ingresses
 
-		if vaultEnabled == "true" {
+		ingresslist := []*Ingress{}
 
-			for _, ingress := range ingresses.Items {
-				
-				ingressHost := ingress.Spec.Rules[0].Host
+		for _, ingress := range ingresses.Items {
 
-				labels := ingress.GetLabels()
-				// labels := map[string]string{}
+			ingressHost := ingress.Spec.Rules[0].Host		
+
+			// Setup ingress defaults
+
+			i := new(Ingress)
+			i.host = ingressHost
+			i.namespace = ingress.Namespace
+			i.ssl = false
+			i.nonssl = true
+			i.scheme = "http"
+
+			// Parse labels
+			l := ingress.GetLabels()
+			for k, v := range(l) {
+				if k == "ssl" && v == "true" {
+					i.ssl = true
+				}
+				if k == "httpsOnly" && v == "true" {
+					i.nonssl = false
+				}
+				if k == "httpsBackend" && v == "true" {
+					i.scheme = "https"
+				}
+			}
+
+			// Parse Paths
+			for _, r := range(ingress.Spec.Rules) {
+				for _, p := range(r.HTTP.Paths) {
+					l := new(Path)
+					l.location = p.Path
+					l.service = p.Backend.ServiceName
+					l.port = p.Backend.ServicePort.IntVal
+					i.paths = append(i.paths, l)
+				}
+			}
+
+			if vaultEnabled == "true" && i.ssl {
 
 				vaultPath := "secret/ssl/" + ingressHost
 
 				keySecretData, err := vault.Logical().Read(vaultPath)
 				if err != nil || keySecretData == nil {
 					fmt.Printf("No secret for %v\n", ingressHost)
-					if labels != nil {
-						labels["ssl"] = "false"
-						ingress.SetLabels(labels)
-					}
+					i.ssl = false
 					continue
 				} else {
 					fmt.Printf("Found secret for %v\n", ingressHost)
@@ -226,27 +254,20 @@ func main() {
 				var keySecret string = fmt.Sprintf("%v", keySecretData.Data["key"])
 				if err != nil || keySecret == "" {
 					fmt.Printf("WARN: No secret keys found at %v\n", vaultPath)
-					labels["ssl"] = "false"
-					ingress.SetLabels(labels)
+					i.ssl = false
 					continue
 				}
 				fmt.Printf("Found key for %v\n", ingressHost)
 				keyFileName := nginxConfDir + "/certs/" + ingressHost + ".key"
 				if err := ioutil.WriteFile(keyFileName, []byte(keySecret), 0400); err != nil {
 					log.Fatalf("failed to write file %v: %v\n", keyFileName, err)
-					if labels != nil {
-						labels["ssl"] = "false"
-						ingress.SetLabels(labels)
-					}
+					i.ssl = false
 					continue
 				}
 				var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
 				if err != nil || crtSecret == "" {
 					fmt.Printf("WARN: No crt found at %v\n", vaultPath)
-					if labels != nil {
-						labels["ssl"] = "false"
-						ingress.SetLabels(labels)
-					}
+					i.ssl = false
 					continue
 				}
 
@@ -254,19 +275,22 @@ func main() {
 				crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
 				if err := ioutil.WriteFile(crtFileName, []byte(crtSecret), 0400); err != nil {
 					log.Fatalf("failed to write file %v: %v\n", crtFileName, err)
-					if labels != nil {
-						labels["ssl"] = "false"
-						ingress.SetLabels(labels)
-					}
+					i.ssl = false
 					continue
 				}
 			}
+			ingresslist = append(ingresslist, i)
 		}
 
 		if w, err := os.Create(nginxConfDir + "/nginx.conf"); err != nil {
 			log.Fatalf("failed to open %v: %v\n", nginxTemplate, err)
-		} else if err := tmpl.Execute(w, ingresses); err != nil {
+		} else if err := tmpl.Execute(w, ingresslist); err != nil {
 			log.Fatalf("failed to write template %v\n", err)
+		}
+
+		if debug  == "true" {
+			conf, _ := ioutil.ReadFile(nginxConfDir + "/nginx.conf")
+			fmt.Printf(string(conf))
 		}
 
 		verifyArgs := []string{
