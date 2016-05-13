@@ -30,10 +30,17 @@ fi
 cd "${KUBE_ROOT}"
 
 GOLINT=${GOLINT:-"golint"}
-bad_files=$($GOLINT -min_confidence=0.9 ./...)
-if [[ -n "${bad_files}" ]]; then
+PACKAGES=($(go list ./... | grep -v /vendor/))
+bad_files=()
+for package in "${PACKAGES[@]}"; do
+  out=$("${GOLINT}" -min_confidence=0.9 "${package}")
+  if [[ -n "${out}" ]]; then
+    bad_files+=("${out}")
+  fi
+done
+if [[ "${#bad_files[@]}" -ne 0 ]]; then
   echo "!!! '$GOLINT' problems: "
-  echo "${bad_files}"
+  echo "${bad_files[@]}"
   exit 1
 fi
 

@@ -654,7 +654,12 @@ func (obj *MungeObject) RemoveLabel(label string) error {
 		}
 	}
 	if which != -1 {
-		obj.Issue.Labels = append(obj.Issue.Labels[:which], obj.Issue.Labels[which+1:]...)
+		// We do this crazy delete since users might be iterating over `range obj.Issue.Labels`
+		// Make a completely new copy and leave their ranging alone.
+		temp := make([]github.Label, len(obj.Issue.Labels)-1)
+		copy(temp, obj.Issue.Labels[:which])
+		copy(temp[which:], obj.Issue.Labels[which+1:])
+		obj.Issue.Labels = temp
 	}
 
 	config.analytics.RemoveLabels.Call(config, nil)
@@ -1345,14 +1350,30 @@ func (obj *MungeObject) DeleteComment(comment *github.IssueComment) error {
 		glog.Errorf("Found a comment with nil id for Issue %d", prNum)
 		return err
 	}
+	which := -1
 	for i, c := range obj.comments {
 		if c.ID == nil || *c.ID != *comment.ID {
 			continue
 		}
-		obj.comments = append(obj.comments[:i], obj.comments[i+1:]...)
-		break
+		which = i
 	}
-	glog.Infof("Removing comment %d from Issue %d", *comment.ID, prNum)
+	if which != -1 {
+		// We do this crazy delete since users might be iterating over `range obj.comments`
+		// Make a completely new copy and leave their ranging alone.
+		temp := make([]github.IssueComment, len(obj.comments)-1)
+		copy(temp, obj.comments[:which])
+		copy(temp[which:], obj.comments[which+1:])
+		obj.comments = temp
+	}
+	body := "UNKOWN"
+	if comment.Body != nil {
+		body = *comment.Body
+	}
+	author := "UNKNOWN"
+	if comment.User != nil && comment.User.Login != nil {
+		author = *comment.User.Login
+	}
+	glog.Infof("Removing comment %d from Issue %d. Author:%s Body:%q", *comment.ID, prNum, author, body)
 	if config.DryRun {
 		return nil
 	}

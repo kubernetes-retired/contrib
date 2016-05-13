@@ -1,11 +1,8 @@
 ---
-- name: Create download dir
-  file: path="/tmp/.ansible/files" state=directory
-
 - name: Download tar file
   get_url:
-    url: "https://github.com/coreos/etcd/releases/download/{{ etcd_version }}/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
-    dest: /tmp/.ansible/files
+    url: "{{ etcd_download_url }}"
+    dest: "{{ ansible_temp_dir }}"
     validate_certs: False
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
@@ -14,7 +11,7 @@
 
 - name: Extract tar file
   unarchive:
-    src: "/tmp/.ansible/files/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
+    src: "{{ ansible_temp_dir }}/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
     dest: /usr/local
     copy: no
 

@@ -2,7 +2,8 @@ This filesystem branch contains a very simple example CNI plugin.
 This plugin invokes `docker network` commands to connect or disconnect
 a container.  In particular, this plugin's "add container to network"
 operation connects the container to a Docker network that is
-identified in the config file.
+identified in the config file.  This plugin works with any existing
+Docker network, regardless of which libnetwork driver/plugin made it.
 
 To meet all of the functional requirements of
 http://kubernetes.io/docs/admin/networking/#kubernetes-model some
@@ -19,16 +20,26 @@ You must have Kubernetes, Docker, bash, and [jq]
 (https://stedolan.github.io/jq/) installed on each Kubernetes worker
 machine ("node").
 
-Docker must be configured with a cluster store, and you must have a
-multi-host Docker network.  The Docker name of that multi-host network
-must appear as the value of the `name` field in `c2d.conf`.
 
-For example, you might use the Kuryr libnetwork driver to make a
-multi-host Docker network with the following command.
+The Docker name of a Docker network must appear as the value of the
+`name` field in `c2d.conf`.  This network must already exist before
+you configure Kubernetes to use this CNI plugin.
+
+For example, you might use the Kuryr libnetwork driver (after
+installing and configuring it) to make a multi-host Docker network
+with the following command.
 
 ```
 docker network create -d kuryr --ipam-driver=kuryr --subnet=172.19.0.0/16 --gateway=172.19.0.1 mynet
 ```
+
+For a trivial example, you might install Kubernetes configured to use
+Flannel in the usual way --- and then modify the Kubernetes
+configuration to use this CNI plugin to connect to the Docker network
+named "bridge" (which is the one used with Flannel).  This
+modification adds no functionality to your cluster, but it exercise
+this CNI plugin.  Make sure you edit `c2d.conf` to change the network
+name to `bridge`.
 
 For an almost-example, you might try Docker's "overlay" driver to make
 a multi-host Docker network with the following command.
