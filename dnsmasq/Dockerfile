@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM ubuntu
+FROM ubuntu:14.04
 MAINTAINER Abhishek Shah <abshah@google.com>
 RUN apt-get -q update
 RUN apt-get install -y dnsmasq
 ADD dnsmasq.conf /etc/dnsmasq.conf
+ADD default /etc/default/dnsmasq
