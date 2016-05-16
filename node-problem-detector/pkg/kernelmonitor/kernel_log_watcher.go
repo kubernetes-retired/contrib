@@ -84,6 +84,7 @@ func (k *kernelLogWatcher) Watch() (<-chan *types.KernelLog, error) {
 			Offset: start,
 			Whence: os.SEEK_SET,
 		},
+		Poll:   true,
 		ReOpen: true,
 		Follow: true,
 	})

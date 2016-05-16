@@ -41,7 +41,7 @@ const (
 // Condition is the node condition used internally by problem detector.
 type Condition struct {
 	// Type is the condition type. It should describe the condition of node in problem. For example
-	// KernelCrash, OutOfResource etc.
+	// KernelDeadlock, OutOfResource etc.
 	Type string `json:"type"`
 	// Status indicates whether the node is in the condition or not.
 	Status bool `json:"status"`

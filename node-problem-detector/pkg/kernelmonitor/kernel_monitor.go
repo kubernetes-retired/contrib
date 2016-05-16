@@ -30,10 +30,12 @@ import (
 	"github.com/golang/glog"
 )
 
-// TODO(random-liu): May want to add more conditions if we need finer grained node conditions.
+// May want to add more conditions if we need finer grained node conditions.
+// TODO(random-liu): Make the kernel condition to be a predefined list, and make it configurable
+// in rule.
 const (
-	KernelCrashCondition = "KernelCrash"
-	KernelMonitorSource  = "kernel-monitor"
+	KernelDeadlockCondition = "KernelDeadlock"
+	KernelMonitorSource     = "kernel-monitor"
 )
 
 // MonitorConfig is the configuration of kernel monitor.
@@ -162,6 +164,7 @@ func (k *kernelMonitor) generateStatus(logs []*kerntypes.KernelLog, rule kerntyp
 		}
 	} else {
 		// For permanent error changes the condition
+		k.condition.Type = KernelDeadlockCondition
 		k.condition.Status = true
 		k.condition.Transition = timestamp
 		k.condition.Reason = rule.Reason
@@ -189,7 +192,7 @@ func defaultStatus() *types.Status {
 
 func defaultCondition() types.Condition {
 	return types.Condition{
-		Type:       KernelCrashCondition,
+		Type:       KernelDeadlockCondition,
 		Status:     false,
 		Transition: time.Now(),
 	}

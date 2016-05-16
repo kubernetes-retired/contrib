@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All rights reserved.
+# Copyright 2016 The Kubernetes Authors All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM google/debian:jessie
+FROM alpine:3.1
 MAINTAINER Random Liu <lantaol@google.com>
-RUN apt-get update
-RUN apt-get install -y -qq ca-certificates
 ADD node-problem-detector /node-problem-detector

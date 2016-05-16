@@ -51,7 +51,7 @@ func TestGenerateStatus(t *testing.T) {
 			expected: types.Status{
 				Source: KernelMonitorSource,
 				Condition: types.Condition{
-					Type:       KernelCrashCondition,
+					Type:       KernelDeadlockCondition,
 					Status:     true,
 					Transition: time.Unix(1000, 100000*1000),
 					Reason:     "test reason",
