@@ -12,7 +12,7 @@ contrib contains multiple tiny projects, each with their own dependencies. Each
 in contrib/ has it's own Godeps.json. For example the Godeps.json for Ingress
 is Ingress/Godeps/Godeps.json. This means that godeps commands like `godep restore`
 or `godep test` work in the root directory. Theys should be run from inside the
-subproject directory you want to test
+subproject directory you want to test.
 
 ## Updating Godeps
 
