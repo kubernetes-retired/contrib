@@ -355,7 +355,8 @@ func (sq *SubmitQueue) EachLoop() error {
 // AddFlags will add any request flags to the cobra `cmd`
 func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().StringSliceVar(&sq.JobNames, "jenkins-jobs", []string{
-		"kubelet-gce-e2e-ci",
+		// TODO: enable kubelet-gce-e2e-ci after issues with node e2e in PR Builder are resolved.
+		// "kubelet-gce-e2e-ci",
 		"kubernetes-build",
 		"kubernetes-test-go",
 		"kubernetes-e2e-gce",
