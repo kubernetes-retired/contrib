@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	version = "1.6"
+	version = "1.6.0"
 	nginxConf = `
 daemon off;
 
@@ -198,7 +198,9 @@ func main() {
 		}
 		known = ingresses
 
-		ingresslist := []*Ingress{}
+		type IngressList []Ingress
+
+		var ingresslist IngressList = IngressList{}
 
 		for _, ingress := range ingresses.Items {
 
