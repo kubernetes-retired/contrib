@@ -10,3 +10,5 @@ ingress/controllers/nginx/nginx.tmpl:    error_page 503 = @custom_503;
 ingress/controllers/nginx/nginx.tmpl:    error_page 504 = @custom_504;
 mungegithub/mungers/submit-queue.go:		sq.e2e = &fake_e2e.FakeE2ETester{
 mungegithub/mungers/submit-queue.go:	fake_e2e "k8s.io/contrib/mungegithub/mungers/e2e/fake"
+mungegithub/mungers/submit-queue_test.go:	fake_e2e "k8s.io/contrib/mungegithub/mungers/e2e/fake"
+mungegithub/mungers/submit-queue_test.go:	sq.e2e = &fake_e2e.FakeE2ETester{
