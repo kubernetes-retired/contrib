@@ -28,7 +28,7 @@ Reference [Ansible installation](http://docs.ansible.com/ansible/intro_installat
 The DNS kubernetes-addon requires python-netaddr. Install netaddr (Mac OSX example):
 
 ```
-sudo pip install python-netaddr
+sudo pip install netaddr
 ```
 
 Reference the [python-netaddr documentation](https://pythonhosted.org/netaddr/installation.html) for additional installation instructions.
@@ -148,7 +148,7 @@ vagrant provision
 ```
 
 ### VirtualBox
-Nothing special should be required for the VirtualBox provisioner. `vagrant up` should just work.
+Nothing special should be required for the VirtualBox provisioner. `vagrant up --provider virtualbox` should just work.
 
 
 ## Additional Information
