@@ -84,3 +84,8 @@ one-time
 change-permissions
 services-configmap
 use-real-cloud
+experimental-scale-down-enabled
+scale-down-delay
+scale-down-underutilized-time
+scale-down-utilization-threshold
+scale-down-trial-frequency
