@@ -70,20 +70,20 @@ http {
 			index	index.html index.htm;
 		}
 	}
+{{range $i := .}}
 
-{{range $i := .Items}}
 	server {
-		server_name {{$i.host}};
-{{if $i.ssl}}
+		server_name {{$i.Host}};
+{{if $i.Ssl}}
 		listen 443 ssl;
-		ssl_certificate		/etc/nginx/certs/{{$i.host}}.crt;
-		ssl_certificate_key	/etc/nginx/certs/{{$i.host}}.key;
+		ssl_certificate		/etc/nginx/certs/{{$i.Host}}.crt;
+		ssl_certificate_key	/etc/nginx/certs/{{$i.Host}}.key;
 {{end}}
-{{if $i.nonssl}}listen 80;{{end}}
-{{ range $path := $i.paths }}
-		location {{$path.location}} {
+{{if $i.Nonssl}}		listen 80;{{end}}
+{{ range $path := $i.Paths }}
+		location {{$path.Location}} {
 			proxy_set_header Host $host;
-			proxy_pass {{$i.scheme}}://{{$path.service}}.{{$i.namespace}}.svc.cluster.local:{{$path.port}};
+			proxy_pass {{$i.Scheme}}://{{$path.Service}}.{{$i.Namespace}}.svc.cluster.local:{{$path.Port}};
 		}
 {{end}}
 	}{{end}}
@@ -111,18 +111,18 @@ func shellOut(shellCmd string, args []string) {
 }
 
 type Path struct {
-	location	string
-	service		string
-	port			int32
+	Location	string
+	Service		string
+	Port			int32
 }
 
 type Ingress struct {
-	host			string
-	namespace	string
-	paths 		[]*Path
-	ssl				bool
-	nonssl		bool
-	scheme		string
+	Host			string
+	Namespace	string
+	Paths 		[]*Path
+	Ssl				bool
+	Nonssl		bool
+	Scheme		string
 }
 
 func main() {
@@ -198,7 +198,7 @@ func main() {
 		}
 		known = ingresses
 
-		type IngressList []Ingress
+		type IngressList []*Ingress
 
 		var ingresslist IngressList = IngressList{}
 
@@ -209,23 +209,23 @@ func main() {
 			// Setup ingress defaults
 
 			i := new(Ingress)
-			i.host = ingressHost
-			i.namespace = ingress.Namespace
-			i.ssl = false
-			i.nonssl = true
-			i.scheme = "http"
+			i.Host = ingressHost
+			i.Namespace = ingress.Namespace
+			i.Ssl = false
+			i.Nonssl = true
+			i.Scheme = "http"
 
 			// Parse labels
 			l := ingress.GetLabels()
 			for k, v := range(l) {
 				if k == "ssl" && v == "true" {
-					i.ssl = true
+					i.Ssl = true
 				}
 				if k == "httpsOnly" && v == "true" {
-					i.nonssl = false
+					i.Nonssl = false
 				}
 				if k == "httpsBackend" && v == "true" {
-					i.scheme = "https"
+					i.Scheme = "https"
 				}
 			}
 
@@ -233,21 +233,21 @@ func main() {
 			for _, r := range(ingress.Spec.Rules) {
 				for _, p := range(r.HTTP.Paths) {
 					l := new(Path)
-					l.location = p.Path
-					l.service = p.Backend.ServiceName
-					l.port = p.Backend.ServicePort.IntVal
-					i.paths = append(i.paths, l)
+					l.Location = p.Path
+					l.Service = p.Backend.ServiceName
+					l.Port = p.Backend.ServicePort.IntVal
+					i.Paths = append(i.Paths, l)
 				}
 			}
 
-			if vaultEnabled == "true" && i.ssl {
+			if vaultEnabled == "true" && i.Ssl {
 
 				vaultPath := "secret/ssl/" + ingressHost
 
 				keySecretData, err := vault.Logical().Read(vaultPath)
 				if err != nil || keySecretData == nil {
 					fmt.Printf("No secret for %v\n", ingressHost)
-					i.ssl = false
+					i.Ssl = false
 					continue
 				} else {
 					fmt.Printf("Found secret for %v\n", ingressHost)
@@ -256,20 +256,20 @@ func main() {
 				var keySecret string = fmt.Sprintf("%v", keySecretData.Data["key"])
 				if err != nil || keySecret == "" {
 					fmt.Printf("WARN: No secret keys found at %v\n", vaultPath)
-					i.ssl = false
+					i.Ssl = false
 					continue
 				}
 				fmt.Printf("Found key for %v\n", ingressHost)
 				keyFileName := nginxConfDir + "/certs/" + ingressHost + ".key"
 				if err := ioutil.WriteFile(keyFileName, []byte(keySecret), 0400); err != nil {
 					log.Fatalf("failed to write file %v: %v\n", keyFileName, err)
-					i.ssl = false
+					i.Ssl = false
 					continue
 				}
 				var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
 				if err != nil || crtSecret == "" {
 					fmt.Printf("WARN: No crt found at %v\n", vaultPath)
-					i.ssl = false
+					i.Ssl = false
 					continue
 				}
 
@@ -277,11 +277,12 @@ func main() {
 				crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
 				if err := ioutil.WriteFile(crtFileName, []byte(crtSecret), 0400); err != nil {
 					log.Fatalf("failed to write file %v: %v\n", crtFileName, err)
-					i.ssl = false
+					i.Ssl = false
 					continue
 				}
 			}
 			ingresslist = append(ingresslist, i)
+
 		}
 
 		if w, err := os.Create(nginxConfDir + "/nginx.conf"); err != nil {
