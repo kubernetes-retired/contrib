@@ -240,46 +240,43 @@ func main() {
 				}
 			}
 
-			if vaultEnabled == "true" && i.Ssl {
+			if vaultEnabled == "true" &&  i.Ssl {
 
 				vaultPath := "secret/ssl/" + ingressHost
-
 				keySecretData, err := vault.Logical().Read(vaultPath)
 				if err != nil || keySecretData == nil {
 					fmt.Printf("No secret for %v\n", ingressHost)
 					i.Ssl = false
-					continue
 				} else {
 					fmt.Printf("Found secret for %v\n", ingressHost)
+					var keySecret string = fmt.Sprintf("%v", keySecretData.Data["key"])
+					if err != nil || keySecret == "" {
+						fmt.Printf("WARN: No secret keys found at %v\n", vaultPath)
+						i.Ssl = false
+					} else {
+						fmt.Printf("Found key for %v\n", ingressHost)
+						keyFileName := nginxConfDir + "/certs/" + ingressHost + ".key"
+						if err := ioutil.WriteFile(keyFileName, []byte(keySecret), 0400); err != nil {
+							log.Fatalf("failed to write file %v: %v\n", keyFileName, err)
+							i.Ssl = false
+						} else {
+								var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
+								if err != nil || crtSecret == "" {
+									fmt.Printf("WARN: No crt found at %v\n", vaultPath)
+									i.Ssl = false
+								} else {
+									fmt.Printf("Found crt for %v\n", ingressHost)
+									crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
+									if err := ioutil.WriteFile(crtFileName, []byte(crtSecret), 0400); err != nil {
+										log.Fatalf("failed to write file %v: %v\n", crtFileName, err)
+										i.Ssl = false
+									}
+								}
+						}
+					}
 				}
-
-				var keySecret string = fmt.Sprintf("%v", keySecretData.Data["key"])
-				if err != nil || keySecret == "" {
-					fmt.Printf("WARN: No secret keys found at %v\n", vaultPath)
-					i.Ssl = false
-					continue
-				}
-				fmt.Printf("Found key for %v\n", ingressHost)
-				keyFileName := nginxConfDir + "/certs/" + ingressHost + ".key"
-				if err := ioutil.WriteFile(keyFileName, []byte(keySecret), 0400); err != nil {
-					log.Fatalf("failed to write file %v: %v\n", keyFileName, err)
-					i.Ssl = false
-					continue
-				}
-				var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
-				if err != nil || crtSecret == "" {
-					fmt.Printf("WARN: No crt found at %v\n", vaultPath)
-					i.Ssl = false
-					continue
-				}
-
-				fmt.Printf("Found crt for %v\n", ingressHost)
-				crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
-				if err := ioutil.WriteFile(crtFileName, []byte(crtSecret), 0400); err != nil {
-					log.Fatalf("failed to write file %v: %v\n", crtFileName, err)
-					i.Ssl = false
-					continue
-				}
+			} else {
+				fmt.Printf("SSL not selected for %v\n", ingressHost)
 			}
 			ingresslist = append(ingresslist, i)
 
