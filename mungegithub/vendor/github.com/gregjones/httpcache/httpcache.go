@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -174,7 +175,12 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 		}
 
 		resp, err = transport.RoundTrip(req)
+
 		if err == nil && req.Method == "GET" && resp.StatusCode == http.StatusNotModified {
+			fmt.Printf("CACHE HIT %s:\n", req.URL)
+			req.Write(os.Stdout)
+			resp.Header.Write(os.Stdout)
+			fmt.Printf("/CACHE HIT\n")
 			// Replace the 304 response with the one from cache, but update with some new headers
 			endToEndHeaders := getEndToEndHeaders(resp.Header)
 			for _, header := range endToEndHeaders {
@@ -185,6 +191,10 @@ func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error
 
 			resp = cachedResp
 		} else {
+			fmt.Printf("CACHE MISS %s:\n", req.URL)
+			req.Write(os.Stdout)
+			resp.Header.Write(os.Stdout)
+			fmt.Printf("/CACHE MISS\n")
 			if err != nil || resp.StatusCode != http.StatusOK {
 				t.Cache.Delete(cacheKey)
 			}

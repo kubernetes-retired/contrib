@@ -7,6 +7,7 @@ package github
 
 import (
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -74,6 +75,7 @@ type IssueEvent struct {
 //
 // GitHub API docs: https://developer.github.com/v3/issues/events/#list-events-for-an-issue
 func (s *IssuesService) ListIssueEvents(owner, repo string, number int, opt *ListOptions) ([]IssueEvent, *Response, error) {
+	fmt.Printf("%s %s %s aoeu\n", owner, repo, number)
 	u := fmt.Sprintf("repos/%v/%v/issues/%v/events", owner, repo, number)
 	u, err := addOptions(u, opt)
 	if err != nil {
@@ -90,6 +92,8 @@ func (s *IssuesService) ListIssueEvents(owner, repo string, number int, opt *Lis
 	if err != nil {
 		return nil, resp, err
 	}
+	req.Write(os.Stdout)
+	resp.Write(os.Stdout)
 
 	return events, resp, err
 }
