@@ -1249,3 +1249,12 @@ func TestHealth(t *testing.T) {
 		t.Errorf("updateHealth didn't truncate old entries: %v", sq.healthHistory)
 	}
 }
+
+func TestMetrics(t *testing.T) {
+	sq := getTestSQ(false, nil, nil)
+	metrics := string(sq.getMetrics())
+	expected := "{\"Gauges\":{\"PRCount\":0,\"QueueLength\":2,\"Blocked\":false}}"
+	if metrics != expected {
+		t.Errorf("Unexpected metrics:\n got: %v\nwant: %v\n", metrics, expected)
+	}
+}

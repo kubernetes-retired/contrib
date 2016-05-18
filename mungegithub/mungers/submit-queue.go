@@ -341,6 +341,7 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 		handle("/merge-info", http.HandlerFunc(sq.serveMergeInfo))
 		handle("/priority-info", http.HandlerFunc(sq.servePriorityInfo))
 		handle("/health", makeHandler(sq.getHealth))
+		handle("/metrics", makeHandler(sq.getMetrics))
 		handle("/sq-stats", makeHandler(sq.getSQStats))
 		config.ServeDebugStats("/stats")
 		go http.ListenAndServe(config.Address, nil)
@@ -654,6 +655,34 @@ func (sq *SubmitQueue) getQueueStatus() []byte {
 	status.PRStatus = outputStatus
 
 	return sq.marshal(status)
+}
+
+// getMetrics returns a json representation of important stats about the
+// submit queue's health, for external monitoring/graphing/alerting.
+func (sq *SubmitQueue) getMetrics() []byte {
+	sq.Lock()
+	defer sq.Unlock()
+
+	status := sq.e2e.GetBuildStatus()
+	blocked := false
+	for _, state := range status {
+		if state.Status != "Stable" {
+			blocked = true
+		}
+	}
+
+	type gauges struct {
+		PRCount     int
+		QueueLength int
+		Blocked     bool
+	}
+	return sq.marshal(struct {
+		Gauges gauges
+	}{Gauges: gauges{
+		PRCount:     len(sq.prStatus),
+		QueueLength: len(sq.e2e.GetBuildStatus()),
+		Blocked:     blocked,
+	}})
 }
 
 func (sq *SubmitQueue) getGithubE2EStatus() []byte {
