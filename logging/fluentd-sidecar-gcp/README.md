@@ -1,5 +1,5 @@
 # Collecting log files from within containers with Fluentd and sending them to the Google Cloud Logging service.
-*Note that this only works for clusters running on GCE and whose VMs have the cloud-logging.write scope. If your cluster is logging to Elasticsearch instead, see [this guide](/logging/fluentd-sidecar-es/) instead.*
+*Note that this only works for clusters running on GCE and whose VMs have the cloud-logging.write scope. If your cluster is logging to Elasticsearch instead, see [this guide](/logging/fluentd-sidecar-es/README.md) instead.*
 
 This directory contains the source files needed to make a Docker image that collects log files from arbitrary files within a container using [Fluentd](http://www.fluentd.org/) and sends them to GCP.
 The image is designed to be used as a sidecar container as part of a pod.
