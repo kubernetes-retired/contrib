@@ -37,9 +37,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.ssh.insert_key = false
 
   # This explicitly sets the order that vagrant will use by default if no --provider given
+  config.vm.provider "virtualbox"
   config.vm.provider "openstack"
   config.vm.provider "libvirt"
-  config.vm.provider "virtualbox"
 
   def set_openstack_box(config)
     case $os_image
