@@ -8,7 +8,21 @@ require "yaml"
 require 'vagrant-openstack-provider'
 
 $num_nodes = (ENV['NUM_NODES'] || 2).to_i
-ansible_tags = ENV['ANSIBLE_TAGS']
+$ansible_tags = ENV['ANSIBLE_TAGS']
+# OS image to use. Currently supported:
+# - "centos7" on openstack, libvirt, virtualbox
+# - "centosatomic" on openstack, libvirt, virtualbox
+# - "fedora" on openstack, libvirt, virtualbox
+# - "fedoraatomic" on openstack, libvirt, virtualbox
+# - "coreos" on virtualbox
+$os_image = (ENV['OS_IMAGE'] || "centos7").to_sym
+
+$coreos_update_channel = "stable"
+$coreos_image_version = "current"
+
+# Machines under VirtualBox provier use static IPs, based on VM index.
+# Master has index 0.
+VBOX_STATIC_IP_TEMPLATE = "172.32.128.1%d"
 
 VAGRANTFILE_API_VERSION = "2"
 
@@ -27,10 +41,50 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provider "libvirt"
   config.vm.provider "virtualbox"
 
+  def set_openstack_box(config)
+    case $os_image
+    when :centos7
+      # common config
+      config.vm.box = "dummy"
+      config.vm.box_url = "https://github.com/cloudbau/vagrant-openstack-plugin/raw/master/dummy.box"
+    end
+  end
+
+  def set_vbox_box(config)
+    case $os_image
+    when :centos7
+      config.vm.box = "centos/7"
+    when :centosatomic
+      config.vm.box = "centos/atomic-host"
+    when :fedora
+      config.vm.box = "fedora/23-cloud-base"
+    when :fedoraatomic
+      config.vm.box = "fedora/23-atomic-host"
+    when :coreos
+      config.vm.box = "coreos-%s" % $coreos_update_channel
+      if $coreos_image_version != "current"
+        config.vm.box_version = $coreos_image_version
+      end
+      config.vm.box_url = "https://storage.googleapis.com/%s.release.core-os.net/amd64-usr/%s/coreos_production_vagrant.json" %
+        [$coreos_update_channel, $coreos_image_version]
+    end
+  end
+
+  def set_libvirt_box(config)
+    case $os_image
+    when :centos7
+      config.vm.box = "centos/7"
+    when :centosatomic
+      config.vm.box = "centos/atomic-host"
+    when :fedora
+      config.vm.box = "fedora/23-cloud-base"
+    when :fedoraatomic
+      config.vm.box = "fedora/23-atomic-host"
+    end
+  end
+
   def set_openstack(os, config, n)
-    # common config
-    config.vm.box = "dummy"
-    config.vm.box_url = "https://github.com/cloudbau/vagrant-openstack-plugin/raw/master/dummy.box"
+    set_openstack_box(config)
 
     # this crap is to make it not fail if the file doesn't exist (which is ok if we are using a different provisioner)
     __filename = File.join(File.dirname(__FILE__), "openstack_config.yml")
@@ -59,9 +113,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     os.server_name = n.vm.hostname
   end
 
-  def set_vbox(vb, config)
-    config.vm.box = "chef/centos-7.0"
-    config.vm.network "private_network", type: "dhcp"
+  def set_vbox(vb, config, vm_idx)
+    set_vbox_box(config)
+
+    config.vm.network "private_network", ip: VBOX_STATIC_IP_TEMPLATE % vm_idx
     vb.gui = false
     vb.memory = 2048
     vb.cpus = 2
@@ -72,23 +127,85 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   end
 
   def set_libvirt(lv, config)
-    config.vm.box = "kube-centos-7"
-    config.vm.box_url = "http://cloud.centos.org/centos/7/vagrant/x86_64/images/CentOS-7.LibVirt.box"
+    set_libvirt_box(config)
+
     lv.memory = 2048
     lv.cpus = 2
     lv.nested = true
     lv.volume_cache = 'none'
   end
 
-  def set_provider(n)
+  def set_provider(n, vm_idx)
     n.vm.provider :openstack do |os, override|
       set_openstack(os, override, n)
     end
     n.vm.provider :virtualbox do |vb, override|
-      set_vbox(vb, override)
+      set_vbox(vb, override, vm_idx)
     end
     n.vm.provider :libvirt do |lv, override|
       set_libvirt(lv, override)
+    end
+  end
+
+  def set_common_ansible_options(ansible)
+    ansible.groups = $groups
+    ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
+    ansible.tags = $ansible_tags unless $ansible_tags.nil?
+    ansible.raw_ssh_args = ['-o ControlMaster=no']
+  end
+
+  def vagrant_ansible_provision(ansible, provider)
+    set_common_ansible_options(ansible)
+    # This set up the vagrant hosts before we run the main playbook
+    # Today this just creates /etc/hosts so machines can talk via their
+    # 'internal' IPs instead of the openstack public ip.
+    ansible.playbook = "./vagrant-ansible.yml"
+
+    if provider == :virtualbox
+      # On VirtualBox eth0 is used for NAT-ed internet connection,
+      # and actual connectivity with the host and other VMs is done
+      # using eth1 interface.
+      ansible.extra_vars = { public_iface: "eth1" }
+    end
+  end
+
+  def cluster_ansible_provision(ansible, provider)
+    set_common_ansible_options(ansible)
+
+    # This sets up both flannel and kube.
+    ansible.playbook = "../cluster.yml"
+
+    if provider == :virtualbox
+      master_ip = VBOX_STATIC_IP_TEMPLATE % 0
+
+      # On VirtualBox eth0 is used for NAT-ed internet connection,
+      # and actual connectivity with the host and other VMs is done
+      # using eth1 interface.
+      ansible.extra_vars = {
+        flannel_opts: "--iface=eth1",
+        etcd_interface: "eth1",
+        netplugin_interface: "eth1",
+        netmaster_interface: "eth1",
+        kube_apiserver_bind_address: master_ip,
+      }
+    end
+  end
+
+  def run_ansible_provision(n)
+    n.vm.provider :openstack do |os, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :openstack
+      end
+    end
+    n.vm.provider :virtualbox do |vb, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :virtualbox
+      end
+    end
+    n.vm.provider :libvirt do |lv, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :libvirt
+      end
     end
   end
 
@@ -101,46 +218,41 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     nodes.push(name)
     config.vm.define "#{name}" do |n|
       n.vm.hostname = name
-      set_provider(n)
+      set_provider(n, i + 1)
     end
   end
 
   # This is how we create the ansible inventory, see it in .vagrant
   # if you want to debug, run 'VAGRANT_LOG=info vagrant up'
   # and you'll see exactly how the cluster comes up via ansible inv.
-  groups = {
+  $groups = {
      "etcd" => ["kube-master"],
      "masters" => ["kube-master"],
      "nodes" => nodes,
-     "all_groups:children" => ["etcd","masters","nodes"]
+     "all_groups:children" => ["etcd","masters","nodes"],
   }
+  if $os_image == :coreos
+    # Vagrant prior version 1.8.0 doesn't write group variables into inventory file:
+    # <https://github.com/mitchellh/vagrant/commit/dd4ae1a51cfb246d561bced89d3b34ee90a0a38f>
+    Vagrant.require_version ">= 1.8.0"
+
+    # On CoreOS we use custom Python in Ansible.
+    $groups["all_groups:vars"] = ['ansible_python_interpreter="PATH=/opt/bin:$PATH python"']
+  end
 
   config.vm.define "kube-master" do |n|
     name = "kube-master"
     n.vm.hostname = name
-    set_provider(n)
+    set_provider(n, 0)
 
-    if ansible_tags.nil?
-      # This set up the vagrant hosts before we run the main playbook
-      # Today this just creates /etc/hosts so machines can talk via their
-      # 'internal' IPs instead of the openstack public ip.
-      n.vm.provision :ansible do |ansible|
-        ansible.groups = groups
-        ansible.playbook = "./vagrant-ansible.yml"
-        ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
-        ansible.raw_ssh_args = ['-o ControlMaster=no']
+    if $ansible_tags.nil?
+      run_ansible_provision n do |ansible, provider|
+        vagrant_ansible_provision(ansible, provider)
       end
     end
 
-    # This sets up both flannel and kube.
-    n.vm.provision :ansible do |ansible|
-      ansible.groups = groups
-      ansible.playbook = "../cluster.yml"
-      ansible.limit = "all" #otherwise the metadata wont be there for ipv4?
-      # for some hypervisors, like vbox, eth0 is not the right interface to bind to.
-      # ansible.extra_vars = { flannel_opts: "--iface=eth1"}
-      ansible.tags = ansible_tags
-      ansible.raw_ssh_args = ['-o ControlMaster=no']
+    run_ansible_provision n do |ansible, provider|
+      cluster_ansible_provision(ansible, provider)
     end
   end
 end

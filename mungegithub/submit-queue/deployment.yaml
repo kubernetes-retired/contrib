@@ -1,0 +1,40 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: submit-queue
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: submit-queue
+    spec:
+      containers:
+      - name: submit-queue
+        command:
+        - /mungegithub
+        - --token-file=/etc/secret-volume/token
+        - --pr-mungers=blunderbuss,lgtm-after-commit,cherrypick-auto-approve,label-unapproved-picks,needs-rebase,ok-to-test,rebuild-request,path-label,size,stale-pending-ci,stale-green-ci,block-path,release-note-label,comment-deleter,submit-queue
+        - --dry-run=true
+        image: gcr.io/google_containers/submit-queue:2015-10-26-2a7f8fd
+        ports:
+        - name: status
+          containerPort: 8080
+        resources:
+          requests:
+            cpu: 100m
+          limits:
+            cpu: 100m
+        volumeMounts:
+        - mountPath: /etc/secret-volume
+          name: secret-volume
+        - mountPath: /gitrepos
+          name: kubernetes-repo
+      volumes:
+      - name: secret-volume
+        secret:
+          secretName: github-token
+      - name: kubernetes-repo
+        gitRepo:
+          repository: "https://github.com/kubernetes/kubernetes.git"
+          revision: "master"

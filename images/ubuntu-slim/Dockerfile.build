@@ -1,0 +1,45 @@
+FROM ubuntu:16.04
+
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt-get update && apt-get dist-upgrade -y
+
+# hold required packages to avoid breaking the installation of packages
+RUN apt-mark hold apt gnupg adduser passwd libsemanage1
+
+# dpkg --get-selections | grep -v deinstall
+RUN echo "Yes, do as I say!" | apt-get purge \
+    bash \
+    libcap2-bin \
+    libkmod2 \
+    libsmartcols1 \
+    libudev1 \
+    tzdata
+
+RUN apt-get autoremove -y
+
+COPY runlevel /sbin/runlevel
+
+RUN sed -i 's/bash/sh/g' /etc/passwd
+
+WORKDIR /usr/share
+
+RUN tar -czf copyrights.tar.gz common-licenses doc/*/copyright
+
+RUN apt-get clean -y && \
+    gunzip copyrights.tar.gz && \
+    tar -rf copyrights.tar doc/*/copyright && \
+    gzip copyrights.tar && \
+    rm -rf \
+        doc \
+        man \
+        info \
+        locale \
+        /var/lib/apt/lists/* \
+        /var/log/* \
+        /var/cache/debconf/* \
+        common-licenses \
+        ~/.bashrc \
+        /etc/systemd \
+        /lib/lsb \
+        /lib/udev

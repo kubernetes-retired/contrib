@@ -3,3 +3,7 @@ kube_addons_dir: "{{ kube_config_dir }}/addons"
 local_temp_addon_dir: /tmp/kubernetes/addons
 
 heapster_memory: (200 + length(groups['nodes']) + 12)|string + "Mi"
+
+grains: ""
+
+kube_addons_download_source_dir: cluster/addons/addon-manager

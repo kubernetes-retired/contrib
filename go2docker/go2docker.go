@@ -69,17 +69,17 @@ func main() {
 		args = flag.Args()
 	}
 
-	// check for go
-	goBin, err := exec.LookPath("go")
+	// check for go in path and the linux_amd64 cross packages
+	cmd := exec.Command("go", "env", "GOROOT")
+	out, err := cmd.Output()
 	if err != nil {
-		log.Fatalf("`go` executable not found: %v, see %q ", err, "golang.org/doc/install")
+		log.Fatalf("`go env GOROOT` execution failed: %v, see %q ", err, "golang.org/doc/install")
 	}
-	toolPath := filepath.Dir(goBin)
-	// check for linux_amd64 toolchain
-	crossPath := filepath.Join(toolPath, "linux_amd64")
+	goRoot := string(out[:len(out)-1])
+	crossPath := filepath.Join(goRoot, "pkg", "linux_amd64")
 	if _, crossErr := os.Stat(crossPath); os.IsNotExist(crossErr) {
 		// check for make.bash
-		makeBash, err := filepath.Abs(filepath.Join(toolPath, "..", "src", "make.bash"))
+		makeBash, err := filepath.Abs(filepath.Join(goRoot, "src", "make.bash"))
 		if err != nil {
 			log.Fatalf("failed to resolve make.bash path: %v", err)
 		}
@@ -106,7 +106,7 @@ func main() {
 	}
 	aout := filepath.Join(tmpDir, basename)
 	command := append([]string{"go", "build", "-o", aout, "-a", "-tags", "netgo", "-installsuffix", "netgo"}, args...)
-	cmd := exec.Command(command[0], command[1:]...)
+	cmd = exec.Command(command[0], command[1:]...)
 	gopath := os.Getenv("GOPATH")
 	cmd.Env = []string{
 		"GOOS=linux",

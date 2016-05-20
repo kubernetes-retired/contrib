@@ -20,17 +20,26 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
 const (
 	stalePendingCIHours = 24
+	pendingMsgFormat    = `@` + jenkinsBotName + ` test this issue: #IGNORE
+
+Tests have been pending for %d hours`
 )
 
-// StalePendingCI will ask the k8s-bot to test any PR with a LGTM that has
+var (
+	pendingMsgBody = fmt.Sprintf(pendingMsgFormat, stalePendingCIHours)
+)
+
+// StalePendingCI will ask the testBot-to test any PR with a LGTM that has
 // been pending for more than 24 hours. This can happen when the jenkins VM
 // is restarted.
 //
@@ -40,21 +49,24 @@ const (
 // But this is our world and so we should really do this for all PRs which
 // aren't likely to get another push (everything that is mergeable). Since that
 // can be a lot of PRs, I'm just doing it for the LGTM PRs automatically...
-//
-// With minor modification this can be run easily by hand. Remove the LGTM check
-// godep go build
-// ./mungegithub --token-file=/PATH/TO/YOUR/TOKEN --pr-mungers=stale-pending-ci --once (--dry-run)
 type StalePendingCI struct{}
 
 func init() {
-	RegisterMungerOrDie(StalePendingCI{})
+	s := StalePendingCI{}
+	RegisterMungerOrDie(s)
+	RegisterStaleComments(s)
 }
 
 // Name is the name usable in --pr-mungers
 func (StalePendingCI) Name() string { return "stale-pending-ci" }
 
+// RequiredFeatures is a slice of 'features' that must be provided
+func (StalePendingCI) RequiredFeatures() []string { return []string{} }
+
 // Initialize will initialize the munger
-func (StalePendingCI) Initialize(config *github.Config) error { return nil }
+func (StalePendingCI) Initialize(config *github.Config, features *features.Features) error {
+	return nil
+}
 
 // EachLoop is called at the start of every munge loop
 func (StalePendingCI) EachLoop() error { return nil }
@@ -70,7 +82,7 @@ func (StalePendingCI) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	if !obj.HasLabel("lgtm") {
+	if !obj.HasLabel(lgtmLabel) {
 		return
 	}
 
@@ -90,12 +102,27 @@ func (StalePendingCI) Munge(obj *github.MungeObject) {
 			return
 		}
 		if time.Since(*statusTime) > stalePendingCIHours*time.Hour {
-			msgFormat := `@k8s-bot test this issue: #IGNORE
-
-Tests have been pending for %d hours`
-			msg := fmt.Sprintf(msgFormat, stalePendingCIHours)
-			obj.WriteComment(msg)
+			obj.WriteComment(pendingMsgBody)
 			return
 		}
 	}
+}
+
+func (StalePendingCI) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
+	if *comment.Body != pendingMsgBody {
+		return false
+	}
+	stale := commentBeforeLastCI(obj, comment)
+	if stale {
+		glog.V(6).Infof("Found stale StalePendingCI comment")
+	}
+	return stale
+}
+
+// StaleComments returns a slice of stale comments
+func (s StalePendingCI) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, s.isStaleComment)
 }

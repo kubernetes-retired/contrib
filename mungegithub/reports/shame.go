@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -33,9 +34,11 @@ import (
 
 // ShameReport lists flaky tests and writes group+individual email to nag people to fix them.
 type ShameReport struct {
-	Command string
-	From    string
-	Cc      string
+	Command             string
+	From                string
+	Cc                  string
+	ReplyTo             string
+	AllowedShameDomains string
 }
 
 func init() {
@@ -50,6 +53,8 @@ func (s *ShameReport) AddFlags(cmd *cobra.Command, config *githubhelper.Config) 
 	cmd.Flags().StringVar(&s.Command, "shame-report-cmd", "tee -a shame.txt", "command to execute, passing the report as stdin")
 	cmd.Flags().StringVar(&s.From, "shame-from", "", "From: header for shame report")
 	cmd.Flags().StringVar(&s.Cc, "shame-cc", "", "Cc: header for shame report")
+	cmd.Flags().StringVar(&s.ReplyTo, "shame-reply-to", "", "Reply-To: header for shame report")
+	cmd.Flags().StringVar(&s.AllowedShameDomains, "allowed-shame-domains", "", "comma-separated list of domains we can send shame emails to")
 }
 
 type reportData struct {
@@ -149,6 +154,8 @@ func (s *ShameReport) runCmd(r io.Reader) error {
 	args = args[1:]
 	cmd := exec.Command(bin, args...)
 	cmd.Stdin = r
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
@@ -180,7 +187,7 @@ func (s *ShameReport) groupReport(r *reportData) (map[string]bool, error) {
 		// Exclude issues less than three days old if we can
 		// individually email the owner.
 		for _, data := range issues {
-			if data.age < 3*24*time.Hour && mayEmail(r.loginToEmail[assignee]) {
+			if data.age < 3*24*time.Hour && s.mayEmail(r.loginToEmail[assignee]) {
 				continue
 			}
 			strs = append(strs, data.String())
@@ -198,7 +205,7 @@ func (s *ShameReport) groupReport(r *reportData) (map[string]bool, error) {
 	to := []string{}
 	missingAddresses := []string{}
 	for u, e := range r.loginToEmail {
-		if mayEmail(e) {
+		if s.mayEmail(e) {
 			to = append(to, e)
 		} else {
 			missingAddresses = append(missingAddresses, u)
@@ -212,6 +219,9 @@ func (s *ShameReport) groupReport(r *reportData) (map[string]bool, error) {
 	// Write the report
 	if s.From != "" {
 		fmt.Fprintf(dest, "From: %v\n", s.From)
+	}
+	if s.ReplyTo != "" {
+		fmt.Fprintf(dest, "Reply-To: %v\n", s.ReplyTo)
 	}
 	if s.Cc != "" {
 		fmt.Fprintf(dest, "Cc: %v\n", s.Cc)
@@ -240,9 +250,10 @@ These users couldn't be added to the To: line, as we have no address for them:
 Individuals with an accessible email and no assignments older than 3 days will
 be left off the group email, so please make your email address public in github!
 
-Note: non-google users are not emailed by this system.
+Note: only users with public email addresses ending in %v
+are emailed by this system.
 
-`, strings.Join(missingAddresses, ", "))
+`, strings.Join(missingAddresses, ", "), s.AllowedShameDomains)
 	}
 
 	return needsIndividualEmail, s.runCmd(dest)
@@ -260,7 +271,7 @@ func (s *ShameReport) individualReport(user string, r *reportData) error {
 
 	to := []string{}
 	email := r.loginToEmail[user]
-	if mayEmail(email) {
+	if s.mayEmail(email) {
 		to = append(to, email)
 	}
 	sort.Strings(to)
@@ -270,6 +281,9 @@ func (s *ShameReport) individualReport(user string, r *reportData) error {
 	// Write the report
 	if s.From != "" {
 		fmt.Fprintf(dest, "From: %v\n", s.From)
+	}
+	if s.ReplyTo != "" {
+		fmt.Fprintf(dest, "Reply-To: %v\n", s.ReplyTo)
 	}
 	// No Cc on individual emails!
 	fmt.Fprintf(dest, "To: %v\n", strings.Join(to, ","))
@@ -287,4 +301,11 @@ Full report:
 	return s.runCmd(dest)
 }
 
-func mayEmail(email string) bool { return strings.HasSuffix(email, "@google.com") }
+func (s *ShameReport) mayEmail(email string) bool {
+	for _, domain := range strings.Split(s.AllowedShameDomains, ",") {
+		if strings.HasSuffix(email, "@"+domain) {
+			return true
+		}
+	}
+	return false
+}

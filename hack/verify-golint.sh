@@ -20,12 +20,28 @@ set -o pipefail
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 
+GO_VERSION=($(go version))
+# golint only works for golang 1.5+
+if [[ -n $(echo "${GO_VERSION[2]}" | grep -E 'go1.1|go1.2|go1.3|go1.4') ]]; then
+  echo "GOLINT requires go 1.5+. Skipping"
+  exit
+fi
+
 cd "${KUBE_ROOT}"
 
 GOLINT=${GOLINT:-"golint"}
-bad_files=$($GOLINT -min_confidence=0.9 ./...)
-if [[ -n "${bad_files}" ]]; then
+PACKAGES=($(go list ./... | grep -v /vendor/))
+bad_files=()
+for package in "${PACKAGES[@]}"; do
+  out=$("${GOLINT}" -min_confidence=0.9 "${package}")
+  if [[ -n "${out}" ]]; then
+    bad_files+=("${out}")
+  fi
+done
+if [[ "${#bad_files[@]}" -ne 0 ]]; then
   echo "!!! '$GOLINT' problems: "
-  echo "${bad_files}"
+  echo "${bad_files[@]}"
   exit 1
 fi
+
+# ex: ts=2 sw=2 et filetype=sh

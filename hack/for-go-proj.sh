@@ -22,6 +22,11 @@ CONTRIB_ROOT="$(dirname ${BASH_SOURCE})/.."
 
 godep_projects=$(find "${CONTRIB_ROOT}" -wholename '*Godeps/Godeps.json')
 
+if [ $# -ne 1 ];then
+  echo "missing subcommand: [build|install|test]"
+  exit 1
+fi
+
 CMD="${1}"
 
 case "${CMD}" in

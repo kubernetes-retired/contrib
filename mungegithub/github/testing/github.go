@@ -40,6 +40,19 @@ func boolPtr(val bool) *bool       { return &val }
 
 func timePtr(val time.Time) *time.Time { return &val }
 
+// Comment is a helper to create a valid-ish comment for testing
+func Comment(id int, login string, createdAt time.Time, body string) github.IssueComment {
+	comment := github.IssueComment{
+		ID:        &id,
+		Body:      &body,
+		CreatedAt: &createdAt,
+		User: &github.User{
+			Login: &login,
+		},
+	}
+	return comment
+}
+
 // PullRequest returns a filled out github.PullRequest
 func PullRequest(user string, merged, mergeDetermined, mergeable bool) *github.PullRequest {
 	pr := &github.PullRequest{
@@ -54,6 +67,9 @@ func PullRequest(user string, merged, mergeDetermined, mergeable bool) *github.P
 			AvatarURL: stringPtr("MyAvatarURL"),
 		},
 		Merged: boolPtr(merged),
+		Base: &github.PullRequestBranch{
+			Ref: stringPtr("master"),
+		},
 	}
 	if mergeDetermined {
 		pr.Mergeable = boolPtr(mergeable)
@@ -238,6 +254,8 @@ func setMux(t *testing.T, mux *http.ServeMux, path string, thing interface{}) {
 			data, err = json.Marshal(thing)
 		case github.RepositoryCommit:
 			data, err = json.Marshal(thing)
+		case *github.RepositoryCommit:
+			data, err = json.Marshal(thing)
 		case *github.CombinedStatus:
 			data, err = json.Marshal(thing)
 		case []github.User:
@@ -246,7 +264,7 @@ func setMux(t *testing.T, mux *http.ServeMux, path string, thing interface{}) {
 		if err != nil {
 			t.Errorf("%v", err)
 		}
-		if r.Method != "GET" {
+		if r.Method != "GET" && r.Method != "PATCH" {
 			t.Errorf("Unexpected method: expected: GET got: %s", r.Method)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -257,7 +275,7 @@ func setMux(t *testing.T, mux *http.ServeMux, path string, thing interface{}) {
 // InitServer will return a github.Client which will talk to httptest.Server,
 // to retrieve information from the http.ServeMux. If an issue, pr, events, or
 // commits are supplied it will repond with those on o/r/
-func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, events []github.IssueEvent, commits []github.RepositoryCommit, status *github.CombinedStatus) (*github.Client, *httptest.Server, *http.ServeMux) {
+func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, events []github.IssueEvent, commits []github.RepositoryCommit, status *github.CombinedStatus, masterCommit *github.RepositoryCommit) (*github.Client, *httptest.Server, *http.ServeMux) {
 	// test server
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
@@ -299,6 +317,10 @@ func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, event
 			path := fmt.Sprintf("/repos/o/r/commits/%s", *c.SHA)
 			setMux(t, mux, path, c)
 		}
+	}
+	if masterCommit != nil {
+		path := "/repos/o/r/commits/master"
+		setMux(t, mux, path, masterCommit)
 	}
 	if status != nil {
 		path := fmt.Sprintf("/repos/o/r/commits/%s/status", sha)

@@ -6,5 +6,9 @@
   service: name=etcd state=restarted
   when: etcd_started.changed == false
 
+- name: restart etcd2
+  service: name=etcd2 state=restarted
+  when: etcd2_started.changed == false
+
 - name: Save iptables rules
   command: service iptables save

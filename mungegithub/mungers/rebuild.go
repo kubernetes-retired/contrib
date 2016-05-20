@@ -19,7 +19,9 @@ package mungers
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
+	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
@@ -34,21 +36,39 @@ type RebuildMunger struct {
 	robots sets.String
 }
 
+const (
+	issueURLRe    = "(?:https?://)?github.com/kubernetes/kubernetes/issues/[0-9]+"
+	rebuildFormat = `@%s
+You must link to the test flake issue which caused you to request this manual re-test.
+Re-test requests should be in the form of: ` + "`" + jenkinsBotName + ` test this issue: #<number>` + "`" + `
+Here is the [list of open test flakes](https://github.com/kubernetes/kubernetes/issues?q=is:issue+label:kind/flake+is:open).`
+)
+
 var (
-	buildMatcher = regexp.MustCompile("@k8s-bot\\s+(?:e2e\\s+)?(?:unit\\s+)?test\\s+this.*")
-	issueMatcher = regexp.MustCompile("\\s+(?:github\\s+)?(issue|flake)\\:?\\s+#(?:IGNORE|[0-9]+)")
+	buildMatcherStr = fmt.Sprintf("@%s\\s+(?:e2e\\s+)?(?:unit\\s+)?test\\s+this.*", jenkinsBotName)
+	buildMatcher    = regexp.MustCompile(buildMatcherStr)
+	issueMatcher    = regexp.MustCompile("\\s+(?:github\\s+)?(issue|flake)\\:?\\s+(?:#(?:IGNORE|[0-9]+)|" + issueURLRe + ")")
+
+	// take the format and replace the %s with \S+
+	rebuildCommentREString = strings.Replace(rebuildFormat, `@%s`, `@\S+`, 1)
+	rebuildCommentRE       = regexp.MustCompile(rebuildCommentREString)
 )
 
 func init() {
-	RegisterMungerOrDie(&RebuildMunger{})
+	r := &RebuildMunger{}
+	RegisterMungerOrDie(r)
+	RegisterStaleComments(r)
 }
 
 // Name is the name usable in --pr-mungers
 func (r *RebuildMunger) Name() string { return "rebuild-request" }
 
+// RequiredFeatures is a slice of 'features' that must be provided
+func (r *RebuildMunger) RequiredFeatures() []string { return []string{} }
+
 // Initialize will initialize the munger
-func (r *RebuildMunger) Initialize(config *github.Config) error {
-	r.robots = sets.NewString("googlebot", "k8s-bot", "k8s-merge-robot")
+func (r *RebuildMunger) Initialize(config *github.Config, features *features.Features) error {
+	r.robots = sets.NewString("googlebot", jenkinsBotName, botName)
 	return nil
 }
 
@@ -64,7 +84,7 @@ func (r *RebuildMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	comments, err := obj.ListComments(*obj.Issue.Number)
+	comments, err := obj.ListComments()
 	if err != nil {
 		glog.Errorf("unexpected error getting comments: %v", err)
 	}
@@ -81,17 +101,14 @@ func (r *RebuildMunger) Munge(obj *github.MungeObject) {
 				glog.Errorf("Error deleting comment: %v", err)
 				continue
 			}
-			body := fmt.Sprintf(`@%s
-You must link to the test flake issue which caused you to request this manual re-test.
-Re-test requests should be in the form of: `+"`"+`k8s-bot test this issue: #<number>`+"`"+`
-Here is the [list of open test flakes](https://github.com/kubernetes/kubernetes/issues?q=is:issue+label:kind/flake+is:open).`, *comment.User.Login)
+			body := fmt.Sprintf(rebuildFormat, *comment.User.Login)
 			err := obj.WriteComment(body)
 			if err != nil {
 				glog.Errorf("unexpected error adding comment: %v", err)
 				continue
 			}
-			if obj.HasLabel("lgtm") {
-				if err := obj.RemoveLabel("lgtm"); err != nil {
+			if obj.HasLabel(lgtmLabel) {
+				if err := obj.RemoveLabel(lgtmLabel); err != nil {
 					glog.Errorf("unexpected error removing lgtm label: %v", err)
 				}
 			}
@@ -105,4 +122,23 @@ func isRebuildComment(comment *githubapi.IssueComment) bool {
 
 func rebuildCommentMissingIssueNumber(comment *githubapi.IssueComment) bool {
 	return !issueMatcher.MatchString(*comment.Body)
+}
+
+func (r *RebuildMunger) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
+	if !rebuildCommentRE.MatchString(*comment.Body) {
+		return false
+	}
+	stale := commentBeforeLastCI(obj, comment)
+	if stale {
+		glog.V(6).Infof("Found stale RebuildMunger comment")
+	}
+	return stale
+}
+
+// StaleComments returns a slice of stale comments
+func (r *RebuildMunger) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, r.isStaleComment)
 }

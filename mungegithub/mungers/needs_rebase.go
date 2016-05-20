@@ -17,27 +17,47 @@ limitations under the License.
 package mungers
 
 import (
+	"fmt"
+	"regexp"
+
+	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
+
+var (
+	rebaseRE = regexp.MustCompile(`@\S+ PR needs rebase`)
+)
+
+const needsRebase = "needs-rebase"
 
 // NeedsRebaseMunger will add the "needs-rebase" label to any issue which is
 // unable to be automatically merged
 type NeedsRebaseMunger struct{}
 
-const needsRebase = "needs-rebase"
+const (
+	needsRebaseLabel = "needs-rebase"
+)
 
 func init() {
-	RegisterMungerOrDie(NeedsRebaseMunger{})
+	n := NeedsRebaseMunger{}
+	RegisterMungerOrDie(n)
+	RegisterStaleComments(n)
 }
 
 // Name is the name usable in --pr-mungers
 func (NeedsRebaseMunger) Name() string { return "needs-rebase" }
 
+// RequiredFeatures is a slice of 'features' that must be provided
+func (NeedsRebaseMunger) RequiredFeatures() []string { return []string{} }
+
 // Initialize will initialize the munger
-func (NeedsRebaseMunger) Initialize(config *github.Config) error { return nil }
+func (NeedsRebaseMunger) Initialize(config *github.Config, features *features.Features) error {
+	return nil
+}
 
 // EachLoop is called at the start of every munge loop
 func (NeedsRebaseMunger) EachLoop() error { return nil }
@@ -56,15 +76,34 @@ func (NeedsRebaseMunger) Munge(obj *github.MungeObject) {
 		glog.V(2).Infof("Skipping %d - problem determining mergeable", *obj.Issue.Number)
 		return
 	}
-	if mergeable && obj.HasLabel(needsRebase) {
-		obj.RemoveLabel(needsRebase)
+	if mergeable && obj.HasLabel(needsRebaseLabel) {
+		obj.RemoveLabel(needsRebaseLabel)
 	}
-	if !mergeable && !obj.HasLabel(needsRebase) {
-		obj.AddLabels([]string{needsRebase})
+	if !mergeable && !obj.HasLabel(needsRebaseLabel) {
+		obj.AddLabels([]string{needsRebaseLabel})
 
-		body := "PR needs rebase"
+		body := fmt.Sprintf("@%s PR needs rebase", *obj.Issue.User.Login)
 		if err := obj.WriteComment(body); err != nil {
 			return
 		}
 	}
+}
+
+func (NeedsRebaseMunger) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
+	if !rebaseRE.MatchString(*comment.Body) {
+		return false
+	}
+	stale := !obj.HasLabel(needsRebaseLabel)
+	if stale {
+		glog.V(6).Infof("Found stale NeedsRebaseMunger comment")
+	}
+	return stale
+}
+
+// StaleComments returns a slice of comments which are stale
+func (n NeedsRebaseMunger) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, n.isStaleComment)
 }

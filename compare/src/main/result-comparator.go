@@ -20,16 +20,18 @@ import (
 	"bufio"
 	goflag "flag"
 	"fmt"
-	"net/http"
 	"os"
 
-	"github.com/spf13/pflag"
 	"k8s.io/contrib/compare/src"
+	"k8s.io/contrib/test-utils/utils"
+
+	"github.com/daviddengcn/go-colortext"
+	"github.com/spf13/pflag"
 )
 
 const (
-	urlPrefix = "https://storage.googleapis.com/kubernetes-jenkins/logs/kubernetes-e2e-gce-scalability/"
-	urlSuffix = "/build-log.txt"
+	job           = "kubernetes-e2e-gce-scalability"
+	buildFilePath = "build-log.txt"
 )
 
 var (
@@ -52,8 +54,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Need both left and right build numbers")
 		return
 	}
+	googleGCSBucketUtils := utils.NewUtils(utils.GoogleBucketURL)
 
-	leftResp, err := http.Get(fmt.Sprintf("%v%v%v", urlPrefix, leftBuildNumber, urlSuffix))
+	leftResp, err := googleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, leftBuildNumber, buildFilePath)
 	if err != nil {
 		panic(err)
 	}
@@ -62,7 +65,7 @@ func main() {
 	leftBodyScanner := bufio.NewScanner(leftBody)
 	leftLogs, leftResources, leftMetrics := src.ProcessSingleTest(leftBodyScanner, leftBuildNumber)
 
-	rightResp, err := http.Get(fmt.Sprintf("%v%v%v", urlPrefix, rightBuildNumber, urlSuffix))
+	rightResp, err := googleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, rightBuildNumber, buildFilePath)
 	if err != nil {
 		panic(err)
 	}
@@ -78,7 +81,17 @@ func main() {
 				continue
 			}
 			violatingLogs := src.CompareLogGenerationSpeed(leftLogs[k], rightLogs[k])
-			fmt.Printf("Differences for test %v\n", k)
+			if len(violatingLogs) == 0 {
+				continue
+			}
+			if enableOutputColoring {
+				src.ChangeColor(ct.Cyan, os.Stdout)
+			}
+			fmt.Printf("Differences for test %v", k)
+			if enableOutputColoring {
+				src.ResetColor(os.Stdout)
+			}
+			fmt.Print("\n")
 			violatingLogs.PrintToStdout(leftBuildNumber, rightBuildNumber, enableOutputColoring)
 		}
 	}
@@ -91,7 +104,17 @@ func main() {
 				continue
 			}
 			violatingResources := src.CompareResourceUsages(leftResources[k], rightResources[k])
-			fmt.Printf("Differences for test %v\n", k)
+			if len(violatingResources) == 0 {
+				continue
+			}
+			if enableOutputColoring {
+				src.ChangeColor(ct.Cyan, os.Stdout)
+			}
+			fmt.Printf("Differences for test %v", k)
+			if enableOutputColoring {
+				src.ResetColor(os.Stdout)
+			}
+			fmt.Print("\n")
 			violatingResources.PrintToStdout(leftBuildNumber, rightBuildNumber, enableOutputColoring)
 		}
 	}
@@ -104,7 +127,17 @@ func main() {
 				continue
 			}
 			violatingMetrics := src.CompareMetrics(leftMetrics[k], rightMetrics[k])
-			fmt.Printf("Differences for test %v\n", k)
+			if len(violatingMetrics) == 0 {
+				continue
+			}
+			if enableOutputColoring {
+				src.ChangeColor(ct.Cyan, os.Stdout)
+			}
+			fmt.Printf("Differences for test %v", k)
+			if enableOutputColoring {
+				src.ResetColor(os.Stdout)
+			}
+			fmt.Print("\n")
 			violatingMetrics.PrintToStdout(leftBuildNumber, rightBuildNumber, enableOutputColoring)
 		}
 	}

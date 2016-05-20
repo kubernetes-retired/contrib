@@ -25,8 +25,18 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/types"
-	"k8s.io/kubernetes/pkg/util"
+	hashutil "k8s.io/kubernetes/pkg/util/hash"
 )
+
+const (
+	// Its value is the json representation of map[string(IP)][HostRecord]
+	// example: '{"10.245.1.6":{"HostName":"my-webserver"}}'
+	PodHostnamesAnnotation = "endpoints.beta.kubernetes.io/hostnames-map"
+)
+
+type HostRecord struct {
+	HostName string
+}
 
 // RepackSubsets takes a slice of EndpointSubset objects, expands it to the full
 // representation, and then repacks that into the canonical layout.  This
@@ -138,7 +148,7 @@ func hashAddresses(addrs addressSet) string {
 	}
 	sort.Sort(addrsReady(slice))
 	hasher := md5.New()
-	util.DeepHashObject(hasher, slice)
+	hashutil.DeepHashObject(hasher, slice)
 	return hex.EncodeToString(hasher.Sum(nil)[0:])
 }
 
@@ -191,7 +201,7 @@ func SortSubsets(subsets []api.EndpointSubset) []api.EndpointSubset {
 }
 
 func hashObject(hasher hash.Hash, obj interface{}) []byte {
-	util.DeepHashObject(hasher, obj)
+	hashutil.DeepHashObject(hasher, obj)
 	return hasher.Sum(nil)
 }
 

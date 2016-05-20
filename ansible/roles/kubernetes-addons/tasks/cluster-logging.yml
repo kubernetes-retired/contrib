@@ -11,6 +11,7 @@
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
   with_items:
     - es-controller.yaml
     - es-service.yaml

@@ -209,25 +209,29 @@ func TestNewStaticPageHandler(t *testing.T) {
 
 	testDefPage := "file://" + defPagePath
 	testErrorPage := "file://" + defErrorPath
+	testReturnCode := 404
 
-	handler := newStaticPageHandler("", testDefPage)
+	handler := newStaticPageHandler("", testDefPage, testReturnCode)
 	if handler == nil {
 		t.Fatalf("Expected page handler")
 	}
 
-	handler = newStaticPageHandler(testErrorPage, testDefPage)
+	handler = newStaticPageHandler(testErrorPage, testDefPage, testReturnCode)
 	if handler.pagePath != testErrorPage {
 		t.Fatalf("Expected local file content but got default page")
 	}
 
-	handler = newStaticPageHandler(defErrURL, testDefPage)
+	handler = newStaticPageHandler(defErrURL, testDefPage, testReturnCode)
 	if handler.pagePath != defErrURL {
 		t.Fatalf("Expected remote error page content but got default page")
 	}
 
-	handler = newStaticPageHandler(defErrURL+"s", testDefPage)
+	handler = newStaticPageHandler(defErrURL+"s", testDefPage, 200)
 	if handler.pagePath != testDefPage {
 		t.Fatalf("Expected local file content with not valid URL")
+	}
+	if handler.returnCode != 200 {
+		t.Fatalf("Expected a 200 return code.")
 	}
 }
 

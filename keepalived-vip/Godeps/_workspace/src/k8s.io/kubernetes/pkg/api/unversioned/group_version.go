@@ -22,8 +22,25 @@ import (
 	"strings"
 )
 
+// ParseResourceArg takes the common style of string which may be either `resource.group.com` or `resource.version.group.com`
+// and parses it out into both possibilities.  This code takes no responsibility for knowing which representation was intended
+// but with a knowledge of all GroupVersions, calling code can take a very good guess.  If there are only two segments, then
+// `*GroupVersionResource` is nil.
+// `resource.group.com` -> `group=com, version=group, resource=resource` and `group=group.com, resource=resource`
+func ParseResourceArg(arg string) (*GroupVersionResource, GroupResource) {
+	var gvr *GroupVersionResource
+	s := strings.SplitN(arg, ".", 3)
+	if len(s) == 3 {
+		gvr = &GroupVersionResource{Group: s[2], Version: s[1], Resource: s[0]}
+	}
+
+	return gvr, ParseGroupResource(arg)
+}
+
 // GroupResource specifies a Group and a Resource, but does not force a version.  This is useful for identifying
 // concepts during lookup stages without having partially valid types
+//
+// +protobuf.options.(gogoproto.goproto_stringer)=false
 type GroupResource struct {
 	Group    string
 	Resource string
@@ -44,12 +61,29 @@ func (gr *GroupResource) String() string {
 	return gr.Resource + "." + gr.Group
 }
 
+// ParseGroupResource turns "resource.group" string into a GroupResource struct.  Empty strings are allowed
+// for each field.
+func ParseGroupResource(gr string) GroupResource {
+	s := strings.SplitN(gr, ".", 2)
+	if len(s) == 1 {
+		return GroupResource{Resource: s[0]}
+	}
+
+	return GroupResource{Group: s[1], Resource: s[0]}
+}
+
 // GroupVersionResource unambiguously identifies a resource.  It doesn't anonymously include GroupVersion
 // to avoid automatic coersion.  It doesn't use a GroupVersion to avoid custom marshalling
+//
+// +protobuf.options.(gogoproto.goproto_stringer)=false
 type GroupVersionResource struct {
 	Group    string
 	Version  string
 	Resource string
+}
+
+func (gvr GroupVersionResource) IsEmpty() bool {
+	return len(gvr.Group) == 0 && len(gvr.Version) == 0 && len(gvr.Resource) == 0
 }
 
 func (gvr GroupVersionResource) GroupResource() GroupResource {
@@ -137,11 +171,13 @@ func (gv GroupVersion) String() string {
 	}
 
 	// special case of "v1" for backward compatibility
-	if gv.Group == "" && gv.Version == "v1" {
+	if len(gv.Group) == 0 && gv.Version == "v1" {
 		return gv.Version
-	} else {
+	}
+	if len(gv.Group) > 0 {
 		return gv.Group + "/" + gv.Version
 	}
+	return gv.Version
 }
 
 // ParseGroupVersion turns "group/version" string into a GroupVersion struct. It reports error
@@ -159,6 +195,8 @@ func ParseGroupVersion(gv string) (GroupVersion, error) {
 	switch {
 	case len(s) == 1 && gv == "v1":
 		return GroupVersion{"", "v1"}, nil
+	case len(s) == 1:
+		return GroupVersion{"", s[0]}, nil
 	case len(s) == 2:
 		return GroupVersion{s[0], s[1]}, nil
 	default:

@@ -4,7 +4,7 @@
 #
 # localBuild - requires make release to have been run to build local binaries
 # packageManager - will install packages from your distribution using yum/dnf/apt
-source_type: localBuild
+source_type: packageManager
 
 # os - docker packages will come from the default OS repositories
 # docker - will put down docker repo files in yum.repos.d and install latest
@@ -27,13 +27,22 @@ cluster_name: cluster.local
 # If a password is needed to sudo to root that password must be set here
 #ansible_sudo_pass: password
 
-# A list of insecure registrys you night need to define
+# A list of insecure registrys you might need to define
 insecure_registrys:
 #  - "gcr.io"
+
+# Required for CoreOS. CoreOS does not include a Python interpreter. The
+# pre-ansible role installs a python interpreter to /opt/bin/. For more
+# information see https://coreos.com/blog/managing-coreos-with-ansible.html
+#ansible_python_interpreter: "PATH=/opt/bin:$PATH python"
 
 # If you need a proxy for the docker daemon define these here
 #http_proxy: "http://proxy.example.com:3128"
 #https_proxy: "http://proxy.example.com:3128"
+#no_proxy: "127.0.0.1,localhost,docker-registry.somecorporation.com"
+
+# The port that the Kubernetes apiserver component listens on.
+kube_master_api_port: 443
 
 # Kubernetes internal network for services.
 # Kubernetes services will get fake IP addresses from this range.
@@ -41,7 +50,7 @@ insecure_registrys:
 # addresses do not need to be routable and must just be an unused block of space.
 kube_service_addresses: 10.254.0.0/16
 
-# Network implementation (flannel|opencontrail)
+# Network implementation (flannel|opencontrail|contiv)
 networking: flannel
 
 # External network
@@ -67,6 +76,12 @@ flannel_prefix: 12
 # will give to each node on your network.  With these defaults you should have
 # room for 4096 nodes with 254 pods per node.
 flannel_host_prefix: 24
+
+# Create a default Contiv network for providing connectivity among pods
+# networking: contiv must be set to use Contiv networking
+#contiv_default_network: true
+#contiv_default_subnet: 172.16.0.0/16
+#contiv_default_gw: 172.16.0.1
 
 # Set to false to disable logging with elasticsearch
 cluster_logging: true

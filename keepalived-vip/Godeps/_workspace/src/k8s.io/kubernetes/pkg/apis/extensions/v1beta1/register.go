@@ -17,7 +17,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -29,8 +28,6 @@ const GroupName = "extensions"
 // SchemeGroupVersion is group version used to register these objects
 var SchemeGroupVersion = unversioned.GroupVersion{Group: GroupName, Version: "v1beta1"}
 
-var Codec = runtime.CodecFor(api.Scheme, SchemeGroupVersion)
-
 func AddToScheme(scheme *runtime.Scheme) {
 	addKnownTypes(scheme)
 	addDefaultingFuncs(scheme)
@@ -40,10 +37,9 @@ func AddToScheme(scheme *runtime.Scheme) {
 // Adds the list of known types to api.Scheme.
 func addKnownTypes(scheme *runtime.Scheme) {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&ClusterAutoscaler{},
-		&ClusterAutoscalerList{},
 		&Deployment{},
 		&DeploymentList{},
+		&DeploymentRollback{},
 		&HorizontalPodAutoscaler{},
 		&HorizontalPodAutoscalerList{},
 		&Job{},
@@ -59,16 +55,17 @@ func addKnownTypes(scheme *runtime.Scheme) {
 		&Ingress{},
 		&IngressList{},
 		&ListOptions{},
-		&ConfigMap{},
-		&ConfigMapList{},
 		&v1.DeleteOptions{},
+		&ReplicaSet{},
+		&ReplicaSetList{},
+		&PodSecurityPolicy{},
+		&PodSecurityPolicyList{},
 	)
 }
 
-func (obj *ClusterAutoscaler) GetObjectKind() unversioned.ObjectKind           { return &obj.TypeMeta }
-func (obj *ClusterAutoscalerList) GetObjectKind() unversioned.ObjectKind       { return &obj.TypeMeta }
 func (obj *Deployment) GetObjectKind() unversioned.ObjectKind                  { return &obj.TypeMeta }
 func (obj *DeploymentList) GetObjectKind() unversioned.ObjectKind              { return &obj.TypeMeta }
+func (obj *DeploymentRollback) GetObjectKind() unversioned.ObjectKind          { return &obj.TypeMeta }
 func (obj *HorizontalPodAutoscaler) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }
 func (obj *HorizontalPodAutoscalerList) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
 func (obj *Job) GetObjectKind() unversioned.ObjectKind                         { return &obj.TypeMeta }
@@ -84,5 +81,7 @@ func (obj *ThirdPartyResourceDataList) GetObjectKind() unversioned.ObjectKind  {
 func (obj *Ingress) GetObjectKind() unversioned.ObjectKind                     { return &obj.TypeMeta }
 func (obj *IngressList) GetObjectKind() unversioned.ObjectKind                 { return &obj.TypeMeta }
 func (obj *ListOptions) GetObjectKind() unversioned.ObjectKind                 { return &obj.TypeMeta }
-func (obj *ConfigMap) GetObjectKind() unversioned.ObjectKind                   { return &obj.TypeMeta }
-func (obj *ConfigMapList) GetObjectKind() unversioned.ObjectKind               { return &obj.TypeMeta }
+func (obj *ReplicaSet) GetObjectKind() unversioned.ObjectKind                  { return &obj.TypeMeta }
+func (obj *ReplicaSetList) GetObjectKind() unversioned.ObjectKind              { return &obj.TypeMeta }
+func (obj *PodSecurityPolicy) GetObjectKind() unversioned.ObjectKind           { return &obj.TypeMeta }
+func (obj *PodSecurityPolicyList) GetObjectKind() unversioned.ObjectKind       { return &obj.TypeMeta }

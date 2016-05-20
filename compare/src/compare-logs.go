@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/kubernetes/test/e2e"
 
+	"github.com/daviddengcn/go-colortext"
 	"github.com/golang/glog"
 )
 
@@ -74,8 +75,17 @@ func writeViolatingLogsData(data, baseline logsDataArray, allowedVariance float6
 func (d *ViolatingLogGenerationData) PrintToStdout(leftBuild, rightBuild int, enableOutputColoring bool) {
 	writer := tabwriter.NewWriter(os.Stdout, 1, 0, 1, ' ', 0)
 	fmt.Fprint(writer, "File\t")
+	// to adjust number of spaces...
+	if enableOutputColoring {
+		ChangeColor(ct.White, writer)
+		ResetColor(writer)
+	}
 	printBuildNumber(leftBuild, writer, enableOutputColoring)
 	fmt.Fprint(writer, "\t")
+	if enableOutputColoring {
+		ChangeColor(ct.White, writer)
+		ResetColor(writer)
+	}
 	printBuildNumber(rightBuild, writer, enableOutputColoring)
 	fmt.Fprint(writer, "\n")
 	allowedVariance := float64(100+LogsGenerationVarianceAllowedPercent) / float64(100)

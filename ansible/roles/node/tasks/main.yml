@@ -1,4 +1,7 @@
 ---
+- include: coreos.yml
+  when: is_coreos
+
 - name: Set selinux permissive because tokens and selinux don't work together
   selinux: state=permissive policy={{ ansible_selinux.type }}
   when: ansible_selinux is defined and ansible_selinux.status == "enabled"
@@ -25,6 +28,7 @@
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
   when: cluster_logging
 
 - name: Get the node token values
@@ -41,6 +45,9 @@
     kubelet_token: "{{ tokens.results[0].content|b64decode }}"
     proxy_token: "{{ tokens.results[1].content|b64decode }}"
 
+- name: Create the kubelet working directory
+  file: path={{ kubelet_working_dir }} state=directory
+
 - name: write the config files for kubelet
   template: src=kubelet.j2 dest={{ kube_config_dir }}/kubelet
   notify:
@@ -52,7 +59,7 @@
     - restart kubelet
 
 - name: Enable kubelet
-  service: name=kubelet enabled=yes 
+  service: name=kubelet enabled=yes state=started 
   notify:
     - restart kubelet
 
@@ -69,6 +76,12 @@
 - name: Enable proxy
   service: name=kube-proxy enabled=yes state=started
   when: networking != "opencontrail"
+
+- name: write the delay-node-services target
+  copy: src=delay-node-services.target dest=/etc/systemd/system/ mode=0644
+
+- name: Enable delay-node-services
+  service: name=delay-node-services.target enabled=yes
 
 - include: firewalld.yml
   when: has_firewalld

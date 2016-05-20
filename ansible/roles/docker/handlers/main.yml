@@ -1,4 +1,7 @@
 ---
+- name: reload systemd
+  command: systemctl --system daemon-reload
+
 - name: restart docker
   command: /bin/true
   notify:

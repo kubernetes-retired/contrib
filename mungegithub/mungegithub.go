@@ -22,10 +22,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"k8s.io/contrib/mungegithub/features"
 	github_util "k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers"
 	"k8s.io/contrib/mungegithub/reports"
-	"k8s.io/kubernetes/pkg/util"
+	utilflag "k8s.io/kubernetes/pkg/util/flag"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -42,11 +43,12 @@ type mungeConfig struct {
 	IssueReportsList []string
 	Once             bool
 	Period           time.Duration
+	features.Features
 }
 
 func addMungeFlags(config *mungeConfig, cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&config.Once, "once", false, "If true, run one loop and exit")
-	cmd.Flags().StringSliceVar(&config.PRMungersList, "pr-mungers", []string{"blunderbuss", "lgtm-after-commit", "needs-rebase", "ok-to-test", "rebuild-request", "path-label", "ping-ci", "size", "stale-pending-ci", "stale-green-ci", "submit-queue"}, "A list of pull request mungers to run")
+	cmd.Flags().StringSliceVar(&config.PRMungersList, "pr-mungers", []string{}, "A list of pull request mungers to run")
 	cmd.Flags().StringSliceVar(&config.IssueReportsList, "issue-reports", []string{}, "A list of issue reports to run. If set, will run the reports and exit.")
 	cmd.Flags().DurationVar(&config.Period, "period", 10*time.Minute, "The period for running mungers")
 }
@@ -57,6 +59,7 @@ func doMungers(config *mungeConfig) error {
 		glog.Infof("Running mungers")
 		config.NextExpectedUpdate(nextRunStartTime)
 
+		config.Features.EachLoop()
 		mungers.EachLoop()
 
 		if err := config.ForEachIssueDo(mungers.MungeIssue); err != nil {
@@ -92,16 +95,21 @@ func main() {
 			if len(config.PRMungersList) == 0 {
 				glog.Fatalf("must include at least one --pr-mungers")
 			}
-			err := mungers.InitializeMungers(config.PRMungersList, &config.Config)
+			err := mungers.InitializeMungers(config.PRMungersList, &config.Config, &config.Features)
 			if err != nil {
 				glog.Fatalf("unable to initialize requested mungers: %v", err)
+			}
+			requestedFeatures := mungers.RequestedFeatures()
+			if err := config.Features.Initialize(requestedFeatures); err != nil {
+				return err
 			}
 			return doMungers(config)
 		},
 	}
-	root.SetGlobalNormalizationFunc(util.WordSepNormalizeFunc)
+	root.SetGlobalNormalizationFunc(utilflag.WordSepNormalizeFunc)
 	config.AddRootFlags(root)
 	addMungeFlags(config, root)
+	config.Features.AddFlags(root)
 
 	allMungers := mungers.GetAllMungers()
 	for _, m := range allMungers {

@@ -20,13 +20,24 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
+	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
+)
+
+const (
+	labelSizePrefix = "size/"
+)
+
+var (
+	sizeRE = regexp.MustCompile("Labelling this PR as " + labelSizePrefix + "(XS|S|M|L|XL|XXL)")
 )
 
 // SizeMunger will update a label on a PR based on how many lines are changed.
@@ -39,14 +50,21 @@ type SizeMunger struct {
 }
 
 func init() {
-	RegisterMungerOrDie(&SizeMunger{})
+	s := &SizeMunger{}
+	RegisterMungerOrDie(s)
+	RegisterStaleComments(s)
 }
 
 // Name is the name usable in --pr-mungers
 func (SizeMunger) Name() string { return "size" }
 
+// RequiredFeatures is a slice of 'features' that must be provided
+func (SizeMunger) RequiredFeatures() []string { return []string{} }
+
 // Initialize will initialize the munger
-func (SizeMunger) Initialize(config *github.Config) error { return nil }
+func (s *SizeMunger) Initialize(config *github.Config, features *features.Features) error {
+	return nil
+}
 
 // EachLoop is called at the start of every munge loop
 func (SizeMunger) EachLoop() error { return nil }
@@ -55,8 +73,6 @@ func (SizeMunger) EachLoop() error { return nil }
 func (s *SizeMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().StringVar(&s.generatedFilesFile, "generated-files-config", "generated-files.txt", "file containing the pathname to label mappings")
 }
-
-const labelSizePrefix = "size/"
 
 // getGeneratedFiles returns a list of all automatically generated files in the repo. These include
 // docs, deep_copy, and conversions
@@ -224,4 +240,20 @@ func calculateSize(adds, dels int) string {
 		return sizeXL
 	}
 	return sizeXXL
+}
+
+func (s *SizeMunger) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
+	stale := sizeRE.MatchString(*comment.Body)
+	if stale {
+		glog.V(6).Infof("Found stale SizeMunger comment")
+	}
+	return stale
+}
+
+// StaleComments returns a slice of stale comments
+func (s *SizeMunger) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, s.isStaleComment)
 }

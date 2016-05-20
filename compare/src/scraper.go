@@ -42,13 +42,20 @@ func ProcessSingleTest(scanner *bufio.Scanner, buildNumber int) (map[string]*e2e
 	resourceSummary := make(map[string]*e2e.ResourceUsageSummary)
 	metricsSummary := make(map[string]*e2e.MetricsForE2E)
 	state := defaultState
-	testSeparator := "[It] [Performance] "
+	oldTestSeparator := "[It] [Performance] "
+	testSeparator := "[It] [Feature:Performance] "
 	testName := ""
 	for scanner.Scan() {
 		line := scanner.Text()
 		if state == defaultState {
+			separator := ""
 			if strings.Contains(line, testSeparator) {
-				testName = strings.Trim(strings.Split(line, testSeparator)[1], " ")
+				separator = testSeparator
+			} else if strings.Contains(line, oldTestSeparator) {
+				separator = oldTestSeparator
+			}
+			if separator != "" {
+				testName = strings.Trim(strings.Split(line, separator)[1], " ")
 				buff.Reset()
 			}
 		}

@@ -4,13 +4,14 @@
 
 - name: KUBE-UI | Download kube-ui files from Kubernetes repo
   get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/kube-ui/{{ item }}
+    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dashboard/{{ item }}
     dest="{{ kube_addons_dir }}/kube-ui/"
     force=yes
     validate_certs=False
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
   with_items:
-    - kube-ui-rc.yaml
-    - kube-ui-svc.yaml
+    - dashboard-controller.yaml
+    - dashboard-service.yaml
