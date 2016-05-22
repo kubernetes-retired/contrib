@@ -61,6 +61,12 @@ func (u *Utils) getResponseWithRetry(url string) (*http.Response, error) {
 	return response, nil
 }
 
+// GetPathToJenkinsGoogleBucket reads data from Google project's GCS bucket for the given job and buildNumber.
+// Returns a response with file stored under a given (relative) path or an error.
+func (u *Utils) GetPathToJenkinsGoogleBucket(job string, buildNumber int, path string) string {
+	return fmt.Sprintf("%v/%v/%v/%v", u.bucketURL, job, buildNumber, path)
+}
+
 // GetFileFromJenkinsGoogleBucket reads data from Google project's GCS bucket for the given job and buildNumber.
 // Returns a response with file stored under a given (relative) path or an error.
 func (u *Utils) GetFileFromJenkinsGoogleBucket(job string, buildNumber int, path string) (*http.Response, error) {
