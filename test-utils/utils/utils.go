@@ -91,6 +91,36 @@ func (u *Utils) GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, e
 	return lastBuildNo, nil
 }
 
+// StartedFile is a type in which we store test starting informatio in GCS as started.json
+type StartedFile struct {
+	Version     string `json:"version"`
+	Timestamp   uint64 `json:"timestamp"`
+	JenkinsNode string `json:"jenkins-node"`
+}
+
+// CheckStartedStatus reads the started.json file for a given job and build number.
+// It returns true if the result stored there is success, and false otherwise.
+func (u *Utils) CheckStartedStatus(job string, buildNumber int) (*StartedFile, error) {
+	response, err := u.GetFileFromJenkinsGoogleBucket(job, buildNumber, "started.json")
+	if err != nil {
+		glog.Errorf("Error while getting data for %v/%v/%v: %v", job, buildNumber, "started.json", err)
+		return nil, err
+	}
+
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		glog.Errorf("Got a non-success response %v while reading data for %v/%v/%v", response.StatusCode, job, buildNumber, "started.json")
+		return nil, err
+	}
+	result := &StartedFile{}
+	err = json.NewDecoder(response.Body).Decode(result)
+	if err != nil {
+		glog.Errorf("Failed to read or unmarshal %v/%v/%v: %v", job, buildNumber, "started.json", err)
+		return nil, err
+	}
+	return result, nil
+}
+
 // FinishedFile is a type in which we store test result in GCS as finished.json
 type FinishedFile struct {
 	Result    string `json:"result"`
@@ -109,7 +139,7 @@ func (u *Utils) CheckFinishedStatus(job string, buildNumber int) (bool, error) {
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		glog.Errorf("Got a non-success response %v while reading data for %v/%v/%v", response.StatusCode, job, buildNumber, "finished.json")
-		return false, err
+		return false, fmt.Errorf("got status code %v", response.StatusCode)
 	}
 	result := FinishedFile{}
 	body, err := ioutil.ReadAll(response.Body)
