@@ -322,17 +322,27 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 
 	if len(config.Address) > 0 {
 		if len(config.WWWRoot) > 0 {
-			http.Handle("/", gziphandler.GzipHandler(http.FileServer(http.Dir(config.WWWRoot))))
+			http.Handle("/",
+				gziphandler.GzipHandler(http.FileServer(http.Dir(config.WWWRoot))))
 		}
-		http.Handle("/prs", gziphandler.GzipHandler(http.HandlerFunc(sq.servePRs)))
-		http.Handle("/history", gziphandler.GzipHandler(http.HandlerFunc(sq.serveHistory)))
-		http.Handle("/users", gziphandler.GzipHandler(http.HandlerFunc(sq.serveUsers)))
-		http.Handle("/github-e2e-queue", gziphandler.GzipHandler(http.HandlerFunc(sq.serveGithubE2EStatus)))
-		http.Handle("/google-internal-ci", gziphandler.GzipHandler(http.HandlerFunc(sq.serveGoogleInternalStatus)))
-		http.Handle("/merge-info", gziphandler.GzipHandler(http.HandlerFunc(sq.serveMergeInfo)))
-		http.Handle("/priority-info", gziphandler.GzipHandler(http.HandlerFunc(sq.servePriorityInfo)))
-		http.Handle("/health", gziphandler.GzipHandler(http.HandlerFunc(sq.serveHealth)))
-		http.Handle("/sq-stats", gziphandler.GzipHandler(http.HandlerFunc(sq.serveSQStats)))
+		makeHandler := func(getData func() []byte) http.HandlerFunc {
+			return func(res http.ResponseWriter, req *http.Request) {
+				serve(getData(), res, req)
+			}
+		}
+		handle := func(path string, f http.HandlerFunc) {
+			http.Handle(path, gziphandler.GzipHandler(f))
+		}
+		handle("/prs", makeHandler(sq.getQueueStatus))
+		handle("/history", makeHandler(sq.getQueueHistory))
+		handle("/users", makeHandler(sq.getQueueStatus))
+		handle("/github-e2e-queue", makeHandler(sq.getGithubE2EStatus))
+		handle("/google-internal-ci", makeHandler(sq.getGoogleInternalStatus))
+		handle("/merge-info", http.HandlerFunc(sq.serveMergeInfo))
+		handle("/priority-info", http.HandlerFunc(sq.servePriorityInfo))
+		handle("/health", makeHandler(sq.getHealth))
+		handle("/metrics", makeHandler(sq.getMetrics))
+		handle("/sq-stats", makeHandler(sq.getSQStats))
 		config.ServeDebugStats("/stats")
 		go http.ListenAndServe(config.Address, nil)
 	}
@@ -647,6 +657,34 @@ func (sq *SubmitQueue) getQueueStatus() []byte {
 	return sq.marshal(status)
 }
 
+// getMetrics returns a json representation of important stats about the
+// submit queue's health, for external monitoring/graphing/alerting.
+func (sq *SubmitQueue) getMetrics() []byte {
+	sq.Lock()
+	defer sq.Unlock()
+
+	status := sq.e2e.GetBuildStatus()
+	blocked := false
+	for _, state := range status {
+		if state.Status != "Stable" {
+			blocked = true
+		}
+	}
+
+	type gauges struct {
+		PRCount     int
+		QueueLength int
+		Blocked     bool
+	}
+	return sq.marshal(struct {
+		Gauges gauges
+	}{Gauges: gauges{
+		PRCount:     len(sq.prStatus),
+		QueueLength: len(sq.e2e.GetBuildStatus()),
+		Blocked:     blocked,
+	}})
+}
+
 func (sq *SubmitQueue) getGithubE2EStatus() []byte {
 	sq.Lock()
 	defer sq.Unlock()
@@ -667,6 +705,16 @@ func (sq *SubmitQueue) getHealth() []byte {
 	sq.Lock()
 	defer sq.Unlock()
 	return sq.marshal(sq.health)
+}
+
+func (sq *SubmitQueue) getSQStats() []byte {
+	data := submitQueueStats{
+		LastMergeTime:  sq.lastMergeTime,
+		MergeRate:      sq.calcMergeRateWithTail(),
+		RetestsAvoided: int(atomic.LoadInt32(&sq.retestsAvoided)),
+		FlakesIgnored:  int(atomic.LoadInt32(&sq.flakesIgnored)),
+	}
+	return sq.marshal(data)
 }
 
 const (
@@ -1033,7 +1081,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) {
 	return
 }
 
-func (sq *SubmitQueue) serve(data []byte, res http.ResponseWriter, req *http.Request) {
+func serve(data []byte, res http.ResponseWriter, req *http.Request) {
 	if data == nil {
 		res.Header().Set("Content-type", "text/plain")
 		res.WriteHeader(http.StatusInternalServerError)
@@ -1044,48 +1092,8 @@ func (sq *SubmitQueue) serve(data []byte, res http.ResponseWriter, req *http.Req
 	}
 }
 
-func (sq *SubmitQueue) serveUsers(res http.ResponseWriter, req *http.Request) {
-	data := sq.getUserInfo()
-	sq.serve(data, res, req)
-}
-
-func (sq *SubmitQueue) serveHistory(res http.ResponseWriter, req *http.Request) {
-	data := sq.getQueueHistory()
-	sq.serve(data, res, req)
-}
-
-func (sq *SubmitQueue) servePRs(res http.ResponseWriter, req *http.Request) {
-	data := sq.getQueueStatus()
-	sq.serve(data, res, req)
-}
-
-func (sq *SubmitQueue) serveGithubE2EStatus(res http.ResponseWriter, req *http.Request) {
-	data := sq.getGithubE2EStatus()
-	sq.serve(data, res, req)
-}
-
-func (sq *SubmitQueue) serveGoogleInternalStatus(res http.ResponseWriter, req *http.Request) {
-	data := sq.getGoogleInternalStatus()
-	sq.serve(data, res, req)
-}
-
-func (sq *SubmitQueue) serveHealth(res http.ResponseWriter, req *http.Request) {
-	data := sq.getHealth()
-	sq.serve(data, res, req)
-}
-
-func (sq *SubmitQueue) serveSQStats(res http.ResponseWriter, req *http.Request) {
-	data := submitQueueStats{
-		LastMergeTime:  sq.lastMergeTime,
-		MergeRate:      sq.calcMergeRateWithTail(),
-		RetestsAvoided: int(atomic.LoadInt32(&sq.retestsAvoided)),
-		FlakesIgnored:  int(atomic.LoadInt32(&sq.flakesIgnored)),
-	}
-	sq.serve(sq.marshal(data), res, req)
-}
-
 func (sq *SubmitQueue) serveMergeInfo(res http.ResponseWriter, req *http.Request) {
-	res.Header().Set("Content-type", "text/plain")
+	res.Header().Set("Content-type", "text/html")
 	res.WriteHeader(http.StatusOK)
 	var out bytes.Buffer
 	out.WriteString("PRs must meet the following set of conditions to be considered for automatic merging by the submit queue.")
@@ -1126,7 +1134,7 @@ func (sq *SubmitQueue) serveMergeInfo(res http.ResponseWriter, req *http.Request
 }
 
 func (sq *SubmitQueue) servePriorityInfo(res http.ResponseWriter, req *http.Request) {
-	res.Header().Set("Content-type", "text/plain")
+	res.Header().Set("Content-type", "text/html")
 	res.WriteHeader(http.StatusOK)
 	res.Write([]byte(`The merge queue is sorted by the following. If there is a tie in any test the next test will be used. A P0 will always come before a P1, no matter how the other tests compare.
 <ol>
