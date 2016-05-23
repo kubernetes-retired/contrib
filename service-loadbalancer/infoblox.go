@@ -41,12 +41,14 @@ type infobloxController struct {
 }
 
 type infoBloxHost struct {
-	Ref string `json:"_ref"`
+	Ref  string        `json:"_ref"`
+	Ips  []infoBloxIps `json:"ipv4addrs,array"`
+	Name string        `json:"name"`
 }
 
 type infoBloxHostCreate struct {
 	Name string        `json:"name"`
-	Ips  []infoBloxIps `json:"ipv4addrs,ar1ray"`
+	Ips  []infoBloxIps `json:"ipv4addrs,array"`
 }
 
 type infoBloxIps struct {

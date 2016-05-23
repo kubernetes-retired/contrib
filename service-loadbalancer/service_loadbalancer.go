@@ -628,14 +628,19 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 						nodes, _ := getNodes(lbc.client)
 
 						// --Create DNS in Infoblox--
-						host, err := lbc.ibc.createHostNextIP(e.Name)
-
+						_, err := lbc.ibc.createHostNextIP(fmt.Sprintf("%s.%s", e.Name, e.Namespace))
 						if err != nil {
 							fmt.Println("error creating host: ", err)
 						}
 
+						// --Get IP of host in Infoblox--
+						host, err := lbc.ibc.getHost(fmt.Sprintf("%s.%s", e.Name, e.Namespace))
+						if err != nil {
+							fmt.Println("error getting host: ", err)
+						}
+
 						lbc.f5.CreateLB(httpSvc, httpsTermSvc, tcpSvc, nodes, e.Name, e.Namespace,
-							e.Spec.Ports, host.)
+							e.Spec.Ports, host[0].Ips[0].Address)
 					} else {
 						glog.Error("Could not parse object to type `api.Service`!")
 					}
