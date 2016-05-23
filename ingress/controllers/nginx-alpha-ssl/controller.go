@@ -260,18 +260,18 @@ func main() {
 							log.Fatalf("failed to write file %v: %v\n", keyFileName, err)
 							i.Ssl = false
 						} else {
-								var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
-								if err != nil || crtSecret == "" {
-									fmt.Printf("WARN: No crt found at %v\n", vaultPath)
+							var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
+							if err != nil || crtSecret == "" {
+								fmt.Printf("WARN: No crt found at %v\n", vaultPath)
+								i.Ssl = false
+							} else {
+								fmt.Printf("Found crt for %v\n", ingressHost)
+								crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
+								if err := ioutil.WriteFile(crtFileName, []byte(crtSecret), 0400); err != nil {
+									log.Fatalf("failed to write file %v: %v\n", crtFileName, err)
 									i.Ssl = false
-								} else {
-									fmt.Printf("Found crt for %v\n", ingressHost)
-									crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
-									if err := ioutil.WriteFile(crtFileName, []byte(crtSecret), 0400); err != nil {
-										log.Fatalf("failed to write file %v: %v\n", crtFileName, err)
-										i.Ssl = false
-									}
 								}
+							}
 						}
 					}
 				}
