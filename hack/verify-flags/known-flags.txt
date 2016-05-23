@@ -84,6 +84,7 @@ one-time
 change-permissions
 services-configmap
 use-real-cloud
+verify-unschedulable-pods
 experimental-scale-down-enabled
 scale-down-delay
 scale-down-underutilized-time
