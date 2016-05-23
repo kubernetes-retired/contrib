@@ -43,10 +43,10 @@ container:
 	rm -rf $(TEMP_DIR)
 
 push: container
-	ifeq ($(REGISTRY),gcr.io/google_containers)
-		gcloud docker push $(REGISTRY)/dnsmasq:$(TAG)
-	else
-		docker push $(REGISTRY)/dnsmasq:$(TAG)
-	endif
+ifeq ($(REGISTRY),gcr.io/google_containers)
+	gcloud docker push $(REGISTRY)/dnsmasq:$(TAG)
+else
+	docker push $(REGISTRY)/dnsmasq:$(TAG)
+endif
 
 .PHONY: all container push
