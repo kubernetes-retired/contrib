@@ -39,7 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	util "k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
@@ -48,10 +48,10 @@ import (
 const (
 	reloadQPS                = 10.0
 	resyncPeriod             = 10 * time.Second
-	lbApiPort                = 8085
-	lbAlgorithmKey           = "serviceloadbalancer/lb.algorithm"
-	lbHostKey                = "serviceloadbalancer/lb.host"
-	lbSslTerm                = "serviceloadbalancer/lb.sslTerm"
+	lbApiPort                = 8081
+	lbAlgorithmKey           = "servicealancer/lb.algorithm"
+	lbHostKey                = "servicealancer/lb.host"
+	lbSslTerm                = "servicealancer/lb.sslTerm"
 	lbAclMatch               = "serviceloadbalancer/lb.aclMatch"
 	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
@@ -135,6 +135,9 @@ var (
                 as a web page and use the content as error page. Is required that the URL returns
                 200 as a status code`)
 
+	defaultReturnCode = flags.Int("default-return-code", 404, `if set, this HTTP code is written
+				out for requests that don't match other rules.`)
+
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
                 default balance algorithm.`)
 
@@ -158,7 +161,7 @@ var (
 
 	f5Insecure = flags.Bool("f5-insecure", true, `ignore certs when connecting to f5`)
 
-	f5PatitionPath = flags.String("f5-partition", "", `configures partition to use with f5`)
+	f5PartitionPath = flags.String("f5-partition", "", `configures partition to use with f5`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -236,14 +239,11 @@ type loadBalancerConfig struct {
 type staticPageHandler struct {
 	pagePath     string
 	pageContents []byte
+	returnCode   int
 	c            *http.Client
 }
 
 type serviceAnnotations map[string]string
-
-type ExternalLoadBalancer interface {
-	createService() error
-}
 
 func (s serviceAnnotations) getAlgorithm() (string, bool) {
 	val, ok := s[lbAlgorithmKey]
@@ -272,20 +272,23 @@ func (s serviceAnnotations) getAclMatch() (string, bool) {
 
 // Get serves the error page
 func (s *staticPageHandler) Getfunc(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(404)
+	w.WriteHeader(s.returnCode)
 	w.Write(s.pageContents)
 }
 
 // newStaticPageHandler returns a staticPageHandles with the contents of pagePath loaded and ready to serve
-func newStaticPageHandler(errorPage string, defaultErrorPage string) *staticPageHandler {
+// page is a url to the page to load.
+// defaultPage is the page to load if page is unreachable.
+// returnCode is the HTTP code to write along with the page/defaultPage.
+func newStaticPageHandler(page string, defaultPage string, returnCode int) *staticPageHandler {
 	t := &http.Transport{}
 	t.RegisterProtocol("file", http.NewFileTransport(http.Dir("/")))
 	c := &http.Client{Transport: t}
 	s := &staticPageHandler{c: c}
-	if err := s.loadUrl(errorPage); err != nil {
-		s.loadUrl(defaultErrorPage)
+	if err := s.loadUrl(page); err != nil {
+		s.loadUrl(defaultPage)
 	}
-
+	s.returnCode = returnCode
 	return s
 }
 
@@ -418,16 +421,6 @@ func (lbc *loadBalancerController) getEndpoints(
 	return
 }
 
-// encapsulates all the hacky convenience type name modifications for lb rules.
-// - :80 services don't need a :80 postfix
-// - default ns should be accessible without /ns/name (when we have /ns support)
-func getServiceNameForLBRule(s *api.Service, servicePort int) string {
-	if servicePort == 80 {
-		return s.Name
-	}
-	return fmt.Sprintf("%v:%v", s.Name, servicePort)
-}
-
 // getService returns a service and its endpoints.
 func (lbc *loadBalancerController) getService(serviceName string) (httpSvc []service, httpsTermSvc []service, tcpSvc []service) {
 	return lbc.getServicesHelper(serviceName)
@@ -553,6 +546,16 @@ func (lbc *loadBalancerController) getServicesHelper(serviceName string) (httpSv
 	return
 }
 
+// encapsulates all the hacky convenience type name modifications for lb rules.
+// - :80 services don't need a :80 postfix
+// - default ns should be accessible without /ns/name (when we have /ns support)
+func getServiceNameForLBRule(s *api.Service, servicePort int) string {
+	if servicePort == 80 {
+		return s.Name
+	}
+	return fmt.Sprintf("%v:%v", s.Name, servicePort)
+}
+
 // sync all services with the loadbalancer.
 func (lbc *loadBalancerController) sync(dryRun bool) error {
 	if !lbc.epController.HasSynced() || !lbc.svcController.HasSynced() {
@@ -563,7 +566,6 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 	if len(httpSvc) == 0 && len(httpsTermSvc) == 0 && len(tcpSvc) == 0 {
 		return nil
 	}
-
 	if err := lbc.cfg.write(
 		map[string][]service{
 			"http":      httpSvc,
@@ -572,7 +574,6 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		}, dryRun); err != nil {
 		return err
 	}
-
 	if dryRun {
 		return nil
 	}
@@ -581,7 +582,6 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 
 // worker handles the work queue.
 func (lbc *loadBalancerController) worker() {
-
 	if *lbType != "f5" {
 		for {
 			key, _ := lbc.queue.Get()
@@ -786,13 +786,12 @@ func getNodes(client *unversioned.Client) (nodes []string, err error) {
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
-
 	cfg := parseCfg(*config, *lbDefAlgorithm, *sslCert, *sslCaCert)
 
 	var kubeClient *unversioned.Client
 	var err error
 
-	defErrorPage := newStaticPageHandler(*errorPage, defaultErrorPage)
+	defErrorPage := newStaticPageHandler(*errorPage, defaultErrorPage, *defaultReturnCode)
 	if defErrorPage == nil {
 		glog.Fatalf("Failed to load the default error page")
 	}
@@ -844,7 +843,7 @@ func main() {
 
 	if *lbType == "f5" {
 		// Init f5 controller
-		f5Ctl := newf5LTM(*f5Hostname, *f5Username, *f5Password, *f5PatitionPath, *f5Insecure)
+		f5Ctl := newf5LTM(*f5Hostname, *f5Username, *f5Password, *f5PartitionPath, *f5Insecure)
 		lbc.f5 = f5Ctl
 	}
 
