@@ -90,3 +90,5 @@ scale-down-delay
 scale-down-underutilized-time
 scale-down-utilization-threshold
 scale-down-trial-frequency
+on-change
+on-start
