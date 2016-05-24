@@ -33,4 +33,4 @@ if [ ${DEBUG} = "true" ]; then
   netstat -an | grep LISTEN
 fi
 
-/controller
+/bin/bash -c /controller

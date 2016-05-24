@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	version = "1.6.0"
+	version = "1.6.1"
 	nginxConf = `
 daemon off;
 
@@ -307,7 +307,7 @@ func main() {
 		if err != nil {
 			fmt.Printf("ERR: nginx config failed validation: %v\n", err)
 		} else {
-			shellOut(nginxCommand, reloadArgs)
+			exec.Command(nginxCommand, reloadArgs...).Run()
 			fmt.Printf("nginx config updated.\n")
 		}
 	}
