@@ -16,4 +16,4 @@ FROM alpine:3.3
 MAINTAINER Abhishek Shah <abshah@google.com>
 RUN apk --no-cache add dnsmasq
 ADD dnsmasq.conf /etc/dnsmasq.conf
-ENTRYPOINT ["dnsmasq", "-d"]
+ENTRYPOINT ["dnsmasq", "--keep-in-foreground"]

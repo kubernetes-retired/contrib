@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Makefile for the Docker image gcr.io/google_containers/kube2sky
+# Makefile for the Docker image gcr.io/google_containers/dnsmasq
 # MAINTAINER: Abhishek Shah <abshah@google.com>
 # If you update this image please bump the tag value before pushing.
 #
@@ -20,27 +20,14 @@
 #   [TAG=1.0] [REGISTRY=gcr.io/google_containers] [NAMESERVER=127.0.0.1#10053] make container
 
 # Default registry, arch and tag. This can be overwritten by arguments to make
-TAG?=1.0
+TAG?=1.1
 REGISTRY?=gcr.io/google_containers
-NAMESERVER=127.0.0.1\#10053
-
-KUBE_ROOT=$(shell pwd)/..
-TEMP_DIR:=$(shell mktemp -d)
 
 all: container
 
 container:
-	cp $(KUBE_ROOT)/dnsmasq/Dockerfile $(TEMP_DIR)
-	cp $(KUBE_ROOT)/dnsmasq/dnsmasq.conf $(TEMP_DIR)
-
-	# Replace Nameserver in the dnsmasq.conf file
-	cd $(TEMP_DIR) && sed -i "s|__NAMESERVER__|$(NAMESERVER)|g" dnsmasq.conf
-
 	# And build the image
-	docker build -t $(REGISTRY)/dnsmasq:$(TAG) $(TEMP_DIR)
-
-	# delete temp dir
-	rm -rf $(TEMP_DIR)
+	docker build -t $(REGISTRY)/dnsmasq:$(TAG) .
 
 push: container
 ifeq ($(REGISTRY),gcr.io/google_containers)
