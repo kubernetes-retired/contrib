@@ -1,5 +1,5 @@
 # Version of Kubernetes binaries
-kube_version: 1.2.2
+kube_version: 1.2.4
 
 # The port that the Kubernetes apiserver component listens on.
 kube_master_api_port: 443
