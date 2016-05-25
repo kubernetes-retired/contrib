@@ -42,6 +42,7 @@ last-release-pr
 left-build-number
 max-pr-number
 min-pr-number
+number-of-old-test-results
 network-config
 path-label-config
 poll-period
