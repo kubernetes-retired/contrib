@@ -1,0 +1,20 @@
+config = {
+    "_id" : "rs0",
+    "members" : [
+                  {
+                     "_id" : 0,
+                     "host" : "mongo-1.default.svc:27017",
+                     priority: 4
+                  },
+                  {
+                     "_id" : 5,
+                     "host" : "mongo-2.default.svc:27017",
+                     priority: 3
+                  },
+                  {
+                     "_id" : 3,
+                     "host" : "mongo-3.default.svc:27017",
+                     priority: 3
+                  }
+     ]
+}

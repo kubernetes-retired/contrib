@@ -1,0 +1,54 @@
+#	Copyright 2016, Google, Inc.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http:#www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+kind: ReplicationController
+apiVersion: v1
+metadata:
+  name: mongo-2
+spec:
+  replicas: 1
+  selector:
+    name: mongo-node-2
+    role: mongo
+    environment: test
+  template:
+    spec:
+      containers:
+        - name: mongo-node-2
+          image: mongo:latest
+          command:
+            - mongod
+            - "--replSet"
+            - rs0
+            - "--smallfiles"
+            - "--noprealloc"
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+          - name: mongo-node-2
+            mountPath: /data/db
+      volumes:
+      - name: mongo-node-2
+        rbd: 
+          monitors:
+            - "172.21.1.11:6789"
+          pool: rbd
+          image: mongo-node-2
+          secretRef:
+            name: ceph-secret
+          fsType: ext4
+          readOnly: false
+    metadata:
+      labels:
+        name: mongo-node-2
+        role: mongo
+        environment: test
