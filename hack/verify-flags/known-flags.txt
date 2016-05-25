@@ -14,6 +14,7 @@ default-return-code
 delete-all-on-quit
 dest-file
 dont-require-e2e-label
+do-not-merge-milestones
 dry-run
 dump-nginx-configuration
 e2e-status-context
