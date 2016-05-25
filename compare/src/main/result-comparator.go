@@ -54,7 +54,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Need both left and right build numbers")
 		return
 	}
-	googleGCSBucketUtils := utils.NewUtils(utils.GoogleBucketURL)
+	googleGCSBucketUtils := utils.NewUtils(utils.KubekinsBucket, utils.LogDir)
 
 	leftResp, err := googleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, leftBuildNumber, buildFilePath)
 	if err != nil {
