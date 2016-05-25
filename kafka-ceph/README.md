@@ -1,0 +1,81 @@
+Use Kafka cluster in Kubernetes cluster
+================
+
+##### Edit kafka-pods/kafka-1-pod.json
+```json
+{
+  "spec": {
+    "volumes": [
+      {
+        "rbd": {
+          "readOnly": false,
+          "fsType": "xfs",
+          "secretRef": {
+            "name": "ceph-secret"
+          },
+          "user": "admin",
+          "image": "kafka-1",
+          "pool": "rbd",
+          "monitors": [
+            "10.149.149.3:6789"
+          ]
+        },
+        "name": "kafka-1"
+      }
+    ],
+    "restartPolicy": "Always",
+    "containers": [
+      {
+        "volumeMounts": [
+          {
+            "name": "kafka-1",
+            "mountPath": "/tmp/kafka-logs"
+          }
+        ],
+        "resources": {
+          "limits": {
+            "memory": "20480M",
+            "cpu": "20"
+          },
+          "requests": {
+            "memory": "8192M",
+            "cpu": "10"
+          }
+        },
+        "args": [
+          "sed -i -- 's/broker.id=0/broker.id=1/g' /home/kafka/config/server.properties &&  IP=`ifconfig eth0 |  grep 'inet addr:' | awk -F ':' '{print $2}' | awk '{print $1}'` && echo $IP &&  sed -i -- \"s/host.name=KAFKA/host.name=$IP/g\" /home/kafka/config/server.properties && sed -i -- 's/advertised.port=KAFKA/advertised.port=9092/g' /home/kafka/config/server.properties && sed -i -- 's/num.network.threads=3/num.network.threads=10/g' /home/kafka/config/server.properties && sed -i -- 's/num.io.threads=8/num.io.threads=20/g' /home/kafka/config/server.properties && sed -i -- 's/zookeeper.connect=localhost:2181/zookeeper.connect=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181,zookeeper-4:2181,zookeeper-5:2181/g' /home//kafka/config/server.properties && /home/kafka/bin/kafka-server-start.sh /home/kafka/config/server.properties "
+        ],
+        "command": [
+          "/bin/sh",
+          "-c"
+        ],
+        "ports": [
+          {
+            "containerPort": 9092
+          }
+        ],
+        "image": "registry.docker:5000/yeepay/kafka:2.11-0.9.0",
+        "name": "kafka-1"
+      }
+    ]
+  },
+  "metadata": {
+    "name": "kafka-1",
+    "labels": {
+      "component": "kafka",
+      "role": "kafka-1"
+    }
+  },
+  "kind": "Pod",
+  "apiVersion": "v1"
+}
+```
+[Download]("kafka-pods/kafka-1-pod.json")
+
+---------
+
+##### Create kafka-1-pod.json
+
+```bash
+kubectl create -f kafka-1-pod.json
+```
