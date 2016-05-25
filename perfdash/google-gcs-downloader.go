@@ -39,7 +39,7 @@ type GoogleGCSDownloader struct {
 func NewGoogleGCSDownloader(builds int) *GoogleGCSDownloader {
 	return &GoogleGCSDownloader{
 		Builds:               builds,
-		GoogleGCSBucketUtils: utils.NewUtils(utils.GoogleBucketURL),
+		GoogleGCSBucketUtils: utils.NewUtils(utils.KubekinsBucket, utils.LogDir),
 	}
 }
 
@@ -47,7 +47,7 @@ func NewGoogleGCSDownloader(builds int) *GoogleGCSDownloader {
 func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 	fmt.Print("Getting Data from GCS...\n")
 	result := make(TestToBuildData)
-	for job, tests := range TestConfig[utils.GoogleBucketURL] {
+	for job, tests := range TestConfig[utils.KubekinsBucket] {
 		lastBuildNo, err := g.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
 		if err != nil {
 			return result, err

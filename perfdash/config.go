@@ -39,7 +39,7 @@ var (
 	// analyze build log from all these Jobs, and parse the data from all these Test.
 	// Notice that all the tests should have different name for now.
 	TestConfig = Buckets{
-		utils.GoogleBucketURL: Jobs{
+		utils.KubekinsBucket: Jobs{
 			"kubernetes-e2e-gce-scalability": Tests{
 				"[Feature:Performance] should allow starting 30 pods per node":    "Density",
 				"[Feature:Performance] should be able to handle 30 pods per node": "Load",
