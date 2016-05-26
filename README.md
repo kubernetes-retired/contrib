@@ -5,6 +5,18 @@
 This is a place for various components in the Kubernetes ecosystem
 that aren't part of the Kubernetes core.
 
+## Getting the Code
+
+The code must be checked out as a subdirectory of `k8s.io`, and not `github.com`.
+
+```sh
+mkdir -p $GOPATH/src/k8s.io
+cd $GOPATH/src/k8s.io
+# Replace "$YOUR_GITHUB_USERNAME" below with your github username
+git clone https://github.com/kubernetes/contrib.git
+cd contrib
+```
+
 ## Updating Godeps
 
 Godeps in contrib/ has a different layout than in kubernetes/ proper. This is because
