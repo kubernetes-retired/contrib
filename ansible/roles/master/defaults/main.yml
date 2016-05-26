@@ -1,7 +1,15 @@
 kube_master_insecure_port: 8080
 
+kube_master_api_port: 443
+
+kube_apiserver_interface: "{{ ansible_default_ipv4.interface }}"
+
 localBuildOutput: ../../_output/local/go/bin
 
 admission_controllers: NamespaceLifecycle,NamespaceExists,LimitRanger,ServiceAccount,ResourceQuota
 
 kube_apiserver_bind_address: "0.0.0.0"
+
+# hyperkube is an all-in-one kubernetes binary that is automatically pushed on every release
+# https://github.com/kubernetes/kubernetes/tree/master/cluster/images/hyperkube
+hyperkube_version: "v1.1.8"

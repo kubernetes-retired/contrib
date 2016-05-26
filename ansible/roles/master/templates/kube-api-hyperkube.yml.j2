@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-apiserver
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-apiserver
+    image: gcr.io/google_containers/hyperkube:{{ hyperkube_version }}
+    args:
+    - /hyperkube
+    - apiserver
+    -  "--bind-address={{ hostvars[inventory_hostname]['ansible_' + kube_apiserver_interface].ipv4.address }}"
+    -  "--insecure-bind-address=127.0.0.1"
+    -  "--etcd-servers={% for node in groups['etcd'] %}http://{{ hostvars[node]['ansible_' + hostvars[node].etcd_interface].ipv4.address }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
+    -  "--cloud-provider="
+    -  "--admission-control={{ admission_controllers }}"
+    -  "--service-cluster-ip-range={{ kube_service_addresses }}" 
+    -  "--client-ca-file={{ kube_cert_dir }}/ca.crt"
+    -  "--tls-cert-file={{ kube_cert_dir }}/server.crt"
+    -  "--tls-private-key-file={{ kube_cert_dir }}/server.key"
+    -  "--secure-port={{ kube_master_api_port }}"
+    -  "--insecure-port={{ kube_master_insecure_port }}"
+    -  "--token-auth-file={{ kube_token_dir }}/known_tokens.csv"
+    -  "--v=2"
+    -  "--service-account-key-file={{ kube_cert_dir }}/server.crt"
+    -  "--log-dir=/var/log/kube-apiserver.log"     
+    volumeMounts:
+    - mountPath: {{ kube_cert_dir }}
+      name: srvkube
+      readOnly: true
+    - mountPath: {{ kube_token_dir }}
+      name: kubetoken
+      readOnly: true
+    - mountPath: /var/log/kube-apiserver.log
+      name: logfile
+    - mountPath: /etc/ssl
+      name: etcssl
+      readOnly: true
+    - mountPath: /var/ssl
+      name: varssl
+      readOnly: true
+    - mountPath: /etc/pki/tls
+      name: etcpkitls
+      readOnly: true
+  volumes:
+  - hostPath:
+      path: {{ kube_cert_dir }}
+    name: srvkube
+  - hostPath:
+      path: {{ kube_token_dir }}
+    name: kubetoken
+  - hostPath:
+      path: /var/log/kube-apiserver.log
+    name: logfile
+  - hostPath:
+      path: /etc/ssl
+    name: etcssl
+  - hostPath:
+      path: /var/ssl
+    name: varssl
+  - hostPath:
+      path: /etc/pki/tls
+    name: etcpkitls

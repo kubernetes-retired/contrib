@@ -38,6 +38,10 @@
     HTTP_PROXY: "{{ http_proxy|default('') }}"
     HTTPS_PROXY: "{{ https_proxy|default('') }}"
 
+- name: Create server.pem from crt and key
+  raw: cat {{ kube_cert_dir }}/server.crt {{ kube_cert_dir }}/server.key > {{ kube_cert_dir }}/server.pem
+  sudo: yes
+
 - name: Verify certificate permissions
   file:
     path={{ item }}
@@ -48,5 +52,7 @@
     - "{{ kube_cert_dir }}/ca.crt"
     - "{{ kube_cert_dir }}/server.crt"
     - "{{ kube_cert_dir }}/server.key"
+    - "{{ kube_cert_dir }}/kubelet.crt"
+    - "{{ kube_cert_dir }}/kubelet.key"
     - "{{ kube_cert_dir }}/kubecfg.crt"
     - "{{ kube_cert_dir }}/kubecfg.key"

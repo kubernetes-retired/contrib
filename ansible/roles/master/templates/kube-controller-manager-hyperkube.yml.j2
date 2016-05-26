@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-controller-manager
+spec:
+  hostNetwork: true
+  containers:
+  - name: kube-controller-manager
+    image: gcr.io/google_containers/hyperkube:{{ hyperkube_version }}
+    args:
+      - /hyperkube
+      - controller-manager
+      - --kubeconfig={{ kube_config_dir }}/controller-manager.kubeconfig
+      - --cluster-name= {{ cluster_name }}
+      - --cluster-cidr={{ kube_service_addresses }}
+      - --allocate-node-cidrs=true
+      - --service-account-private-key-file={{ kube_cert_dir }}/server.key
+      - --v=2
+      - --log-dir=/var/log/kube-controller-manager.log
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 10252
+      initialDelaySeconds: 15
+      timeoutSeconds: 1
+    volumeMounts:
+    - mountPath: {{ kube_cert_dir }}
+      name: srvkube
+      readOnly: true
+    - mountPath: {{ kube_config_dir }}/controller-manager.kubeconfig
+      name: kubeconfig
+      readOnly: true
+    - mountPath: /var/log/kube-controller-manager.log
+      name: logfile
+    - mountPath: /etc/ssl
+      name: etcssl
+      readOnly: true
+    - mountPath: /var/ssl
+      name: varssl
+      readOnly: true
+    - mountPath: /etc/pki/tls
+      name: etcpkitls
+      readOnly: true
+  hostNetwork: true
+  volumes:
+  - hostPath:
+      path: {{ kube_cert_dir }}
+    name: srvkube
+  - hostPath:
+      path: {{ kube_config_dir }}/controller-manager.kubeconfig
+    name: kubeconfig
+  - hostPath:
+      path: /var/log/kube-controller-manager.log
+    name: logfile
+  - hostPath:
+      path: /etc/ssl
+    name: etcssl
+  - hostPath:
+      path: /var/ssl
+    name: varssl
+  - hostPath:
+      path: /etc/pki/tls
+    name: etcpkitls

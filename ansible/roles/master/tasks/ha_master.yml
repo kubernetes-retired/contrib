@@ -1,0 +1,76 @@
+- name: Generic | Install kubernetes node
+  action: "{{ ansible_pkg_mgr }}"
+  args:
+    name: kubernetes-node
+    state: latest
+  notify:
+    - restart daemons
+  when: not is_coreos
+
+- name: CoreOS | Get Systemd Unit Files for kubelet
+  get_url:
+    url=https://raw.githubusercontent.com/kubernetes/contrib/master/init/systemd/{{ item }}.service
+    dest=/etc/systemd/system/{{ item }}.service
+    force=yes
+  register: "{{ item }}_service"
+  notify:
+    - reload systemd
+  with_items:
+    - kubelet
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
+  when: is_coreos
+
+- name: CoreOS | Create dropin directories for kubelet
+  file: path=/etc/systemd/system/{{ item }}.service.d state=directory mode=0755
+  with_items:
+    - kubelet
+  when: is_coreos
+
+- name: CoreOS | Write kubelet drop-in file
+  template: src={{ item }}-dropin.j2 dest="/etc/systemd/system/{{ item }}.service.d/10-conf-file.conf"
+  register: "{{ item }}_dropin"
+  with_items:
+    - kubelet
+  notify:
+    - reload systemd
+  when: is_coreos
+
+- name: Set selinux permissive because tokens and selinux do not work together
+  selinux: state=permissive policy={{ ansible_selinux.type }}
+  when: ansible_selinux is defined and ansible_selinux.status == "enabled"
+
+- name: Create the kubelet working directory
+  file: path=/var/lib/kubelet state=directory
+
+- name: write the kubecfg (auth) file for kubelet
+  template: src=kubelet.kubeconfig.j2 dest={{ kube_config_dir }}/kubelet.kubeconfig
+
+- name: Write the pod manifest for the controller-manager
+  template: src=kube-controller-manager-hyperkube.yml.j2 dest={{ kube_standby_manifest_dir }}/kube-controller-manager-hyperkube.yml
+
+- name: Write the pod manifest for the api server
+  template: src=kube-api-hyperkube.yml.j2 dest={{ kube_manifest_dir }}/kube-api-hyperkube.yml
+
+- name: Write the pod manifest for the scheduler
+  template: src=kube-scheduler-hyperkube.yml.j2 dest={{ kube_standby_manifest_dir }}/kube-scheduler-hyperkube.yml
+
+- name: Write the pod manifest for podmaster
+  template: src=podmaster.yml.j2 dest={{ kube_manifest_dir }}/podmaster.yml
+
+- name: Make sure kube master log files exist
+  file: path=/var/log/{{ item }} state=touch mode=0755
+  with_items:
+    - kube-apiserver.log
+    - kube-controller-manager.log
+    - kube-scheduler.log
+
+- name: write the config files for kubelet
+  template: src=kubelet.j2 dest={{ kube_config_dir }}/kubelet
+  notify:
+    - restart kubelet
+
+- name: Enable kubelet
+  service: name=kubelet enabled=yes state=started
