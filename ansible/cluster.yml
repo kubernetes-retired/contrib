@@ -18,6 +18,7 @@
   tags:
     - etcd
 
+# Install docker
 - hosts: all
   sudo: yes
   roles:
