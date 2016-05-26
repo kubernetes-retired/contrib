@@ -40,6 +40,9 @@ var flWait = flag.Int("wait", envInt("GIT_SYNC_WAIT", 0), "number of seconds to 
 var flOneTime = flag.Bool("one-time", envBool("GIT_SYNC_ONE_TIME", false), "exit after the initial checkout")
 var flDepth = flag.Int("depth", envInt("GIT_SYNC_DEPTH", 0), "shallow clone with a history truncated to the specified number of commits")
 
+var flMaxSyncFailures = flag.Int("max-sync-failures", envInt("GIT_SYNC_MAX_SYNC_FAILURES", 0),
+	`number of consecutive failures allowed before aborting (the first pull must succeed)`)
+
 var flUsername = flag.String("username", envString("GIT_SYNC_USERNAME", ""), "username")
 var flPassword = flag.String("password", envString("GIT_SYNC_PASSWORD", ""), "password")
 
@@ -77,7 +80,7 @@ func envInt(key string, def int) int {
 	return def
 }
 
-const usage = "usage: GIT_SYNC_REPO= GIT_SYNC_DEST= [GIT_SYNC_BRANCH= GIT_SYNC_WAIT= GIT_SYNC_DEPTH= GIT_SYNC_USERNAME= GIT_SYNC_PASSWORD= GIT_SYNC_ONE_TIME=] git-sync -repo GIT_REPO_URL -dest PATH [-branch -wait -username -password -depth -one-time]"
+const usage = "usage: GIT_SYNC_REPO= GIT_SYNC_DEST= [GIT_SYNC_BRANCH= GIT_SYNC_WAIT= GIT_SYNC_DEPTH= GIT_SYNC_USERNAME= GIT_SYNC_PASSWORD= GIT_SYNC_ONE_TIME= GIT_SYNC_MAX_SYNC_FAILURES=] git-sync -repo GIT_REPO_URL -dest PATH [-branch -wait -username -password -depth -one-time -max-sync-failures]"
 
 func main() {
 	flag.Parse()
@@ -95,16 +98,29 @@ func main() {
 		}
 	}
 
+	initialSync := true
+	failCount := 0
 	for {
 		if err := syncRepo(*flRepo, *flDest, *flBranch, *flRev, *flDepth); err != nil {
-			log.Fatalf("error syncing repo: %v", err)
+			if initialSync || failCount >= *flMaxSyncFailures {
+				log.Fatalf("error syncing repo: %v", err)
+			}
+
+			failCount++
+			log.Printf("unexpected error syncing repo: %v", err)
+			log.Printf("waiting %d seconds before retryng", *flWait)
+			time.Sleep(time.Duration(*flWait) * time.Second)
+			continue
 		}
+
+		initialSync = false
+		failCount = 0
 
 		if *flOneTime {
 			os.Exit(0)
 		}
 
-		log.Printf("wait %d seconds", *flWait)
+		log.Printf("waiting %d seconds", *flWait)
 		time.Sleep(time.Duration(*flWait) * time.Second)
 		log.Println("done")
 	}
