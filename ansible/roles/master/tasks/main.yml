@@ -2,6 +2,9 @@
 - include: coreos.yml
   when: is_coreos
 
+- include: ubuntu-14.04.yml
+  when: ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
+
 - include: packageManagerInstall.yml
   when: source_type == "packageManager"
   tags:
@@ -23,7 +26,7 @@
 
 - name: add cap_net_bind_service to kube-apiserver
   capabilities: path=/usr/bin/kube-apiserver capability=cap_net_bind_service=ep state=present
-  when: not is_atomic and not is_coreos
+  when: not is_atomic and not is_coreos and not ansible_distribution == 'Ubuntu' and not ansible_distribution_major_version|int < 15
 
 - name: Enable apiserver
   service: name=kube-apiserver enabled=yes state=started
@@ -87,9 +90,11 @@
 
 - name: write the delay-master-services target
   copy: src=delay-master-services.target dest=/etc/systemd/system/ mode=0644
+  when: not ansible_distribution == 'Ubuntu' and not ansible_distribution_major_version|int < 15
 
 - name: Enable delay-master-services
   service: name=delay-master-services.target enabled=yes
+  when: not ansible_distribution == 'Ubuntu' and not ansible_distribution_major_version|int < 15
 
 - include: firewalld.yml
   when: has_firewalld

@@ -44,7 +44,7 @@
     - docker-network
 
 - name: Turn down docker logging
-  lineinfile: dest={{ docker_config_dir }}/docker regexp=^OPTIONS= line=OPTIONS="'--selinux-enabled --log-level=warn'"
+  lineinfile: dest={{ docker_config_dir }}/docker regexp=^OPTIONS= line=OPTIONS="--selinux-enabled --log-level=warn"
   notify:
     - restart docker
   when: docker_use_upstart
