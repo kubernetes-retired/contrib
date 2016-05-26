@@ -105,6 +105,13 @@ var (
 
 	verbose = flags.Bool("verbose", false,
 		`If true, logs are displayed at V(4), otherwise V(2).`)
+
+	configFilePath = flags.String("config-file-path", "",
+		`Path to a file containing the gce config. If left unspecified this
+		controller only works with default zones.`)
+
+	healthzPort = flags.Int("healthz-port", lbApiPort,
+		`Port to run healthz server. Must match the health check port in yaml.`)
 )
 
 func registerHandlers(lbc *controller.LoadBalancerController) {
@@ -122,7 +129,7 @@ func registerHandlers(lbc *controller.LoadBalancerController) {
 		lbc.Stop(true)
 	})
 
-	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", lbApiPort), nil))
+	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", *healthzPort), nil))
 }
 
 func handleSigterm(lbc *controller.LoadBalancerController, deleteAll bool) {
@@ -188,7 +195,7 @@ func main() {
 	if *inCluster || *useRealCloud {
 		// Create cluster manager
 		clusterManager, err = controller.NewClusterManager(
-			*clusterName, defaultBackendNodePort, *healthCheckPath)
+			*configFilePath, *clusterName, defaultBackendNodePort, *healthCheckPath)
 		if err != nil {
 			glog.Fatalf("%v", err)
 		}
@@ -205,6 +212,7 @@ func main() {
 	if clusterManager.ClusterNamer.ClusterName != "" {
 		glog.V(3).Infof("Cluster name %+v", clusterManager.ClusterNamer.ClusterName)
 	}
+	clusterManager.Init(&controller.GCETranslator{lbc})
 	go registerHandlers(lbc)
 	go handleSigterm(lbc, *deleteAllOnQuit)
 
