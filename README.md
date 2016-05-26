@@ -37,7 +37,7 @@ godep restore
 go get -u github.com/kubernetes/kubernetes
 cd $GOPATH/src/github.com/kubernetes/kubernetes
 godep restore
-cd $GOPATH/src/github/kubernetes/contrib/Ingress
+cd $GOPATH/src/github/kubernetes/contrib/ingress
 rm -rf Godeps
 godep save ./...
 git [add/remove] as needed
