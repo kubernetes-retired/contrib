@@ -1,4 +1,12 @@
 ---
+- name: Override docker config file directory for Debian
+  set_fact:
+    docker_config_dir: "/etc/default"
+  when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+- name: Create config file directory
+  file: path={{ docker_config_dir }} state=directory
+
 - include: debian-install.yml
   when: ansible_distribution == "Debian"
 
