@@ -31,6 +31,7 @@ import (
 
 var (
 	host     = flag.String("host", "", "The host to load test")
+	port     = flag.Int("port", 80, "The port to load test")
 	paths    = flag.String("paths", "/", "A comma separated list of URL paths to load test")
 	rate     = flag.Int("rate", 0, "The QPS to send")
 	duration = flag.Duration("duration", 10*time.Second, "The duration of the load test")
@@ -87,12 +88,16 @@ func main() {
 		os.Exit(2)
 	}
 
+	host := serviceIP
+	if *port != 80 {
+		host = fmt.Sprintf("%s:%d", host, port)
+	}
 	var targets []vegeta.Target
 	for _, path := range strings.Split(*paths, ",") {
 		path = strings.TrimPrefix(path, "/")
 		targets = append(targets, vegeta.Target{
 			Method: "GET",
-			URL:    fmt.Sprintf("http://%s/%s", serviceIP, path),
+			URL:    fmt.Sprintf("http://%s/%s", host, path),
 		})
 	}
 	targeter := vegeta.NewStaticTargeter(targets...)
