@@ -46,13 +46,19 @@ const (
 
 // Utils is a struct handling all communication with a given bucket
 type Utils struct {
-	bucket    string
-	directory string
+	bucket      string
+	directory   string
+	overrideURL string
 }
 
 // NewUtils returnes new Utils struct for a given bucket name and subdirectory
 func NewUtils(bucket, directory string) *Utils {
 	return &Utils{bucket: bucket, directory: directory}
+}
+
+// NewTestUtils returnes new Utils struct for a given url pointing to a file server
+func NewTestUtils(url string) *Utils {
+	return &Utils{overrideURL: url}
 }
 
 func (u *Utils) getResponseWithRetry(url string) (*http.Response, error) {
@@ -73,11 +79,19 @@ func (u *Utils) getResponseWithRetry(url string) (*http.Response, error) {
 
 // GetGCSDirectoryURL returns the url of the bucket directory
 func (u *Utils) GetGCSDirectoryURL() string {
+	// return overrideURL if specified
+	if u.overrideURL != "" {
+		return u.overrideURL
+	}
 	return fmt.Sprintf(GCSBucketURLTemplate, u.bucket, u.directory)
 }
 
 // GetGCSListURL returns the url to the list api
 func (u *Utils) GetGCSListURL() string {
+	// return overrideURL if specified
+	if u.overrideURL != "" {
+		return u.overrideURL
+	}
 	return fmt.Sprintf(GCSListAPIURLTemplate, u.bucket)
 }
 
