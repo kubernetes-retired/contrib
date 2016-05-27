@@ -230,6 +230,10 @@ func (u *Utils) ListFilesWithPrefix(prefix string) ([]string, error) {
 		return nil, err
 	}
 	var ret []string
+	if _, ok := data["items"]; !ok {
+		glog.Warningf("No matching files were found")
+		return ret, nil
+	}
 	for _, item := range data["items"].([]interface{}) {
 		ret = append(ret, (item.(map[string]interface{})["name"]).(string))
 	}
