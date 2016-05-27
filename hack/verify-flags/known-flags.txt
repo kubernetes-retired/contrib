@@ -26,6 +26,7 @@ extra-memory
 extra-storage
 fake-e2e
 forward-services
+fixes-issue-reassign
 generated-files-config
 health-check-path
 healthz-port
