@@ -19,10 +19,10 @@ function SQCntl(dataService, $interval, $location) {
   self.goToPerson = goToPerson;
   self.selectTab = selectTab;
   self.tabLoaded = {};
+  self.functionLoading = {};
   self.queryNum = 0;
   self.selected = 1;
   self.OverallHealth = "";
-  self.StartTime = "";
   self.StatOrder = "-Count";
   self.location = $location;
 
@@ -61,25 +61,43 @@ function SQCntl(dataService, $interval, $location) {
   // Defer loading of data for a tab until it's actually needed.
   // This speeds up the first-boot experience a LOT.
   function loadTab() {
-    // tab: [reloading-function, update interval in minutes, ...] (can repeat)
+    // reloadFunctions is a map from functions to how often they should run (in minutes)
+    var reloadFunctions = {}
+    reloadFunctions[refreshPRs] = 10;
+    reloadFunctions[refreshGithubE2E] = 0.5;
+    reloadFunctions[refreshSQStats] = 30;
+    reloadFunctions[refreshHistoryPRs] = 1;
+    reloadFunctions[refreshE2EHealth] = 10;
+    reloadFunctions[refreshUsers] = 15;
+    reloadFunctions[refreshBotStats] = 10;
+
+    // tabFunctionReloads is a map of which tabs need which functions to refresh
     var tabFunctionReloads = {
-      0: [refreshPRs, 10],
-      1: [refreshGithubE2E, 0.5, refreshSQStats, 30],
-      2: [refreshHistoryPRs, 1],
-      3: [refreshE2EHealth, 10],
-      4: [refreshUsers, 15, refreshBotStats, 10],
+      0: [refreshPRs],
+      1: [refreshGithubE2E, refreshSQStats],
+      2: [refreshHistoryPRs],
+      3: [refreshE2EHealth, refreshSQStats],
+      4: [refreshSQStats, refreshUsers, refreshBotStats],
     }
-    if (self.tabLoaded[self.selected])
+    if (self.tabLoaded[self.selected]) {
       return;
-    var tabReload = tabFunctionReloads[self.selected];
-    if (tabReload !== undefined) {
-      for (var i = 0; i < tabReload.length; i += 2) {
-        var func = tabReload[i];
-        var updateIntervalMinutes = tabReload[i + 1];
-        func();
-        $interval(func, updateIntervalMinutes * 60 * 1000);
+    }
+    self.tabLoaded[self.selected] = true;
+
+    var reloadFuncs = tabFunctionReloads[self.selected];
+    if (reloadFuncs === undefined)
+      return;
+
+    for (var i = 0; i < reloadFuncs.length; i++) {
+      var func = reloadFuncs[i];
+      if (self.functionLoading[func] == true) {
+        continue;
       }
-      self.tabLoaded[self.selected] = true;
+      self.functionLoading[func] = true;
+
+      var updateIntervalMinutes = reloadFunctions[func];
+      func();
+      $interval(func, updateIntervalMinutes * 60 * 1000);
     }
   }
 
@@ -138,16 +156,7 @@ function SQCntl(dataService, $interval, $location) {
 
   function refreshBotStats() {
     dataService.getData('stats').then(function successCallback(response) {
-      var nextLoop = new Date(response.data.NextLoopTime);
-      self.nextRunTime = nextLoop.toLocaleTimeString();
-
-      self.botStats = response.data.Analytics;
-      self.APICount = response.data.APICount;
-      self.CachedAPICount = response.data.CachedAPICount;
-      self.apiCallsPerSec = response.data.APIPerSec;
-      self.githubApiLimitCount = response.data.LimitRemaining;
-      var nextReset = new Date(response.data.LimitResetTime);
-      self.githubApiLimitReset = nextReset.toLocaleTimeString();
+      self.botStats = response.data;
     });
   }
 
@@ -163,7 +172,6 @@ function SQCntl(dataService, $interval, $location) {
       if (self.health.TotalLoops !== 0) {
         var percentStable = self.health.NumStable * 100.0 / self.health.TotalLoops;
         self.OverallHealth = Math.round(percentStable) + "%";
-        self.StartTime = new Date(self.health.StartTime).toLocaleString();
       }
       updateBuildStability(self.builds, self.health);
     });
@@ -300,7 +308,6 @@ function SQCntl(dataService, $interval, $location) {
   }
 
   function goToPerson(person) {
-    console.log(person);
     window.location.href = 'https://github.com/' + person;
   }
 
