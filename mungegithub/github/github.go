@@ -56,6 +56,7 @@ const (
 var (
 	releaseMilestoneRE = regexp.MustCompile(`^v[\d]+.[\d]$`)
 	priorityLabelRE    = regexp.MustCompile(`priority/[pP]([\d]+)`)
+	fixesIssueRE       = regexp.MustCompile(`(?i)(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[\s]+#([\d]+)`)
 	maxTime            = time.Unix(1<<63-62135596801, 999999999) // http://stackoverflow.com/questions/25065055/what-is-the-maximum-time-time-in-go
 )
 
@@ -196,6 +197,7 @@ type analytics struct {
 	RemoveLabels      analytic
 	ListCollaborators analytic
 	GetIssue          analytic
+	CloseIssue        analytic
 	CreateIssue       analytic
 	ListIssues        analytic
 	ListIssueEvents   analytic
@@ -227,6 +229,7 @@ func (a analytics) print() {
 	fmt.Fprintf(w, "RemoveLabels\t%d\t\n", a.RemoveLabels.Count)
 	fmt.Fprintf(w, "ListCollaborators\t%d\t\n", a.ListCollaborators.Count)
 	fmt.Fprintf(w, "GetIssue\t%d\t\n", a.GetIssue.Count)
+	fmt.Fprintf(w, "CloseIssue\t%d\t\n", a.CloseIssue.Count)
 	fmt.Fprintf(w, "CreateIssue\t%d\t\n", a.CreateIssue.Count)
 	fmt.Fprintf(w, "ListIssues\t%d\t\n", a.ListIssues.Count)
 	fmt.Fprintf(w, "ListIssueEvents\t%d\t\n", a.ListIssueEvents.Count)
@@ -894,6 +897,14 @@ func (config *Config) GetUser(login string) (*github.User, error) {
 	return user, err
 }
 
+// DescribeUser returns the Login string, which may be nil.
+func DescribeUser(u *github.User) string {
+	if u != nil && u.Login != nil {
+		return *u.Login
+	}
+	return "<nil>"
+}
+
 // IsPR returns if the obj is a PR or an Issue.
 func (obj *MungeObject) IsPR() bool {
 	if obj.Issue.PullRequestLinks == nil {
@@ -1216,6 +1227,27 @@ func (obj *MungeObject) AssignPR(owner string) error {
 	return nil
 }
 
+// CloseIssuef will close the given issue with a message
+func (obj *MungeObject) CloseIssuef(format string, args ...interface{}) error {
+	config := obj.config
+	msg := fmt.Sprintf(format, args...)
+	if err := obj.WriteComment(msg); err != nil {
+		return fmt.Errorf("failed to write comment to %v: %q: %v", *obj.Issue.Number, msg, err)
+	}
+	closed := "closed"
+	state := &github.IssueRequest{State: &closed}
+	config.analytics.CloseIssue.Call(config, nil)
+	glog.Infof("Closing issue #%d: %v", *obj.Issue.Number, msg)
+	if config.DryRun {
+		return nil
+	}
+	if _, _, err := config.client.Issues.Edit(config.Org, config.Project, *obj.Issue.Number, state); err != nil {
+		glog.Errorf("Error closing issue #%d: %v: %v", *obj.Issue.Number, msg, err)
+		return err
+	}
+	return nil
+}
+
 // ClosePR will close the Given PR
 func (obj *MungeObject) ClosePR() error {
 	config := obj.config
@@ -1370,6 +1402,26 @@ func (obj *MungeObject) MergePR(who string) error {
 		return err
 	}
 	return nil
+}
+
+// GetPRFixesList returns a list of issue numbers that are referenced in the PR body.
+func (obj *MungeObject) GetPRFixesList() []int {
+	prBody := ""
+	if obj.Issue.Body != nil {
+		prBody = *obj.Issue.Body
+	}
+	matches := fixesIssueRE.FindAllStringSubmatch(prBody, -1)
+	if matches == nil {
+		return nil
+	}
+
+	issueNums := []int{}
+	for _, match := range matches {
+		if num, err := strconv.Atoi(match[1]); err == nil {
+			issueNums = append(issueNums, num)
+		}
+	}
+	return issueNums
 }
 
 // ListComments returns all comments for the issue/PR in question

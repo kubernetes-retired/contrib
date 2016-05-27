@@ -26,6 +26,7 @@ extra-memory
 extra-storage
 fake-e2e
 forward-services
+fixes-issue-reassign
 generated-files-config
 health-check-path
 healthz-port
@@ -92,3 +93,4 @@ scale-down-utilization-threshold
 scale-down-trial-frequency
 on-change
 on-start
+max-sync-failures
