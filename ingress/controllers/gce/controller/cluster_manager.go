@@ -18,7 +18,9 @@ package controller
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"k8s.io/contrib/ingress/controllers/gce/backends"
@@ -66,7 +68,7 @@ const (
 
 // ClusterManager manages cluster resource pools.
 type ClusterManager struct {
-	ClusterNamer           utils.Namer
+	ClusterNamer           *utils.Namer
 	defaultBackendNodePort int64
 	instancePool           instances.NodePool
 	backendPool            backends.BackendPool
@@ -184,13 +186,13 @@ func defaultInstanceGroupName(clusterName string) string {
 	return fmt.Sprintf("%v-%v", instanceGroupPrefix, clusterName)
 }
 
-func getGCEClient() *gce.GCECloud {
+func getGCEClient(config io.Reader) *gce.GCECloud {
 	// Creating the cloud interface involves resolving the metadata server to get
 	// an oauth token. If this fails, the token provider assumes it's not on GCE.
 	// No errors are thrown. So we need to keep retrying till it works because
 	// we know we're on GCE.
 	for {
-		cloudInterface, err := cloudprovider.GetCloudProvider("gce", nil)
+		cloudInterface, err := cloudprovider.GetCloudProvider("gce", config)
 		if err == nil {
 			cloud := cloudInterface.(*gce.GCECloud)
 
@@ -217,22 +219,40 @@ func getGCEClient() *gce.GCECloud {
 //	 the kubernetes Service that serves the 404 page if no urls match.
 // - defaultHealthCheckPath: is the default path used for L7 health checks, eg: "/healthz"
 func NewClusterManager(
+	configFilePath string,
 	name string,
 	defaultBackendNodePort int64,
 	defaultHealthCheckPath string) (*ClusterManager, error) {
+
+	var config *os.File
+	var err error
+	if configFilePath != "" {
+		glog.Infof("Reading config from path %v", configFilePath)
+		config, err = os.Open(configFilePath)
+		if err != nil {
+			return nil, err
+		}
+		defer config.Close()
+	}
 
 	// TODO: Make this more resilient. Currently we create the cloud client
 	// and pass it through to all the pools. This makes unittesting easier.
 	// However if the cloud client suddenly fails, we should try to re-create it
 	// and continue.
-	cloud := getGCEClient()
+	cloud := getGCEClient(config)
+	glog.Infof("Successfully loaded cloudprovider using config %q", configFilePath)
 
-	cluster := ClusterManager{ClusterNamer: utils.Namer{name}}
+	// Names are fundamental to the cluster, the uid allocator makes sure names don't collide.
+	cluster := ClusterManager{ClusterNamer: &utils.Namer{name}}
 	zone, err := cloud.GetZone()
 	if err != nil {
 		return nil, err
 	}
+
+	// NodePool stores GCE vms that are in this Kubernetes cluster.
 	cluster.instancePool = instances.NewNodePool(cloud, zone.FailureDomain)
+
+	// BackendPool creates GCE BackendServices and associated health checks.
 	healthChecker := healthchecks.NewHealthChecker(cloud, defaultHealthCheckPath, cluster.ClusterNamer)
 
 	// TODO: This needs to change to a consolidated management of the default backend.
@@ -242,6 +262,8 @@ func NewClusterManager(
 	defaultBackendPool := backends.NewBackendPool(
 		cloud, defaultBackendHealthChecker, cluster.instancePool, cluster.ClusterNamer, []int64{}, false)
 	cluster.defaultBackendNodePort = defaultBackendNodePort
+
+	// L7 pool creates targetHTTPProxy, ForwardingRules, UrlMaps, StaticIPs.
 	cluster.l7Pool = loadbalancers.NewLoadBalancerPool(
 		cloud, defaultBackendPool, defaultBackendNodePort, cluster.ClusterNamer)
 	cluster.firewallPool = firewalls.NewFirewallPool(cloud, cluster.ClusterNamer)
