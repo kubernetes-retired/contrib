@@ -7,6 +7,8 @@ require "yaml"
 ### Then RUN: "vagrant plugin install vagrant-openstack-provider"
 require 'vagrant-openstack-provider'
 
+require 'vagrant-aws'
+
 $num_nodes = (ENV['NUM_NODES'] || 2).to_i
 $ansible_tags = ENV['ANSIBLE_TAGS']
 # OS image to use. Currently supported:
@@ -39,6 +41,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # This explicitly sets the order that vagrant will use by default if no --provider given
   config.vm.provider "virtualbox"
   config.vm.provider "libvirt"
+  config.vm.provider "aws"
   config.vm.provider "openstack"
 
   def set_openstack_box(config)
@@ -80,6 +83,14 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       config.vm.box = "fedora/23-cloud-base"
     when :fedoraatomic
       config.vm.box = "fedora/23-atomic-host"
+    end
+  end
+
+  def set_aws_box(config)
+    case $os_image
+    when :centos7
+      config.vm.box = "dummy"
+      config.vm.box_url = "https://github.com/mitchellh/vagrant-aws/raw/master/dummy.box"
     end
   end
 
@@ -135,6 +146,21 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     lv.volume_cache = 'none'
   end
 
+  def set_aws(aws, config, n)
+    set_aws_box(config)
+
+    config.ssh.username = "YOUR IMAGE UNAME"
+    config.ssh.private_key_path = "PATH TO YOUR KEY"
+
+    ### The below parameters need to be modified per your aws acct
+    aws.access_key_id = "YOUR KEY"
+    aws.secret_access_key = "YOUR SECRET KEY"
+    aws.session_token = "SESSION TOKEN"
+    aws.keypair_name = "KEYPAIR NAME"
+    aws.ami = "YOUR AMI"
+    aws.region = "YOUR REGION"
+  end
+
   def set_provider(n, vm_idx)
     n.vm.provider :openstack do |os, override|
       set_openstack(os, override, n)
@@ -144,6 +170,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     end
     n.vm.provider :libvirt do |lv, override|
       set_libvirt(lv, override)
+    end
+     n.vm.provider :aws do |aws, override|
+      set_aws(aws, override, n)
     end
   end
 
@@ -205,6 +234,11 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     n.vm.provider :libvirt do |lv, override|
       override.vm.provision :ansible do |ansible|
         yield ansible, :libvirt
+      end
+    end
+    n.vm.provider :aws do |aws, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :aws
       end
     end
   end
