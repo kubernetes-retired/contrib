@@ -29,6 +29,8 @@ export LUA_UPSTREAM_VERSION=0.05
 export MORE_HEADERS_VERSION=0.30
 export NAXSI_VERSION=0.55rc1
 export NGINX_DIGEST_AUTH=f85f5d6fdcc06002ff879f5cbce930999c287011
+export NGINX_SUBSTITUTIONS=bc58cb11844bc42735bbaef7085ea86ace46d05b
+
 export BUILD_PATH=/tmp/build
 
 get_src()
@@ -104,7 +106,8 @@ get_src 8b1277e41407e893b5488bd953612f4e7bf9e241f9494faf71d93f1b1d5beefa \
 get_src 618de9d87cbb4e6ad21cc4a1a178bbfdabddba9ad07ddee4c1190d23c12887ee \
         "https://github.com/atomx/nginx-http-auth-digest/archive/$NGINX_DIGEST_AUTH.tar.gz"
 
-
+get_src 8eabbcd5950fdcc718bb0ef9165206c2ed60f67cd9da553d7bc3e6fe4e338461 \
+        "https://github.com/yaoweibin/ngx_http_substitutions_filter_module/archive/$NGINX_SUBSTITUTIONS.tar.gz"
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
@@ -151,6 +154,7 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
   --add-module="$BUILD_PATH/headers-more-nginx-module-$MORE_HEADERS_VERSION" \
   --add-module="$BUILD_PATH/nginx-goodies-nginx-sticky-module-ng-$STICKY_SESSIONS_VERSION" \
   --add-module="$BUILD_PATH/nginx-http-auth-digest-$NGINX_DIGEST_AUTH" \
+  --add-module="$BUILD_PATH/ngx_http_substitutions_filter_module-$NGINX_SUBSTITUTIONS" \
   --add-module="$BUILD_PATH/lua-upstream-nginx-module-$LUA_UPSTREAM_VERSION" || exit 1 \
   && make || exit 1 \
   && make install || exit 1
