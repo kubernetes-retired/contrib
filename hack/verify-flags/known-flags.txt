@@ -5,6 +5,7 @@ block-path-config
 blunderbuss-config
 blunderbuss-reassign
 change-permissions
+cloud-config
 cluster-uid
 configuration-name
 current-release-pr
