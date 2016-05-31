@@ -21,10 +21,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"text/template"
 
 	"github.com/fatih/structs"
 	"github.com/golang/glog"
+)
+
+const (
+	slash = "/"
 )
 
 var (
@@ -40,6 +45,8 @@ var (
 
 			return true
 		},
+		"buildLocation":  buildLocation,
+		"buildProxyPass": buildProxyPass,
 	}
 )
 
@@ -100,4 +107,76 @@ func toCamelCase(src string) string {
 		}
 	}
 	return string(bytes.Join(chunks, nil))
+}
+
+// buildLocation produces the location string, if the ingress has redirects
+// (specified through the ingress.kubernetes.io/rewrite-to annotation)
+func buildLocation(input interface{}) string {
+	location, ok := input.(*Location)
+	if !ok {
+		return slash
+	}
+
+	path := location.Path
+	if len(location.Redirect.Target) > 0 && location.Redirect.Target != path {
+		return fmt.Sprintf("~* %s", path)
+	}
+
+	return path
+}
+
+// buildProxyPass produces the proxy pass string, if the ingress has redirects
+// (specified through the ingress.kubernetes.io/rewrite-to annotation)
+// If the annotation ingress.kubernetes.io/add-base-url:"true" is specified it will
+// add a base tag in the head of the response from the service
+func buildProxyPass(input interface{}) string {
+	location, ok := input.(*Location)
+	if !ok {
+		return ""
+	}
+
+	path := location.Path
+
+	// defProxyPass returns the default proxy_pass, just the name of the upstream
+	defProxyPass := fmt.Sprintf("proxy_pass http://%s;", location.Upstream.Name)
+	// if the path in the ingress rule is equals to the target: no special rewrite
+	if path == location.Redirect.Target {
+		return defProxyPass
+	}
+
+	if path != slash && !strings.HasSuffix(path, slash) {
+		path = fmt.Sprintf("%s/", path)
+	}
+
+	if len(location.Redirect.Target) > 0 {
+		abu := ""
+		if location.Redirect.AddBaseURL {
+			bPath := location.Redirect.Target
+			if !strings.HasSuffix(bPath, slash) {
+				bPath = fmt.Sprintf("%s/", bPath)
+			}
+
+			abu = fmt.Sprintf(`subs_filter '<head(.*)>' '<head$1><base href="$scheme://$server_name%v">' r;
+	subs_filter '<HEAD(.*)>' '<HEAD$1><base href="$scheme://$server_name%v">' r;
+	`, bPath, bPath)
+		}
+
+		if location.Redirect.Target == slash {
+			// special case redirect to /
+			// ie /something to /
+			return fmt.Sprintf(`
+	rewrite %s / break;
+	rewrite %s(.*) /$1 break;
+	proxy_pass http://%s;
+	%v`, location.Path, path, location.Upstream.Name, abu)
+		}
+
+		return fmt.Sprintf(`
+	rewrite %s(.*) %s/$1 break;
+	proxy_pass http://%s;
+	%v`, path, location.Redirect.Target, location.Upstream.Name, abu)
+	}
+
+	// default proxy_pass
+	return defProxyPass
 }
