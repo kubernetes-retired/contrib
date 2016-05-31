@@ -17,7 +17,7 @@
 
 set -e
 
-export NGINX_VERSION=1.11.0
+export NGINX_VERSION=1.11.1
 export NDK_VERSION=0.3.0
 export VTS_VERSION=0.1.9
 export SETMISC_VERSION=0.30
@@ -70,7 +70,7 @@ apt-get update && apt-get install --no-install-recommends -y \
   linux-headers-generic || exit 1
 
 # download, verify and extract the source files
-get_src 6ca0e7bf540cdae387ce9470568c2c3a826bc7e7f12def1ae7d20b66f4065a99 \
+get_src 5d8dd0197e3ffeb427729c045382182fb28db8e045c635221b2e0e6722821ad0 \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 88e05a99a8a7419066f5ae75966fb1efc409bad4522d14986da074554ae61619 \
@@ -198,6 +198,7 @@ apt-get remove -y --purge \
   libaio-dev \
   libluajit-5.1-dev \
   linux-libc-dev \
+  perl-modules-5.22 \
   linux-headers-generic
 
 apt-get autoremove -y
@@ -210,3 +211,4 @@ rm -rf "$BUILD_PATH"
 rm -Rf /usr/share/man /usr/share/doc
 rm -rf /tmp/* /var/tmp/*
 rm -rf /var/lib/apt/lists/*
+rm -rf /var/cache/apt/archives/*
