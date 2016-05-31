@@ -91,3 +91,11 @@
   sudo: yes
   roles:
     - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
+
+# install runtime dependencies
+- hosts: nodes
+  sudo: yes
+  roles:
+  - epilogue
+  tags:
+  - epilogue
