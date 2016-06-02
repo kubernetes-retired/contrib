@@ -66,7 +66,7 @@ endif
 
 	docker build -t $(REGISTRY)/$(IMAGE)-$(ARCH):$(TAG) $(TEMP_DIR)
 
-	rm -r $(TEMP_DIR)
+	rm -rf $(TEMP_DIR)
 
 push: build
 	gcloud docker push $(REGISTRY)/$(IMAGE)-$(ARCH):$(TAG)
