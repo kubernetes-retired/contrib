@@ -96,10 +96,10 @@ func (u *Utils) GetGCSListURL() string {
 	return fmt.Sprintf(GCSListAPIURLTemplate, u.bucket)
 }
 
-// GetPathToJenkinsGoogleBucket reads data from Google project's GCS bucket for the given job and buildNumber.
-// Returns a response with file stored under a given (relative) path or an error.
-func (u *Utils) GetPathToJenkinsGoogleBucket(job string, buildNumber int, path string) string {
-	return fmt.Sprintf("%v/%v/%v/%v", u.GetGCSDirectoryURL(), job, buildNumber, path)
+// GetPathToJenkinsGoogleBucket returns a GCS path containing the artifacts for a given job and buildNumber.
+// This only formats the path. It doesn't include a host or protocol necessary for a full URI.
+func (u *Utils) GetPathToJenkinsGoogleBucket(job string, buildNumber int) string {
+	return fmt.Sprintf("/%s/%s/%s/%d/", u.bucket, u.directory, job, buildNumber)
 }
 
 // GetFileFromJenkinsGoogleBucket reads data from Google project's GCS bucket for the given job and buildNumber.
