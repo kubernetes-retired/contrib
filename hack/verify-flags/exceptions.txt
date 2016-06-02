@@ -1,5 +1,7 @@
+ingress/controllers/nginx/README.md:Enables which HTTP codes should be passed for processing with the [error_page directive](http://nginx.org/en/docs/http/ngx_http_core_module.html#error_page)
+ingress/controllers/nginx/README.md:Setting at least one code this also enables [proxy_intercept_errors](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_intercept_errors) (required to process error_page)
 ingress/controllers/nginx/nginx.tmpl:        require("error_page")
-ingress/controllers/nginx/nginx.tmpl:    error_page {{ $errCode }} = @custom_{{ $errCode }};
+ingress/controllers/nginx/nginx.tmpl:    error_page {{ $errCode }} = @custom_{{ $errCode }};{{ end }}
 ingress/controllers/nginx/nginx/main.go:	// enables which HTTP codes should be passed for processing with the error_page directive
 mungegithub/mungers/submit-queue.go:		sq.e2e = &fake_e2e.FakeE2ETester{
 mungegithub/mungers/submit-queue.go:	fake_e2e "k8s.io/contrib/mungegithub/mungers/e2e/fake"

@@ -84,8 +84,8 @@ var (
 	sslDirectory = "/etc/nginx-ssl"
 )
 
-// NginxConfiguration ...
-type NginxConfiguration struct {
+// Configuration represents the content of nginx.conf file
+type Configuration struct {
 	// http://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size
 	// Sets the maximum allowed size of the client request body
 	BodySize string `structs:"body-size,omitempty"`
@@ -129,7 +129,7 @@ type NginxConfiguration struct {
 	// http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_intercept_errors
 	// http://nginx.org/en/docs/http/ngx_http_core_module.html#error_page
 	// By default this is disabled
-	CustomHTTPErrors []int
+	CustomHTTPErrors []int `structs:"custom-http-errors,-"`
 
 	// Time during which a keep-alive client connection will stay open on the server side.
 	// The zero value disables keep-alive client connections
@@ -251,7 +251,7 @@ type NginxConfiguration struct {
 type Manager struct {
 	ConfigFile string
 
-	defCfg NginxConfiguration
+	defCfg Configuration
 
 	defResolver string
 
@@ -267,8 +267,8 @@ type Manager struct {
 
 // defaultConfiguration returns the default configuration contained
 // in the file default-conf.json
-func newDefaultNginxCfg() NginxConfiguration {
-	cfg := NginxConfiguration{
+func newDefaultNginxCfg() Configuration {
+	cfg := Configuration{
 		BodySize:      bodySize,
 		ErrorLogLevel: errorLevel,
 		HSTS:          true,
@@ -295,7 +295,7 @@ func newDefaultNginxCfg() NginxConfiguration {
 		WorkerProcesses:          strconv.Itoa(runtime.NumCPU()),
 		VtsStatusZoneSize:        "10m",
 		UseHTTP2:                 true,
-		CustomHTTPErrors:         []int{},
+		CustomHTTPErrors:         make([]int, 0),
 	}
 
 	if glog.V(5) {

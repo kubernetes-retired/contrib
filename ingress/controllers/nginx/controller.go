@@ -45,6 +45,7 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/healthcheck"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ratelimit"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/rewrite"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/secureupstream"
 )
 
 const (
@@ -89,9 +90,11 @@ type loadBalancerController struct {
 	ingController  *framework.Controller
 	endpController *framework.Controller
 	svcController  *framework.Controller
+	mapController  *framework.Controller
 	ingLister      StoreToIngressLister
 	svcLister      cache.StoreToServiceLister
 	endpLister     cache.StoreToEndpointsLister
+	mapLister      StoreToConfigmapLister
 	nginx          *nginx.Manager
 	podInfo        *podInfo
 	defaultSvc     string
@@ -176,6 +179,20 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		},
 	}
 
+	mapEventHandler := framework.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) {
+			if !reflect.DeepEqual(old, cur) {
+				upCmap := cur.(*api.ConfigMap)
+				mapKey := fmt.Sprintf("%s/%s", upCmap.Namespace, upCmap.Name)
+				// updates to configuration configmaps can trigger an update
+				if mapKey == lbc.nxgConfigMap || mapKey == lbc.tcpConfigMap || mapKey == lbc.udpConfigMap {
+					lbc.recorder.Eventf(upCmap, api.EventTypeNormal, "UPDATE", mapKey)
+					lbc.syncQueue.enqueue(cur)
+				}
+			}
+		},
+	}
+
 	lbc.ingLister.Store, lbc.ingController = framework.NewInformer(
 		&cache.ListWatch{
 			ListFunc:  ingressListFunc(lbc.client, namespace),
@@ -196,6 +213,13 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 			WatchFunc: serviceWatchFunc(lbc.client, namespace),
 		},
 		&api.Service{}, resyncPeriod, framework.ResourceEventHandlerFuncs{})
+
+	lbc.mapLister.Store, lbc.mapController = framework.NewInformer(
+		&cache.ListWatch{
+			ListFunc:  mapListFunc(lbc.client, namespace),
+			WatchFunc: mapWatchFunc(lbc.client, namespace),
+		},
+		&api.ConfigMap{}, resyncPeriod, mapEventHandler)
 
 	return &lbc, nil
 }
@@ -236,20 +260,34 @@ func endpointsWatchFunc(c *client.Client, ns string) func(options api.ListOption
 	}
 }
 
+func mapListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
+	return func(opts api.ListOptions) (runtime.Object, error) {
+		return c.ConfigMaps(ns).List(opts)
+	}
+}
+
+func mapWatchFunc(c *client.Client, ns string) func(options api.ListOptions) (watch.Interface, error) {
+	return func(options api.ListOptions) (watch.Interface, error) {
+		return c.ConfigMaps(ns).Watch(options)
+	}
+}
+
 func (lbc *loadBalancerController) controllersInSync() bool {
-	return lbc.ingController.HasSynced() && lbc.svcController.HasSynced() && lbc.endpController.HasSynced()
+	return lbc.ingController.HasSynced() && lbc.svcController.HasSynced() &&
+		lbc.endpController.HasSynced() && lbc.mapController.HasSynced()
 }
 
 func (lbc *loadBalancerController) getConfigMap(ns, name string) (*api.ConfigMap, error) {
+	// TODO: check why lbc.mapLister.Store.GetByKey(mapKey) is not stable (random content)
 	return lbc.client.ConfigMaps(ns).Get(name)
 }
 
 func (lbc *loadBalancerController) getTCPConfigMap(ns, name string) (*api.ConfigMap, error) {
-	return lbc.client.ConfigMaps(ns).Get(name)
+	return lbc.getConfigMap(ns, name)
 }
 
 func (lbc *loadBalancerController) getUDPConfigMap(ns, name string) (*api.ConfigMap, error) {
-	return lbc.client.ConfigMaps(ns).Get(name)
+	return lbc.getConfigMap(ns, name)
 }
 
 // checkSvcForUpdate verifies if one of the running pods for a service contains
@@ -336,6 +374,7 @@ func (lbc *loadBalancerController) sync(key string) {
 	ns, name, _ := parseNsName(lbc.nxgConfigMap)
 	cfg, err := lbc.getConfigMap(ns, name)
 	if err != nil {
+		glog.V(3).Infof("unexpected error searching configmap %v: %v", lbc.nxgConfigMap, err)
 		cfg = &api.ConfigMap{}
 	}
 
@@ -558,7 +597,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 	return upstream
 }
 
-func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.NginxConfiguration, data []interface{}) ([]*nginx.Upstream, []*nginx.Server) {
+func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration, data []interface{}) ([]*nginx.Upstream, []*nginx.Server) {
 	upstreams := lbc.createUpstreams(ngxCfg, data)
 	upstreams[defUpstreamName] = lbc.getDefaultUpstream()
 
@@ -597,6 +636,11 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.NginxConfigur
 				glog.V(3).Infof("error reading rate limit annotation in Ingress %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
 			}
 
+			secUpstream, err := secureupstream.ParseAnnotations(ing)
+			if err != nil {
+				glog.V(3).Infof("error reading secure upstream in Ingress %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
+			}
+
 			host := rule.Host
 			if host == "" {
 				host = defServerName
@@ -626,6 +670,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.NginxConfigur
 						loc.Upstream = *ups
 						loc.Auth = *nginxAuth
 						loc.RateLimit = *rl
+						loc.SecureUpstream = secUpstream
 
 						locRew, err := rewrite.ParseAnnotations(ing)
 						if err != nil {
@@ -652,11 +697,12 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.NginxConfigur
 					}
 
 					server.Locations = append(server.Locations, &nginx.Location{
-						Path:      nginxPath,
-						Upstream:  *ups,
-						Auth:      *nginxAuth,
-						RateLimit: *rl,
-						Redirect:  *locRew,
+						Path:           nginxPath,
+						Upstream:       *ups,
+						Auth:           *nginxAuth,
+						RateLimit:      *rl,
+						Redirect:       *locRew,
+						SecureUpstream: secUpstream,
 					})
 				}
 			}
@@ -689,7 +735,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.NginxConfigur
 
 // createUpstreams creates the NGINX upstreams for each service referenced in
 // Ingress rules. The servers inside the upstream are endpoints.
-func (lbc *loadBalancerController) createUpstreams(ngxCfg nginx.NginxConfiguration, data []interface{}) map[string]*nginx.Upstream {
+func (lbc *loadBalancerController) createUpstreams(ngxCfg nginx.Configuration, data []interface{}) map[string]*nginx.Upstream {
 	upstreams := make(map[string]*nginx.Upstream)
 
 	for _, ingIf := range data {
@@ -980,6 +1026,7 @@ func (lbc *loadBalancerController) Run() {
 	go lbc.ingController.Run(lbc.stopCh)
 	go lbc.endpController.Run(lbc.stopCh)
 	go lbc.svcController.Run(lbc.stopCh)
+	go lbc.mapController.Run(lbc.stopCh)
 
 	go lbc.syncQueue.run(time.Second, lbc.stopCh)
 	go lbc.ingQueue.run(time.Second, lbc.stopCh)

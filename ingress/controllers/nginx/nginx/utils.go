@@ -67,7 +67,7 @@ func getDNSServers() []string {
 // getConfigKeyToStructKeyMap returns a map with the ConfigMapKey as key and the StructName as value.
 func getConfigKeyToStructKeyMap() map[string]string {
 	keyMap := map[string]string{}
-	n := &NginxConfiguration{}
+	n := &Configuration{}
 	val := reflect.Indirect(reflect.ValueOf(n))
 	for i := 0; i < val.Type().NumField(); i++ {
 		fieldSt := val.Type().Field(i)
@@ -79,12 +79,12 @@ func getConfigKeyToStructKeyMap() map[string]string {
 }
 
 // ReadConfig obtains the configuration defined by the user merged with the defaults.
-func (ngx *Manager) ReadConfig(config *api.ConfigMap) NginxConfiguration {
+func (ngx *Manager) ReadConfig(config *api.ConfigMap) Configuration {
 	if len(config.Data) == 0 {
 		return newDefaultNginxCfg()
 	}
 
-	cfgCM := NginxConfiguration{}
+	cfgCM := Configuration{}
 	cfgDefault := newDefaultNginxCfg()
 
 	metadata := &mapstructure.Metadata{}
@@ -102,7 +102,7 @@ func (ngx *Manager) ReadConfig(config *api.ConfigMap) NginxConfiguration {
 		for _, i := range strings.Split(val, ",") {
 			j, err := strconv.Atoi(i)
 			if err != nil {
-				glog.Warningf("%v is not a valid http code", i)
+				glog.Warningf("%v is not a valid http code: %v", i, err)
 			} else {
 				cErrors = append(cErrors, j)
 			}

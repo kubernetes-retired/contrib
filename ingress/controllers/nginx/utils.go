@@ -37,6 +37,11 @@ type StoreToIngressLister struct {
 	cache.Store
 }
 
+// StoreToConfigmapLister makes a Store that lists Configmap.
+type StoreToConfigmapLister struct {
+	cache.Store
+}
+
 // taskQueue manages a work queue through an independent worker that
 // invokes the given sync function for every work item inserted.
 type taskQueue struct {

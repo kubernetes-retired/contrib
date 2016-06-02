@@ -57,7 +57,7 @@ func (ngx *Manager) loadTemplate() {
 	ngx.template = tmpl
 }
 
-func (ngx *Manager) writeCfg(cfg NginxConfiguration, ingressCfg IngressConfig) (bool, error) {
+func (ngx *Manager) writeCfg(cfg Configuration, ingressCfg IngressConfig) (bool, error) {
 	conf := make(map[string]interface{})
 	conf["upstreams"] = ingressCfg.Upstreams
 	conf["servers"] = ingressCfg.Servers
@@ -139,8 +139,12 @@ func buildProxyPass(input interface{}) string {
 
 	path := location.Path
 
+	proto := "http"
+	if location.SecureUpstream {
+		proto = "https"
+	}
 	// defProxyPass returns the default proxy_pass, just the name of the upstream
-	defProxyPass := fmt.Sprintf("proxy_pass http://%s;", location.Upstream.Name)
+	defProxyPass := fmt.Sprintf("proxy_pass %s://%s;", proto, location.Upstream.Name)
 	// if the path in the ingress rule is equals to the target: no special rewrite
 	if path == location.Redirect.Target {
 		return defProxyPass
@@ -169,14 +173,14 @@ func buildProxyPass(input interface{}) string {
 			return fmt.Sprintf(`
 	rewrite %s / break;
 	rewrite %s(.*) /$1 break;
-	proxy_pass http://%s;
-	%v`, location.Path, path, location.Upstream.Name, abu)
+	proxy_pass %s://%s;
+	%v`, location.Path, path, proto, location.Upstream.Name, abu)
 		}
 
 		return fmt.Sprintf(`
 	rewrite %s(.*) %s/$1 break;
-	proxy_pass http://%s;
-	%v`, path, location.Redirect.Target, location.Upstream.Name, abu)
+	proxy_pass %s://%s;
+	%v`, path, location.Redirect.Target, proto, location.Upstream.Name, abu)
 	}
 
 	// default proxy_pass
@@ -197,14 +201,14 @@ func buildRateLimitZones(input interface{}) []string {
 	for _, server := range servers {
 		for _, loc := range server.Locations {
 
-			if loc.RateLimit.Connections.Limit != -1 {
-				zone := fmt.Sprintf("limit_conn_zone $binary_remote_addr zone=%v:%v;",
+			if loc.RateLimit.Connections.Limit > 0 {
+				zone := fmt.Sprintf("limit_conn_zone $binary_remote_addr zone=%v:%vm;",
 					loc.RateLimit.Connections.Name, loc.RateLimit.Connections.SharedSize)
 				zones = append(zones, zone)
 			}
 
-			if loc.RateLimit.RPS.Limit != -1 {
-				zone := fmt.Sprintf("limit_conn_zone $binary_remote_addr zone=%v:%v rate=%vr/s;",
+			if loc.RateLimit.RPS.Limit > 0 {
+				zone := fmt.Sprintf("limit_conn_zone $binary_remote_addr zone=%v:%vm rate=%vr/s;",
 					loc.RateLimit.Connections.Name, loc.RateLimit.Connections.SharedSize, loc.RateLimit.Connections.Limit)
 				zones = append(zones, zone)
 			}
@@ -224,13 +228,13 @@ func buildRateLimit(input interface{}) []string {
 		return limits
 	}
 
-	if loc.RateLimit.Connections.Limit != -1 {
+	if loc.RateLimit.Connections.Limit > 0 {
 		limit := fmt.Sprintf("limit_conn %v %v;",
 			loc.RateLimit.Connections.Name, loc.RateLimit.Connections.Limit)
 		limits = append(limits, limit)
 	}
 
-	if loc.RateLimit.RPS.Limit != -1 {
+	if loc.RateLimit.RPS.Limit > 0 {
 		limit := fmt.Sprintf("limit_req zone=%v burst=%v nodelay;",
 			loc.RateLimit.Connections.Name, loc.RateLimit.Connections.Burst)
 		limits = append(limits, limit)

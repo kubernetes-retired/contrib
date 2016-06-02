@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package healthcheck
+package secureupstream
 
 import (
 	"testing"
@@ -22,8 +22,6 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/util/intstr"
-
-	"k8s.io/contrib/ingress/controllers/nginx/nginx"
 )
 
 func buildIngress() *extensions.Ingress {
@@ -63,56 +61,20 @@ func buildIngress() *extensions.Ingress {
 
 func TestAnnotations(t *testing.T) {
 	ing := buildIngress()
-
-	_, err := ingAnnotations(ing.GetAnnotations()).maxFails()
-	if err == nil {
-		t.Error("Expected a validation error")
-	}
-
-	_, err = ingAnnotations(ing.GetAnnotations()).failTimeout()
-	if err == nil {
-		t.Error("Expected a validation error")
-	}
-
 	data := map[string]string{}
-	data[upsMaxFails] = "1"
-	data[upsFailTimeout] = "1"
+	data[secureUpstream] = "true"
 	ing.SetAnnotations(data)
 
-	mf, err := ingAnnotations(ing.GetAnnotations()).maxFails()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-	if mf != 1 {
-		t.Errorf("Expected 1 but returned %s", mf)
-	}
-
-	ft, err := ingAnnotations(ing.GetAnnotations()).failTimeout()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-	if ft != 1 {
-		t.Errorf("Expected 1 but returned %s", ft)
+	su := ingAnnotations(ing.GetAnnotations()).secureUpstream()
+	if !su {
+		t.Errorf("Expected true in secure-upstgream but %v was returned", su)
 	}
 }
 
-func TestIngressHealthCheck(t *testing.T) {
+func TestWithoutAnnotations(t *testing.T) {
 	ing := buildIngress()
-
-	data := map[string]string{}
-	data[upsMaxFails] = "2"
-	ing.SetAnnotations(data)
-
-	cfg := nginx.Configuration{}
-	cfg.UpstreamFailTimeout = 1
-
-	nginxHz := ParseAnnotations(cfg, ing)
-
-	if nginxHz.MaxFails != 2 {
-		t.Errorf("Expected 2 as max-fails but returned %v", nginxHz.MaxFails)
-	}
-
-	if nginxHz.FailTimeout != 1 {
-		t.Errorf("Expected 0 as fail-timeout but returned %v", nginxHz.FailTimeout)
+	_, err := ParseAnnotations(ing)
+	if err == nil {
+		t.Error("Expected error with ingress without annotations")
 	}
 }
