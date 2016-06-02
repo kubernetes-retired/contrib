@@ -1,0 +1,19 @@
+{
+	"ImportPath": "k8s.io/contrib/github-fetcher",
+	"GoVersion": "go1.6",
+	"GodepVersion": "v62",
+	"Deps": [
+		{
+			"ImportPath": "github.com/golang/glog",
+			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
+		},
+		{
+			"ImportPath": "github.com/google/go-github/github",
+			"Rev": "09a37d57ac99a8938444e44375db8660c2184696"
+		},
+		{
+			"ImportPath": "github.com/google/go-querystring/query",
+			"Rev": "9235644dd9e52eeae6fa48efd539fdc351a0af53"
+		}
+	]
+}
