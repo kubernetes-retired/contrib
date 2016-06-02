@@ -1,7 +1,7 @@
 
 Small Ubuntu 16.04 docker image
 
-The size of this image is ~60MB (less than half than `ubuntu:16.04).
+The size of this image is ~47MB (less than half than `ubuntu:16.04).
 This is possible by the removal of packages that are not required in a container:
 - dmsetup
 - e2fsprogs
