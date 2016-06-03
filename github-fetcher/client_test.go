@@ -18,9 +18,23 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/go-github/github"
 )
+
+type FakeClient struct {
+	Issues      []github.Issue
+	IssueEvents []github.IssueEvent
+}
+
+func (client FakeClient) FetchIssues(latest time.Time) ([]github.Issue, error) {
+	return client.Issues, nil
+}
+
+func (client FakeClient) FetchIssueEvents(latest *int) ([]github.IssueEvent, error) {
+	return client.IssueEvents, nil
+}
 
 func createIssueEvent(id int) github.IssueEvent {
 	return github.IssueEvent{ID: &id}
