@@ -98,3 +98,5 @@ watch-namespace
 weak-stable-jobs
 whitelist-override-label
 config-file-path
+required-retest-contexts
+retest-body
