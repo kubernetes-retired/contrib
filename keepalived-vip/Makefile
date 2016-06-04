@@ -6,7 +6,7 @@ PREFIX = gcr.io/google_containers/kube-keepalived-vip
 BUILD_IMAGE = build-keepalived
 
 controller: clean
-	CGO_ENABLED=0 GOOS=linux godep go build -a -ldflags '-w' -o kube-keepalived-vip
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-w' -o kube-keepalived-vip
 
 container: controller keepalived
 	docker build -t $(PREFIX):$(TAG) .
