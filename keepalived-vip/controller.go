@@ -32,9 +32,9 @@ import (
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
-	"k8s.io/kubernetes/pkg/util"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	"k8s.io/kubernetes/pkg/util/exec"
+	"k8s.io/kubernetes/pkg/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 )
@@ -104,7 +104,7 @@ type ipvsControllerController struct {
 	svcController     *framework.Controller
 	svcLister         cache.StoreToServiceLister
 	epLister          cache.StoreToEndpointsLister
-	reloadRateLimiter util.RateLimiter
+	reloadRateLimiter flowcontrol.RateLimiter
 	keepalived        *keepalived
 	configMapName     string
 	ruCfg             []vip
@@ -130,12 +130,12 @@ func (ipvsc *ipvsControllerController) getEndpoints(
 			var targetPort int
 			switch servicePort.TargetPort.Type {
 			case intstr.Int:
-				if epPort.Port == servicePort.TargetPort.IntValue() {
-					targetPort = epPort.Port
+				if int(epPort.Port) == servicePort.TargetPort.IntValue() {
+					targetPort = int(epPort.Port)
 				}
 			case intstr.String:
 				if epPort.Name == servicePort.TargetPort.StrVal {
-					targetPort = epPort.Port
+					targetPort = int(epPort.Port)
 				}
 			}
 			if targetPort == 0 {
@@ -199,7 +199,7 @@ func (ipvsc *ipvsControllerController) getServices() []vip {
 			svcs = append(svcs, vip{
 				Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
 				IP:        externalIP,
-				Port:      servicePort.Port,
+				Port:      int(servicePort.Port),
 				LVSMethod: lvsm,
 				Backends:  ep,
 				Protocol:  fmt.Sprintf("%v", servicePort.Protocol),
@@ -251,7 +251,7 @@ func (ipvsc *ipvsControllerController) sync() {
 func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
-		reloadRateLimiter: util.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
+		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
 		ruCfg:             []vip{},
 		configMapName:     configMapName,
 	}

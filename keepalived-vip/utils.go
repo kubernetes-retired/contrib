@@ -235,11 +235,7 @@ func loadIPVModule() error {
 	}
 
 	_, err = os.Stat("/proc/net/ip_vs")
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // changeSysctl changes the required network setting in /proc to get
