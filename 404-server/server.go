@@ -26,6 +26,7 @@ import (
 var port = flag.Int("port", 8080, "Port number to serve default backend 404 page.")
 
 func main() {
+	flag.Parse()
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprint(w, "default backend - 404")
