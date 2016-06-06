@@ -1,0 +1,31 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: github-fetcher
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: github-fetcher
+    spec:
+      containers:
+      - name: github-fetcher
+        command:
+        - /github-fetcher
+        - --token-file=/etc/secret-volume/token
+        - --host=%DATABASE_IP%
+        image: gcr.io/google_containers/github-fetcher:2015-10-26-2a7f8fd
+        resources:
+          requests:
+            cpu: 100m
+          limits:
+            cpu: 100m
+        volumeMounts:
+        - mountPath: /etc/secret-volume
+          readOnly: true
+          name: secret-volume
+      volumes:
+      - name: secret-volume
+        secret:
+          secretName: github-token
