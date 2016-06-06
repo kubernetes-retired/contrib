@@ -19,6 +19,7 @@ package main
 import (
 	"time"
 
+	"github.com/google/go-github/github"
 	"github.com/jinzhu/gorm"
 )
 
@@ -34,13 +35,12 @@ func findLatestIssueUpdate(db *gorm.DB) time.Time {
 // UpdateIssues downloads new issues and saves in database
 func UpdateIssues(db *gorm.DB, client ClientInterface) error {
 	latest := findLatestIssueUpdate(db)
+	c := make(chan github.Issue, 200)
 
-	newIssues, err := client.FetchIssues(latest)
-	if err != nil {
-		return err
-	}
+	go client.FetchIssues(latest, c)
+
 	tx := db.Begin()
-	for _, issue := range newIssues {
+	for issue := range c {
 		issueOrm := NewIssue(&issue)
 		if tx.Create(issueOrm).Error != nil {
 			// If we can't create, let's try update

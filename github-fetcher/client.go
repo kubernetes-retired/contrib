@@ -103,18 +103,18 @@ func (client *Client) limitsCheckAndWait() {
 
 // ClientInterface describes what a client should be able to do
 type ClientInterface interface {
-	FetchIssues(time.Time) ([]github.Issue, error)
-	FetchIssueEvents(*int) ([]github.IssueEvent, error)
+	FetchIssues(time.Time, chan github.Issue) error
+	FetchIssueEvents(*int, chan github.IssueEvent) error
 }
 
 // FetchIssues from Github, until 'latest' time
-func (client *Client) FetchIssues(latest time.Time) ([]github.Issue, error) {
-	var allIssues []github.Issue
+func (client *Client) FetchIssues(latest time.Time, c chan github.Issue) error {
 	opt := &github.IssueListByRepoOptions{Since: latest, Sort: "updated", State: "all", Direction: "asc"}
 
 	githubClient, err := client.getGithubClient()
 	if err != nil {
-		return nil, err
+		close(c)
+		return err
 	}
 
 	for {
@@ -122,21 +122,23 @@ func (client *Client) FetchIssues(latest time.Time) ([]github.Issue, error) {
 
 		issues, resp, err := githubClient.Issues.ListByRepo(client.Org, client.Project, opt)
 		if err != nil {
-			return nil, err
+			close(c)
+			return err
 		}
 
 		for _, issue := range issues {
 			fmt.Println("Issue", *issue.Number, "last updated", *issue.UpdatedAt)
+			c <- issue
 		}
 
-		allIssues = append(allIssues, issues...)
 		if resp.NextPage == 0 {
 			break
 		}
 		opt.ListOptions.Page = resp.NextPage
 	}
 
-	return allIssues, nil
+	close(c)
+	return nil
 }
 
 // Look for a specific Id in a list of events
@@ -151,13 +153,13 @@ func wasIdFound(events []github.IssueEvent, id int) bool {
 
 // FetchIssueEvents from github and return the full list, until it matches 'latest'
 // The entire last page will be included so you can have redundancy.
-func (client *Client) FetchIssueEvents(latest *int) ([]github.IssueEvent, error) {
-	var allEvents []github.IssueEvent
+func (client *Client) FetchIssueEvents(latest *int, c chan github.IssueEvent) error {
 	opt := &github.ListOptions{PerPage: 100}
 
 	githubClient, err := client.getGithubClient()
 	if err != nil {
-		return nil, err
+		close(c)
+		return err
 	}
 
 	for {
@@ -171,13 +173,15 @@ func (client *Client) FetchIssueEvents(latest *int) ([]github.IssueEvent, error)
 			continue
 		}
 
-		allEvents = append(allEvents, events...)
+		for _, event := range events {
+			c <- event
+		}
 		if resp.NextPage == 0 || (latest != nil && wasIdFound(events, *latest)) {
 			break
 		}
-		break
 		opt.Page = resp.NextPage
 	}
 
-	return allEvents, nil
+	close(c)
+	return nil
 }

@@ -28,12 +28,20 @@ type FakeClient struct {
 	IssueEvents []github.IssueEvent
 }
 
-func (client FakeClient) FetchIssues(latest time.Time) ([]github.Issue, error) {
-	return client.Issues, nil
+func (client FakeClient) FetchIssues(latest time.Time, c chan github.Issue) error {
+	for _, issue := range client.Issues {
+		c <- issue
+	}
+	close(c)
+	return nil
 }
 
-func (client FakeClient) FetchIssueEvents(latest *int) ([]github.IssueEvent, error) {
-	return client.IssueEvents, nil
+func (client FakeClient) FetchIssueEvents(latest *int, c chan github.IssueEvent) error {
+	for _, event := range client.IssueEvents {
+		c <- event
+	}
+	close(c)
+	return nil
 }
 
 func createIssueEvent(id int) github.IssueEvent {

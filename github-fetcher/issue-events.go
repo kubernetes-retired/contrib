@@ -16,7 +16,10 @@ limitations under the License.
 
 package main
 
-import "github.com/jinzhu/gorm"
+import (
+	"github.com/google/go-github/github"
+	"github.com/jinzhu/gorm"
+)
 
 func findLatestEvent(db *gorm.DB) *int {
 	var latestEvent IssueEvent
@@ -33,13 +36,12 @@ func findLatestEvent(db *gorm.DB) *int {
 // have in db, and saves everything in database
 func UpdateIssueEvents(db *gorm.DB, client ClientInterface) error {
 	latest := findLatestEvent(db)
+	c := make(chan github.IssueEvent, 500)
 
-	events, err := client.FetchIssueEvents(latest)
-	if err != nil {
-		return err
-	}
+	go client.FetchIssueEvents(latest, c)
+
 	tx := db.Begin()
-	for _, event := range events {
+	for event := range c {
 		eventOrm := NewIssueEvent(&event)
 		tx.Create(eventOrm)
 	}
