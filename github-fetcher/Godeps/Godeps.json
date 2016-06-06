@@ -4,6 +4,11 @@
 	"GodepVersion": "v62",
 	"Deps": [
 		{
+			"ImportPath": "github.com/go-sql-driver/mysql",
+			"Comment": "v1.2-194-g7ebe0a5",
+			"Rev": "7ebe0a500653eeb1859664bed5e48dec1e164e73"
+		},
+		{
 			"ImportPath": "github.com/golang/glog",
 			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
 		},
@@ -21,6 +26,11 @@
 		},
 		{
 			"ImportPath": "github.com/jinzhu/gorm",
+			"Comment": "v1.0-18-g2752245",
+			"Rev": "27522453dea253cf90dcb5345286a5fcf0fbed7c"
+		},
+		{
+			"ImportPath": "github.com/jinzhu/gorm/dialects/mysql",
 			"Comment": "v1.0-18-g2752245",
 			"Rev": "27522453dea253cf90dcb5345286a5fcf0fbed7c"
 		},
@@ -57,6 +67,11 @@
 		{
 			"ImportPath": "golang.org/x/oauth2/internal",
 			"Rev": "b5adcc2dcdf009d0391547edc6ecbaff889f5bb9"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/pkg/util/flag",
+			"Comment": "v1.3.0-alpha.3-538-gff339c7",
+			"Rev": "ff339c77cfae61d664be3bcbe9a87a968696e545"
 		}
 	]
 }
