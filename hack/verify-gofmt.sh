@@ -38,6 +38,7 @@ find_files() {
         -o -wholename './_output' \
         -o -wholename './release' \
         -o -wholename './target' \
+        -o -wholename './.git' \
         -o -wholename '*/third_party/*' \
         -o -wholename '*/Godeps/*' \
         -o -wholename '*/vendor/*' \
