@@ -32,30 +32,30 @@ func findLatestCommentUpdate(issueId int, db *gorm.DB) time.Time {
 	return comment.CommentUpdatedAt
 }
 
-func updateIssueComments(issueId int, latest time.Time, tx *gorm.DB, client ClientInterface) {
+func updateIssueComments(issueId int, latest time.Time, db *gorm.DB, client ClientInterface) {
 	c := make(chan github.IssueComment, 200)
 
 	go client.FetchIssueComments(issueId, latest, c)
 
 	for comment := range c {
 		commentOrm := NewIssueComment(issueId, &comment)
-		if tx.Create(commentOrm).Error != nil {
+		if db.Create(commentOrm).Error != nil {
 			// If we can't create, let's try update
-			tx.Save(commentOrm)
+			db.Save(commentOrm)
 		}
 	}
 }
 
-func updatePullComments(issueId int, latest time.Time, tx *gorm.DB, client ClientInterface) {
+func updatePullComments(issueId int, latest time.Time, db *gorm.DB, client ClientInterface) {
 	c := make(chan github.PullRequestComment, 200)
 
 	go client.FetchPullComments(issueId, latest, c)
 
 	for comment := range c {
 		commentOrm := NewPullComment(issueId, &comment)
-		if tx.Create(commentOrm).Error != nil {
+		if db.Create(commentOrm).Error != nil {
 			// If we can't create, let's try update
-			tx.Save(commentOrm)
+			db.Save(commentOrm)
 		}
 	}
 }
@@ -64,12 +64,10 @@ func updatePullComments(issueId int, latest time.Time, tx *gorm.DB, client Clien
 func UpdateComments(issueId int, pullRequest bool, db *gorm.DB, client ClientInterface) error {
 	latest := findLatestCommentUpdate(issueId, db)
 
-	tx := db.Begin()
-	updateIssueComments(issueId, latest, tx, client)
+	updateIssueComments(issueId, latest, db, client)
 	if pullRequest {
-		updatePullComments(issueId, latest, tx, client)
+		updatePullComments(issueId, latest, db, client)
 	}
-	tx.Commit()
 
 	return nil
 }

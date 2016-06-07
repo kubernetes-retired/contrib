@@ -40,12 +40,10 @@ func UpdateIssueEvents(db *gorm.DB, client ClientInterface) error {
 
 	go client.FetchIssueEvents(latest, c)
 
-	tx := db.Begin()
 	for event := range c {
 		eventOrm := NewIssueEvent(&event)
-		tx.Create(eventOrm)
+		db.Create(eventOrm)
 	}
-	tx.Commit()
 
 	return nil
 }

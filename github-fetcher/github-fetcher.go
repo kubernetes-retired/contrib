@@ -48,12 +48,16 @@ func runProgram(config *fetcherConfig) error {
 
 	for {
 		begin := time.Now()
-		if err = UpdateIssues(db, config); err != nil {
+		tx := db.Begin()
+		if err = UpdateIssues(tx, config); err != nil {
+			tx.Rollback()
 			return err
 		}
-		if err = UpdateIssueEvents(db, config); err != nil {
+		if err = UpdateIssueEvents(tx, config); err != nil {
+			tx.Rollback()
 			return err
 		}
+		tx.Commit()
 
 		if config.once {
 			break

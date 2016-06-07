@@ -39,15 +39,13 @@ func UpdateIssues(db *gorm.DB, client ClientInterface) error {
 
 	go client.FetchIssues(latest, c)
 
-	tx := db.Begin()
 	for issue := range c {
 		issueOrm := NewIssue(&issue)
-		if tx.Create(issueOrm).Error != nil {
+		if db.Create(issueOrm).Error != nil {
 			// If we can't create, let's try update
-			tx.Save(issueOrm)
+			db.Save(issueOrm)
 		}
 	}
-	tx.Commit()
 
 	return nil
 }
