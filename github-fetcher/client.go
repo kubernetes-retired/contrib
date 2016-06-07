@@ -94,7 +94,7 @@ func (client *Client) limitsCheckAndWait() {
 		}
 		if limits != nil && limits.Core != nil && limits.Core.Remaining < tokenLimit {
 			sleep = limits.Core.Reset.Sub(time.Now())
-			glog.Infof("RateLimits: reached. Sleeping for %v", sleep)
+			glog.Errorf("RateLimits: reached. Sleeping for %v", sleep)
 		}
 	}
 
