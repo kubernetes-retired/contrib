@@ -25,7 +25,6 @@ error-page
 etcd-prefix
 etcd-server
 etcd-servers
-experimental-scale-down-enabled
 extra-cpu
 extra-memory
 extra-storage
@@ -64,6 +63,7 @@ required-contexts
 right-build-number
 running-in-cluster
 scale-down-delay
+scale-down-enabled
 scale-down-trial-frequency
 scale-down-underutilized-time
 scale-down-utilization-threshold
