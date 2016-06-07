@@ -45,6 +45,8 @@ func UpdateIssues(db *gorm.DB, client ClientInterface) error {
 			// If we can't create, let's try update
 			db.Save(issueOrm)
 		}
+		// Issue is updated, find if we have new comments
+		UpdateComments(issueOrm.ID, issueOrm.IsPR, db, client)
 	}
 
 	return nil
