@@ -163,7 +163,7 @@ func TestUpdateIssues(t *testing.T) {
 			db.Create(&issue)
 		}
 
-		if err := UpdateIssues(db, FakeClient{test.new, nil}); err != nil {
+		if err := UpdateIssues(db, FakeClient{Issues: test.new}); err != nil {
 			t.Error("UpdateIssues failed:", err)
 			continue
 		}

@@ -24,8 +24,10 @@ import (
 )
 
 type FakeClient struct {
-	Issues      []github.Issue
-	IssueEvents []github.IssueEvent
+	Issues        []github.Issue
+	IssueEvents   []github.IssueEvent
+	IssueComments map[int][]github.IssueComment
+	PullComments  map[int][]github.PullRequestComment
 }
 
 func (client FakeClient) FetchIssues(latest time.Time, c chan github.Issue) error {
@@ -39,6 +41,22 @@ func (client FakeClient) FetchIssues(latest time.Time, c chan github.Issue) erro
 func (client FakeClient) FetchIssueEvents(latest *int, c chan github.IssueEvent) error {
 	for _, event := range client.IssueEvents {
 		c <- event
+	}
+	close(c)
+	return nil
+}
+
+func (client FakeClient) FetchIssueComments(issueId int, latest time.Time, c chan github.IssueComment) error {
+	for _, comment := range client.IssueComments[issueId] {
+		c <- comment
+	}
+	close(c)
+	return nil
+}
+
+func (client FakeClient) FetchPullComments(issueId int, latest time.Time, c chan github.PullRequestComment) error {
+	for _, comment := range client.PullComments[issueId] {
+		c <- comment
 	}
 	close(c)
 	return nil

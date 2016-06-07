@@ -105,6 +105,8 @@ func (client *Client) limitsCheckAndWait() {
 type ClientInterface interface {
 	FetchIssues(time.Time, chan github.Issue) error
 	FetchIssueEvents(*int, chan github.IssueEvent) error
+	FetchIssueComments(int, time.Time, chan github.IssueComment) error
+	FetchPullComments(int, time.Time, chan github.PullRequestComment) error
 }
 
 // FetchIssues from Github, until 'latest' time
@@ -180,6 +182,72 @@ func (client *Client) FetchIssueEvents(latest *int, c chan github.IssueEvent) er
 			break
 		}
 		opt.Page = resp.NextPage
+	}
+
+	close(c)
+	return nil
+}
+
+// FetchIssueComments fetches comments associated to given Issue (since latest)
+func (client *Client) FetchIssueComments(issueId int, latest time.Time, c chan github.IssueComment) error {
+	opt := &github.IssueListCommentsOptions{Since: latest, Sort: "updated", Direction: "asc"}
+
+	githubClient, err := client.getGithubClient()
+	if err != nil {
+		close(c)
+		return err
+	}
+
+	for {
+		client.limitsCheckAndWait()
+
+		fmt.Println("Downloading comments for", issueId, ", page: ", opt.Page)
+		comments, resp, err := githubClient.Issues.ListComments(client.Org, client.Project, issueId, opt)
+		if err != nil {
+			close(c)
+			return err
+		}
+
+		for _, comment := range comments {
+			c <- comment
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.ListOptions.Page = resp.NextPage
+	}
+
+	close(c)
+	return nil
+}
+
+// FetchPullComments fetches comments associated to given PullRequest (since latest)
+func (client *Client) FetchPullComments(issueId int, latest time.Time, c chan github.PullRequestComment) error {
+	opt := &github.PullRequestListCommentsOptions{Since: latest, Sort: "updated", Direction: "asc"}
+
+	githubClient, err := client.getGithubClient()
+	if err != nil {
+		close(c)
+		return err
+	}
+
+	for {
+		client.limitsCheckAndWait()
+
+		fmt.Println("Downloading comments for", issueId, ", page: ", opt.Page)
+		comments, resp, err := githubClient.PullRequests.ListComments(client.Org, client.Project, issueId, opt)
+		if err != nil {
+			close(c)
+			return err
+		}
+
+		for _, comment := range comments {
+			c <- comment
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.ListOptions.Page = resp.NextPage
 	}
 
 	close(c)
