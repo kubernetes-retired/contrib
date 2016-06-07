@@ -55,7 +55,7 @@ func (config *MySQLConfig) CreateDatabase() (*gorm.DB, error) {
 	db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %v;", config.Db))
 	db.Exec(fmt.Sprintf("use %v;", config.Db))
 
-	err = db.AutoMigrate(&Issue{}, &IssueEvent{}, &Label{}).Error
+	err = db.AutoMigrate(&Issue{}, &IssueEvent{}, &Label{}, &Comment{}).Error
 	if err != nil {
 		return nil, err
 	}

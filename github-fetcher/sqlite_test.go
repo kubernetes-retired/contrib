@@ -35,7 +35,7 @@ func (config *SQLiteConfig) CreateDatabase() (*gorm.DB, error) {
 		return nil, err
 	}
 
-	err = db.AutoMigrate(&Issue{}, &IssueEvent{}, &Label{}).Error
+	err = db.AutoMigrate(&Issue{}, &IssueEvent{}, &Label{}, &Comment{}).Error
 	if err != nil {
 		return nil, err
 	}

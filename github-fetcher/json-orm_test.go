@@ -290,3 +290,113 @@ func TestNewLabels(t *testing.T) {
 		}
 	}
 }
+
+func makeGithubIssueComment(id int, body, login string, createdAt, updatedAt time.Time) *github.IssueComment {
+	var user *github.User
+	if login != "" {
+		user = &github.User{Login: &login}
+	}
+	return &github.IssueComment{
+		ID:        &id,
+		User:      user,
+		Body:      &body,
+		CreatedAt: &createdAt,
+		UpdatedAt: &updatedAt,
+	}
+}
+
+func makeGithubPullComment(id int, body, login string, createdAt, updatedAt time.Time) *github.PullRequestComment {
+	var user *github.User
+	if login != "" {
+		user = &github.User{Login: &login}
+	}
+	return &github.PullRequestComment{
+		ID:        &id,
+		User:      user,
+		Body:      &body,
+		CreatedAt: &createdAt,
+		UpdatedAt: &updatedAt,
+	}
+}
+
+func makeComment(issueId, Id int, body, login string, createdAt, updatedAt time.Time, pullRequest bool) *Comment {
+	return &Comment{
+		ID:               Id,
+		IssueID:          issueId,
+		Body:             body,
+		User:             login,
+		CommentCreatedAt: createdAt,
+		CommentUpdatedAt: updatedAt,
+		PullRequest:      pullRequest,
+	}
+}
+
+func TestNewIssueComment(t *testing.T) {
+	tests := []struct {
+		gComment        *github.IssueComment
+		issueId         int
+		expectedComment *Comment
+	}{
+		{
+			gComment: makeGithubIssueComment(1, "Body", "Login",
+				time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+				time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC)),
+			issueId: 12,
+			expectedComment: makeComment(12, 1, "Body", "Login",
+				time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+				time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC), false),
+		},
+		{
+			gComment: makeGithubIssueComment(1, "Body", "",
+				time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+				time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC)),
+			issueId: 12,
+			expectedComment: makeComment(12, 1, "Body", "",
+				time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+				time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC), false),
+		},
+	}
+
+	for _, test := range tests {
+		actualComment := NewIssueComment(test.issueId, test.gComment)
+		if !reflect.DeepEqual(actualComment, test.expectedComment) {
+			t.Error("Actual: ", actualComment,
+				"doesn't match expected: ", test.expectedComment)
+		}
+	}
+}
+
+func TestNewPullComment(t *testing.T) {
+	tests := []struct {
+		gComment        *github.PullRequestComment
+		issueId         int
+		expectedComment *Comment
+	}{
+		{
+			gComment: makeGithubPullComment(1, "Body", "Login",
+				time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+				time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC)),
+			issueId: 12,
+			expectedComment: makeComment(12, 1, "Body", "Login",
+				time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+				time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC), true),
+		},
+		{
+			gComment: makeGithubPullComment(1, "Body", "",
+				time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+				time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC)),
+			issueId: 12,
+			expectedComment: makeComment(12, 1, "Body", "",
+				time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+				time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC), true),
+		},
+	}
+
+	for _, test := range tests {
+		actualComment := NewPullComment(test.issueId, test.gComment)
+		if !reflect.DeepEqual(actualComment, test.expectedComment) {
+			t.Error("Actual: ", actualComment,
+				"doesn't match expected: ", test.expectedComment)
+		}
+	}
+}

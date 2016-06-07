@@ -149,3 +149,63 @@ func newLabels(issueId int, gLabels []github.Label) []Label {
 
 	return labels
 }
+
+// Comment is either a pull-request comment or an issue comment.
+type Comment struct {
+	ID               int
+	IssueID          int
+	Body             string
+	User             string
+	CommentCreatedAt time.Time
+	CommentUpdatedAt time.Time
+	PullRequest      bool
+}
+
+// NewIssueComment creates a Comment from a github.IssueComment
+func NewIssueComment(issueId int, gComment *github.IssueComment) *Comment {
+	if gComment.ID == nil ||
+		gComment.Body == nil ||
+		gComment.CreatedAt == nil ||
+		gComment.UpdatedAt == nil {
+		glog.Error("IssueComment is missing mandatory field:", gComment)
+		return nil
+	}
+	var login string
+	if gComment.User != nil && gComment.User.Login != nil {
+		login = *gComment.User.Login
+	}
+
+	return &Comment{
+		*gComment.ID,
+		issueId,
+		*gComment.Body,
+		login,
+		*gComment.CreatedAt,
+		*gComment.UpdatedAt,
+		false,
+	}
+}
+
+// NewPullComment creates a Comment from a github.PullRequestComment
+func NewPullComment(issueId int, gComment *github.PullRequestComment) *Comment {
+	if gComment.ID == nil ||
+		gComment.Body == nil ||
+		gComment.CreatedAt == nil ||
+		gComment.UpdatedAt == nil {
+		glog.Error("PullComment is missing mandatory field:", gComment)
+		return nil
+	}
+	var login string
+	if gComment.User != nil && gComment.User.Login != nil {
+		login = *gComment.User.Login
+	}
+	return &Comment{
+		*gComment.ID,
+		issueId,
+		*gComment.Body,
+		login,
+		*gComment.CreatedAt,
+		*gComment.UpdatedAt,
+		true,
+	}
+}
