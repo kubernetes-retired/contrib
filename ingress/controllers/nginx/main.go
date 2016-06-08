@@ -90,8 +90,8 @@ var (
 func main() {
 	var kubeClient *unversioned.Client
 	flags.AddGoFlagSet(flag.CommandLine)
-	flags.Parse(os.Args)
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
+	flags.Parse(os.Args)
 
 	glog.Infof("Using build: %v - %v", gitRepo, version)
 
@@ -104,16 +104,11 @@ func main() {
 		glog.Fatalf("Please specify --default-backend-service")
 	}
 
-	var err error
-	if *inCluster {
-		kubeClient, err = unversioned.NewInCluster()
-	} else {
-		config, connErr := clientConfig.ClientConfig()
-		if connErr != nil {
-			glog.Fatalf("error connecting to the client: %v", err)
-		}
-		kubeClient, err = unversioned.New(config)
+	config, connErr := clientConfig.ClientConfig()
+	if connErr != nil {
+		glog.Fatalf("error connecting to the client: %v", connErr)
 	}
+	kubeClient, err := unversioned.New(config)
 	if err != nil {
 		glog.Fatalf("failed to create client: %v", err)
 	}
