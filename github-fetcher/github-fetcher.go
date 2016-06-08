@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"time"
@@ -38,6 +39,7 @@ type fetcherConfig struct {
 func addRootFlags(cmd *cobra.Command, config *fetcherConfig) {
 	cmd.PersistentFlags().IntVar(&config.frequency, "frequency", 2, "Number of iterations per hour")
 	cmd.PersistentFlags().BoolVar(&config.once, "once", false, "Run once and then leave")
+	cmd.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 }
 
 func runProgram(config *fetcherConfig) error {
@@ -83,6 +85,7 @@ func main() {
 	addRootFlags(root, config)
 	config.Client.AddFlags(root)
 	config.MySQLConfig.AddFlags(root)
+
 	if err := root.Execute(); err != nil {
 		glog.Fatalf("%v\n", err)
 	}

@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"strings"
 	"time"
@@ -84,17 +83,17 @@ func (client *Client) limitsCheckAndWait() {
 	var sleep time.Duration
 	githubClient, err := client.getGithubClient()
 	if err != nil {
-		glog.Errorf("Failed to get RateLimits: %v", err)
+		glog.Error("Failed to get RateLimits:", err)
 		sleep = time.Minute
 	} else {
 		limits, _, err := githubClient.RateLimits()
 		if err != nil {
-			glog.Errorf("Failed to get RateLimits: %v", err)
+			glog.Error("Failed to get RateLimits:", err)
 			sleep = time.Minute
 		}
 		if limits != nil && limits.Core != nil && limits.Core.Remaining < tokenLimit {
 			sleep = limits.Core.Reset.Sub(time.Now())
-			glog.Errorf("RateLimits: reached. Sleeping for %v", sleep)
+			glog.Warning("RateLimits: reached. Sleeping for", sleep)
 		}
 	}
 
@@ -129,7 +128,7 @@ func (client *Client) FetchIssues(latest time.Time, c chan github.Issue) error {
 		}
 
 		for _, issue := range issues {
-			fmt.Println("Issue", *issue.Number, "last updated", *issue.UpdatedAt)
+			glog.Info("Issue:", *issue.Number, "last updated", *issue.UpdatedAt)
 			c <- issue
 		}
 
@@ -167,10 +166,10 @@ func (client *Client) FetchIssueEvents(latest *int, c chan github.IssueEvent) er
 	for {
 		client.limitsCheckAndWait()
 
-		fmt.Println("Downloading events page: ", opt.Page)
+		glog.Info("Downloading events page:", opt.Page)
 		events, resp, err := githubClient.Issues.ListRepositoryEvents(client.Org, client.Project, opt)
 		if err != nil {
-			glog.Errorf("Request failed. Wait before trying again.")
+			glog.Error("Request failed. Wait before trying again.")
 			time.Sleep(time.Second)
 			continue
 		}
@@ -201,7 +200,7 @@ func (client *Client) FetchIssueComments(issueId int, latest time.Time, c chan g
 	for {
 		client.limitsCheckAndWait()
 
-		fmt.Println("Downloading comments for", issueId, ", page: ", opt.Page)
+		glog.Infof("Downloading IssueComments for %d (page: %d)", issueId, opt.Page)
 		comments, resp, err := githubClient.Issues.ListComments(client.Org, client.Project, issueId, opt)
 		if err != nil {
 			close(c)
@@ -234,7 +233,7 @@ func (client *Client) FetchPullComments(issueId int, latest time.Time, c chan gi
 	for {
 		client.limitsCheckAndWait()
 
-		fmt.Println("Downloading comments for", issueId, ", page: ", opt.Page)
+		glog.Infof("Downloading PullRequestComments for %d (page: %d)", issueId, opt.Page)
 		comments, resp, err := githubClient.PullRequests.ListComments(client.Org, client.Project, issueId, opt)
 		if err != nil {
 			close(c)

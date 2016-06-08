@@ -49,7 +49,7 @@ func NewIssue(gIssue *github.Issue) *Issue {
 		gIssue.Comments == nil ||
 		gIssue.CreatedAt == nil ||
 		gIssue.UpdatedAt == nil {
-		glog.Errorf("Issue is missing mandatory field: %+v", gIssue)
+		glog.Error("Issue is missing mandatory field:", gIssue)
 		return nil
 	}
 	var closedAt *time.Time
@@ -101,7 +101,7 @@ func NewIssueEvent(gIssueEvent *github.IssueEvent) *IssueEvent {
 		gIssueEvent.CreatedAt == nil ||
 		gIssueEvent.Issue == nil ||
 		gIssueEvent.Issue.Number == nil {
-		glog.Errorf("IssueEvent is missing mandatory field: %+v", gIssueEvent)
+		glog.Error("IssueEvent is missing mandatory field:", gIssueEvent)
 		return nil
 	}
 
@@ -141,7 +141,7 @@ func newLabels(issueId int, gLabels []github.Label) []Label {
 
 	for _, label := range gLabels {
 		if label.Name == nil {
-			glog.Errorf("Label is missing name field")
+			glog.Error("Label is missing name field")
 			continue
 		}
 		labels = append(labels, Label{issueId, *label.Name})

@@ -14,6 +14,7 @@ spec:
         command:
         - /github-fetcher
         - --token-file=/etc/secret-volume/token
+        - --stderrthreshold=0
         - --host=%DATABASE_IP%
         image: gcr.io/google_containers/github-fetcher:2015-10-26-2a7f8fd
         resources:
