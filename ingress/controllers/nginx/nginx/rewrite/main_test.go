@@ -22,6 +22,8 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/util/intstr"
+
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 )
 
 const (
@@ -94,7 +96,7 @@ func TestAnnotations(t *testing.T) {
 
 func TestWithoutAnnotations(t *testing.T) {
 	ing := buildIngress()
-	_, err := ParseAnnotations(ing)
+	_, err := ParseAnnotations(config.NewDefault(), ing)
 	if err == nil {
 		t.Error("Expected error with ingress without annotations")
 	}
@@ -107,12 +109,37 @@ func TestRedirect(t *testing.T) {
 	data[rewriteTo] = defRoute
 	ing.SetAnnotations(data)
 
-	redirect, err := ParseAnnotations(ing)
+	redirect, err := ParseAnnotations(config.NewDefault(), ing)
 	if err != nil {
 		t.Errorf("Uxpected error with ingress: %v", err)
 	}
 
 	if redirect.Target != defRoute {
 		t.Errorf("Expected %v as redirect but returned %s", defRoute, redirect.Target)
+	}
+}
+
+func TestSSLRedirect(t *testing.T) {
+	ing := buildIngress()
+
+	cfg := config.Configuration{SSLRedirect: true}
+
+	data := map[string]string{}
+
+	ing.SetAnnotations(data)
+
+	redirect, _ := ParseAnnotations(cfg, ing)
+
+	if !redirect.SSLRedirect {
+		t.Errorf("Expected true but returned false")
+	}
+
+	data[sslRedirect] = "false"
+	ing.SetAnnotations(data)
+
+	redirect, _ = ParseAnnotations(cfg, ing)
+
+	if redirect.SSLRedirect {
+		t.Errorf("Expected false but returned true")
 	}
 }

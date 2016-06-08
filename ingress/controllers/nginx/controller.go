@@ -42,6 +42,7 @@ import (
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/auth"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/healthcheck"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ratelimit"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/rewrite"
@@ -647,7 +648,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 	return upstream
 }
 
-func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration, data []interface{}) ([]*nginx.Upstream, []*nginx.Server) {
+func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuration, data []interface{}) ([]*nginx.Upstream, []*nginx.Server) {
 	upstreams := lbc.createUpstreams(ngxCfg, data)
 	upstreams[defUpstreamName] = lbc.getDefaultUpstream()
 
@@ -691,6 +692,11 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 				glog.V(3).Infof("error reading secure upstream in Ingress %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
 			}
 
+			locRew, err := rewrite.ParseAnnotations(ngxCfg, ing)
+			if err != nil {
+				glog.V(3).Infof("error parsing rewrite annotations for Ingress rule %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
+			}
+
 			host := rule.Host
 			if host == "" {
 				host = defServerName
@@ -720,13 +726,8 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 						loc.Upstream = *ups
 						loc.Auth = *nginxAuth
 						loc.RateLimit = *rl
-						loc.SecureUpstream = secUpstream
-
-						locRew, err := rewrite.ParseAnnotations(ing)
-						if err != nil {
-							glog.V(3).Infof("error parsing rewrite annotations for Ingress rule %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
-						}
 						loc.Redirect = *locRew
+						loc.SecureUpstream = secUpstream
 
 						addLoc = false
 						continue
@@ -741,10 +742,6 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 				}
 
 				if addLoc {
-					locRew, err := rewrite.ParseAnnotations(ing)
-					if err != nil {
-						glog.V(3).Infof("error parsing rewrite annotations for Ingress rule %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
-					}
 
 					server.Locations = append(server.Locations, &nginx.Location{
 						Path:           nginxPath,
@@ -785,7 +782,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 
 // createUpstreams creates the NGINX upstreams for each service referenced in
 // Ingress rules. The servers inside the upstream are endpoints.
-func (lbc *loadBalancerController) createUpstreams(ngxCfg nginx.Configuration, data []interface{}) map[string]*nginx.Upstream {
+func (lbc *loadBalancerController) createUpstreams(ngxCfg config.Configuration, data []interface{}) map[string]*nginx.Upstream {
 	upstreams := make(map[string]*nginx.Upstream)
 
 	for _, ingIf := range data {
