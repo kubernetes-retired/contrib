@@ -9,7 +9,7 @@ This image does provides a default configuration file with no backend servers.
 
 *Using docker*
 ```
-$ docker run -v /some/haproxy.cfg:/etc/haproxy/haproxy.cfg:ro gcr.io/google_containers/haproxy:0.4
+$ docker run -v /some/haproxy.cfg:/etc/haproxy/haproxy.cfg:ro gcr.io/google_containers/haproxy:0.5
 ```
 
 *Creating a pod*

@@ -4,7 +4,7 @@ metadata:
   name: simple
 spec:
   containers:
-  - image: gcr.io/google_containers/haproxy:0.4
+  - image: gcr.io/google_containers/haproxy:0.5
     imagePullPolicy: Always
     name: haproxy
     command:
