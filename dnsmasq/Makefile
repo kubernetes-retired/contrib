@@ -20,20 +20,54 @@
 #   [TAG=1.0] [REGISTRY=gcr.io/google_containers] [NAMESERVER=127.0.0.1#10053] make container
 
 # Default registry, arch and tag. This can be overwritten by arguments to make
-TAG?=1.1
+TAG?=1.2
 REGISTRY?=gcr.io/google_containers
+ARCH?=amd64
+KUBE_CROSS_IMAGE:=$(REGISTRY)/kube-cross:v1.6.2-2
+DNSMASQ_VERSION?=dnsmasq-2.76
+TEMP_DIR:=$(shell mktemp -d)
 
-all: container
-
-container:
-	# And build the image
-	docker build -t $(REGISTRY)/dnsmasq:$(TAG) .
-
-push: container
-ifeq ($(REGISTRY),gcr.io/google_containers)
-	gcloud docker push $(REGISTRY)/dnsmasq:$(TAG)
+ifeq ($(ARCH),amd64)
+    BASEIMAGE?=alpine:3.4
 else
-	docker push $(REGISTRY)/dnsmasq:$(TAG)
+    BASEIMAGE?=$(REGISTRY)/tiny-glibc-$(ARCH):1.0
 endif
 
-.PHONY: all container push
+ifeq ($(ARCH),arm)
+    TRIPLE?=arm-linux-gnueabi
+endif
+ifeq ($(ARCH),arm64)
+    TRIPLE?=aarch64-linux-gnu
+endif
+ifeq ($(ARCH),ppc64le)
+    TRIPLE?=powerpc64le-linux-gnu
+endif
+
+all: build
+
+build:
+ifeq ($(ARCH),amd64)
+	cp Dockerfile $(TEMP_DIR)
+else
+	cp Dockerfile.cross $(TEMP_DIR)/Dockerfile
+	sed -i "s|BASEIMAGE|$(BASEIMAGE)|g" $(TEMP_DIR)/Dockerfile
+
+	# Build the dnsmasq binary using the cross-compilation docker image
+	docker run -it --rm -v $(TEMP_DIR):/build $(KUBE_CROSS_IMAGE) /bin/bash -c \
+	"curl -sSL  http://www.thekelleys.org.uk/dnsmasq/$(DNSMASQ_VERSION).tar.xz | tar -xJ \
+	&& cd $(DNSMASQ_VERSION) \
+	&& CC=$(TRIPLE)-gcc make \
+	&& cp src/dnsmasq /build"
+endif
+	cp dnsmasq.conf $(TEMP_DIR)
+	docker build -t $(REGISTRY)/kube-dnsmasq-$(ARCH):$(TAG) $(TEMP_DIR)
+	rm -rf $(TEMP_DIR)
+
+push: build
+ifeq ($(REGISTRY),gcr.io/google_containers)
+	gcloud docker push $(REGISTRY)/kube-dnsmasq-$(ARCH):$(TAG)
+else
+	docker push $(REGISTRY)/kube-dnsmasq-$(ARCH):$(TAG)
+endif
+
+.PHONY: push

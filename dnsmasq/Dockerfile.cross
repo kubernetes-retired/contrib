@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.4
+FROM BASEIMAGE
 MAINTAINER Girish Kalele <gkalele@google.com>
-RUN apk --no-cache add dnsmasq
 COPY dnsmasq.conf /etc/dnsmasq.conf
+COPY dnsmasq /usr/sbin/dnsmasq
 ENTRYPOINT ["/usr/sbin/dnsmasq", "--keep-in-foreground"]
