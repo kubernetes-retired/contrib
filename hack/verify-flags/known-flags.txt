@@ -65,7 +65,7 @@ running-in-cluster
 scale-down-delay
 scale-down-enabled
 scale-down-trial-frequency
-scale-down-underutilized-time
+scale-down-unneeded-time
 scale-down-utilization-threshold
 services-configmap
 shame-cc
