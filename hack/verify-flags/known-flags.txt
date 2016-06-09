@@ -65,9 +65,10 @@ right-build-number
 running-in-cluster
 scale-down-delay
 scale-down-enabled
-scale-down-trial-frequency
+scale-down-trial-interval
 scale-down-unneeded-time
 scale-down-utilization-threshold
+scan-interval
 services-configmap
 shame-cc
 shame-from
