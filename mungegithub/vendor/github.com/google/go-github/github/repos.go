@@ -277,6 +277,29 @@ func (s *RepositoriesService) Get(owner, repo string) (*Repository, *Response, e
 	return repository, resp, err
 }
 
+// GetByID fetches a repository.
+//
+// Note: GetByID uses the undocumented GitHub API endpoint /repositories/:id.
+func (s *RepositoriesService) GetByID(id int) (*Repository, *Response, error) {
+	u := fmt.Sprintf("repositories/%d", id)
+	req, err := s.client.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// TODO: remove custom Accept header when the license support fully launches
+	// https://developer.github.com/v3/licenses/#get-a-repositorys-license
+	req.Header.Set("Accept", mediaTypeLicensesPreview)
+
+	repository := new(Repository)
+	resp, err := s.client.Do(req, repository)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return repository, resp, err
+}
+
 // Edit updates a repository.
 //
 // GitHub API docs: http://developer.github.com/v3/repos/#edit
@@ -466,9 +489,9 @@ type RequiredStatusChecks struct {
 	//     off
 	//     non_admins
 	//     everyone
-	EnforcementLevel *string   `json:"enforcement_level,omitempty"`
+	EnforcementLevel *string `json:"enforcement_level,omitempty"`
 	// The list of status checks which are required
-	Contexts         *[]string `json:"contexts,omitempty"`
+	Contexts *[]string `json:"contexts,omitempty"`
 }
 
 // ListBranches lists branches for the specified repository.
@@ -485,6 +508,8 @@ func (s *RepositoriesService) ListBranches(owner string, repo string, opt *ListO
 	if err != nil {
 		return nil, nil, err
 	}
+
+	req.Header.Set("Accept", mediaTypeProtectedBranchesPreview)
 
 	branches := new([]Branch)
 	resp, err := s.client.Do(req, branches)
@@ -514,4 +539,44 @@ func (s *RepositoriesService) GetBranch(owner, repo, branch string) (*Branch, *R
 	}
 
 	return b, resp, err
+}
+
+// EditBranch edits the branch (currently only Branch Protection)
+//
+// GitHub API docs: https://developer.github.com/v3/repos/#enabling-and-disabling-branch-protection
+func (s *RepositoriesService) EditBranch(owner, repo, branchName string, branch *Branch) (*Branch, *Response, error) {
+	u := fmt.Sprintf("repos/%v/%v/branches/%v", owner, repo, branchName)
+	req, err := s.client.NewRequest("PATCH", u, branch)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req.Header.Set("Accept", mediaTypeProtectedBranchesPreview)
+
+	b := new(Branch)
+	resp, err := s.client.Do(req, b)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return b, resp, err
+}
+
+// License gets the contents of a repository's license if one is detected.
+//
+// GitHub API docs: https://developer.github.com/v3/licenses/#get-the-contents-of-a-repositorys-license
+func (s *RepositoriesService) License(owner, repo string) (*License, *Response, error) {
+	u := fmt.Sprintf("repos/%v/%v/license", owner, repo)
+	req, err := s.client.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	r := &Repository{}
+	resp, err := s.client.Do(req, r)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return r.License, resp, err
 }

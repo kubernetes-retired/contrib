@@ -35,6 +35,8 @@ type Issue struct {
 	HTMLURL          *string           `json:"html_url,omitempty"`
 	Milestone        *Milestone        `json:"milestone,omitempty"`
 	PullRequestLinks *PullRequestLinks `json:"pull_request,omitempty"`
+	Repository       *Repository       `json:"repository,omitempty"`
+	Reactions        *Reactions        `json:"reactions,omitempty"`
 
 	// TextMatches is only populated from search results that request text matches
 	// See: search.go and https://developer.github.com/v3/search/#text-match-metadata
@@ -130,6 +132,9 @@ func (s *IssuesService) listIssues(u string, opt *IssueListOptions) ([]Issue, *R
 		return nil, nil, err
 	}
 
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeReactionsPreview)
+
 	issues := new([]Issue)
 	resp, err := s.client.Do(req, issues)
 	if err != nil {
@@ -194,6 +199,9 @@ func (s *IssuesService) ListByRepo(owner string, repo string, opt *IssueListByRe
 		return nil, nil, err
 	}
 
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeReactionsPreview)
+
 	issues := new([]Issue)
 	resp, err := s.client.Do(req, issues)
 	if err != nil {
@@ -212,6 +220,9 @@ func (s *IssuesService) Get(owner string, repo string, number int) (*Issue, *Res
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeReactionsPreview)
 
 	issue := new(Issue)
 	resp, err := s.client.Do(req, issue)
@@ -258,4 +269,36 @@ func (s *IssuesService) Edit(owner string, repo string, number int, issue *Issue
 	}
 
 	return i, resp, err
+}
+
+// Lock an issue's conversation.
+//
+// GitHub API docs: https://developer.github.com/v3/issues/#lock-an-issue
+func (s *IssuesService) Lock(owner string, repo string, number int) (*Response, error) {
+	u := fmt.Sprintf("repos/%v/%v/issues/%d/lock", owner, repo, number)
+	req, err := s.client.NewRequest("PUT", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeIssueLockingPreview)
+
+	return s.client.Do(req, nil)
+}
+
+// Unlock an issue's conversation.
+//
+// GitHub API docs: https://developer.github.com/v3/issues/#unlock-an-issue
+func (s *IssuesService) Unlock(owner string, repo string, number int) (*Response, error) {
+	u := fmt.Sprintf("repos/%v/%v/issues/%d/lock", owner, repo, number)
+	req, err := s.client.NewRequest("DELETE", u, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeIssueLockingPreview)
+
+	return s.client.Do(req, nil)
 }
