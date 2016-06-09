@@ -41,6 +41,9 @@ func UpdateIssues(db *gorm.DB, client ClientInterface) error {
 
 	for issue := range c {
 		issueOrm := NewIssue(&issue)
+		if issueOrm == nil {
+			continue
+		}
 		if db.Create(issueOrm).Error != nil {
 			// If we can't create, let's try update
 			db.Save(issueOrm)

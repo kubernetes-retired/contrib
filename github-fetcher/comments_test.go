@@ -231,6 +231,23 @@ func TestUpdateComments(t *testing.T) {
 			updateId:      12,
 			isPullRequest: true,
 		},
+		// Invalid new comments
+		{
+			before: []Comment{
+				*makeComment(1, 1, "Body", "Login",
+					time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+					time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC), true),
+			},
+			newIssueComments: map[int][]github.IssueComment{1: {github.IssueComment{}}},
+			newPullComments:  map[int][]github.PullRequestComment{1: {github.PullRequestComment{}}},
+			after: []Comment{
+				*makeComment(1, 1, "Body", "Login",
+					time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC),
+					time.Date(2001, time.January, 1, 19, 30, 0, 0, time.UTC), true),
+			},
+			updateId:      1,
+			isPullRequest: true,
+		},
 	}
 
 	for _, test := range tests {

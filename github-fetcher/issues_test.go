@@ -151,6 +151,22 @@ func TestUpdateIssues(t *testing.T) {
 					time.Time{}),
 			},
 		},
+		// New invalid issue
+		{
+			before: []Issue{
+				*makeIssue(1, "Title", "", "State", "User", "", "", 0, false,
+					time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+					time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC),
+					time.Time{}),
+			},
+			new: []github.Issue{{}},
+			after: []Issue{
+				*makeIssue(1, "Title", "", "State", "User", "", "", 0, false,
+					time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+					time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC),
+					time.Time{}),
+			},
+		},
 	}
 
 	for _, test := range tests {

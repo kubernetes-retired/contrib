@@ -39,6 +39,9 @@ func updateIssueComments(issueId int, latest time.Time, db *gorm.DB, client Clie
 
 	for comment := range c {
 		commentOrm := NewIssueComment(issueId, &comment)
+		if commentOrm == nil {
+			continue
+		}
 		if db.Create(commentOrm).Error != nil {
 			// If we can't create, let's try update
 			db.Save(commentOrm)
@@ -53,6 +56,9 @@ func updatePullComments(issueId int, latest time.Time, db *gorm.DB, client Clien
 
 	for comment := range c {
 		commentOrm := NewPullComment(issueId, &comment)
+		if commentOrm == nil {
+			continue
+		}
 		if db.Create(commentOrm).Error != nil {
 			// If we can't create, let's try update
 			db.Save(commentOrm)

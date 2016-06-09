@@ -129,6 +129,18 @@ func TestUpdateEvents(t *testing.T) {
 					time.Date(2002, time.January, 1, 19, 30, 0, 0, time.UTC)),
 			},
 		},
+		// Return invalid event
+		{
+			before: []IssueEvent{
+				*makeIssueEvent(1, 2, "", "Event", "", "",
+					time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC)),
+			},
+			new: []github.IssueEvent{{}},
+			after: []IssueEvent{
+				*makeIssueEvent(1, 2, "", "Event", "", "",
+					time.Date(2000, time.January, 1, 19, 30, 0, 0, time.UTC)),
+			},
+		},
 	}
 
 	for _, test := range tests {

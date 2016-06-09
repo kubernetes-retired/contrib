@@ -42,6 +42,9 @@ func UpdateIssueEvents(db *gorm.DB, client ClientInterface) error {
 
 	for event := range c {
 		eventOrm := NewIssueEvent(&event)
+		if eventOrm == nil {
+			continue
+		}
 		db.Create(eventOrm)
 	}
 
