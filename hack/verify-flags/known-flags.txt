@@ -1,3 +1,4 @@
+admin-port
 allowed-shame-domains
 api-token
 balance-algorithm
