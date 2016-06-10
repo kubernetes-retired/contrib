@@ -12,34 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Makefile for the Docker image gcr.io/google_containers/dnsmasq
+# Makefile for the Docker image gcr.io/google_containers/kube-dnsmasq-ARCH
 # MAINTAINER: Abhishek Shah <abshah@google.com>
 # If you update this image please bump the tag value before pushing.
 #
 # Usage:
-#   [TAG=1.0] [REGISTRY=gcr.io/google_containers] [NAMESERVER=127.0.0.1#10053] make container
+#   [TAG=1.3] [REGISTRY=gcr.io/google_containers] make (build|push)
 
 # Default registry, arch and tag. This can be overwritten by arguments to make
-TAG?=1.2
+TAG?=1.3
 REGISTRY?=gcr.io/google_containers
 ARCH?=amd64
 KUBE_CROSS_IMAGE:=$(REGISTRY)/kube-cross:v1.6.2-2
 DNSMASQ_VERSION?=dnsmasq-2.76
 TEMP_DIR:=$(shell mktemp -d)
 
-ifeq ($(ARCH),amd64)
-    BASEIMAGE?=alpine:3.4
-else
-    BASEIMAGE?=$(REGISTRY)/tiny-glibc-$(ARCH):1.0
-endif
-
 ifeq ($(ARCH),arm)
+	BASEIMAGE?=armel/busybox:glibc
     TRIPLE?=arm-linux-gnueabi
 endif
 ifeq ($(ARCH),arm64)
+	BASEIMAGE?=aarch64/busybox:glibc
     TRIPLE?=aarch64-linux-gnu
 endif
 ifeq ($(ARCH),ppc64le)
+	BASEIMAGE?=ppc64le/busybox:glibc
     TRIPLE?=powerpc64le-linux-gnu
 endif
 

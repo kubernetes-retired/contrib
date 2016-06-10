@@ -16,4 +16,8 @@ FROM BASEIMAGE
 MAINTAINER Girish Kalele <gkalele@google.com>
 COPY dnsmasq.conf /etc/dnsmasq.conf
 COPY dnsmasq /usr/sbin/dnsmasq
+
+# This is just a mkdir statement for /var/run in order to keep the complexity of the Makefile down
+WORKDIR /var/run
+WORKDIR /
 ENTRYPOINT ["/usr/sbin/dnsmasq", "--keep-in-foreground"]
