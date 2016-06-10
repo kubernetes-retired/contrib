@@ -535,3 +535,38 @@ this pr Fixes #23 and FIXES #45 but not fixxx #99`,
 		server.Close()
 	}
 }
+
+func TestFetchAllCollaborators(t *testing.T) {
+	tests := []struct {
+		users []github.User
+	}{
+		{
+			users: []github.User{},
+		},
+		{
+			users: []github.User{*github_test.User("asalkeld"), *github_test.User("eparis")},
+		},
+	}
+
+	for testNum, test := range tests {
+		client, server, _ := github_test.InitServerWithCollaborators(t, nil, nil, nil, nil, nil, nil, test.users)
+		config := &Config{}
+		config.Org = "o"
+		config.Project = "r"
+		config.SetClient(client)
+
+		list, err := config.FetchAllCollaborators()
+		if err != nil {
+			t.Fatalf("%d: unable to fetch Collaborators", testNum)
+		}
+		if len(test.users) != len(list) {
+			t.Errorf("%d: len(users) not equal, expected: %v but got: %v", testNum, test.users, list)
+		}
+		for i, n := range test.users {
+			if *n.Login != *list[i].Login {
+				t.Errorf("%d: expected user: %v but got user: %v", testNum, n, list[i])
+			}
+		}
+		server.Close()
+	}
+}

@@ -641,7 +641,7 @@ func (obj *MungeObject) HasLabels(names []string) bool {
 	return true
 }
 
-// LabelSet returns the name of all of he labels applied to the object as a
+// LabelSet returns the name of all of the labels applied to the object as a
 // kubernetes string set.
 func (obj *MungeObject) LabelSet() sets.String {
 	out := sets.NewString()
@@ -857,7 +857,8 @@ func (obj *MungeObject) Priority() int {
 // MungeFunction is the type that must be implemented and passed to ForEachIssueDo
 type MungeFunction func(*MungeObject) error
 
-func (config *Config) fetchAllCollaborators() ([]github.User, error) {
+// FetchAllCollaborators will return a list of users that have RW access to the repo
+func (config *Config) FetchAllCollaborators() ([]github.User, error) {
 	page := 1
 	var result []github.User
 	for {
@@ -875,36 +876,6 @@ func (config *Config) fetchAllCollaborators() ([]github.User, error) {
 		page++
 	}
 	return result, nil
-}
-
-// UsersWithAccess returns two sets of users. The first set are users with push
-// access. The second set is the specific set of user with pull access. If the
-// repo is public all users will have pull access, but some with have it
-// explicitly
-func (config *Config) UsersWithAccess() ([]github.User, []github.User, error) {
-	pushUsers := []github.User{}
-	pullUsers := []github.User{}
-
-	users, err := config.fetchAllCollaborators()
-	if err != nil {
-		glog.Errorf("%v", err)
-		return nil, nil, err
-	}
-
-	for _, user := range users {
-		if user.Permissions == nil || user.Login == nil {
-			err := fmt.Errorf("found a user with nil Permissions or Login")
-			glog.Errorf("%v", err)
-			return nil, nil, err
-		}
-		perms := *user.Permissions
-		if perms["push"] {
-			pushUsers = append(pushUsers, user)
-		} else if perms["pull"] {
-			pullUsers = append(pullUsers, user)
-		}
-	}
-	return pushUsers, pullUsers, nil
 }
 
 // GetUser will return information about the github user with the given login name

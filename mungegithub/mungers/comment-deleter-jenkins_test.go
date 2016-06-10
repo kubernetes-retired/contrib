@@ -82,7 +82,7 @@ func TestIsJenkinsTestComment(t *testing.T) {
 }
 
 func comment(id int, body string) githubapi.IssueComment {
-	return github_test.Comment(id, jenkinsBotName, time.Now(), passComment)
+	return github_test.Comment(id, jenkinsBotName, time.Now(), body)
 }
 
 func TestJenkinsStaleComments(t *testing.T) {

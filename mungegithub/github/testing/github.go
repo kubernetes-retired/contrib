@@ -53,6 +53,15 @@ func Comment(id int, login string, createdAt time.Time, body string) github.Issu
 	return comment
 }
 
+// User is a helper to create a User for testing
+func User(login string) *github.User {
+	user := github.User{
+		Login:     stringPtr(login),
+		AvatarURL: stringPtr("MyAvatarURL"),
+	}
+	return &user
+}
+
 // PullRequest returns a filled out github.PullRequest
 func PullRequest(user string, merged, mergeDetermined, mergeable bool) *github.PullRequest {
 	pr := &github.PullRequest{
@@ -62,10 +71,7 @@ func PullRequest(user string, merged, mergeDetermined, mergeable bool) *github.P
 		Head: &github.PullRequestBranch{
 			SHA: stringPtr("mysha"),
 		},
-		User: &github.User{
-			Login:     stringPtr(user),
-			AvatarURL: stringPtr("MyAvatarURL"),
-		},
+		User:   User(user),
 		Merged: boolPtr(merged),
 		Base: &github.PullRequestBranch{
 			Ref: stringPtr("master"),
@@ -83,10 +89,7 @@ func Issue(user string, number int, labels []string, isPR bool) *github.Issue {
 		Title:   stringPtr("My issue title"),
 		Number:  intPtr(number),
 		HTMLURL: stringPtr("Issue URL"),
-		User: &github.User{
-			Login:     stringPtr(user),
-			AvatarURL: stringPtr("MyAvatarURL"),
-		},
+		User:    User(user),
 	}
 	if isPR {
 		issue.PullRequestLinks = &github.PullRequestLinks{}
@@ -272,10 +275,10 @@ func setMux(t *testing.T, mux *http.ServeMux, path string, thing interface{}) {
 	})
 }
 
-// InitServer will return a github.Client which will talk to httptest.Server,
-// to retrieve information from the http.ServeMux. If an issue, pr, events, or
-// commits are supplied it will repond with those on o/r/
-func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, events []github.IssueEvent, commits []github.RepositoryCommit, status *github.CombinedStatus, masterCommit *github.RepositoryCommit) (*github.Client, *httptest.Server, *http.ServeMux) {
+// InitServerWithCollaborators will return a github.Client which will talk to httptest.Server,
+// to retrieve information from the http.ServeMux. If an issue, pr, events,
+// commits or collaborators are supplied it will repond with those on o/r/
+func InitServerWithCollaborators(t *testing.T, issue *github.Issue, pr *github.PullRequest, events []github.IssueEvent, commits []github.RepositoryCommit, status *github.CombinedStatus, masterCommit *github.RepositoryCommit, collaborators []github.User) (*github.Client, *httptest.Server, *http.ServeMux) {
 	// test server
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
@@ -327,6 +330,13 @@ func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, event
 		setMux(t, mux, path, status)
 	}
 	path := "/repos/o/r/collaborators"
-	setMux(t, mux, path, []github.User{})
+	setMux(t, mux, path, collaborators)
 	return client, server, mux
+}
+
+// InitServer will return a github.Client which will talk to httptest.Server,
+// to retrieve information from the http.ServeMux. If an issue, pr, events, or
+// commits are supplied it will repond with those on o/r/
+func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, events []github.IssueEvent, commits []github.RepositoryCommit, status *github.CombinedStatus, masterCommit *github.RepositoryCommit) (*github.Client, *httptest.Server, *http.ServeMux) {
+	return InitServerWithCollaborators(t, issue, pr, events, commits, status, masterCommit, []github.User{})
 }
