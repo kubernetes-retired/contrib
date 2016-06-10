@@ -1,0 +1,7 @@
+kubernetes.default.svc.cluster.local.	A
+default-http-backend.kube-system.svc.cluster.local.	A
+heapster.kube-system.svc.cluster.local.			A
+kube-dns.kube-system.svc.cluster.local.	   A
+kubernetes-dashboard.kube-system.svc.cluster.local.	A
+monitoring-grafana.kube-system.svc.cluster.local.	   A
+monitoring-influxdb.kube-system.svc.cluster.local.	A

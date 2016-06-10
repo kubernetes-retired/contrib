@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app: dnsperf
+  name: dnsperf
+  namespace: default
+spec:
+  completions: 10
+  parallelism: 10
+  template:
+    metadata:
+      labels:
+        app: dnsperf
+    spec:
+      # Force this pod onto the specified node if needed
+      #nodeSelector:
+      #  kubernetes.io/hostname: kubernetes-minion-group-d8k4
+      restartPolicy: Never
+      containers:
+        - image: gcr.io/google.com/gkalele-netperf/dnsperf:1.0
+          imagePullPolicy: Always
+          name: dnsperf
+          args:
+            - "10.244.2.3"
+            - "16"
+            - "100"
+            - "queryfile-example-short"
+
+
