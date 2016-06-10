@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	cache "k8s.io/contrib/mungegithub/mungers/flakesync"
@@ -29,7 +30,6 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
-	"strings"
 )
 
 // E2ETester can be queried for E2E job stability.
@@ -56,12 +56,27 @@ type RealE2ETester struct {
 	BuildStatus          map[string]BuildInfo // protect by mutex
 	GoogleGCSBucketUtils *utils.Utils
 
-	flakeCache *cache.Cache
+	flakeCache        *cache.Cache
+	resolutionTracker *ResolutionTracker
+}
+
+// HTTPHandlerInstaller is anything that can hook up HTTP requests to handlers.
+// Used for installing admin functions.
+type HTTPHandlerInstaller interface {
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
 }
 
 // Init does construction-- call once it after setting the public fields of 'e'.
-func (e *RealE2ETester) Init() *RealE2ETester {
+// adminMux may be nil, in which case handlers for the resolution tracker won't
+// be installed.
+func (e *RealE2ETester) Init(adminMux HTTPHandlerInstaller) *RealE2ETester {
 	e.flakeCache = cache.NewCache(e.getGCSResult)
+	e.resolutionTracker = NewResolutionTracker()
+	if adminMux != nil {
+		adminMux.HandleFunc("/api/mark-resolved", e.resolutionTracker.SetHTTP)
+		adminMux.HandleFunc("/api/is-resolved", e.resolutionTracker.GetHTTP)
+		adminMux.HandleFunc("/api/list-resolutions", e.resolutionTracker.ListHTTP)
+	}
 	return e
 }
 
@@ -150,6 +165,11 @@ func (e *RealE2ETester) GCSBasedStable() (allStable, ignorableFlakes bool) {
 		if err != nil {
 			glog.Errorf("Error while getting data for %v: %v", job, err)
 			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			continue
+		}
+
+		if e.resolutionTracker.Resolved(cache.Job(job), cache.Number(lastBuildNumber)) {
+			e.setBuildStatus(job, "Problem Resolved", strconv.Itoa(lastBuildNumber))
 			continue
 		}
 
