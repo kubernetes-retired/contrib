@@ -73,6 +73,8 @@ shame-cc
 shame-from
 shame-reply-to
 shame-report-cmd
+skip-nodes-with-system-pods
+skip-nodes-with-local-storage
 source-file
 ssl-ca-cert
 ssl-cert
