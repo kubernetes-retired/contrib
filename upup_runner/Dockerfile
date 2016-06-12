@@ -10,3 +10,5 @@ RUN curl https://storage.googleapis.com/golang/go1.6.2.linux-amd64.tar.gz | tar 
 ENV PATH /root/google-cloud-sdk/bin:/usr/local/go/bin:$PATH
 
 ADD runtests.sh /
+
+ADD conf /conf

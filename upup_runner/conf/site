@@ -1,0 +1,4 @@
+# Used to set site-specific settings
+export DNS_DOMAIN="awsdata.com"
+
+export JENKINS_GCS_LOGS_PATH=gs://kopeio-kubernetes-e2e/logs
