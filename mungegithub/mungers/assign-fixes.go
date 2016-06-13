@@ -42,6 +42,7 @@ const (
 
 var (
 	claimMatcher = regexp.MustCompile(`(?:Assigned to|Claimed by) @(\w+)`)
+	claimText    = map[bool]string{true: "Assigned to", false: "Claimed by"}
 )
 
 func init() {
@@ -60,19 +61,20 @@ func (a *AssignFixesMunger) Initialize(config *github.Config, features *features
 	a.features = features
 	a.config = config
 	a.collaborators = sets.String{}
-	users, err := config.FetchAllCollaborators()
+	return nil
+}
+
+// EachLoop is called at the start of every munge loop
+func (a *AssignFixesMunger) EachLoop() error {
+	users, err := a.config.FetchAllCollaborators()
 	if err != nil {
 		return err
 	}
 	for _, user := range users {
 		a.collaborators.Insert(github.DescribeUser(&user))
 	}
-
 	return nil
 }
-
-// EachLoop is called at the start of every munge loop
-func (a *AssignFixesMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (a *AssignFixesMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
@@ -103,41 +105,28 @@ func issueHasMarkFrom(issueObj *github.MungeObject, isCollaborator bool, prOwner
 	return (lastClaimedBy == prOwner), nil
 }
 
-func markIssueWith(issueObj *github.MungeObject, isCollaborator bool, prOwner string) {
-	hasMark, err := issueHasMarkFrom(issueObj, isCollaborator, prOwner)
-	if err != nil {
-		return
-	}
-	if !hasMark {
-		var text string
-		if isCollaborator {
-			text = fmt.Sprintf("Assigned to @%v (by mungegithub:assign-fixes)\n", prOwner)
-		} else {
-			text = fmt.Sprintf("Claimed by @%v (by mungegithub:assign-fixes)\n", prOwner)
-		}
-		err := issueObj.WriteComment(text)
-		if err != nil {
-			glog.Errorf("unexpected error adding comment: %v", err)
-		}
-	}
-}
-
-func (a *AssignFixesMunger) markIssue(issueObj *github.MungeObject, prOwner string) {
+func (a *AssignFixesMunger) markIssue(issueObj *github.MungeObject, prOwner string, prNumber int) {
 	if !issueObj.HasLabel(hasPRPosted) {
 		issueObj.AddLabel(hasPRPosted)
 	}
 
-	if !a.collaborators.Has(prOwner) {
-		markIssueWith(issueObj, false, prOwner)
-		return
+	needsMark := (github.DescribeUser(issueObj.Issue.Assignee) != prOwner)
+	isCollaborator := a.collaborators.Has(prOwner)
+	if isCollaborator && needsMark {
+		issueObj.AssignPR(prOwner)
 	}
 
-	if github.DescribeUser(issueObj.Issue.Assignee) == prOwner {
-		return
+	if needsMark {
+		hasMark, err := issueHasMarkFrom(issueObj, isCollaborator, prOwner)
+		if err != nil || hasMark {
+			return
+		}
+		text := fmt.Sprintf("%v @%v (mungegithub:assign-fixes) because PR #%v should resolve this issue.\n", claimText[isCollaborator], prOwner, prNumber)
+		err = issueObj.WriteComment(text)
+		if err != nil {
+			glog.Errorf("unexpected error adding comment: %v", err)
+		}
 	}
-
-	markIssueWith(issueObj, true, prOwner)
-	issueObj.AssignPR(prOwner)
 }
 
 // Munge is the workhorse the will actually make updates to the PR
@@ -164,6 +153,6 @@ func (a *AssignFixesMunger) Munge(obj *github.MungeObject) {
 			glog.Infof("Couldn't get issue %v", fixesNum)
 			continue
 		}
-		a.markIssue(issueObj, prOwner)
+		a.markIssue(issueObj, prOwner, *obj.Issue.Number)
 	}
 }
