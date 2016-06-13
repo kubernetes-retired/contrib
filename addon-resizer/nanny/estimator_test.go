@@ -85,6 +85,15 @@ var (
 			},
 		},
 	}
+	lessThanMilliEstimator = LinearEstimator{
+		Resources: []Resource{
+			{
+				Base:         resource.MustParse("0.3"),
+				ExtraPerNode: resource.MustParse("0.5m"),
+				Name:         "cpu",
+			},
+		},
+	}
 	emptyEstimator = LinearEstimator{
 		Resources: []Resource{},
 	}
@@ -105,6 +114,16 @@ var (
 				Base:         resource.MustParse("30Gi"),
 				ExtraPerNode: resource.MustParse("1Gi"),
 				Name:         "storage",
+			},
+		},
+		ScaleFactor: 1.5,
+	}
+	exponentialLessThanMilliEstimator = ExponentialEstimator{
+		Resources: []Resource{
+			{
+				Base:         resource.MustParse("0.3"),
+				ExtraPerNode: resource.MustParse("0.5m"),
+				Name:         "cpu",
 			},
 		},
 		ScaleFactor: 1.5,
@@ -144,6 +163,12 @@ var (
 	threeNodeNoStorageResources = api.ResourceList{
 		"cpu":    resource.MustParse("3.3"),
 		"memory": resource.MustParse("33Mi"),
+	}
+	threeNodeLessThanMilliResources = api.ResourceList{
+		"cpu": resource.MustParse("0.3015"),
+	}
+	threeNodeLessThanMilliExpResources = api.ResourceList{
+		"cpu": resource.MustParse("0.308"),
 	}
 	noResources = api.ResourceList{}
 
@@ -191,6 +216,7 @@ func TestEstimateResources(t *testing.T) {
 		{noMemoryEstimator, 3, threeNodeNoMemoryResources, threeNodeNoMemoryResources},
 		{noStorageEstimator, 0, noStorageBaseResources, noStorageBaseResources},
 		{noStorageEstimator, 3, threeNodeNoStorageResources, threeNodeNoStorageResources},
+		{lessThanMilliEstimator, 3, threeNodeLessThanMilliResources, threeNodeLessThanMilliResources},
 		{emptyEstimator, 0, noResources, noResources},
 		{emptyEstimator, 3, noResources, noResources},
 		{exponentialEstimator, 0, sixteenNodeResources, sixteenNodeResources},
@@ -200,6 +226,7 @@ func TestEstimateResources(t *testing.T) {
 		{exponentialEstimator, 17, twentyFourNodeResources, twentyFourNodeResources},
 		{exponentialEstimator, 20, twentyFourNodeResources, twentyFourNodeResources},
 		{exponentialEstimator, 24, twentyFourNodeResources, twentyFourNodeResources},
+		{exponentialLessThanMilliEstimator, 3, threeNodeLessThanMilliExpResources, threeNodeLessThanMilliExpResources},
 	}
 
 	for _, tc := range testCases {
