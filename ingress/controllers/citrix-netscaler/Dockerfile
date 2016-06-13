@@ -13,5 +13,5 @@
 # limitations under the License.
 
 FROM golang
-COPY controller /
-CMD ["/controller"]
+COPY citrix-netscaler /
+CMD ["/citrix-netscaler"]
