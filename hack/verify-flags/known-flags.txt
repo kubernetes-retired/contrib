@@ -49,6 +49,7 @@ max-pr-number
 max-sync-failures
 min-pr-number
 network-config
+nonblocking-jenkins-jobs
 nginx-configmap
 number-of-old-test-results
 on-change
