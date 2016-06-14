@@ -25,10 +25,15 @@
 
 #
 # Examples:
+# VXLAN add : python NSK8sConfig.py addvxlan <NSIP> <NS_USER> <NS_PASSWORD> <NS_TUNNEL_EP_IP> <KUBE_MASTER_IP>
+# VXLAN rem : python NSK8sConfig.py remvxlan <NSIP> <NS_USER> <NS_PASSWORD> <NS_TUNNEL_EP_IP> <KUBE_MASTER_IP>
+# MAC add   : python NSK8sConfig.py addmac <KUBE_MASTER_IP> <NS_TUNNEL_EP_IP> <NS_MAC> <NS_FLANNEL_SUBNET> <NS_FLANNEL_SUBNET_MASK>
+# MAC rem   : python NSK8sConfig.py remmac <KUBE_MASTER_IP> <NS_TUNNEL_EP_IP> <NS_MAC> <NS_FLANNEL_SUBNET> <NS_FLANNEL_SUBNET_MASK>
+#
 # VXLAN add : python NSK8sConfig.py addvxlan 10.217.129.75 nsroot nsroot 10.11.50.13 10.11.50.10
-# VXLAN rem : python NSK8sConfig.py addvxlan 10.217.129.75 nsroot nsroot 10.11.50.13 10.11.50.10
+# VXLAN rem : python NSK8sConfig.py remvxlan 10.217.129.75 nsroot nsroot 10.11.50.13 10.11.50.10
 # MAC add   : python NSK8sConfig.py addmac 10.11.50.10 10.11.50.13 d2:15:53:cd:46:60 10.254.51.0 24
-# MAC rem   : python NSK8sConfig.py addmac 10.11.50.10 10.11.50.13 d2:15:53:cd:46:60 10.254.51.0 24
+# MAC rem   : python NSK8sConfig.py remmac 10.11.50.10 10.11.50.13 d2:15:53:cd:46:60 10.254.51.0 24
 #
 
 import os
