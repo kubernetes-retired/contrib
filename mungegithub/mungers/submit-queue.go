@@ -30,11 +30,11 @@ import (
 
 	"k8s.io/kubernetes/pkg/util"
 
-	"k8s.io/contrib/mungegithub/admin"
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers/e2e"
 	fake_e2e "k8s.io/contrib/mungegithub/mungers/e2e/fake"
+	"k8s.io/contrib/test-utils/admin"
 	"k8s.io/contrib/test-utils/utils"
 
 	"github.com/NYTimes/gziphandler"

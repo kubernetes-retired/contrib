@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"sync"
 
-	cache "k8s.io/contrib/mungegithub/mungers/flakesync"
+	cache "k8s.io/contrib/e2e-tests/flakesync"
 
 	"github.com/golang/glog"
 )
