@@ -1,0 +1,16 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-frontend
+  annotations: 
+     publicIP: "10.217.129.70"
+     port: "80"
+     protocol: HTTP
+spec:
+  rules:
+  - host: foo.bar.com
+    http:
+      paths:
+      - backend:
+          serviceName: frontend
+          servicePort: 80
