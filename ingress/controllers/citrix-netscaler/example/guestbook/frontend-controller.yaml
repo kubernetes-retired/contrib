@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
       - name: php-redis
-        image: gcr.io/google_samples/gb-frontend:v3
+        #image: gcr.io/google_samples/gb-frontend:v3
+        image: docker.io/adhamija/gb-frontend:v1
         env:
         - name: GET_HOSTS_FROM
           #value: dns

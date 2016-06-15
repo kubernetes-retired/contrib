@@ -8,7 +8,7 @@ metadata:
      protocol: HTTP
 spec:
   rules:
-  - host: foo.bar.com
+  - host: dockercon16.citrix.com
     http:
       paths:
       - backend:
