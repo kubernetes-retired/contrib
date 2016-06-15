@@ -25,7 +25,7 @@ import (
 	"strings"
 	"sync"
 
-	cache "k8s.io/contrib/mungegithub/mungers/flakesync"
+	cache "k8s.io/contrib/e2e-tests/flakesync"
 	"k8s.io/contrib/test-utils/utils"
 	"k8s.io/kubernetes/pkg/util/sets"
 
@@ -33,29 +33,42 @@ import (
 	"io/ioutil"
 )
 
+type testStatus string
+
+const (
+	noData          testStatus = "Unable to retrieve data"
+	manualOverride  testStatus = "Manual override"
+	notStable       testStatus = "Not stable"
+	stableStatus    testStatus = "Stable"
+	ignoreableFlake testStatus = "Ignorable flake"
+)
+
 // E2ETester can be queried for E2E job stability.
 type E2ETester interface {
-	GCSBasedStable() (stable, ignorableFlakes bool)
-	GCSWeakStable() bool
-	GetBuildStatus() map[string]BuildInfo
+	UpdateTests()
+	AllowMerge() bool
+	GetBlockingTestStatus() map[string]TestInfo
+	GetNonBlockingTestStatus() map[string]TestInfo
 	Flakes() cache.Flakes
 }
 
-// BuildInfo tells the build ID and the build success
-type BuildInfo struct {
-	Status string
+// TestInfo tells the build ID and the build success
+type TestInfo struct {
+	Status testStatus
 	ID     string
 }
 
 // RealE2ETester is the object which will get status from a google bucket
 // information about recent jobs
 type RealE2ETester struct {
-	BlockingJobNames    []string
-	NonBlockingJobNames []string
-	WeakStableJobNames  []string
+	BlockingJobNames     []string
+	NonBlockingJobNames  []string
+	WeakBlockingJobNames []string
 
 	sync.Mutex
-	BuildStatus          map[string]BuildInfo // protect by mutex
+	blockingBuildStatus    map[string]TestInfo // protect by mutex
+	nonBlockingBuildStatus map[string]TestInfo // protect by mutex
+
 	GoogleGCSBucketUtils *utils.Utils
 
 	flakeCache        *cache.Cache
@@ -72,6 +85,8 @@ type HTTPHandlerInstaller interface {
 // adminMux may be nil, in which case handlers for the resolution tracker won't
 // be installed.
 func (e *RealE2ETester) Init(adminMux HTTPHandlerInstaller) *RealE2ETester {
+	e.blockingBuildStatus = map[string]TestInfo{}
+	e.nonBlockingBuildStatus = map[string]TestInfo{}
 	e.flakeCache = cache.NewCache(e.getGCSResult)
 	e.resolutionTracker = NewResolutionTracker()
 	if adminMux != nil {
@@ -82,19 +97,42 @@ func (e *RealE2ETester) Init(adminMux HTTPHandlerInstaller) *RealE2ETester {
 	return e
 }
 
-func (e *RealE2ETester) locked(f func()) {
-	e.Lock()
-	defer e.Unlock()
-	f()
+// AllowMerge tells if all of the 'blocking' builds are stable, manually allowed,
+// or for whatever reason merges should be allowed
+func (e *RealE2ETester) AllowMerge() bool {
+	builds := e.GetBlockingTestStatus()
+	for _, testInfo := range builds {
+		switch testInfo.Status {
+		case manualOverride:
+		case stableStatus:
+		case ignoreableFlake:
+		case noData: // TODO: Should noData really allow merges?
+		default:
+			return false
+		}
+	}
+	return true
 }
 
-// GetBuildStatus returns the build status. This map is a copy and is thus safe
+// GetBlockingTestStatus returns the build status. This map is a copy and is thus safe
 // for the caller to use in any way.
-func (e *RealE2ETester) GetBuildStatus() map[string]BuildInfo {
+func (e *RealE2ETester) GetBlockingTestStatus() map[string]TestInfo {
 	e.Lock()
 	defer e.Unlock()
-	out := map[string]BuildInfo{}
-	for k, v := range e.BuildStatus {
+	out := map[string]TestInfo{}
+	for k, v := range e.blockingBuildStatus {
+		out[k] = v
+	}
+	return out
+}
+
+// GetNonBlockingTestStatus returns the build status. This map is a copy and is thus safe
+// for the caller to use in any way.
+func (e *RealE2ETester) GetNonBlockingTestStatus() map[string]TestInfo {
+	e.Lock()
+	defer e.Unlock()
+	out := map[string]TestInfo{}
+	for k, v := range e.nonBlockingBuildStatus {
 		out[k] = v
 	}
 	return out
@@ -105,10 +143,18 @@ func (e *RealE2ETester) Flakes() cache.Flakes {
 	return e.flakeCache.Flakes()
 }
 
-func (e *RealE2ETester) setBuildStatus(build, status string, id string) {
+func (e *RealE2ETester) setBuildStatus(build string, status testStatus, id string, blocking bool) {
 	e.Lock()
 	defer e.Unlock()
-	e.BuildStatus[build] = BuildInfo{Status: status, ID: id}
+	bi := TestInfo{
+		Status: status,
+		ID:     id,
+	}
+	if blocking {
+		e.blockingBuildStatus[build] = bi
+	} else {
+		e.nonBlockingBuildStatus[build] = bi
+	}
 }
 
 const (
@@ -162,8 +208,13 @@ func (e *RealE2ETester) getGCSResult(j cache.Job, n cache.Number) (*cache.Result
 	return r, nil
 }
 
-// GCSBasedStable is a version of Stable function that depends on files stored in GCS instead of Jenkis
-func (e *RealE2ETester) GCSBasedStable() (allStable, ignorableFlakes bool) {
+func (e *RealE2ETester) UpdateTests() {
+	_, _ = e.Stable()
+	_ = e.WeakStable()
+}
+
+// Stable is a version of Stable function that depends on files stored in GCS instead of Jenkis
+func (e *RealE2ETester) Stable() (allStable, ignorableFlakes bool) {
 	allStable = true
 
 	for _, job := range e.BlockingJobNames {
@@ -171,25 +222,25 @@ func (e *RealE2ETester) GCSBasedStable() (allStable, ignorableFlakes bool) {
 		glog.V(4).Infof("Checking status of %v, %v", job, lastBuildNumber)
 		if err != nil {
 			glog.Errorf("Error while getting data for %v: %v", job, err)
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, noData, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 
 		if e.resolutionTracker.Resolved(cache.Job(job), cache.Number(lastBuildNumber)) {
-			e.setBuildStatus(job, "Problem Resolved", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, manualOverride, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 
 		thisResult, err := e.GetBuildResult(job, lastBuildNumber)
 		if err != nil || thisResult.Status == cache.ResultFailed {
 			glog.V(4).Infof("Found unstable job: %v, build number: %v: (err: %v) %#v", job, lastBuildNumber, err, thisResult)
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), true)
 			allStable = false
 			continue
 		}
 
 		if thisResult.Status == cache.ResultStable {
-			e.setBuildStatus(job, "Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, stableStatus, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 
@@ -197,13 +248,13 @@ func (e *RealE2ETester) GCSBasedStable() (allStable, ignorableFlakes bool) {
 		if err != nil || lastResult.Status == cache.ResultFailed {
 			glog.V(4).Infof("prev job doesn't help: %v, build number: %v (the previous build); (err %v) %#v", job, lastBuildNumber-1, err, lastResult)
 			allStable = false
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 
 		if lastResult.Status == cache.ResultStable {
 			ignorableFlakes = true
-			e.setBuildStatus(job, "Ignorable flake", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, ignoreableFlake, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 
@@ -216,12 +267,12 @@ func (e *RealE2ETester) GCSBasedStable() (allStable, ignorableFlakes bool) {
 		if len(intersection) == 0 {
 			glog.V(2).Infof("Ignoring failure of %v/%v since it didn't happen the previous run this run = %v; prev run = %v.", job, lastBuildNumber, thisResult.Flakes, lastResult.Flakes)
 			ignorableFlakes = true
-			e.setBuildStatus(job, "Ignorable flake", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, ignoreableFlake, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 		glog.V(2).Infof("Failure of %v/%v is legit. Tests that failed multiple times in a row: %v", job, lastBuildNumber, intersection)
 		allStable = false
-		e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+		e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), true)
 	}
 
 	// Also get status for non-blocking jobs
@@ -230,14 +281,14 @@ func (e *RealE2ETester) GCSBasedStable() (allStable, ignorableFlakes bool) {
 		glog.V(4).Infof("Checking status of %v, %v", job, lastBuildNumber)
 		if err != nil {
 			glog.Errorf("Error while getting data for %v: %v", job, err)
-			e.setBuildStatus(job, "[nonblocking] Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), false)
 			continue
 		}
 
 		if thisResult, err := e.GetBuildResult(job, lastBuildNumber); err != nil || thisResult.Status != cache.ResultStable {
-			e.setBuildStatus(job, "[nonblocking] Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), false)
 		} else {
-			e.setBuildStatus(job, "[nonblocking] Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, stableStatus, strconv.Itoa(lastBuildNumber), false)
 		}
 	}
 
@@ -338,34 +389,34 @@ func (e *RealE2ETester) failureReasons(job string, buildNumber int, completeList
 	return failedTests, nil
 }
 
-// GCSWeakStable is a version of GCSBasedStable with a slightly relaxed condition.
+// WeakStable is a version of Stable with a slightly relaxed condition.
 // This function says that e2e's are unstable only if there were real test failures
 // (i.e. there was a test that failed, so no timeouts/cluster startup failures counts),
 // or test failed for any reason 3 times in a row.
-func (e *RealE2ETester) GCSWeakStable() bool {
+func (e *RealE2ETester) WeakStable() bool {
 	allStable := true
-	for _, job := range e.WeakStableJobNames {
+	for _, job := range e.WeakBlockingJobNames {
 		lastBuildNumber, err := e.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
 		glog.V(4).Infof("Checking status of %v, %v", job, lastBuildNumber)
 		if err != nil {
 			glog.Errorf("Error while getting data for %v: %v", job, err)
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 		if stable, err := e.GoogleGCSBucketUtils.CheckFinishedStatus(job, lastBuildNumber); stable && err == nil {
-			e.setBuildStatus(job, "Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, stableStatus, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 
 		if e.resolutionTracker.Resolved(cache.Job(job), cache.Number(lastBuildNumber)) {
-			e.setBuildStatus(job, "Problem Resolved", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, manualOverride, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 
 		failures, err := e.failureReasons(job, lastBuildNumber, false)
 		if err != nil {
 			glog.Errorf("Error while getting data for %v/%v: %v", job, lastBuildNumber, err)
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), true)
 			continue
 		}
 
@@ -373,7 +424,7 @@ func (e *RealE2ETester) GCSWeakStable() bool {
 
 		if thisStable == false {
 			allStable = false
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), true)
 			glog.Infof("WeakStable failed because found a failure in JUnit file for build %v; %v and possibly more failed", lastBuildNumber, failures)
 			continue
 		}
@@ -388,12 +439,12 @@ func (e *RealE2ETester) GCSWeakStable() bool {
 			unstable = append(unstable, lastBuildNumber-2)
 		}
 		if len(unstable) > 1 {
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
+			e.setBuildStatus(job, notStable, strconv.Itoa(lastBuildNumber), true)
 			allStable = false
 			glog.Infof("WeakStable failed because found a weak failure in build %v and builds %v failed.", lastBuildNumber, unstable)
 			continue
 		}
-		e.setBuildStatus(job, "Stable", strconv.Itoa(lastBuildNumber))
+		e.setBuildStatus(job, stableStatus, strconv.Itoa(lastBuildNumber), true)
 	}
 	return allStable
 }
