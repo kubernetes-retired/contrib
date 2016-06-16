@@ -61,6 +61,14 @@ func (ngx *Manager) loadTemplate() {
 
 func (ngx *Manager) writeCfg(cfg config.Configuration, ingressCfg IngressConfig) (bool, error) {
 	conf := make(map[string]interface{})
+	//replace ^kleenestar\. with *.
+	r := regexp.MustCompile("^kleenestar\\.")
+	for i := 0; i < len(ingressCfg.Servers); i++ {
+		s := ingressCfg.Servers[i]
+		old := s.Name
+		s.Name = r.ReplaceAllString(s.Name, "*.")
+		glog.Infof("replacing [%v] with [%v]", old, s.Name)
+	}
 	conf["upstreams"] = ingressCfg.Upstreams
 	conf["servers"] = ingressCfg.Servers
 	conf["tcpUpstreams"] = ingressCfg.TCPUpstreams
