@@ -15,19 +15,16 @@ spec:
     spec:
       containers:
       - name: nsingress
-        #image: gcr.io/google_samples/gb-frontend:v3
         image: docker.io/adhamija/k8s:v1
         env:
         - name: NS_IP
           value: 10.217.129.75
         - name: NS_USERNAME
-          #value: nsroot
           valueFrom:
             secretKeyRef:
               name: ns-login-secret
               key: username
         - name: NS_PASSWORD
-          #value: nsroot
           valueFrom:
             secretKeyRef:
               name: ns-login-secret
@@ -36,5 +33,3 @@ spec:
           value: 10.11.50.10
         - name: KUBERNETES_APISERVER_PORT
           value: "8080"
-        #ports:
-        #- containerPort: 80
