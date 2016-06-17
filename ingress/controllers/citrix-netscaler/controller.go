@@ -64,31 +64,19 @@ func formatEndpoints(endpoints *api.Endpoints, ports sets.String) string {
 		return "<none>"
 	}
 	list := []string{}
-	max := 3
-	more := false
-	count := 0
 	for i := range endpoints.Subsets {
 		ss := &endpoints.Subsets[i]
 		for i := range ss.Ports {
 			port := &ss.Ports[i]
 			if ports == nil || ports.Has(port.Name) {
 				for i := range ss.Addresses {
-					if len(list) == max {
-						more = true
-					}
 					addr := &ss.Addresses[i]
-					if !more {
-						list = append(list, fmt.Sprintf("%s:%d", addr.IP, port.Port))
-					}
-					count++
+					list = append(list, fmt.Sprintf("%s:%d", addr.IP, port.Port))
 				}
 			}
 		}
 	}
 	ret := strings.Join(list, ",")
-	if more {
-		return fmt.Sprintf("%s + %d more...", ret, count-max)
-	}
 	return ret
 }
 
