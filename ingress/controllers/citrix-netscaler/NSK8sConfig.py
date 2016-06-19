@@ -86,7 +86,24 @@ class NSK8sConfig :
   @staticmethod
   def usage():
     print("Usage: NSK8sConfig.py <operation addvxlan|remvxlan> <nsip> <username> <password> <nsepip> <kmasterip>")
+    print("         where")
+    print("           addvxlan  : Adds VXLAN configuration")
+    print("           remvxlan  : Removes VXLAN configuration")
+    print("           nsip      : Management IP address of NetScaler")
+    print("           username  : NetScaler login username")
+    print("           password  : NetScaler login password")
+    print("           nsepip    : NetScaler VXLAN tunnel endpoint IP")
+    print("           kmasterip : Kubernetes master node IP")
+    print("")
     print("       NSK8sConfig.py <operation addmac|remmac> <kmasterip> <nsepip> <nsmac> <nsflannelsubnet> <nsflannelsubnetmask[0-32]>")
+    print("         where")
+    print("           addmac    : Adds MAC configuration")
+    print("           remmac    : Removes MAC configuration")
+    print("           kmasterip : Kubernetes master node IP")
+    print("           nsepip    : NetScaler VXLAN tunnel endpoint IP")
+    print("           nsmac     : NetScaler MAC address of interface towards Kubernetes cluster")
+    print("           nsflannelsubnet : Flannel subnet to be reserved for NetScaler")
+    print("           nsflannelsubnetmask : Flannel subnet mask")
 
 ################################################################################
 # Addmac subroutine
@@ -154,7 +171,7 @@ class NSK8sConfig :
       # Login to Netscaler
       ns_session = NSK8sConfig().NSlogin(config.nsip, config.username, config.password)
 
-      # Create an instance of the virtual server class
+      # Create an instance of the vxlan
       new_vxlan_obj = vxlan()
 
       # Create a new vxlan
