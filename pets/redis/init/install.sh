@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 
 # Copyright 2016 The Kubernetes Authors All rights reserved.
 #
@@ -47,6 +47,8 @@ case $i in
 esac
 done
 
+mkdir -p ${INSTALL_VOLUME}
+
 echo installing config scripts into "${WORK_DIR}"
 mkdir -p "${WORK_DIR}"
 cp /on-start.sh "${WORK_DIR}"/
@@ -54,7 +56,7 @@ cp /peer-finder "${WORK_DIR}"/
 
 echo installing redis-"${VERSION}" into "${INSTALL_VOLUME}"
 mkdir -p "${TEMP_DIR}" "${INSTALL_VOLUME}"/redis
-wget -q -O - http://download.redis.io/releases/redis-"${VERSION}".tar.gz | tar -xzf - -C "${TEMP_DIR}"
+curl -sSL http://download.redis.io/releases/redis-"${VERSION}".tar.gz | tar -xzf - -C "${TEMP_DIR}"
 
 cd "${TEMP_DIR}"/redis-"${VERSION}"/
 # Clean out existing deps, see https://github.com/antirez/redis/issues/722
@@ -62,3 +64,5 @@ make distclean
 make install INSTALL_BIN="${INSTALL_VOLUME}"/redis
 cp "${TEMP_DIR}"/redis-"${VERSION}"/redis.conf ${INSTALL_VOLUME}/redis/redis.conf
 
+cd "${TEMP_DIR}"
+rm -rf "${TEMP_DIR}"/redis-"${VERSION}"
