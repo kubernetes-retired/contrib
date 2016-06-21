@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	version = "1.6.1"
+	version = "1.6.2"
 	nginxConf = `
 daemon off;
 
@@ -52,7 +52,7 @@ http {
 
 	log_format proxied_combined '"$http_x_forwarded_for" - $remote_user [$time_local] "$request" '
 											'$status $body_bytes_sent "$http_referer" '
-											'"$http_user_agent"';
+											'"$http_user_agent" $request_time';
 	
 	error_log /dev/stderr info;
 	access_log /dev/stdout proxied_combined;
