@@ -55,7 +55,7 @@ type StoreToConfigMapLister struct {
 // Values to verify the configmap object is a loadbalancer config
 const (
 	configLabelKey   = "loadbalancer"
-	configLabelValue = "configmap"
+	configLabelValue = "daemon"
 )
 
 var keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc

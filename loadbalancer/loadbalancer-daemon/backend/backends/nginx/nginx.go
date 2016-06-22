@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -69,6 +70,19 @@ var reloadMutex sync.Mutex
 
 // NewNGINXController creates a NGINX controller
 func NewNGINXController() (factory.BackendController, error) {
+
+	// Generate nginx.conf file
+	configString :=
+		`
+worker_processes auto;
+pid /run/nginx.pid;
+
+events {
+	worker_connections 768;
+}
+
+`
+	generateNginxCfg(configString)
 
 	ngxc := NGINXController{
 		nginxConfdPath:    path.Join(configPath, "conf.d"),
@@ -177,6 +191,10 @@ func createDir(path string) {
 		}
 		glog.Fatalf("Couldn't create directory %v: %v", path, err)
 	}
+}
+
+func generateNginxCfg(configFile string) {
+	ioutil.WriteFile(path.Join(configPath, "nginx.conf"), []byte(configFile), 0644)
 }
 
 func appendStreamDirectiveToCfg(configFile string) {

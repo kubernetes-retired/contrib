@@ -18,5 +18,6 @@ package backends
 
 import (
 	// backends
+	_ "k8s.io/contrib/loadbalancer/loadbalancer/backend/backends/daemon"
 	_ "k8s.io/contrib/loadbalancer/loadbalancer/backend/backends/openstack/lbaasv2"
 )

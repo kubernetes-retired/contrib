@@ -5,39 +5,24 @@ import (
 	"strings"
 	"sync"
 
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/unversioned"
+
 	"github.com/golang/glog"
 )
-
-// BackendConfig Config that have all data for backend
-type BackendConfig struct {
-	Host              string
-	Namespace         string
-	Nodes             []string
-	BindIP            string
-	BindPort          int
-	TargetServiceName string
-	TargetPort        int
-	NodePort          int
-	SSL               bool
-	SSLPort           int
-	Path              string
-	TLSCert           string
-	TLSKey            string
-	Protocol          string
-}
 
 // BackendController Interface for all Backends
 type BackendController interface {
 	Name() string
-	Create(name string, config BackendConfig)
-	Delete(name string)
-	AddNodeHandler(ip string, configMapNodePortMap map[string]int)
-	DeleteNodeHandler(ip string, configMapNodePortMap map[string]int)
-	UpdateNodeHandler(oldIP string, newIP string, configMapNodePortMap map[string]int)
+	HandleConfigMapCreate(configMap *api.ConfigMap)
+	HandleConfigMapDelete(name string)
+	HandleNodeCreate(node *api.Node)
+	HandleNodeDelete(node *api.Node)
+	HandleNodeUpdate(oldNode *api.Node, curNode *api.Node)
 }
 
 // BackendControllerFactory Factory for Backend controllers
-type BackendControllerFactory func(conf map[string]string) (BackendController, error)
+type BackendControllerFactory func(kubeClient *unversioned.Client, watchNamespace string, conf map[string]string, configLabelKey, configLabelValue string) (BackendController, error)
 
 var backendsMutex sync.Mutex
 var backendControllerFactories = make(map[string]BackendControllerFactory)
@@ -58,7 +43,7 @@ func Register(name string, factory BackendControllerFactory) {
 }
 
 // CreateBackendController creates a backend controller factory for a specific backend
-func CreateBackendController(conf map[string]string) (BackendController, error) {
+func CreateBackendController(kubeClient *unversioned.Client, watchNamespace string, conf map[string]string, configLabelKey, configLabelValue string) (BackendController, error) {
 	backendsMutex.Lock()
 	defer backendsMutex.Unlock()
 
@@ -77,5 +62,5 @@ func CreateBackendController(conf map[string]string) (BackendController, error) 
 	}
 
 	// Run the factory with the configuration.
-	return engineFactory(conf)
+	return engineFactory(kubeClient, watchNamespace, conf, configLabelKey, configLabelValue)
 }
