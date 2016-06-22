@@ -1,22 +1,24 @@
 [CONTROL-NODE]
-server={%for host in groups['masters']%}{{ hostvars[host]['ansible_' + opencontrail_interface]['ipv4']['address'] }} {% endfor %}
+server={{ opencontrail_master_host_addresses }}
 
 
 [VIRTUAL-HOST-INTERFACE]
 name=vhost0
-ip={{ hostvars[inventory_hostname]['ipaddr'] }}
-{% if opencontrail_gateway  %}
-gateway={{ opencontrail_gateway }}
-{% endif %}
-physical_interface={{ opencontrail_interface }}
+ip={{ opencontrail_host_ipaddr }}
+physical_interface={{ opencontrail_host_interface }}
+{% if opencontrail_host_gateway -%}
+gateway={{ opencontrail_host_gateway }}
+{% endif -%}
 
+{% if opencontrail_public_subnet is defined %}
 [GATEWAY-0]
 routing_instance=default-domain:default-project:Public:Public
 interface=gateway0
 ip_blocks={{ opencontrail_public_subnet }}
+{% endif %}
 
 [GATEWAY-1]
-routing_instance=default-domain:kube-system:service-default:service-default
+routing_instance=default-domain:{{ opencontrail_cluster_services_namespace }}:service-default:service-default
 interface=gateway1
-ip_blocks={{ kube_service_addresses }}
-routes={{ opencontrail_private_subnet }}
+ip_blocks={{ opencontrail_all_service_addresses }}
+routes={{ opencontrail_host_ipaddr }} {% if 'address' in ansible_default_ipv4 and ansible_default_ipv4.address != opencontrail_host_address -%}{{ [ansible_default_ipv4.address, ansible_default_ipv4.netmask | netmask2prefixlen ] | join('/') }}{% endif -%} {% if opencontail_gateway_extra_infra_prefixes is defined -%}{{ opencontail_gateway_extra_infra_prefixes }}{% endif -%}

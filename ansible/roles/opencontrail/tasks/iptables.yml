@@ -1,0 +1,20 @@
+---
+- name: Check whether iptables are configured
+  command: iptables -L OS_FIREWALL_ALLOW
+  register: iptables_chain
+  ignore_errors: True
+
+- name: Remove openshift iptables rules
+  command: iptables -F OS_FIREWALL_ALLOW
+  when: iptables_chain is defined and iptables_chain.rc == 0
+  ignore_errors: True
+
+
+- name: Remove jump rule
+  command: iptables -D INPUT -p all -j OS_FIREWALL_ALLOW
+  when: iptables_chain is defined and iptables_chain.rc == 0
+  ignore_errors: True
+
+- name: Delete openshift chain
+  command: iptables -X OS_FIREWALL_ALLOW
+  when: iptables_chain is defined and iptables_chain.rc == 0

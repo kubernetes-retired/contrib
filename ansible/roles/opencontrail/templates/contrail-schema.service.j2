@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenContrail schema transformer
+
+After=contrail-api.service zookeeper.service cassandra.service
+Requires=contrail-api.service zookeeper.service cassandra.service
+
+{% set service = {
+	'name': 'contrail-schema',
+	'image': 'opencontrail/config:2.20',
+	'network_mode': 'host',
+	'mounts': ['/etc/contrail:/etc/contrail:z', '/var/log/contrail:/var/log/contrail:z'],
+	'command': '/usr/bin/contrail-schema --conf_file /etc/contrail/contrail-schema.conf'
+}
+-%}
+
+{% import 'systemd.service.j2' as systemd with context -%}
+{{ systemd.systemd_docker_service(service) }}
+
+[Install]
+WantedBy=multi-user.target

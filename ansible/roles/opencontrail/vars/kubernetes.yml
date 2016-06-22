@@ -1,0 +1,6 @@
+---
+opencontrail_master_kube_service: kube-apiserver
+opencontrail_use_systemd: False
+opencontrail_all_kube_config_dir: /etc/kubernetes
+opencontrail_all_kube_manifest_dir: /etc/kubernetes/manifests
+opencontrail_cluster_services_namespace: kube-system

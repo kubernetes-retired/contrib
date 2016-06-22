@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenContrail VRouter agent
+After=docker.service
+Requires=docker.service
+
+{% set service = {
+	'name': 'vrouter-agent',
+	'image': 'opencontrail/vrouter-agent:2.20',
+	'network_mode': 'host',
+	'mounts': ['/etc/contrail:/etc/contrail:z', '/var/log/contrail:/var/log/contrail:z'],
+	'extra_opts': '--privileged=true',
+	'command': '/usr/bin/contrail-vrouter-agent'
+}
+-%}
+
+{% import 'systemd.service.j2' as systemd with context -%}
+{{ systemd.systemd_docker_service(service) }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,38 @@
 ---
+
+- assert:
+    that:
+      - "'masters' in groups"
+      - "'nodes' in groups"
+
+- name: Assert that interface facts are defined
+  assert:
+    that:
+      - opencontrail_host_interface is defined
+      - opencontrail_host_ipaddr is defined
+      - opencontrail_host_address is defined
+      - opencontrail_host_gateway is defined
+
+- include_vars: openshift.yml
+  when: openshift is defined or 'openshift' in hostvars[groups['masters'][0]]
+
+- include_vars: kubernetes.yml
+  when: opencontrail_cluster_type == "kubernetes"
+
+- name: Assert that cluster dependent vars are defined
+  assert:
+    that:
+      - opencontrail_all_service_addresses is defined
+      - opencontrail_all_kube_config_dir is defined
+
+- include: docker_config.yml
+
 - name: Build kernel module
   include: kmod.yml
-  when: inventory_hostname == groups['masters'][0]
 
 - name: Install vrouter
   include: vrouter.yml
-  when: inventory_hostname in groups['nodes'] or inventory_hostname in groups['gateways']
+  when: opencontrail_host_use_vrouter
 
 - name: Install compute nodes
   include: nodes.yml
@@ -13,7 +40,7 @@
 
 - name: Install gateways
   include: gateways.yml
-  when: inventory_hostname in groups['gateways']
+  when: "'gateways' in groups and inventory_hostname in groups['gateways']"
 
 - name: Install master
   include: masters.yml

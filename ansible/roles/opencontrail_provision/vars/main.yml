@@ -1,0 +1,2 @@
+---
+opencontrail_config_dns_forwarder: "{{ opencontrail_dns_forwarder | default(opencontrail_master_host_address) }}"

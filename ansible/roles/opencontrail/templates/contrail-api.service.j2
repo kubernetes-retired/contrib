@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenContrail api server
+
+After=cassandra.service zookeeper.service rabbitmq.service ifmap-server.service
+Requires=cassandra.service zookeeper.service rabbitmq.service ifmap-server.service
+
+{% set service = {
+	'name': 'contrail-api',
+	'image': 'opencontrail/config:2.20',
+	'network_mode': 'host',
+	'mounts': ['/etc/contrail:/etc/contrail:z', '/var/log/contrail:/var/log/contrail:z'],
+	'command': '/usr/bin/contrail-api --conf_file /etc/contrail/contrail-api.conf'
+}
+-%}
+
+{% import 'systemd.service.j2' as systemd with context -%}
+{{ systemd.systemd_docker_service(service) }}
+
+[Install]
+WantedBy=multi-user.target

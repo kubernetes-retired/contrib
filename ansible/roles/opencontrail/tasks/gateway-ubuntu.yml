@@ -15,6 +15,7 @@
   copy:
     src: contrail-vrouter-agent.upstart
     dest: /etc/init/contrail-vrouter-agent.conf
+    mode: 0644
 
 - name: Create bridge sysvinit via upstart-job
   file:

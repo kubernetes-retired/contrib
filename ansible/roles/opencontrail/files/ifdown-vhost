@@ -13,4 +13,18 @@ need_config "${CONFIG}"
 
 source_config
 
+ifindex=$(vif --list | awk '/^vif.*OS: vhost0/ {split($1, arr, "/"); print arr[2];}')
+if [ -n "${ifindex}" ]; then
+    vif --delete ${ifindex}
+fi
+
+ifindex=$(vif --list | awk -v device=${PHYSDEV} '/^vif.*OS: / { if ($3 == device) {split($1, arr, "/"); print arr[2];}}')
+if [ -n "${ifindex}" ]; then
+    vif --delete ${ifindex}
+fi
+
+if [ -d /sys/class/net/${DEVICE} ]; then
+	ip link delete vhost0
+fi
+
 exec /etc/sysconfig/network-scripts/ifdown-post ${CONFIG} ${2}

@@ -2,15 +2,21 @@
 - name: kmod Dockerfile
   template:
     src: Dockerfile.debian.j2
-    dest: /tmp/.ansible/build/{{ kmod_build_tag }}/Dockerfile
+    dest: /tmp/.ansible/build/{{ opencontrail_host_kernel_tag }}/Dockerfile
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 
 - name: Build docker container
-  command: docker build -t opencontrail/kmod_{{ kmod_build_tag }} {{ kmod_build_tag }}
+  command: docker build -t opencontrail/kmod_{{ opencontrail_host_kernel_tag }} {{ opencontrail_host_kernel_tag }}
   args:
     chdir: /tmp/.ansible/build
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 
 - name: Build kernel module
-  command: docker run -v /tmp/.ansible/build/{{ kmod_build_tag }}:/src/vrouter/build opencontrail/kmod_{{ kmod_build_tag }} /bin/bash -c "USER=nobody scons --optimization=production --kernel-dir=/lib/modules/{{ ansible_kernel }}/build vrouter && cp vrouter/vrouter.ko build/kbuild"
+  command: docker run -v /tmp/.ansible/build/{{ opencontrail_host_kernel_tag }}:/src/vrouter/build opencontrail/kmod_{{ opencontrail_host_kernel_tag }} /bin/bash -c "USER=nobody scons --optimization=production --kernel-dir=/lib/modules/{{ ansible_kernel }}/build vrouter && cp vrouter/vrouter.ko build/kbuild"
   args:
-      creates: /tmp/.ansible/build/{{ kmod_build_tag }}/kbuild/vrouter.ko
+      creates: /tmp/.ansible/build/{{ opencontrail_host_kernel_tag }}/kbuild/vrouter.ko
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 

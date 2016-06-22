@@ -27,23 +27,35 @@ else
 fi
 
 if [ ! -d /sys/class/net/${DEVICE} ]; then
-    ip link add ${DEVICE} type vhost
+    ip link add ${DEVICE} type vhost || net_log $"Error creating interface ${DEVICE}"
 
     if [ -n "${hwaddr}" ]; then
-	ip link set ${DEVICE} address ${hwaddr}
+	ip link set ${DEVICE} address ${hwaddr} || net_log $"Error setting mac-address on ${DEVICE}"
     fi
 
     if [ -n "${PHYSDEV}" ]; then
-	vif --add ${PHYSDEV} --mac ${hwaddr} --vrf 0 --vhost-phys --type physical >/dev/null 2>&1
-	vif --add ${DEVICE} --mac ${hwaddr} --vrf 0 --type vhost --xconnect ${PHYSDEV} >/dev/null 2>&1
+	vif --add ${PHYSDEV} --mac ${hwaddr} --vrf 0 --vhost-phys --type physical >/dev/null 2>&1 || net_log $"Error adding host interface to vrouter module"
+	vif --add ${DEVICE} --mac ${hwaddr} --vrf 0 --type vhost --xconnect ${PHYSDEV} >/dev/null 2>&1 || net_log $"Error setting cross-connect on host interface"
     fi
 fi
 
 if [ -n "${IPADDR}" ]; then
-    ip addr add dev ${DEVICE} ${IPADDR}
+    ip addr add dev ${DEVICE} ${IPADDR} || net_log $"Error configuring IP address on interface"
 fi
 
-ip link set ${DEVICE} up
+if [ -n "${PHYSDEV}" ]; then
+    if [ -f "/var/run/dhclient-${PHYSDEV}.pid" ]; then
+        pid=$(cat /var/run/dhclient-${PHYSDEV}.pid)
+        kill $pid && rm /var/run/dhclient-${PHYSDEV}.pid
+    fi
+    ip addr flush ${PHYSDEV} || net_log $"Error flushing ip addresses on ${PHYSDEV}"
+fi
+
+ip link set ${DEVICE} up || net_log $"Error setting link state up"
+
+if [ -n "${GATEWAY}" ]; then
+    ip route replace default via ${GATEWAY} dev ${DEVICE} || net_log $"Error adding default gateway"
+fi
 
 exec /etc/sysconfig/network-scripts/ifup-post ${CONFIG} ${2}
 

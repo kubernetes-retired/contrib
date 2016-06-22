@@ -1,9 +1,46 @@
 ---
+- name: cassandra directory
+  file: name=/var/lib/cassandra state=directory
+
+- name: zookeeper directory
+  file: name=/var/lib/zookeeper state=directory
+
 - name: Install templates
-  copy: src="{{item}}" dest="{{ kube_manifest_dir }}"
+  copy: src="{{ item }}" dest="{{ opencontrail_all_kube_manifest_dir }}"
   with_items:
     - cassandra.manifest
     - rabbitmq.manifest
     - zookeeper.manifest
+  when: not opencontrail_use_systemd
 
-    
+- name: master services systemd files
+  template: src="{{ item }}.j2" dest="/etc/systemd/system/{{ item }}"
+  with_items:
+    - cassandra.service
+    - zookeeper.service
+    - rabbitmq.service
+  notify:
+    - reload systemd
+  when: opencontrail_use_systemd
+
+- name: Docker image ids (services)
+  command: docker images -q "{{ item }}"
+  with_items:
+    - 'mesoscloud/zookeeper:3.4.6'
+    - 'rabbitmq:3.5.4'
+    - 'cassandra:2.2.0'
+  register: image_ids
+  always_run: true
+
+- name: Pull docker images (services)
+  command: docker pull "{{ item.item }}"
+  with_items: image_ids.results
+  when: not item.stdout
+
+- name: master services
+  service: name="{{ item }}" enabled=yes state=started
+  with_items:
+    - cassandra.service
+    - zookeeper.service
+    - rabbitmq.service
+  when: opencontrail_use_systemd

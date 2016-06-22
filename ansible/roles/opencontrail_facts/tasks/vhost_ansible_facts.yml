@@ -1,0 +1,12 @@
+# Determine the IP address configuration of the host from the vhost0 interface.
+---
+- name: IP address information (vhost0)
+  set_fact:
+    opencontrail_host_address: "{{ ansible_vhost0.ipv4.address }}"
+    opencontrail_host_netmask: "{{ ansible_vhost0.ipv4.netmask }}"
+    opencontrail_host_gateway: "{{ ansible_default_ipv4.gateway if 'interface' in ansible_default_ipv4 and ansible_default_ipv4.interface == 'vhost0' else None}}"
+
+- set_fact:
+    opencontrail_host_prefixlen: "{{ opencontrail_host_netmask | netmask2prefixlen }}"
+- set_fact:
+    opencontrail_host_ipaddr: "{{ [opencontrail_host_address, opencontrail_host_prefixlen] | join('/') }}"

@@ -1,0 +1,7 @@
+---
+- name: Disable usage of iptables by docker
+  lineinfile:
+    dest: /etc/sysconfig/docker-network
+    regexp: "^DOCKER_NETWORK_OPTIONS="
+    line: "DOCKER_NETWORK_OPTIONS=--iptables=false --ip-masq=false"
+  when: ansible_os_family == "RedHat"

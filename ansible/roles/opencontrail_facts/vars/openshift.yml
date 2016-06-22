@@ -1,0 +1,5 @@
+---
+# The default value for portal_net is embeded in openshift_facts.py and is not accessible
+# unless overriden by the user configurable variable.
+opencontrail_all_service_addresses: "{{ hostvars[groups['masters'][0]]['openshift_master_portal_net'] if 'openshift_master_portal_net' in hostvars[groups['masters'][0]] else '172.30.0.0/16'}}"
+opencontrail_kube_master_port: 8443

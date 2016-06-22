@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenContrail Cassandra database
+After=docker.service
+Requires=docker.service
+
+{% set service = {
+	'name': 'opencontrail-config-db',
+	'image': 'cassandra:2.2.0',
+	'network_mode': 'host',
+	'mounts': ['/var/lib/cassandra:/var/lib/cassandra:Z'],
+	'env': ['CASSANDRA_CLUSTER_NAME=OpenContrail-config'],
+	'command': "/bin/sh -c \"sed -ri 's/^(start_rpc:) .*/\\1 true/' /etc/cassandra/cassandra.yaml && /docker-entrypoint.sh cassandra -f\""
+}
+-%}
+
+{% import 'systemd.service.j2' as systemd with context -%}
+{{ systemd.systemd_docker_service(service) }}
+
+[Install]
+WantedBy=multi-user.target

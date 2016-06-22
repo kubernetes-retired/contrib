@@ -1,0 +1,82 @@
+---
+- name: Ensure API server is running
+  wait_for: port=8082
+
+- name: Create temporary directory
+  command: mktemp -d
+  register: mktemp_result
+  always_run: yes
+
+- name: Temporary directory var
+  set_fact:
+    host_tmp_dir: "{{ mktemp_result.stdout }}"
+  always_run: yes
+
+- name: Namespace file
+  copy: src=namespace.yml dest={{ host_tmp_dir }}
+
+- name: Namespace status
+  command: kubectl get namespace opencontrail
+  ignore_errors: yes
+  register: namespace
+
+- name: Create namespace
+  command: kubectl create -f "{{ host_tmp_dir }}/namespace.yml"
+  when: namespace is defined and namespace.rc != 0
+
+- name: Cleanup
+  file: path="{{ host_tmp_dir }}" state=absent
+  always_run: yes
+
+- set_fact:
+    opencontrail_config_http_proxy_host: "{{ opencontrail_http_proxy | regex_replace('[a-z]+://([a-zA-Z0-9][a-zA-Z0-9\\.\\-_]{0,62})(:[0-9]+)?', '\\\\1') }}"
+  when: opencontrail_http_proxy is defined
+
+- set_fact:
+    opencontrail_config_http_proxy_address: "{{ opencontrail_config_http_proxy_host | ipaddr('address') }}"
+  when: opencontrail_config_http_proxy_host is defined
+
+# lookup module dig requires python-dns package
+- set_fact:
+    opencontrail_config_http_proxy_address: "{{ lookup('dig', opencontrail_config_http_proxy_host) }}"
+  when: opencontrail_config_http_proxy_host is defined and not opencontrail_config_http_proxy_address|bool
+
+- name: kubernetes api service address
+  command: >
+    docker run --net=host opencontrail/config:2.20 /usr/share/contrail-utils/provision_linklocal.py
+    --api_server_ip localhost --api_server_port 8082
+    --linklocal_service_name kubernetes-ssl
+    --linklocal_service_ip {{ opencontrail_all_service_addresses | ipaddr('net') | ipaddr(1) | ipaddr('address')}}
+    --linklocal_service_port {{ opencontrail_kube_master_port }}
+    --ipfabric_service_ip "{{ opencontrail_host_address }}"
+    --ipfabric_service_port {{ opencontrail_kube_master_port }} --oper add
+
+- name: DNS
+  command: >
+    docker run --net=host opencontrail/config:2.20 /usr/share/contrail-utils/provision_linklocal.py
+    --api_server_ip localhost --api_server_port 8082
+    --linklocal_service_name dns
+    --linklocal_service_ip {{ opencontrail_all_service_addresses | ipaddr('net') | ipaddr(1) | ipaddr('address')}}
+    --linklocal_service_port 53
+    --ipfabric_service_ip "{{ opencontrail_config_dns_forwarder }}"
+    --ipfabric_service_port 53 --oper add
+  when: openshift is defined
+
+-  debug: var=opencontrail_config_http_proxy_address
+
+- name: WebProxy
+  command: >
+    docker run --net=host opencontrail/config:2.20 /usr/share/contrail-utils/provision_linklocal.py 
+    --api_server_ip localhost --api_server_port 8082
+    --linklocal_service_name web-proxy
+    --linklocal_service_ip {{ opencontrail_all_service_addresses | ipaddr('net') | ipaddr(2) | ipaddr('address')}}
+    --linklocal_service_port 3128 --ipfabric_service_ip "{{ opencontrail_config_http_proxy_address }}"
+    --ipfabric_service_port 3128 --oper add
+  when: opencontrail_config_http_proxy_address is defined and opencontrail_config_http_proxy_address != ""
+
+- name: Provision controller
+  command: >
+    docker run --net=host opencontrail/config:2.20 /usr/share/contrail-utils/provision_control.py
+    --api_server_ip localhost --api_server_port 8082
+    --host_name "{{ ansible_hostname }}" --host_ip "{{ opencontrail_host_address }}"
+    --router_asn 64512 --oper add

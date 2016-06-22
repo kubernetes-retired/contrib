@@ -9,21 +9,32 @@
 
 - name: Redhat-sytle interface configuration
   include: gateway-redhat.yml
-  when: ansible_distribution == "Fedora"
+  when: ansible_os_family == "RedHat"
 
 - name: Ubuntu interface configuration
   include: gateway-ubuntu.yml
   when: ansible_distribution == "Ubuntu"
 
 - name: Create vrouter agent service
-  copy: src=contrail-vrouter-agent.service dest=/etc/systemd/system
+  template: src=contrail-vrouter-agent.service.j2 dest=/etc/systemd/system/contrail-vrouter-agent.service
   notify:
     - reload systemd
   when: not (ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15)
 
-- name: Docker pull image
-  command: docker pull opencontrail/vrouter-agent:2.20
+- name: Enable vhost0 interface
+  command: ifup vhost0
+
+- name: Docker image ids (gateways)
+  command: docker images -q "{{ item }}"
+  with_items:
+    - "opencontrail/vrouter-agent:{{ opencontrail_all_release }}"
+  register: _docker_image_ids
+  always_run: true
+
+- name: Pull docker images (gateways)
+  command: docker pull "{{ item.item }}"
+  with_items: _docker_image_ids.results
+  when: not item.stdout
 
 - name: Start vrouter agent
   service: name=contrail-vrouter-agent enabled=yes state=started
-

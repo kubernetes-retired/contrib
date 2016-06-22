@@ -1,0 +1,3 @@
+---
+opencontrail_all_service_addresses: "{{ kube_service_addresses }}"
+opencontrail_kube_master_port: 443

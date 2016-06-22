@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenContrail ifmap-server
+
+After=docker.service
+Requires=docker.service 
+
+{% set service = {
+	'name': 'ifmap-server',
+	'image': 'opencontrail/ifmap-server:2.20',
+	'network_mode': 'host',
+	'env': ['IFMAP_BASIC_PORT=8444', 'IFMAP_CERT_PORT=8445'],
+	'mounts': ['/var/log/contrail:/var/log/contrail:z']
+}
+-%}
+
+{% import 'systemd.service.j2' as systemd with context -%}
+{{ systemd.systemd_docker_service(service) }}
+
+[Install]
+WantedBy=multi-user.target

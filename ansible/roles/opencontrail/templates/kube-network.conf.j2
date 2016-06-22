@@ -1,6 +1,13 @@
 [DEFAULT]
-service-cluster-ip-range = {{ kube_service_addresses }}
+{% if openshift is defined -%}
+kubeconfig = /etc/kubernetes/master/openshift-master.kubeconfig
+{% endif -%}
+service-cluster-ip-range = {{ opencontrail_all_service_addresses }}
 
 [opencontrail]
 public-ip-range = {{ opencontrail_public_subnet }}
-cluster-service = kube-system/default
+cluster-service = {{ opencontrail_cluster_services_namespace }}/default
+{% if openshift is defined -%}
+network-label = opencontrail.org/name
+service-label = opencontrail.org/services
+{% endif -%}

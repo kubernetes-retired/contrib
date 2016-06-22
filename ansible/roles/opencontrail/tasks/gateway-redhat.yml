@@ -1,19 +1,20 @@
 ---
+- set_fact:
+    interface_list: ['gateway1']
+
+- set_fact:
+    interface_list: ['gateway0', 'gateway1']
+  when: opencontrail_public_subnet is defined
 
 - name: Interface configuration file
   template: src=ifcfg-gateway.j2 dest=/etc/sysconfig/network-scripts/ifcfg-{{ item }}
-  with_items:
-    - gateway0
-    - gateway1
+  with_items: interface_list
 
 - name: Static routes
   template: src=route-{{ item }}.j2 dest=/etc/sysconfig/network-scripts/route-{{ item }}
-  with_items:
-    - gateway0
-    - gateway1
+  with_items: interface_list
 
-- name: Activate gateway0
-  command: ifup gateway0
+- name: Activate gateway interfaces
+  command: ifup {{ item }}
+  with_items: interface_list
 
-- name: Activate gateway1
-  command: ifup gateway1

@@ -1,0 +1,15 @@
+---
+- name: IP address information (from inventory / hostvars)
+  set_fact:
+    opencontrail_host_address: "{{ opencontrail_ipaddr | ipaddr('address') }}"
+    opencontrail_host_netmask: "{{ opencontrail_ipaddr | ipaddr('netmask') }}"
+    opencontrail_host_prefixlen: "{{ opencontrail_ipaddr | ipaddr('subnet') }}"
+    opencontrail_host_ipaddr: "{{ opencontrail_ipaddr }}"
+
+- set_fact:
+    opencontrail_host_gateway: "{{ opencontrail_gateway }}"
+  when: opencontrail_gateway is defined
+
+- set_fact:
+    opencontrail_host_gateway: "{{ ansible_default_ipv4.gateway if 'interface' in ansible_default_ipv4 and ansible_default_ipv4.interface == opencontrail_host_interface else None }}"
+  when: opencontrail_gateway is not defined

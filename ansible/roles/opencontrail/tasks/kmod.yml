@@ -1,13 +1,11 @@
 ---
-- name: build tag
-  set_fact:
-     kmod_build_tag: "{{ ansible_distribution | lower}}{{ansible_distribution_version}}-{{ansible_kernel}}"
-
 - name: Create directory
-  file: path=/tmp/.ansible/build/{{ kmod_build_tag }} state=directory
+  file: path=/tmp/.ansible/build/{{ opencontrail_host_kernel_tag }} state=directory
+  delegate_to: "{{ groups['masters'][0] }}"
+  run_once: true
 
-- include: kmod-build-fedora.yml
-  when: ansible_distribution == "Fedora"
+- include: kmod-build-redhat.yml
+  when: ansible_os_family == "RedHat"
 
 - include: kmod-build-ubuntu.yml
   when: ansible_distribution == "Ubuntu"

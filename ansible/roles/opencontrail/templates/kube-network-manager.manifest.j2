@@ -9,7 +9,7 @@
 	"hostNetwork": true,
 	"containers":[{
 	    "name": "kube-network-manager",
-	    "image": "opencontrail/kube-network-manager",
+	    "image": "opencontrail/kube-network-manager{% if opencontrail_kube_release is defined -%}:{{ opencontrail_kube_release }}{% endif -%}",
 	    "volumeMounts": [{
 		    "name": "config",
 		    "mountPath": "/etc/kubernetes"
