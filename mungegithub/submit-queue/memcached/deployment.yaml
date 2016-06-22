@@ -1,0 +1,23 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: memcached
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: memcached
+    spec:
+      containers:
+      - name: memcached
+        command: ['memcached',  '-m',  '128']
+        image: memcached:alpine
+        ports:
+        - name: memcached
+          containerPort: 11211
+        resources:
+          requests:
+            memory: "130Mi"
+          limits:
+            memory: "200Mi"

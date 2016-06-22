@@ -36,6 +36,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/google/go-github/github"
 	"github.com/gregjones/httpcache"
+	httpmemcache "github.com/gregjones/httpcache/memcache"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 )
@@ -159,7 +160,8 @@ type Config struct {
 	// Defaults to 30 seconds.
 	PendingWaitTime *time.Duration
 
-	useMemoryCache bool
+	useHTTPCache    bool
+	memcacheAddress string
 
 	// When we clear analytics we store the last values here
 	lastAnalytics analytics
@@ -292,7 +294,8 @@ func (config *Config) AddRootFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().IntVar(&config.MinPRNumber, "min-pr-number", 0, "The minimum PR to start with")
 	cmd.PersistentFlags().IntVar(&config.MaxPRNumber, "max-pr-number", maxInt, "The maximum PR to start with")
 	cmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", true, "If true, don't actually merge anything")
-	cmd.PersistentFlags().BoolVar(&config.useMemoryCache, "use-http-cache", true, "If true, use a client side HTTP cache for API requests.")
+	cmd.PersistentFlags().BoolVar(&config.useHTTPCache, "use-http-cache", true, "If true, use a client side HTTP cache for API requests.")
+	cmd.PersistentFlags().StringVar(&config.memcacheAddress, "memcache-address", "", "Address of a memcache server to use.")
 	cmd.PersistentFlags().StringVar(&config.Org, "organization", "kubernetes", "The github organization to scan")
 	cmd.PersistentFlags().StringVar(&config.Project, "project", "kubernetes", "The github project to scan")
 	cmd.PersistentFlags().StringVar(&config.state, "state", "open", "State of PRs to process: 'open', 'all', etc")
@@ -337,8 +340,13 @@ func (config *Config) PreExecute() error {
 	config.apiLimit = callLimitTransport
 	transport = callLimitTransport
 
-	if config.useMemoryCache {
-		t := httpcache.NewMemoryCacheTransport()
+	if config.useHTTPCache {
+		var t *httpcache.Transport
+		if config.memcacheAddress != "" {
+			t = httpcache.NewTransport(httpmemcache.New(config.memcacheAddress))
+		} else {
+			t = httpcache.NewMemoryCacheTransport()
+		}
 		t.Transport = transport
 
 		zeroCacheTransport := &zeroCacheRoundTripper{
