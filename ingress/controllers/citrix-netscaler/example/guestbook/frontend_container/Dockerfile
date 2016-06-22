@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang
-COPY citrix-netscaler /
-CMD ["/citrix-netscaler"]
+FROM gcr.io/google_samples/gb-frontend:v3
+COPY index.html /var/www/html/
+COPY .htaccess /var/www/html/
+CMD ["apache2-foreground"]

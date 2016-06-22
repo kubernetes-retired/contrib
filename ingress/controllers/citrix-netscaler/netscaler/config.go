@@ -87,121 +87,194 @@ func GenerateActionName(namespace string, host string, path string) string {
 	return actionName
 }
 
+func DeleteService(sname string) {
+	resourceType := "service"
+	_, err := deleteResource(resourceType, sname)
+	if err != nil {
+		log.Println(fmt.Sprintf("Failed to delete service %s err=%s", sname, err))
+	}
+}
+
+func AddAndBindService(lbName string, sname string, IpPort string) {
+	//create a Netscaler Service that represents the Kubernetes service
+	resourceType := "service"
+	ep_ip_port := strings.Split(IpPort, ":")
+	servicePort, _ := strconv.Atoi(ep_ip_port[1])
+	nsService := &struct {
+		Service NetscalerService `json:"service"`
+	}{Service: NetscalerService{Name: sname, Ip: ep_ip_port[0], ServiceType: "HTTP", Port: servicePort}}
+	resourceJson, err := json.Marshal(nsService)
+	if err != nil {
+		log.Fatal(fmt.Sprintf("Failed to marshal service %s err=", sname, err))
+		return
+	}
+	log.Println(string(resourceJson))
+
+	body, err := createResource(resourceType, resourceJson)
+	if err != nil {
+		log.Fatal(fmt.Sprintf("Failed to create service %s err=%s", sname, err))
+		return
+	}
+	_ = body
+
+	//bind the lb to the service
+	resourceType = "lbvserver"
+	boundResourceType := "service"
+	if FindBoundResource(resourceType, lbName, boundResourceType, "servicename", sname) == false {
+		nsLbSvcBinding := &struct {
+			Lbvserver_service_binding NetscalerLBServiceBinding `json:"lbvserver_service_binding"`
+		}{Lbvserver_service_binding: NetscalerLBServiceBinding{Name: lbName, ServiceName: sname}}
+		resourceJson, err := json.Marshal(nsLbSvcBinding)
+
+		resourceType = "lbvserver_service_binding"
+
+		body, err := createResource(resourceType, resourceJson)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to bind lb %s to service %s, err=%s", lbName, sname, err))
+			//TODO roll back
+			return
+		}
+		_ = body
+	}
+}
+
 func ConfigureContentVServer(namespace string, csvserverName string, domainName string, path string, serviceIp string, serviceName string, servicePort int, priority int) {
 	lbName := GenerateLbName(namespace, domainName)
 	policyName := GeneratePolicyName(namespace, domainName, path)
 	actionName := GenerateActionName(namespace, domainName, path)
 
 	//create a Netscaler Service that represents the Kubernetes service
-	nsService := &struct {
-		Service NetscalerService `json:"service"`
-	}{Service: NetscalerService{Name: serviceName, Ip: serviceIp, ServiceType: "HTTP", Port: servicePort}}
-	resourceJson, err := json.Marshal(nsService)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to marshal service %s err=", serviceName, err))
-		return
-	}
-	log.Println(string(resourceJson))
-
 	resourceType := "service"
+	if FindResource(resourceType, serviceName) == false {
+		nsService := &struct {
+			Service NetscalerService `json:"service"`
+		}{Service: NetscalerService{Name: serviceName, Ip: serviceIp, ServiceType: "HTTP", Port: servicePort}}
+		resourceJson, err := json.Marshal(nsService)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to marshal service %s err=", serviceName, err))
+			return
+		}
+		log.Println(string(resourceJson))
 
-	body, err := createResource(resourceType, resourceJson)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to create service %s err=%s", serviceName, err))
-		return
+		body, err := createResource(resourceType, resourceJson)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to create service %s err=%s", serviceName, err))
+			return
+		}
+		_ = body
 	}
-	_ = body
 
 	//create a Netscaler "lbvserver" to front the service
-	nsLB := &struct {
-		Lbvserver NetscalerLB `json:"lbvserver"`
-	}{Lbvserver: NetscalerLB{Name: lbName, Ipv46: "0.0.0.0", ServiceType: "HTTP", Port: 0}}
-	resourceJson, err = json.Marshal(nsLB)
-
 	resourceType = "lbvserver"
+	if FindResource(resourceType, lbName) == false {
+		nsLB := &struct {
+			Lbvserver NetscalerLB `json:"lbvserver"`
+		}{Lbvserver: NetscalerLB{Name: lbName, Ipv46: "0.0.0.0", ServiceType: "HTTP", Port: 0}}
+		resourceJson, err := json.Marshal(nsLB)
 
-	body, err = createResource(resourceType, resourceJson)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to create lb %s, err=%s", lbName, err))
-		//TODO roll back
-		return
+		body, err := createResource(resourceType, resourceJson)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to create lb %s, err=%s", lbName, err))
+			//TODO roll back
+			return
+		}
+		_ = body
 	}
 
 	//bind the lb to the service
-	nsLbSvcBinding := &struct {
-		Lbvserver_service_binding NetscalerLBServiceBinding `json:"lbvserver_service_binding"`
-	}{Lbvserver_service_binding: NetscalerLBServiceBinding{Name: lbName, ServiceName: serviceName}}
-	resourceJson, err = json.Marshal(nsLbSvcBinding)
-	resourceType = "lbvserver_service_binding"
+	resourceType = "lbvserver"
+	boundResourceType := "service"
+	if FindBoundResource(resourceType, lbName, boundResourceType, "servicename", serviceName) == false {
+		nsLbSvcBinding := &struct {
+			Lbvserver_service_binding NetscalerLBServiceBinding `json:"lbvserver_service_binding"`
+		}{Lbvserver_service_binding: NetscalerLBServiceBinding{Name: lbName, ServiceName: serviceName}}
+		resourceJson, err := json.Marshal(nsLbSvcBinding)
 
-	body, err = createResource(resourceType, resourceJson)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to bind lb %s to service %s, err=%s", lbName, serviceName, err))
-		//TODO roll back
-		return
+		resourceType = "lbvserver_service_binding"
+
+		body, err := createResource(resourceType, resourceJson)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to bind lb %s to service %s, err=%s", lbName, serviceName, err))
+			//TODO roll back
+			return
+		}
+		_ = body
 	}
 
 	//create a content switch action to switch to the lb
-	nsCsAction := &struct {
-		Csaction NetscalerCsAction `json:"csaction"`
-	}{Csaction: NetscalerCsAction{Name: actionName, TargetLBVserver: lbName}}
-	resourceJson, err = json.Marshal(nsCsAction)
 	resourceType = "csaction"
+	if FindResource(resourceType, actionName) == false {
+		nsCsAction := &struct {
+			Csaction NetscalerCsAction `json:"csaction"`
+		}{Csaction: NetscalerCsAction{Name: actionName, TargetLBVserver: lbName}}
+		resourceJson, err := json.Marshal(nsCsAction)
 
-	body, err = createResource(resourceType, resourceJson)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to create Content Switching Action %s to LB %s err=%s", actionName, lbName, err))
-		//TODO roll back
-		return
+		body, err := createResource(resourceType, resourceJson)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to create Content Switching Action %s to LB %s err=%s", actionName, lbName, err))
+			//TODO roll back
+			return
+		}
+		_ = body
 	}
 
 	//create a content switch policy to use the action
 	var rule string
-	if path != "" {
-		rule = fmt.Sprintf("HTTP.REQ.HOSTNAME.EQ(\"%s\") && HTTP.REQ.URL.PATH.EQ(\"%s\")", domainName, path)
-	} else {
-		rule = fmt.Sprintf("HTTP.REQ.HOSTNAME.EQ(\"%s\")", domainName)
-	}
-	nsCsPolicy := &struct {
-		Cspolicy NetscalerCsPolicy `json:"cspolicy"`
-	}{Cspolicy: NetscalerCsPolicy{PolicyName: policyName, Rule: rule, Action: actionName}}
-	resourceJson, err = json.Marshal(nsCsPolicy)
 	resourceType = "cspolicy"
+	if FindResource(resourceType, policyName) == false {
+		if path != "" {
+			rule = fmt.Sprintf("HTTP.REQ.HOSTNAME.EQ(\"%s\") && HTTP.REQ.URL.PATH.EQ(\"%s\")", domainName, path)
+		} else {
+			rule = fmt.Sprintf("HTTP.REQ.HOSTNAME.EQ(\"%s\")", domainName)
+		}
+		nsCsPolicy := &struct {
+			Cspolicy NetscalerCsPolicy `json:"cspolicy"`
+		}{Cspolicy: NetscalerCsPolicy{PolicyName: policyName, Rule: rule, Action: actionName}}
+		resourceJson, err := json.Marshal(nsCsPolicy)
 
-	body, err = createResource(resourceType, resourceJson)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to create Content Switching Policy %s, err=%s", policyName, err))
-		//TODO roll back
-		return
+		body, err := createResource(resourceType, resourceJson)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to create Content Switching Policy %s, err=%s", policyName, err))
+			//TODO roll back
+			return
+		}
+		_ = body
 	}
 
 	//bind the content switch policy to the content switching vserver
-	nsCsPolicyBinding := &struct {
-		Csvserver_cspolicy_binding NetscalerCsPolicyBinding `json:"csvserver_cspolicy_binding"`
-	}{Csvserver_cspolicy_binding: NetscalerCsPolicyBinding{Name: csvserverName, PolicyName: policyName, Priority: priority, Bindpoint: "REQUEST"}}
-	resourceJson, err = json.Marshal(nsCsPolicyBinding)
-	resourceType = "csvserver_cspolicy_binding"
+	resourceType = "csvserver"
+	boundResourceType = "cspolicy"
+	if FindBoundResource(resourceType, csvserverName, boundResourceType, "policyname", policyName) == false {
+		nsCsPolicyBinding := &struct {
+			Csvserver_cspolicy_binding NetscalerCsPolicyBinding `json:"csvserver_cspolicy_binding"`
+		}{Csvserver_cspolicy_binding: NetscalerCsPolicyBinding{Name: csvserverName, PolicyName: policyName, Priority: priority, Bindpoint: "REQUEST"}}
+		resourceJson, err := json.Marshal(nsCsPolicyBinding)
 
-	body, err = createResource(resourceType, resourceJson)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to bind Content Switching Policy %s to Content Switching VServer %s, err=%s", policyName, csvserverName, err))
-		return
+		resourceType = "csvserver_cspolicy_binding"
+
+		body, err := createResource(resourceType, resourceJson)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to bind Content Switching Policy %s to Content Switching VServer %s, err=%s", policyName, csvserverName, err))
+			return
+		}
+		_ = body
 	}
-
 }
 
 func CreateContentVServer(csvserverName string, vserverIp string, vserverPort int, protocol string) error {
-	contentServer := &struct {
-		Csvserver NetscalerCsVserver `json:"csvserver"`
-	}{Csvserver: NetscalerCsVserver{Name: csvserverName, Ipv46: vserverIp, ServiceType: protocol, Port: vserverPort}}
-	resourceJson, err := json.Marshal(contentServer)
 	resourceType := "csvserver"
+	if FindResource(resourceType, csvserverName) == false {
+		contentServer := &struct {
+			Csvserver NetscalerCsVserver `json:"csvserver"`
+		}{Csvserver: NetscalerCsVserver{Name: csvserverName, Ipv46: vserverIp, ServiceType: protocol, Port: vserverPort}}
+		resourceJson, err := json.Marshal(contentServer)
 
-	body, err := createResource(resourceType, resourceJson)
-	_ = body
-	if err != nil {
-		log.Fatal(fmt.Sprintf("Failed to create Content Switching Vserver %s, err=%s", csvserverName, err))
-		return errors.New("Failed to create Content Switching Vserver " + csvserverName)
+		body, err := createResource(resourceType, resourceJson)
+		_ = body
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Failed to create Content Switching Vserver %s, err=%s", csvserverName, err))
+			return errors.New("Failed to create Content Switching Vserver " + csvserverName)
+		}
 	}
 	return nil
 }
@@ -380,7 +453,7 @@ func ListContentVservers() []string {
 	for _, c := range csvs {
 		csvserver := c.(map[string]interface{})
 		csname := csvserver["name"].(string)
-		
+
 		result = append(result, csname)
 	}
 	return result
@@ -537,4 +610,34 @@ func ListBoundServicesForLB(lbName string) ([]string, error) {
 		ret = append(ret, sname)
 	}
 	return ret, nil
+}
+
+func FindResource(resourceType string, resourceName string) bool {
+	_, err := listResource(resourceType, resourceName)
+	if err != nil {
+		log.Printf("No %s %s found", resourceType, resourceName)
+		return false
+	}
+	log.Printf("%s %s is alredy present", resourceType, resourceName)
+	return true
+}
+
+func FindBoundResource(resourceType string, resourceName string, boundResourceType string, boundResourceFilterName string, boundResourceFilterValue string) bool {
+	result, err := listBoundResources(resourceName, resourceType, boundResourceType, boundResourceFilterName, boundResourceFilterValue)
+	if err != nil {
+		log.Printf("No %s %s to %s %s binding found", resourceType, resourceName, boundResourceType, boundResourceFilterValue)
+		return false
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(result, &data); err != nil {
+		log.Println("Failed to unmarshal Netscaler Response!")
+		return false
+	}
+	if data[fmt.Sprintf("%s_%s_binding", resourceType, boundResourceType)] == nil {
+		return false
+	}
+
+	log.Printf("%s %s is alredy bound to %s %s", resourceType, resourceName, boundResourceType, boundResourceFilterValue)
+	return true
 }

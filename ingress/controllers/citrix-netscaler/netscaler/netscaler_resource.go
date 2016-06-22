@@ -37,11 +37,11 @@ func createResource(resourceType string, resourceJson []byte) ([]byte, error) {
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		log.Fatal(err)
 		return []byte{}, err
 	} else {
+		defer resp.Body.Close()
 		log.Println("response Status:", resp.Status)
 
 		switch resp.Status {
@@ -183,11 +183,11 @@ func listBoundResources(resourceName string, resourceType string, boundResourceT
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		log.Fatal(err)
 		return []byte{}, err
 	} else {
+		defer resp.Body.Close()
 		log.Println("response Status:", resp.Status)
 
 		switch resp.Status {
@@ -231,11 +231,11 @@ func listResource(resourceType string, resourceName string) ([]byte, error) {
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	defer resp.Body.Close()
 	if err != nil {
 		log.Fatal(err)
 		return []byte{}, err
 	} else {
+		defer resp.Body.Close()
 		log.Println("response Status:", resp.Status)
 
 		switch resp.Status {
