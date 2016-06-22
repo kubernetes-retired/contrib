@@ -69,6 +69,12 @@ secret:
 clean:
 	rm -f mungegithub $(APP)/local.deployment.yaml $(APP)/local.secret.yaml
 
+# pull down current public queue state, and run UI based off that data
+ui-stub:
+	@/bin/bash -c "wget -q -r -nH -P ./submit-queue/www http://submit-queue.k8s.io/{prs,github-e2e-queue,history,sq-stats,stats,users,health,google-internal-ci,priority-info,merge-info}; \
+	pushd ./submit-queue/www; \
+	python -m SimpleHTTPServer;"
+
 help:
 	@echo "ENVIRONMENT VARS:"
 	@echo " REPO=       repository for the docker image being build. Default: $(REPO)"
@@ -85,6 +91,7 @@ help:
 	@echo " deploy:       launches/updates the app on a kubernetes cluster"
 	@echo " local_dryrun: tries to launch the container locally with docker"
 	@echo " deployment:   updates $(APP)/deployment.yaml and places results in $(APP)/local.deployment.yaml"
+	@echo " ui-stub:      grab upstream submit-queue data and launch the web ui on port 8000"
 	@echo " secret:       updates $(APP)/secret.yaml with TOKEN an creates $(APP)/local.secret.yaml"
 	@echo " clean:        deletes the binary and local files (does not delete old containers)"
 

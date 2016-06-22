@@ -83,6 +83,7 @@ ssl-cert
 start-from
 stats-port
 sync-period
+test-owners-csv
 tcp-services
 tcp-services-configmap
 token-file

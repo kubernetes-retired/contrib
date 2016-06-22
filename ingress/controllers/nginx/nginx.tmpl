@@ -16,18 +16,24 @@ events {
 }
 
 http {
+    {{/* we use the value of the header X-Forwarded-For to be able to use the geo_ip module */}}
+    real_ip_header      X-Forwarded-For;
+    set_real_ip_from    0.0.0.0/0;
+    real_ip_recursive   on;
+
     {{/* databases used to determine the country depending on the client IP address */}}
     {{/* http://nginx.org/en/docs/http/ngx_http_geoip_module.html */}}
     {{/* this is require to calculate traffic for individual country using GeoIP in the status page */}}
     geoip_country       /etc/nginx/GeoIP.dat;
     geoip_city          /etc/nginx/GeoLiteCity.dat;
+    geoip_proxy_recursive on;
 
     {{- if $cfg.enableVtsStatus }}
     vhost_traffic_status_zone shared:vhost_traffic_status:{{ $cfg.vtsStatusZoneSize }};
     vhost_traffic_status_filter_by_set_key $geoip_country_code country::*;
     {{ end -}}
 
-    # lus sectrion to return proper error codes when custom pages are used
+    # lua section to return proper error codes when custom pages are used
     lua_package_path '.?.lua;./etc/nginx/lua/?.lua;/etc/nginx/lua/vendor/lua-resty-http/lib/?.lua;';
     init_by_lua_block {        
         require("error_page")
@@ -70,7 +76,15 @@ http {
         '[$proxy_add_x_forwarded_for] - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" '
         '$request_length $request_time $upstream_addr $upstream_response_length $upstream_response_time $upstream_status';
 
-    access_log /var/log/nginx/access.log upstreaminfo;
+    {{/* map urls that should not appear in access.log */}}
+    {{/* http://nginx.org/en/docs/http/ngx_http_log_module.html#access_log */}}
+    map $request $loggable {
+        {{- range $reqUri := $cfg.skipAccessLogUrls }}
+        {{ $reqUri }} 0;{{ end }}
+        default 1;
+    }
+
+    access_log /var/log/nginx/access.log upstreaminfo if=$loggable;
     error_log  /var/log/nginx/error.log {{ $cfg.errorLogLevel }};
 
     {{ if not (empty .defResolver) }}# Custom dns resolver.
@@ -180,6 +194,12 @@ http {
         {{- range $location := $server.Locations }}
         {{ $path := buildLocation $location }}
         location {{ $path }} {
+            {{ if gt (len $location.Whitelist.CIDR) 0 }}
+            {{- range $ip := $location.Whitelist.CIDR }}
+            allow {{ $ip }};{{ end }}
+            deny all;
+            {{ end -}}
+
             {{ if (and $server.SSL $location.Redirect.SSLRedirect) -}}
             # enforce ssl on server side
             if ($scheme = http) {

@@ -14,16 +14,18 @@
 
 # TODO: get rid of bash dependency and switch to plain busybox.
 # The tar in busybox also doesn't seem to understand compression.
-FROM debian:jessie
+FROM alpine:3.4
 MAINTAINER Prashanth.B <beeps@google.com>
 
 # TODO: just use standard redis when there is one for 3.2.0.
-RUN apt-get update && apt-get install -y wget make gcc
+RUN apk -U add curl make gcc sed bash musl-dev linux-headers \
+  && rm -rf /var/cache/apk/*
 
-ADD on-start.sh /
 # See contrib/pets/peer-finder for details
-RUN wget -qO /peer-finder https://storage.googleapis.com/kubernetes-release/pets/peer-finder
+RUN curl -sSL -o /peer-finder https://storage.googleapis.com/kubernetes-release/pets/peer-finder
 
-ADD install.sh /
+COPY on-start.sh /
+COPY install.sh /
+
 RUN chmod -c 755 /install.sh /on-start.sh /peer-finder
 Entrypoint ["/install.sh"]

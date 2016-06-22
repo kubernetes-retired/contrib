@@ -44,6 +44,7 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/auth"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/healthcheck"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/ipwhitelist"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ratelimit"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/rewrite"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/secureupstream"
@@ -601,7 +602,7 @@ func (lbc *loadBalancerController) getStreamServices(data map[string]string, pro
 		// tcp upstreams cannot contain empty upstreams and there is no
 		// default backend equivalent for TCP
 		if len(endps) == 0 {
-			glog.Warningf("service %v/%v does no have any active endpoints", svcNs, svcName)
+			glog.Warningf("service %v/%v does not have any active endpoints", svcNs, svcName)
 			continue
 		}
 
@@ -630,7 +631,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 	}
 
 	if !svcExists {
-		glog.Warningf("service %v does no exists", svcKey)
+		glog.Warningf("service %v does not exists", svcKey)
 		upstream.Backends = append(upstream.Backends, nginx.NewDefaultServer())
 		return upstream
 	}
@@ -639,7 +640,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 
 	endps := lbc.getEndpoints(svc, svc.Spec.Ports[0].TargetPort, api.ProtocolTCP, &healthcheck.Upstream{})
 	if len(endps) == 0 {
-		glog.Warningf("service %v does no have any active endpoints", svcKey)
+		glog.Warningf("service %v does not have any active endpoints", svcKey)
 		upstream.Backends = append(upstream.Backends, nginx.NewDefaultServer())
 	} else {
 		upstream.Backends = append(upstream.Backends, endps...)
@@ -697,6 +698,12 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuratio
 				glog.V(3).Infof("error parsing rewrite annotations for Ingress rule %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
 			}
 
+			wl, err := ipwhitelist.ParseAnnotations(ngxCfg.WhitelistSourceRange, ing)
+			glog.V(3).Infof("nginx white list %v", wl)
+			if err != nil {
+				glog.V(3).Infof("error reading white list annotation in Ingress %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
+			}
+
 			host := rule.Host
 			if host == "" {
 				host = defServerName
@@ -728,6 +735,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuratio
 						loc.RateLimit = *rl
 						loc.Redirect = *locRew
 						loc.SecureUpstream = secUpstream
+						loc.Whitelist = *wl
 
 						addLoc = false
 						continue
@@ -750,6 +758,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuratio
 						RateLimit:      *rl,
 						Redirect:       *locRew,
 						SecureUpstream: secUpstream,
+						Whitelist:      *wl,
 					})
 				}
 			}
@@ -762,7 +771,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuratio
 	aUpstreams := make([]*nginx.Upstream, 0, len(upstreams))
 	for _, value := range upstreams {
 		if len(value.Backends) == 0 {
-			glog.Warningf("upstream %v does no have any active endpoints. Using default backend", value.Name)
+			glog.Warningf("upstream %v does not have any active endpoints. Using default backend", value.Name)
 			value.Backends = append(value.Backends, nginx.NewDefaultServer())
 		}
 		sort.Sort(nginx.UpstreamServerByAddrPort(value.Backends))
@@ -813,7 +822,7 @@ func (lbc *loadBalancerController) createUpstreams(ngxCfg config.Configuration, 
 				}
 
 				if !svcExists {
-					glog.Warningf("service %v does no exists", svcKey)
+					glog.Warningf("service %v does not exists", svcKey)
 					continue
 				}
 
@@ -825,7 +834,7 @@ func (lbc *loadBalancerController) createUpstreams(ngxCfg config.Configuration, 
 					if strconv.Itoa(int(servicePort.Port)) == bp || servicePort.TargetPort.String() == bp || servicePort.Name == bp {
 						endps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP, hz)
 						if len(endps) == 0 {
-							glog.Warningf("service %v does no have any active endpoints", svcKey)
+							glog.Warningf("service %v does not have any active endpoints", svcKey)
 						}
 
 						upstreams[name].Backends = append(upstreams[name].Backends, endps...)

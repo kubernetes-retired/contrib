@@ -142,15 +142,15 @@ func Commits() []github.RepositoryCommit {
 }
 
 func SuccessStatus() *github.CombinedStatus {
-	return github_test.Status("mysha", []string{travisContext, requiredReTestContext1, requiredReTestContext2, notRequiredReTestContext1, notRequiredReTestContext2}, nil, nil, nil)
+	return github_test.Status("mysha", []string{requiredReTestContext1, requiredReTestContext2, notRequiredReTestContext1, notRequiredReTestContext2}, nil, nil, nil)
 }
 
 func RetestFailStatus() *github.CombinedStatus {
-	return github_test.Status("mysha", []string{travisContext, requiredReTestContext1, notRequiredReTestContext1, notRequiredReTestContext2}, []string{requiredReTestContext2}, nil, nil)
+	return github_test.Status("mysha", []string{requiredReTestContext1, notRequiredReTestContext1, notRequiredReTestContext2}, []string{requiredReTestContext2}, nil, nil)
 }
 
 func NoRetestFailStatus() *github.CombinedStatus {
-	return github_test.Status("mysha", []string{travisContext, requiredReTestContext1, requiredReTestContext2, notRequiredReTestContext1}, []string{notRequiredReTestContext2}, nil, nil)
+	return github_test.Status("mysha", []string{requiredReTestContext1, requiredReTestContext2, notRequiredReTestContext1}, []string{notRequiredReTestContext2}, nil, nil)
 }
 
 func LastBuildNumber() int {
@@ -446,6 +446,9 @@ func TestSubmitQueue(t *testing.T) {
 		reason           string
 		state            string // what the github status context should be for the PR HEAD
 
+		emergencyMergeStop bool
+		isMerged           bool
+
 		imHeadSHA      string
 		imBaseSHA      string
 		masterCommit   *github.RepositoryCommit
@@ -466,6 +469,25 @@ func TestSubmitQueue(t *testing.T) {
 			retest2Pass:     true,
 			reason:          merged,
 			state:           "success",
+			isMerged:        true,
+		},
+		// Entire thing was run and good, but emergency merge stop in progress
+		{
+			name:               "Test1+emergencyStop",
+			pr:                 ValidPR(),
+			issue:              LGTMIssue(),
+			events:             NewLGTMEvents(),
+			commits:            Commits(), // Modified at time.Unix(7), 8, and 9
+			ciStatus:           SuccessStatus(),
+			lastBuildNumber:    LastBuildNumber(),
+			gcsResult:          SuccessGCS(),
+			weakResults:        map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
+			retest1Pass:        true,
+			retest2Pass:        true,
+			emergencyMergeStop: true,
+			isMerged:           false,
+			reason:             e2eFailure,
+			state:              "success",
 		},
 		// Should pass without running tests because we had a previous run.
 		// TODO: Add a proper test to make sure we don't shuffle queue when we can just merge a PR
@@ -483,6 +505,7 @@ func TestSubmitQueue(t *testing.T) {
 			retest2Pass:     true,
 			reason:          merged,
 			state:           "success",
+			isMerged:        true,
 			retestsAvoided:  1,
 			imHeadSHA:       "mysha", // Set by ValidPR
 			imBaseSHA:       "mastersha",
@@ -520,6 +543,7 @@ func TestSubmitQueue(t *testing.T) {
 			retest2Pass:     false,
 			reason:          merged,
 			state:           "success",
+			isMerged:        true,
 		},
 		// Fail because PR can't automatically merge
 		{
@@ -853,6 +877,7 @@ func TestSubmitQueue(t *testing.T) {
 		config.PendingWaitTime = &d
 
 		stateSet := ""
+		wasMerged := false
 
 		numTestChecks := 0
 		path := "/foo/latest-build.txt"
@@ -963,6 +988,7 @@ func TestSubmitQueue(t *testing.T) {
 			}
 			w.Write(data)
 			test.pr.Merged = boolPtr(true)
+			wasMerged = true
 		})
 		path = fmt.Sprintf("/repos/o/r/statuses/%s", *test.pr.Head.SHA)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -987,6 +1013,7 @@ func TestSubmitQueue(t *testing.T) {
 		})
 
 		sq := getTestSQ(true, config, server)
+		sq.setEmergencyMergeStop(test.emergencyMergeStop)
 
 		obj := github_util.TestObject(config, test.issue, test.pr, test.commits, test.events)
 		if test.imBaseSHA != "" && test.imHeadSHA != "" {
@@ -1036,6 +1063,9 @@ func TestSubmitQueue(t *testing.T) {
 
 		if test.state != "" && test.state != stateSet {
 			t.Errorf("%d:%q state set to %q but expected %q", testNum, test.name, stateSet, test.state)
+		}
+		if test.isMerged != wasMerged {
+			t.Errorf("%d:%q PR merged = %v but wanted %v", testNum, test.name, wasMerged, test.isMerged)
 		}
 		if e, a := test.retestsAvoided, int(sq.retestsAvoided); e != a {
 			t.Errorf("%d:%q expected %v tests avoided but got %v", testNum, test.name, e, a)
@@ -1098,6 +1128,15 @@ func TestCalcMergeRate(t *testing.T) {
 			interval: time.Duration(24 * time.Hour),
 			expected: func(rate float64) bool {
 				return rate > 2 && rate < 3
+			},
+		},
+		{
+			name:     "24fast",
+			preRate:  24,
+			interval: time.Duration(4 * time.Minute),
+			expected: func(rate float64) bool {
+				// Should be no change
+				return rate == 24
 			},
 		},
 	}
@@ -1235,5 +1274,28 @@ func TestHealth(t *testing.T) {
 	sq.updateHealth()
 	if len(sq.healthHistory) != 1 {
 		t.Errorf("updateHealth didn't truncate old entries: %v", sq.healthHistory)
+	}
+}
+
+func TestHealthSVG(t *testing.T) {
+	sq := getTestSQ(false, nil, nil)
+	e2e := sq.e2e.(*fake_e2e.FakeE2ETester)
+
+	for _, state := range []struct {
+		mergePossible bool
+		expected      string
+		notStable     []string
+	}{
+		{true, "running", nil},
+		{false, "blocked</text>", nil},
+		{false, "blocked by kubemark-500", []string{"kubernetes-kubemark-500"}},
+		{false, "blocked by a, b, c, ...", []string{"a", "b", "c", "d"}},
+	} {
+		sq.health.MergePossibleNow = state.mergePossible
+		e2e.NotStableJobNames = state.notStable
+		res := string(sq.getHealthSVG())
+		if !strings.Contains(res, state.expected) {
+			t.Errorf("SVG doesn't contain `%s`: %v", state.expected, res)
+		}
 	}
 }
