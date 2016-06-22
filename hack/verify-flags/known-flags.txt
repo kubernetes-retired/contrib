@@ -103,6 +103,7 @@ use-cluster-credentials
 use-ip
 use-kubernetes-cluster-service
 use-real-cloud
+use-test
 user-whitelist
 use-unicast
 verify-unschedulable-pods
