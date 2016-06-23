@@ -305,16 +305,21 @@ func loop(kubeClient *client.Client) {
 }
 
 func main() {
+	// Prefer environment variables and otherwise try accessing APIserver directly
+	var kubeClient *client.Client
+	var err error
 	kube_apiserver_addr := os.Getenv("KUBERNETES_APISERVER_ADDR")
 	kube_apiserver_port := os.Getenv("KUBERNETES_APISERVER_PORT")
-	kube_apiserver_host := fmt.Sprintf("http://%s:%s", kube_apiserver_addr, kube_apiserver_port)
-	config := restclient.Config{
-		//Host:     "https://127.0.0.1:6443",
-		//Host:     "http://10.217.129.67:8080",
-		Host:     kube_apiserver_host,
-		Insecure: true,
+	if (kube_apiserver_addr != "") && (kube_apiserver_port != "") {
+		kube_apiserver_host := fmt.Sprintf("http://%s:%s", kube_apiserver_addr, kube_apiserver_port)
+		config := restclient.Config{
+			Host:     kube_apiserver_host,
+			Insecure: true,
+		}
+		kubeClient, err = client.New(&config)
+	} else {
+		kubeClient, err = client.NewInCluster()
 	}
-	kubeClient, err := client.New(&config)
 	if err != nil {
 		log.Fatalln("Can't connect to Kubernetes API:", err)
 	}
