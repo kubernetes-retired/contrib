@@ -17,7 +17,6 @@ limitations under the License.
 package controllers
 
 import (
-	"reflect"
 	"strings"
 	"time"
 
@@ -71,7 +70,9 @@ func NewLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 			lbController.configMapQueue.enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			if !reflect.DeepEqual(old, cur) {
+			curCM := old.(*api.ConfigMap).Data
+			oldCM := cur.(*api.ConfigMap).Data
+			if !configmapsEqual(oldCM, curCM) {
 				lbController.configMapQueue.enqueue(cur)
 			}
 		},
@@ -169,13 +170,25 @@ func (lbController *LoadBalancerController) syncConfigMap(key string) {
 		lbController.configMapQueue.requeue(key, err)
 		return
 	}
-
+	// defaut/some-configmap -> default-some-configmap
+	name := strings.Replace(key, "/", "-", -1)
 	if !configMapExists {
-		// defaut/some-configmap -> default-some-configmap
-		name := strings.Replace(key, "/", "-", -1)
 		go lbController.backendController.HandleConfigMapDelete(name)
 	} else {
-		configMap := obj.(*api.ConfigMap)
-		go lbController.backendController.HandleConfigMapCreate(configMap)
+		go func() {
+			configMap := obj.(*api.ConfigMap)
+			lbController.backendController.HandleConfigMapCreate(configMap)
+			bindIP := lbController.backendController.GetBindIP(name)
+			configMapData := configMap.Data
+			configMapData["bind-ip"] = bindIP
+			_, err = lbController.client.ConfigMaps(configMap.Namespace).Update(configMap)
+			if err != nil {
+				glog.Errorf("Error updating bind ip %v in configmap %v", bindIP, name)
+			}
+		}()
 	}
+}
+
+func configmapsEqual(m1 map[string]string, m2 map[string]string) bool {
+	return m1["namespace"] == m2["namespace"] && m1["bind-port"] == m2["bind-port"] && m1["target-service-name"] == m2["target-service-name"] && m1["target-port-name"] == m2["target-port-name"]
 }

@@ -6,6 +6,5 @@ metadata:
         app: loadbalancer
 data:
     namespace: "default"
-    bind-ip: "10.0.0.13"
     bind-port: "3306"
     target-service-name: "mysql-service"

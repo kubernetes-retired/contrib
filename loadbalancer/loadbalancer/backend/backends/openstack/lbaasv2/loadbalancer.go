@@ -91,6 +91,39 @@ func (lbaas *LBaaSController) Name() string {
 	return "LBaaSController"
 }
 
+// GetBindIP returns the IP used by users to access their apps
+func (lbaas *LBaaSController) GetBindIP(name string) string {
+	// Find loadbalancer by name
+	lbName := getResourceName(LOADBALANCER, name)
+	opts := loadbalancers.ListOpts{Name: lbName}
+	pager := loadbalancers.List(lbaas.network, opts)
+	var bindIP string
+	lbErr := pager.EachPage(func(page pagination.Page) (bool, error) {
+		loadbalancerList, err := loadbalancers.ExtractLoadbalancers(page)
+		if err != nil {
+			return false, err
+		}
+
+		if len(loadbalancerList) == 0 {
+			err = fmt.Errorf("Load balancer with name %v not found.", lbName)
+			return false, err
+		}
+
+		if len(loadbalancerList) > 1 {
+			err = fmt.Errorf("More than one loadbalancer with name %v found.", lbName)
+			return false, err
+		}
+		bindIP = loadbalancerList[0].VipAddress
+		return true, nil
+	})
+
+	if lbErr != nil {
+		glog.Errorf("Could not get list of loadbalancer. %v.", lbErr)
+	}
+
+	return bindIP
+}
+
 // HandleConfigMapCreate creates a new lbaas loadbalancer resource
 func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) {
 	name := configMap.Namespace + "-" + configMap.Name

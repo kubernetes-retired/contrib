@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/contrib/loadbalancer/loadbalancer/backend"
+	"k8s.io/contrib/loadbalancer/loadbalancer/controllers"
 	"k8s.io/contrib/loadbalancer/loadbalancer/utils"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
@@ -22,6 +23,7 @@ type LoadbalancerDaemonController struct {
 	configMapName string
 	kubeClient    *unversioned.Client
 	namespace     string
+	ipManager     *controllers.IPManager
 }
 
 func init() {
@@ -39,10 +41,27 @@ func NewLoadbalancerDaemonController(kubeClient *unversioned.Client, watchNamesp
 	if ns == "" {
 		ns = api.NamespaceDefault
 	}
+
+	startIP := os.Getenv("VIP_ALLOCATION_START")
+	if startIP == "" {
+		glog.Fatalln("Start IP for VIP range not provided")
+	}
+
+	endIP := os.Getenv("VIP_ALLOCATION_END")
+	if endIP == "" {
+		glog.Fatalln("End IP for VIP range not provided")
+	}
+
+	ipMgr := controllers.NewIPManager(kubeClient, startIP, endIP, ns, watchNamespace, configLabelKey, configLabelValue)
+	if ipMgr == nil {
+		glog.Fatalln("NewIPManager returned nil")
+	}
+
 	lbControl := LoadbalancerDaemonController{
 		configMapName: cmName,
 		kubeClient:    kubeClient,
 		namespace:     ns,
+		ipManager:     ipMgr,
 	}
 	return &lbControl, nil
 }
@@ -50,6 +69,13 @@ func NewLoadbalancerDaemonController(kubeClient *unversioned.Client, watchNamesp
 // Name returns the name of the backend controller
 func (lbControl *LoadbalancerDaemonController) Name() string {
 	return "loadbalancer-daemon"
+}
+
+// GetBindIP returns the IP used by users to access their apps
+func (lbControl *LoadbalancerDaemonController) GetBindIP(name string) string {
+	daemonCM := lbControl.getDaemonConfigMap()
+	daemonData := daemonCM.Data
+	return daemonData[name+".bind-ip"]
 }
 
 // HandleConfigMapCreate a new loadbalancer resource
@@ -74,8 +100,15 @@ func (lbControl *LoadbalancerDaemonController) HandleConfigMapCreate(configMap *
 		return
 	}
 
+	//generate Virtual IP
+	bindIP, err := lbControl.ipManager.GenerateVirtualIP(configMap)
+	if err != nil {
+		glog.Errorf("Error generating Virtual IP - %v", err)
+		return
+	}
+
 	daemonData[name+".namespace"] = namespace
-	daemonData[name+".bind-ip"] = cmData["bind-ip"] // TODO abitha's IP feature
+	daemonData[name+".bind-ip"] = bindIP
 	daemonData[name+".bind-port"] = cmData["bind-port"]
 	daemonData[name+".target-service-name"] = serviceName
 	daemonData[name+".target-ip"] = serviceObj.Spec.ClusterIP
@@ -103,6 +136,11 @@ func (lbControl *LoadbalancerDaemonController) HandleConfigMapDelete(name string
 	_, err := lbControl.kubeClient.ConfigMaps(lbControl.namespace).Update(daemonCM)
 	if err != nil {
 		glog.Infof("Error updating daemon configmap %v: %v", daemonCM.Name, err)
+	}
+	// delete configmap from ipConfigMap
+	err = lbControl.ipManager.DeleteVirtualIP(name)
+	if err != nil {
+		glog.Errorf("Error deleting Virtual IP - %v", err)
 	}
 }
 

@@ -35,9 +35,6 @@ spec:
         name: ingress-loadbalancer
         args:
           - --backend=openstack-lbaasv2
-      #   securityContext:
-      #     privileged: true
-      # hostNetwork: true
 ---
 apiVersion: v1
 kind: Secret

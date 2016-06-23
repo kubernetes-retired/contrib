@@ -42,4 +42,4 @@ spec:
   selector: 
     name: mysql-pod
     context: docker-k8s-lab
-  type: NodePort
+#  type: NodePort
