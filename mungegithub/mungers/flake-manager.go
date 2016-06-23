@@ -51,7 +51,7 @@ type FlakeManager struct {
 	googleGCSBucketUtils *utils.Utils
 
 	syncer    *sync.IssueSyncer
-	ownerPath string
+	ownersURL string
 }
 
 func init() {
@@ -86,8 +86,8 @@ func (p *FlakeManager) Initialize(config *github.Config, features *features.Feat
 
 	var owner sync.OwnerMapper
 	var err error
-	if p.ownerPath != "" {
-		owner, err = testowner.NewReloadingOwnerList(p.ownerPath)
+	if p.ownersURL != "" {
+		owner, err = testowner.NewHTTPOwnerList(p.ownersURL)
 		if err != nil {
 			return err
 		}
@@ -114,7 +114,7 @@ func (p *FlakeManager) EachLoop() error {
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (p *FlakeManager) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringVar(&p.ownerPath, "test-owners-csv", "", "file containing a CSV-exported test-owners spreadsheet")
+	cmd.Flags().StringVar(&p.ownersURL, "test-owners-csv", "", "URL of CSV-exported test-owners spreadsheet")
 }
 
 // Munge is unused by this munger.
