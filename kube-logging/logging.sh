@@ -15,4 +15,4 @@ cd $filename
 gslink=gs://$bucket/*
 gsutil -m cp -r $gslink .
 cd ..
-go run rdjunit.go $filename
+go run rdjunit.go rdkubeapi.go rdkubelet.go $filename > output.txt

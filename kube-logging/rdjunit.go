@@ -24,9 +24,7 @@ type Testsuite struct {
 // look for junit files in each of the folders for each image located
 // in the artifacts folder and call the functions for getting the 
 // information about each of the failed tests
-func main() {
-	pwd, _ := os.Getwd()
-	
+func main() {	
 	images, err := filepath.Glob(os.Args[1] + "/artifacts/tmp*")
 	check(err)
 
