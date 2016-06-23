@@ -334,7 +334,7 @@ func AddValidateFlags(cmd *cobra.Command) {
 }
 
 func AddRecursiveFlag(cmd *cobra.Command, value *bool) {
-	cmd.Flags().BoolVarP(value, "recursive", "R", *value, "If true, process directory recursively.")
+	cmd.Flags().BoolVarP(value, "recursive", "R", *value, "Process the directory used in -f, --filename recursively. Useful when you want to manage related manifests organized within the same directory.")
 }
 
 // AddDryRunFlag adds dry-run flag to a command. Usually used by mutations.
@@ -489,6 +489,10 @@ func ShouldRecord(cmd *cobra.Command, info *resource.Info) bool {
 	return GetRecordFlag(cmd) || ContainsChangeCause(info)
 }
 
+// GetThirdPartyGroupVersions returns the thirdparty "group/versions"s and
+// resources supported by the server. A user may delete a thirdparty resource
+// when this function is running, so this function may return a "NotFound" error
+// due to the race.
 func GetThirdPartyGroupVersions(discovery discovery.DiscoveryInterface) ([]unversioned.GroupVersion, []unversioned.GroupVersionKind, error) {
 	result := []unversioned.GroupVersion{}
 	gvks := []unversioned.GroupVersionKind{}

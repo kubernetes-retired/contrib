@@ -540,6 +540,7 @@ func describePod(pod *api.Pod, events *api.EventList) (string, error) {
 			}
 		}
 		describeVolumes(pod.Spec.Volumes, out, "")
+		fmt.Fprintf(out, "QoS Tier:\t%s\n", qosutil.GetPodQos(pod))
 		if events != nil {
 			DescribeEvents(events, out)
 		}
@@ -723,6 +724,11 @@ func (d *PersistentVolumeDescriber) Describe(namespace, name string, describerSe
 
 	storage := pv.Spec.Capacity[api.ResourceStorage]
 
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = d.Events(namespace).Search(pv)
+	}
+
 	return tabbedString(func(out io.Writer) error {
 		fmt.Fprintf(out, "Name:\t%s\n", pv.Name)
 		printLabelsMultiline(out, "Labels", pv.Labels)
@@ -753,6 +759,10 @@ func (d *PersistentVolumeDescriber) Describe(namespace, name string, describerSe
 			printGlusterfsVolumeSource(pv.Spec.Glusterfs, out)
 		case pv.Spec.RBD != nil:
 			printRBDVolumeSource(pv.Spec.RBD, out)
+		}
+
+		if events != nil {
+			DescribeEvents(events, out)
 		}
 
 		return nil
@@ -841,15 +851,6 @@ func describeContainers(label string, containers []api.Container, containerStatu
 			for _, arg := range container.Args {
 				fmt.Fprintf(out, "      %s\n", arg)
 			}
-		}
-
-		resourceToQoS := qosutil.GetQoS(&container)
-		if len(resourceToQoS) > 0 {
-			fmt.Fprintf(out, "    QoS Tier:\n")
-		}
-		for _, resource := range SortedQoSResourceNames(resourceToQoS) {
-			qos := resourceToQoS[resource]
-			fmt.Fprintf(out, "      %s:\t%s\n", resource, qos)
 		}
 
 		resources := container.Resources
@@ -1302,7 +1303,7 @@ func (i *IngressDescriber) describeIngress(ing *extensions.Ingress, describerSet
 	return tabbedString(func(out io.Writer) error {
 		fmt.Fprintf(out, "Name:\t%v\n", ing.Name)
 		fmt.Fprintf(out, "Namespace:\t%v\n", ing.Namespace)
-		fmt.Fprintf(out, "Address:\t%v\n", loadBalancerStatusStringer(ing.Status.LoadBalancer))
+		fmt.Fprintf(out, "Address:\t%v\n", loadBalancerStatusStringer(ing.Status.LoadBalancer, true))
 		def := ing.Spec.Backend
 		ns := ing.Namespace
 		if def == nil {
@@ -1320,14 +1321,23 @@ func (i *IngressDescriber) describeIngress(ing *extensions.Ingress, describerSet
 		}
 		fmt.Fprint(out, "Rules:\n  Host\tPath\tBackends\n")
 		fmt.Fprint(out, "  ----\t----\t--------\n")
+		count := 0
 		for _, rules := range ing.Spec.Rules {
 			if rules.HTTP == nil {
 				continue
 			}
-			fmt.Fprintf(out, "  %s\t\n", rules.Host)
-			for _, path := range rules.HTTP.Paths {
-				fmt.Fprintf(out, "    \t%s \t%s (%s)\n", path.Path, backendStringer(&path.Backend), i.describeBackend(ing.Namespace, &path.Backend))
+			count++
+			host := rules.Host
+			if len(host) == 0 {
+				host = "*"
 			}
+			fmt.Fprintf(out, "  %s\t\n", host)
+			for _, path := range rules.HTTP.Paths {
+				fmt.Fprintf(out, "    \t%s \t%s (%s)\n", path.Path, backendStringer(&path.Backend), i.describeBackend(ns, &path.Backend))
+			}
+		}
+		if count == 0 {
+			fmt.Fprintf(out, "  %s\t%s \t%s (%s)\n", "*", "*", backendStringer(def), i.describeBackend(ns, def))
 		}
 		describeIngressAnnotations(out, ing.Annotations)
 
@@ -1659,12 +1669,27 @@ func describeNode(node *api.Node, nodeNonTerminatedPodsList *api.PodList, events
 		for _, address := range node.Status.Addresses {
 			addresses = append(addresses, address.Address)
 		}
+
+		printResourceList := func(resourceList api.ResourceList) {
+			resources := make([]api.ResourceName, 0, len(resourceList))
+			for resource := range resourceList {
+				resources = append(resources, resource)
+			}
+			sort.Sort(SortableResourceNames(resources))
+			for _, resource := range resources {
+				value := resourceList[resource]
+				fmt.Fprintf(out, " %s:\t%s\n", resource, value.String())
+			}
+		}
+
 		fmt.Fprintf(out, "Addresses:\t%s\n", strings.Join(addresses, ","))
 		if len(node.Status.Capacity) > 0 {
 			fmt.Fprintf(out, "Capacity:\n")
-			for resource, value := range node.Status.Capacity {
-				fmt.Fprintf(out, " %s:\t%s\n", resource, value.String())
-			}
+			printResourceList(node.Status.Capacity)
+		}
+		if len(node.Status.Allocatable) > 0 {
+			fmt.Fprintf(out, "Allocatable:\n")
+			printResourceList(node.Status.Allocatable)
 		}
 
 		fmt.Fprintf(out, "System Info:\n")
@@ -1801,16 +1826,21 @@ func describeNodeResource(nodeNonTerminatedPodsList *api.PodList, node *api.Node
 	fmt.Fprintf(out, "Non-terminated Pods:\t(%d in total)\n", len(nodeNonTerminatedPodsList.Items))
 	fmt.Fprint(out, "  Namespace\tName\t\tCPU Requests\tCPU Limits\tMemory Requests\tMemory Limits\n")
 	fmt.Fprint(out, "  ---------\t----\t\t------------\t----------\t---------------\t-------------\n")
+	allocatable := node.Status.Capacity
+	if len(node.Status.Allocatable) > 0 {
+		allocatable = node.Status.Allocatable
+	}
+
 	for _, pod := range nodeNonTerminatedPodsList.Items {
 		req, limit, err := api.PodRequestsAndLimits(&pod)
 		if err != nil {
 			return err
 		}
 		cpuReq, cpuLimit, memoryReq, memoryLimit := req[api.ResourceCPU], limit[api.ResourceCPU], req[api.ResourceMemory], limit[api.ResourceMemory]
-		fractionCpuReq := float64(cpuReq.MilliValue()) / float64(node.Status.Capacity.Cpu().MilliValue()) * 100
-		fractionCpuLimit := float64(cpuLimit.MilliValue()) / float64(node.Status.Capacity.Cpu().MilliValue()) * 100
-		fractionMemoryReq := float64(memoryReq.MilliValue()) / float64(node.Status.Capacity.Memory().MilliValue()) * 100
-		fractionMemoryLimit := float64(memoryLimit.MilliValue()) / float64(node.Status.Capacity.Memory().MilliValue()) * 100
+		fractionCpuReq := float64(cpuReq.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
+		fractionCpuLimit := float64(cpuLimit.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
+		fractionMemoryReq := float64(memoryReq.Value()) / float64(allocatable.Memory().Value()) * 100
+		fractionMemoryLimit := float64(memoryLimit.Value()) / float64(allocatable.Memory().Value()) * 100
 		fmt.Fprintf(out, "  %s\t%s\t\t%s (%d%%)\t%s (%d%%)\t%s (%d%%)\t%s (%d%%)\n", pod.Namespace, pod.Name,
 			cpuReq.String(), int64(fractionCpuReq), cpuLimit.String(), int64(fractionCpuLimit),
 			memoryReq.String(), int64(fractionMemoryReq), memoryLimit.String(), int64(fractionMemoryLimit))
@@ -1823,10 +1853,10 @@ func describeNodeResource(nodeNonTerminatedPodsList *api.PodList, node *api.Node
 		return err
 	}
 	cpuReqs, cpuLimits, memoryReqs, memoryLimits := reqs[api.ResourceCPU], limits[api.ResourceCPU], reqs[api.ResourceMemory], limits[api.ResourceMemory]
-	fractionCpuReqs := float64(cpuReqs.MilliValue()) / float64(node.Status.Capacity.Cpu().MilliValue()) * 100
-	fractionCpuLimits := float64(cpuLimits.MilliValue()) / float64(node.Status.Capacity.Cpu().MilliValue()) * 100
-	fractionMemoryReqs := float64(memoryReqs.MilliValue()) / float64(node.Status.Capacity.Memory().MilliValue()) * 100
-	fractionMemoryLimits := float64(memoryLimits.MilliValue()) / float64(node.Status.Capacity.Memory().MilliValue()) * 100
+	fractionCpuReqs := float64(cpuReqs.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
+	fractionCpuLimits := float64(cpuLimits.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
+	fractionMemoryReqs := float64(memoryReqs.Value()) / float64(allocatable.Memory().Value()) * 100
+	fractionMemoryLimits := float64(memoryLimits.Value()) / float64(allocatable.Memory().Value()) * 100
 	fmt.Fprintf(out, "  %s (%d%%)\t%s (%d%%)\t%s (%d%%)\t%s (%d%%)\n",
 		cpuReqs.String(), int64(fractionCpuReqs), cpuLimits.String(), int64(fractionCpuLimits),
 		memoryReqs.String(), int64(fractionMemoryReqs), memoryLimits.String(), int64(fractionMemoryLimits))
@@ -1922,12 +1952,9 @@ func (dd *DeploymentDescriber) Describe(namespace, name string, describerSetting
 			ru := d.Spec.Strategy.RollingUpdate
 			fmt.Fprintf(out, "RollingUpdateStrategy:\t%s max unavailable, %s max surge\n", ru.MaxUnavailable.String(), ru.MaxSurge.String())
 		}
-		oldRSs, _, err := deploymentutil.GetOldReplicaSets(d, dd)
+		oldRSs, _, newRS, err := deploymentutil.GetAllReplicaSets(d, dd)
 		if err == nil {
 			fmt.Fprintf(out, "OldReplicaSets:\t%s\n", printReplicaSetsByLabels(oldRSs))
-		}
-		newRS, err := deploymentutil.GetNewReplicaSet(d, dd)
-		if err == nil {
 			var newRSs []*extensions.ReplicaSet
 			if newRS != nil {
 				newRSs = append(newRSs, newRS)

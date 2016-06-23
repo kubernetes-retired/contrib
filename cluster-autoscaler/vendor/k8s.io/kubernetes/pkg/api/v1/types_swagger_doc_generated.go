@@ -50,6 +50,16 @@ func (Affinity) SwaggerDoc() map[string]string {
 	return map_Affinity
 }
 
+var map_AttachedVolume = map[string]string{
+	"":           "AttachedVolume describes a volume attached to a node",
+	"name":       "Name of the attached volume",
+	"devicePath": "DevicePath represents the device path where the volume should be avilable",
+}
+
+func (AttachedVolume) SwaggerDoc() map[string]string {
+	return map_AttachedVolume
+}
+
 var map_AzureFileVolumeSource = map[string]string{
 	"":           "AzureFile represents an Azure File Service mount on the host and bind mount to the pod.",
 	"secretName": "the name of secret that contains Azure Storage Account Name and Key",
@@ -880,6 +890,8 @@ var map_NodeStatus = map[string]string{
 	"daemonEndpoints": "Endpoints of daemons running on the Node.",
 	"nodeInfo":        "Set of ids/uuids to uniquely identify the node. More info: http://releases.k8s.io/HEAD/docs/admin/node.md#node-info",
 	"images":          "List of container images on this node",
+	"volumesInUse":    "List of attachable volumes in use (mounted) by the node.",
+	"volumesAttached": "List of volumes that are attached to the node.",
 }
 
 func (NodeStatus) SwaggerDoc() map[string]string {
@@ -928,7 +940,7 @@ var map_ObjectMeta = map[string]string{
 	"deletionGracePeriodSeconds": "Number of seconds allowed for this object to gracefully terminate before it will be removed from the system. Only set when deletionTimestamp is also set. May only be shortened. Read-only.",
 	"labels":                     "Map of string keys and values that can be used to organize and categorize (scope and select) objects. May match selectors of replication controllers and services. More info: http://releases.k8s.io/HEAD/docs/user-guide/labels.md",
 	"annotations":                "Annotations is an unstructured key value map stored with a resource that may be set by external tools to store and retrieve arbitrary metadata. They are not queryable and should be preserved when modifying objects. More info: http://releases.k8s.io/HEAD/docs/user-guide/annotations.md",
-	"ownerReferences":            "List of objects depended by this object. If ALL objects in the list have been deleted, this object will be garbage collected.",
+	"ownerReferences":            "List of objects depended by this object. If ALL objects in the list have been deleted, this object will be garbage collected. If this object is managed by a controller, then an entry in this list will point to this controller, with the controller field set to true. There cannot be more than one managing controller.",
 	"finalizers":                 "Must be empty before the object is deleted from the registry. Each entry is an identifier for the responsible component that will remove the entry from the list. If the deletionTimestamp of the object is non-nil, entries in this list can only be removed.",
 }
 
@@ -957,6 +969,7 @@ var map_OwnerReference = map[string]string{
 	"kind":       "Kind of the referent. More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#types-kinds",
 	"name":       "Name of the referent. More info: http://releases.k8s.io/HEAD/docs/user-guide/identifiers.md#names",
 	"uid":        "UID of the referent. More info: http://releases.k8s.io/HEAD/docs/user-guide/identifiers.md#uids",
+	"controller": "If true, this reference points to the managing controller.",
 }
 
 func (OwnerReference) SwaggerDoc() map[string]string {
@@ -998,6 +1011,7 @@ func (PersistentVolumeClaimList) SwaggerDoc() map[string]string {
 var map_PersistentVolumeClaimSpec = map[string]string{
 	"":            "PersistentVolumeClaimSpec describes the common attributes of storage devices and allows a Source for provider-specific attributes",
 	"accessModes": "AccessModes contains the desired access modes the volume should have. More info: http://releases.k8s.io/HEAD/docs/user-guide/persistent-volumes.md#access-modes-1",
+	"selector":    "A label query over volumes to consider for binding.",
 	"resources":   "Resources represents the minimum resources the volume should have. More info: http://releases.k8s.io/HEAD/docs/user-guide/persistent-volumes.md#resources",
 	"volumeName":  "VolumeName is the binding reference to the PersistentVolume backing this claim.",
 }
@@ -1334,7 +1348,7 @@ var map_RBDVolumeSource = map[string]string{
 	"pool":      "The rados pool name. Default is rbd. More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it.",
 	"user":      "The rados user name. Default is admin. More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it",
 	"keyring":   "Keyring is the path to key ring for RBDUser. Default is /etc/ceph/keyring. More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it",
-	"secretRef": "SecretRef is name of the authentication secret for RBDUser. If provided overrides keyring. Default is empty. More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it",
+	"secretRef": "SecretRef is name of the authentication secret for RBDUser. If provided overrides keyring. Default is nil. More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it",
 	"readOnly":  "ReadOnly here will force the ReadOnly setting in VolumeMounts. Defaults to false. More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it",
 }
 
