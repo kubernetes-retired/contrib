@@ -35,6 +35,8 @@ forward-services
 generated-files-config
 health-check-path
 healthz-port
+http-cache-dir
+http-cache-size
 http-port
 insecure-registry
 insecure-skip-verify
@@ -92,7 +94,6 @@ udp-services-configmap
 unit-status-context
 url-list
 use-cluster-credentials
-use-http-cache
 use-ip
 use-kubernetes-cluster-service
 use-real-cloud
