@@ -21,7 +21,10 @@
         <h1 class="md-display-2">Submit Queue Status</h1>
         <a ng-href="https://k8s.io"><img src="https://raw.githubusercontent.com/kubernetes/kubernetes/master/logo/logo.png" alt="kubernetes logo" class="titleLogo"></a>
       </md-toolbar>
-      <md-toolbar class="md-warn" ng-show="cntl.failedBuild">
+      <md-toolbar class="md-warn md-hue-1" ng-show="cntl.testResults.yellowBuilds">
+        <h2 class="md-toolbar-tools">E2E Tests Are Troubled But Not Failing</h2>
+      </md-toolbar>
+      <md-toolbar class="md-warn" ng-show="cntl.testResults.redBuilds">
         <h2 class="md-toolbar-tools">E2E Tests Failing. Entire submit queue blocked. Last merge&nbsp;<span am-time-ago="cntl.lastMergeTime"></span>.</h2>
       </md-toolbar>
       <md-content class="md-padding">
@@ -142,21 +145,34 @@
 
           <md-tab md-on-select="cntl.selectTab('e2e')">
             <md-tab-label>
-              <span ng-class="{'redTab':cntl.failedBuild}">E2E Tests</span>
+              <span ng-class="{'redTab':cntl.testResults.redBuilds , 'yellowTab':cntl.testResults.yellowBuilds}">E2E Tests</span>
             </md-tab-label>
             <md-tab-body>
               <md-toolbar class="md-whiteframe-z2">
                 <h2 class="md-toolbar-tools">End-to-End Results</h2>
               </md-toolbar>
-              <md-chips ng-model="cntl.builds" readonly="true">
+              <h2 class="md-title" ng-show="cntl.testResults.blockingBuilds.length > 0">Queue-Blocking Builds</h2>
+              <md-chips ng-model="cntl.testResults.blockingBuilds" readonly="true">
+                <md-chip-template title="{{$chip.msg}}">
+                  <span style="color: {{$chip.color}}">{{$chip.state}}</span> <a ng-href="http://ci-test.k8s.io/{{$chip.name}}/{{$chip.id}}/">{{$chip.name}}</a>
+                  <span style="color: {{$chip.color}}">{{$chip.msg}}</span> <span title="Job stability">{{$chip.stability}}</span>
+                </md-chip-template>
+              </md-chips>
+              <h2 class="md-title" ng-show="cntl.testResults.nonBlockingBuilds.length > 0">Non-Queue-Blocking Builds</h2>
+              <md-chips ng-model="cntl.testResults.nonBlockingBuilds" readonly="true">
                 <md-chip-template title="{{$chip.msg}}">
                   <span style="color: {{$chip.color}}">{{$chip.state}}</span> <a ng-href="http://ci-test.k8s.io/{{$chip.name}}/{{$chip.id}}/">{{$chip.name}}</a>
                   <span style="color: {{$chip.color}}">{{$chip.msg}}</span> <span title="Job stability">{{$chip.stability}}</span>
                 </md-chip-template>
               </md-chips>
               <br>
+              <br>
               <h2 class="md-title" ng-show="cntl.OverallHealth.length > 0">Overall Health: {{ cntl.OverallHealth }}</h2>
-              <p>Health percents are the fraction of the time that a given job is stable for the last day, or since the submit queue restarted ({{ cntl.sqStats.StartTime | date:'medium'}})</span>, whichever is shorter. The <a href="http://storage.googleapis.com/kubernetes-test-history/static/index.html"><strong>24-Hour Test Report</strong></a> shows more detail, along with a list of flaky and broken tests in merge-blocking jobs.</p>
+              <p>Health percents are the fraction of the time that a given job is stable for the last day, or since the submit queue restarted ({{ cntl.sqStats.StartTime | date:'medium'}})</span>, whichever is shorter. The <a href="http://storage.googleapis.com/kubernetes-test-history/static/index.html"><strong>24-Hour Test Report</strong></a> shows more detail, along with a list of flaky and broken tests in merge-blocking jobs.
+              </p>
+              <p>
+                <img src="http://storage.googleapis.com/kubernetes-test-history/k8s-queue-health.png" style="max-width: 100%"/>
+              </p>
             </md-tab-body>
           </md-tab>
 
@@ -218,6 +234,15 @@
                         </tbody>
                       </table>
                     </md-data-table-container>
+                  </md-content>
+                </md-tab>
+
+                <md-tab label="Health">
+                  <md-toolbar class="md-whiteframe-z2">
+                    <h2 class="md-toolbar-tools">Health chart for the past week</h2>
+                  </md-toolbar>
+                  <md-content class="md-padding">
+                    <span><img src="http://storage.googleapis.com/kubernetes-test-history/k8s-queue-health.png" style="max-width: 100%"/></span>
                   </md-content>
                 </md-tab>
               </md-tabs>

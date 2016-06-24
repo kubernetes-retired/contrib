@@ -162,6 +162,11 @@ type Configuration struct {
 	// http://nginx.org/en/docs/http/ngx_http_core_module.html#server_names_hash_bucket_size
 	ServerNameHashBucketSize int `structs:"server-name-hash-bucket-size,omitempty"`
 
+	// SkipAccessLogURLs sets a list of URLs that should not appear in the NGINX access log
+	// This is useful with urls like `/health` or `health-check` that make "complex" reading the logs
+	// By default this list is empty
+	SkipAccessLogURLs []string `structs:"skip-access-log-urls,-"`
+
 	// Enables or disables the redirect (301) to the HTTPS port
 	SSLRedirect bool `structs:"ssl-redirect,omitempty"`
 
@@ -233,6 +238,10 @@ type Configuration struct {
 	// Responses with the “text/html” type are always compressed if UseGzip is enabled
 	GzipTypes string `structs:"gzip-types,omitempty"`
 
+	// WhitelistSourceRange allows limiting access to certain client addresses
+	// http://nginx.org/en/docs/http/ngx_http_access_module.html
+	WhitelistSourceRange []string `structs:"whitelist-source-range,omitempty"`
+
 	// Defines the number of worker processes. By default auto means number of available CPU cores
 	// http://nginx.org/en/docs/ngx_core_module.html#worker_processes
 	WorkerProcesses string `structs:"worker-processes,omitempty"`
@@ -270,6 +279,8 @@ func NewDefault() Configuration {
 		VtsStatusZoneSize:        "10m",
 		UseHTTP2:                 true,
 		CustomHTTPErrors:         make([]int, 0),
+		WhitelistSourceRange:     make([]string, 0),
+		SkipAccessLogURLs:        make([]string, 0),
 	}
 
 	if glog.V(5) {
