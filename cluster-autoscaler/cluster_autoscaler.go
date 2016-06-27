@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
+	"k8s.io/contrib/cluster-autoscaler/utils/aws"
 	"k8s.io/contrib/cluster-autoscaler/utils/cloud"
 	"k8s.io/contrib/cluster-autoscaler/utils/gce"
 	kube_api "k8s.io/kubernetes/pkg/api"
@@ -100,6 +101,11 @@ func main() {
 			glog.Fatalf("Failed to create GCE Manager: %v", err)
 		}
 	} else if *cloudProvider == "aws" {
+		var awsError error
+		cloudManager, awsError = aws.CreateAwsManager(scalingConfigs)
+		if awsError != nil {
+			glog.Fatalf("Failed to create AWS Manager: %v", err)
+		}
 	} else {
 		glog.Fatalf("Invalid cloud provider %s specified", *cloudProvider)
 	}

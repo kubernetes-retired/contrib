@@ -54,7 +54,7 @@ func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, scalingC
 	}
 
 	expansionOptions := make([]ExpansionOption, 0)
-	nodeInfos, err := GetNodeInfosForMigs(nodes, cloudManager, kubeClient)
+	nodeInfos, err := GetNodeInfosForScalingGroup(nodes, cloudManager, kubeClient)
 	if err != nil {
 		return false, fmt.Errorf("failed to build node infors for migs: %v", err)
 	}
@@ -117,7 +117,7 @@ func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, scalingC
 
 		currentSize, err := cloudManager.GetScalingGroupSize(bestOption.scalingConfig)
 		if err != nil {
-			return false, fmt.Errorf("failed to get MIG size: %v", err)
+			return false, fmt.Errorf("failed to get scaling group size: %v", err)
 		}
 		newSize := currentSize + int64(estimate)
 		if newSize >= int64(bestOption.scalingConfig.MaxSize) {
@@ -127,7 +127,7 @@ func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, scalingC
 		glog.V(1).Infof("Setting %s size to %d", bestOption.scalingConfig.Url(), newSize)
 
 		if err := cloudManager.SetScalingGroupSize(bestOption.scalingConfig, newSize); err != nil {
-			return false, fmt.Errorf("failed to set MIG size: %v", err)
+			return false, fmt.Errorf("failed to set scaling group size: %v", err)
 		}
 
 		for pod := range bestOption.estimator.FittingPods {

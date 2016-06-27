@@ -53,7 +53,7 @@ type ScalingConfig struct {
 	MinSize int
 	MaxSize int
 	Project string // Unused on AWS
-	Zone    string // Unused on AWS
+	Zone    string
 	Name    string
 }
 
@@ -106,6 +106,7 @@ func (scalingconfigflag *ScalingConfigFlag) Set(value string) error {
 	}
 
 	var err error
+	// TODO: this is a bit messy on AWS, we're currently forced to fill in a GCE url with AWS ASG details
 	if scalingconfig.Project, scalingconfig.Zone, scalingconfig.Name, err = gceurl.ParseMigUrl(tokens[2]); err != nil {
 		return fmt.Errorf("failed to parse mig url: %s got error: %v", tokens[2], err)
 	}
