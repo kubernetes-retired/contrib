@@ -23,7 +23,7 @@ import (
 )
 
 func TestSet(t *testing.T) {
-	migConfigFlag := MigConfigFlag{}
+	migConfigFlag := ScalingConfigFlag{}
 	assert.Error(t, migConfigFlag.Set("a"))
 	assert.Error(t, migConfigFlag.Set("a:b:c"))
 	assert.Error(t, migConfigFlag.Set("1:2:x"))

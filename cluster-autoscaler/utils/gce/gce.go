@@ -42,7 +42,7 @@ const (
 )
 
 type migInformation struct {
-	config   *config.MigConfig
+	config   *config.ScalingConfig
 	basename string
 }
 
@@ -50,12 +50,12 @@ type migInformation struct {
 type GceManager struct {
 	migs       []*migInformation
 	service    *gce.Service
-	migCache   map[config.InstanceConfig]*config.MigConfig
+	migCache   map[config.InstanceConfig]*config.ScalingConfig
 	cacheMutex sync.Mutex
 }
 
 // CreateGceManager constructs gceManager object.
-func CreateGceManager(migs []*config.MigConfig, configReader io.Reader) (*GceManager, error) {
+func CreateGceManager(migs []*config.ScalingConfig, configReader io.Reader) (*GceManager, error) {
 	// Create Google Compute Engine token.
 	tokenSource := google.ComputeTokenSource("")
 	if configReader != nil {
@@ -91,7 +91,7 @@ func CreateGceManager(migs []*config.MigConfig, configReader io.Reader) (*GceMan
 	manager := &GceManager{
 		migs:     migInfos,
 		service:  gceService,
-		migCache: map[config.InstanceConfig]*config.MigConfig{},
+		migCache: map[config.InstanceConfig]*config.ScalingConfig{},
 	}
 
 	go wait.Forever(func() { manager.regenerateCacheIgnoreError() }, time.Hour)
@@ -100,7 +100,7 @@ func CreateGceManager(migs []*config.MigConfig, configReader io.Reader) (*GceMan
 }
 
 // GetMigSize gets MIG size.
-func (m *GceManager) GetMigSize(migConf *config.MigConfig) (int64, error) {
+func (m *GceManager) GetScalingGroupSize(migConf *config.ScalingConfig) (int64, error) {
 	mig, err := m.service.InstanceGroupManagers.Get(migConf.Project, migConf.Zone, migConf.Name).Do()
 	if err != nil {
 		return -1, err
@@ -109,7 +109,7 @@ func (m *GceManager) GetMigSize(migConf *config.MigConfig) (int64, error) {
 }
 
 // SetMigSize sets MIG size.
-func (m *GceManager) SetMigSize(migConf *config.MigConfig, size int64) error {
+func (m *GceManager) SetScalingGroupSize(migConf *config.ScalingConfig, size int64) error {
 	op, err := m.service.InstanceGroupManagers.Resize(migConf.Project, migConf.Zone, migConf.Name, size).Do()
 	if err != nil {
 		return err
@@ -140,12 +140,12 @@ func (m *GceManager) DeleteInstances(instances []*config.InstanceConfig) error {
 	if len(instances) == 0 {
 		return nil
 	}
-	commonMig, err := m.GetMigForInstance(instances[0])
+	commonMig, err := m.GetScalingGroupForInstance(instances[0])
 	if err != nil {
 		return err
 	}
 	for _, instance := range instances {
-		mig, err := m.GetMigForInstance(instance)
+		mig, err := m.GetScalingGroupForInstance(instance)
 		if err != nil {
 			return err
 		}
@@ -171,8 +171,8 @@ func (m *GceManager) DeleteInstances(instances []*config.InstanceConfig) error {
 	return nil
 }
 
-// GetMigForInstance returns MigConfig of the given Instance
-func (m *GceManager) GetMigForInstance(instance *config.InstanceConfig) (*config.MigConfig, error) {
+// GetMigForInstance returns ScalingConfig of the given Instance
+func (m *GceManager) GetScalingGroupForInstance(instance *config.InstanceConfig) (*config.ScalingConfig, error) {
 	m.cacheMutex.Lock()
 	defer m.cacheMutex.Unlock()
 	if mig, found := m.migCache[*instance]; found {
@@ -205,7 +205,7 @@ func (m *GceManager) regenerateCacheIgnoreError() {
 }
 
 func (m *GceManager) regenerateCache() error {
-	newMigCache := map[config.InstanceConfig]*config.MigConfig{}
+	newMigCache := map[config.InstanceConfig]*config.ScalingConfig{}
 
 	for _, migInfo := range m.migs {
 		mig := migInfo.config

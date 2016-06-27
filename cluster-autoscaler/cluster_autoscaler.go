@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
+	"k8s.io/contrib/cluster-autoscaler/utils/cloud"
 	"k8s.io/contrib/cluster-autoscaler/utils/gce"
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
@@ -35,9 +36,10 @@ import (
 )
 
 var (
-	migConfigFlag           config.MigConfigFlag
+	scalingConfigFlag       config.ScalingConfigFlag
 	address                 = flag.String("address", ":8085", "The address to expose prometheus metrics.")
 	kubernetes              = flag.String("kubernetes", "", "Kuberentes master location. Leave blank for default")
+	cloudProvider           = flag.String("cloud-provider", "gce", "Cloud provider to use for autoscaler.")
 	cloudConfig             = flag.String("cloud-config", "", "The path to the cloud provider configuration file.  Empty string for no configuration file.")
 	verifyUnschedulablePods = flag.Bool("verify-unschedulable-pods", true,
 		"If enabled CA will ensure that each pod marked by Scheduler as unschedulable actually can't be scheduled on any node."+
@@ -55,7 +57,7 @@ var (
 )
 
 func main() {
-	flag.Var(&migConfigFlag, "nodes", "sets min,max size and url of a MIG to be controlled by Cluster Autoscaler. "+
+	flag.Var(&scalingConfigFlag, "nodes", "sets min,max size and url of a MIG to be controlled by Cluster Autoscaler. "+
 		"Can be used multiple times. Format: <min>:<max>:<migurl>")
 	flag.Parse()
 
@@ -75,26 +77,31 @@ func main() {
 	if err != nil {
 		glog.Fatalf("Failed to build Kuberentes client configuration: %v", err)
 	}
-	migConfigs := make([]*config.MigConfig, 0, len(migConfigFlag))
-	for i := range migConfigFlag {
-		migConfigs = append(migConfigs, &migConfigFlag[i])
+	scalingConfigs := make([]*config.ScalingConfig, 0, len(scalingConfigFlag))
+	for i := range scalingConfigFlag {
+		scalingConfigs = append(scalingConfigs, &scalingConfigFlag[i])
 	}
 
 	// GCE Manager
-	var gceManager *gce.GceManager
-	var gceError error
-	if *cloudConfig != "" {
-		config, fileErr := os.Open(*cloudConfig)
-		if fileErr != nil {
-			glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", *cloudConfig, err)
+	var cloudManager cloud.Manager
+	if *cloudProvider == "gce" {
+		var gceError error
+		if *cloudConfig != "" {
+			config, fileErr := os.Open(*cloudConfig)
+			if fileErr != nil {
+				glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", *cloudConfig, err)
+			}
+			defer config.Close()
+			cloudManager, gceError = gce.CreateGceManager(scalingConfigs, config)
+		} else {
+			cloudManager, gceError = gce.CreateGceManager(scalingConfigs, nil)
 		}
-		defer config.Close()
-		gceManager, gceError = gce.CreateGceManager(migConfigs, config)
+		if gceError != nil {
+			glog.Fatalf("Failed to create GCE Manager: %v", err)
+		}
+	} else if *cloudProvider == "aws" {
 	} else {
-		gceManager, gceError = gce.CreateGceManager(migConfigs, nil)
-	}
-	if gceError != nil {
-		glog.Fatalf("Failed to create GCE Manager: %v", err)
+		glog.Fatalf("Invalid cloud provider %s specified", *cloudProvider)
 	}
 
 	kubeClient := kube_client.NewOrDie(kubeConfig)
@@ -133,7 +140,7 @@ func main() {
 					continue
 				}
 
-				if err := CheckMigsAndNodes(nodes, gceManager); err != nil {
+				if err := CheckMigsAndNodes(nodes, cloudManager); err != nil {
 					glog.Warningf("Cluster is not ready for autoscaling: %v", err)
 					continue
 				}
@@ -186,7 +193,7 @@ func main() {
 				} else {
 					scaleUpStart := time.Now()
 					updateLastTime("scaleup")
-					scaledUp, err := ScaleUp(unschedulablePodsToHelp, nodes, migConfigs, gceManager, kubeClient, predicateChecker, recorder)
+					scaledUp, err := ScaleUp(unschedulablePodsToHelp, nodes, scalingConfigs, cloudManager, kubeClient, predicateChecker, recorder)
 
 					updateDuration("scaleup", scaleUpStart)
 
@@ -243,7 +250,7 @@ func main() {
 							unneededNodes,
 							*scaleDownUnneededTime,
 							allScheduled,
-							gceManager, kubeClient, predicateChecker)
+							cloudManager, kubeClient, predicateChecker)
 
 						updateDuration("scaledown", scaleDownStart)
 
