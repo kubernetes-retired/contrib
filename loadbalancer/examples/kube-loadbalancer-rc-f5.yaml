@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: kube-loadbalancer-rc
+  labels:
+    app: kube-loadbalancer
+spec:
+  replicas: 1
+  selector:
+    app: kube-loadbalancer
+  template:
+    metadata:
+      labels:
+        app: kube-loadbalancer
+    spec:
+      containers:
+      - env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: F5_HOST
+          value: 10.0.0.1
+        - name: F5_USER
+          value: admin
+        - name: F5_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: f5-password
+              key: password
+        - name: VIP_ALLOCATION_START
+          value: "10.0.0.1"
+        - name: VIP_ALLOCATION_END
+          value: "10.0.0.55"
+        image: kokhang/kube-loadbalancer:0.1
+        imagePullPolicy: Always
+        name: kube-loadbalancer
+        args:
+          - --backend=f5
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: f5-password
+type: Opaque
+data:
+  password: cGFzc3dvcmQ= # Encrypted password here. Value of: $echo -n "password" | base64

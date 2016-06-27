@@ -1,5 +1,5 @@
 FROM gcr.io/google_containers/ubuntu-slim:0.2
 
-COPY ingress-loadbalancer /
+COPY kube-loadbalancer /
 
-ENTRYPOINT ["/ingress-loadbalancer"]
+ENTRYPOINT ["/kube-loadbalancer"]

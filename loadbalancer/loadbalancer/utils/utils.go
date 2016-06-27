@@ -185,6 +185,11 @@ func GetLBConfigMapNodePortMap(client *unversioned.Client, configMapNamespace st
 			continue
 		}
 
+		if servicePort.NodePort == 0 {
+			glog.Warningf("Service %v does not have a nodeport", serviceName)
+			continue
+		}
+
 		configMapNodePortMap[namespace+"-"+cm.Name] = int(servicePort.NodePort)
 	}
 	return configMapNodePortMap

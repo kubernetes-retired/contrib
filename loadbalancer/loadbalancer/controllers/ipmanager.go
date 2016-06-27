@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"os"
 	"sync"
 
 	"github.com/golang/glog"
@@ -50,7 +51,17 @@ type ipRange struct {
 	endIP   string
 }
 
-func NewIPManager(kubeClient *unversioned.Client, startIP, endIP, ipCmNamespace, userNamespace, configLabelKey, configLabelValue string) *IPManager {
+func NewIPManager(kubeClient *unversioned.Client, ipCmNamespace, userNamespace, configLabelKey, configLabelValue string) *IPManager {
+
+	startIP := os.Getenv("VIP_ALLOCATION_START")
+	if startIP == "" {
+		glog.Fatalln("Start IP for VIP range not provided")
+	}
+
+	endIP := os.Getenv("VIP_ALLOCATION_END")
+	if endIP == "" {
+		glog.Fatalln("End IP for VIP range not provided")
+	}
 
 	ipRange := ipRange{
 		startIP: startIP,

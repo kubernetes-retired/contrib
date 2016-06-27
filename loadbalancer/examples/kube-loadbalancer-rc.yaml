@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: ReplicationController
 metadata:
-  name: ingress-loadbalancer-rc
+  name: kube-loadbalancer-rc
   labels:
-    app: ingress-loadbalancer
+    app: kube-loadbalancer
 spec:
   replicas: 1
   selector:
-    app: ingress-loadbalancer
+    app: kube-loadbalancer
   template:
     metadata:
       labels:
-        app: ingress-loadbalancer
+        app: kube-loadbalancer
     spec:
       containers:
       - env:
@@ -23,9 +23,9 @@ spec:
           value: "10.0.0.1"
         - name: VIP_ALLOCATION_END
           value: "10.0.0.55"
-        image: kokhang/ingress-loadbalancer:0.1
+        image: kokhang/kube-loadbalancer:0.1
         imagePullPolicy: Always
-        name: ingress-loadbalancer
+        name: kube-loadbalancer
 ---
 apiVersion: extensions/v1beta1
 kind: DaemonSet

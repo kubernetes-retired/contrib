@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: ReplicationController
 metadata:
-  name: ingress-loadbalancer-rc
+  name: kube-loadbalancer-rc
   labels:
-    app: ingress-loadbalancer
+    app: kube-loadbalancer
 spec:
   replicas: 1
   selector:
-    app: ingress-loadbalancer
+    app: kube-loadbalancer
   template:
     metadata:
       labels:
-        app: ingress-loadbalancer
+        app: kube-loadbalancer
     spec:
       containers:
       - env:
@@ -30,9 +30,9 @@ spec:
           value: admin
         - name: OS_SUBNET_ID
           value: 9749b2b9-dfe5-40d6-b5fa-266a44f8a3b7
-        image: kokhang/ingress-loadbalancer:0.1
+        image: kokhang/kube-loadbalancer:0.1
         imagePullPolicy: Always
-        name: ingress-loadbalancer
+        name: kube-loadbalancer
         args:
           - --backend=openstack-lbaasv2
 ---
@@ -42,4 +42,4 @@ metadata:
   name: os-password
 type: Opaque
 data:
-  password: cGFzc3dvcmQ= # Encrypted password here. Value of: $echo -n "password" | base64
+  password: cGFzc3dvcmQ= # Encrypted password here. Value of: $echo -n password | base64

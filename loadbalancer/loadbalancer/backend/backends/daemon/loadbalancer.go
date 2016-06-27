@@ -42,17 +42,7 @@ func NewLoadbalancerDaemonController(kubeClient *unversioned.Client, watchNamesp
 		ns = api.NamespaceDefault
 	}
 
-	startIP := os.Getenv("VIP_ALLOCATION_START")
-	if startIP == "" {
-		glog.Fatalln("Start IP for VIP range not provided")
-	}
-
-	endIP := os.Getenv("VIP_ALLOCATION_END")
-	if endIP == "" {
-		glog.Fatalln("End IP for VIP range not provided")
-	}
-
-	ipMgr := controllers.NewIPManager(kubeClient, startIP, endIP, ns, watchNamespace, configLabelKey, configLabelValue)
+	ipMgr := controllers.NewIPManager(kubeClient, ns, watchNamespace, configLabelKey, configLabelValue)
 	if ipMgr == nil {
 		glog.Fatalln("NewIPManager returned nil")
 	}
