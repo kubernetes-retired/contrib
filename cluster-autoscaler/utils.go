@@ -261,7 +261,7 @@ func CheckMigsAndNodes(nodes []*kube_api.Node, cloudManager cloud.Manager) error
 
 // GetNodeInfosForMigs finds NodeInfos for all migs used to manage the given nodes. It also returns a mig to sample node mapping.
 // TODO(mwielgus): This returns map keyed by url, while most code (including scheduler) uses node.Name for a key.
-func GetNodeInfosForMigs(nodes []*kube_api.Node, cloudManager cloud.Manager, kubeClient *kube_client.Client) (map[string]*schedulercache.NodeInfo, error) {
+func GetNodeInfosForScalingGroup(nodes []*kube_api.Node, cloudManager cloud.Manager, kubeClient *kube_client.Client) (map[string]*schedulercache.NodeInfo, error) {
 	result := make(map[string]*schedulercache.NodeInfo)
 	for _, node := range nodes {
 		instanceConfig, err := config.InstanceConfigFromProviderId(node.Spec.ProviderID)
