@@ -338,6 +338,10 @@
 			"Rev": "67139b9485d6fd682c5314e963b0915e18f7947a"
 		},
 		{
+			"ImportPath": "github.com/scottdware/go-bigip",
+			"Rev": "580bbae6ada3be90cf3af21d638094a3703ef9f7"
+		},
+		{
 			"ImportPath": "github.com/spf13/cobra",
 			"Rev": "4c05eb1145f16d0e6bb4a3e1b6d769f4713cb41f"
 		},
