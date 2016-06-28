@@ -22,7 +22,7 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/estimator"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
-	"k8s.io/contrib/cluster-autoscaler/utils/gce"
+	"k8s.io/contrib/cluster-autoscaler/utils/cloud"
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
@@ -32,14 +32,14 @@ import (
 
 // ExpansionOption describes an option to expand the cluster.
 type ExpansionOption struct {
-	migConfig *config.MigConfig
-	estimator *estimator.BasicNodeEstimator
+	scalingConfig *config.ScalingConfig
+	estimator     *estimator.BasicNodeEstimator
 }
 
 // ScaleUp tries to scale the cluster up. Return true if it found a way to increase the size,
 // false if it didn't and error if an error occured.
-func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, migConfigs []*config.MigConfig,
-	gceManager *gce.GceManager, kubeClient *kube_client.Client,
+func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, scalingConfigs []*config.ScalingConfig,
+	cloudManager cloud.Manager, kubeClient *kube_client.Client,
 	predicateChecker *simulator.PredicateChecker, recorder kube_record.EventRecorder) (bool, error) {
 
 	// From now on we only care about unschedulable pods that were marked after the newest
@@ -54,34 +54,34 @@ func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, migConfi
 	}
 
 	expansionOptions := make([]ExpansionOption, 0)
-	nodeInfos, err := GetNodeInfosForMigs(nodes, gceManager, kubeClient)
+	nodeInfos, err := GetNodeInfosForScalingGroup(nodes, cloudManager, kubeClient)
 	if err != nil {
 		return false, fmt.Errorf("failed to build node infors for migs: %v", err)
 	}
 
 	podsRemainUnshedulable := make(map[*kube_api.Pod]struct{})
-	for _, migConfig := range migConfigs {
+	for _, scalingConfig := range scalingConfigs {
 
-		currentSize, err := gceManager.GetMigSize(migConfig)
+		currentSize, err := cloudManager.GetScalingGroupSize(scalingConfig)
 		if err != nil {
 			glog.Errorf("Failed to get MIG size: %v", err)
 			continue
 		}
-		if currentSize >= int64(migConfig.MaxSize) {
+		if currentSize >= int64(scalingConfig.MaxSize) {
 			// skip this mig.
-			glog.V(4).Infof("Skipping MIG %s - max size reached", migConfig.Url())
+			glog.V(4).Infof("Skipping MIG %s - max size reached", scalingConfig.Url())
 			continue
 		}
 
 		option := ExpansionOption{
-			migConfig: migConfig,
-			estimator: estimator.NewBasicNodeEstimator(),
+			scalingConfig: scalingConfig,
+			estimator:     estimator.NewBasicNodeEstimator(),
 		}
 		migHelpsSomePods := false
 
-		nodeInfo, found := nodeInfos[migConfig.Url()]
+		nodeInfo, found := nodeInfos[scalingConfig.Url()]
 		if !found {
-			glog.Errorf("No node info for: %s", migConfig.Url())
+			glog.Errorf("No node info for: %s", scalingConfig.Url())
 			continue
 		}
 
@@ -103,36 +103,36 @@ func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, migConfi
 	// Pick some expansion option.
 	bestOption := BestExpansionOption(expansionOptions)
 	if bestOption != nil && bestOption.estimator.GetCount() > 0 {
-		glog.V(1).Infof("Best option to resize: %s", bestOption.migConfig.Url())
-		nodeInfo, found := nodeInfos[bestOption.migConfig.Url()]
+		glog.V(1).Infof("Best option to resize: %s", bestOption.scalingConfig.Url())
+		nodeInfo, found := nodeInfos[bestOption.scalingConfig.Url()]
 		if !found {
-			return false, fmt.Errorf("no sample node for: %s", bestOption.migConfig.Url())
+			return false, fmt.Errorf("no sample node for: %s", bestOption.scalingConfig.Url())
 
 		}
 		node := nodeInfo.Node()
 		estimate, report := bestOption.estimator.Estimate(node)
 		glog.V(1).Info(bestOption.estimator.GetDebug())
 		glog.V(1).Info(report)
-		glog.V(1).Infof("Estimated %d nodes needed in %s", estimate, bestOption.migConfig.Url())
+		glog.V(1).Infof("Estimated %d nodes needed in %s", estimate, bestOption.scalingConfig.Url())
 
-		currentSize, err := gceManager.GetMigSize(bestOption.migConfig)
+		currentSize, err := cloudManager.GetScalingGroupSize(bestOption.scalingConfig)
 		if err != nil {
-			return false, fmt.Errorf("failed to get MIG size: %v", err)
+			return false, fmt.Errorf("failed to get scaling group size: %v", err)
 		}
 		newSize := currentSize + int64(estimate)
-		if newSize >= int64(bestOption.migConfig.MaxSize) {
-			glog.V(1).Infof("Capping size to MAX (%d)", bestOption.migConfig.MaxSize)
-			newSize = int64(bestOption.migConfig.MaxSize)
+		if newSize >= int64(bestOption.scalingConfig.MaxSize) {
+			glog.V(1).Infof("Capping size to MAX (%d)", bestOption.scalingConfig.MaxSize)
+			newSize = int64(bestOption.scalingConfig.MaxSize)
 		}
-		glog.V(1).Infof("Setting %s size to %d", bestOption.migConfig.Url(), newSize)
+		glog.V(1).Infof("Setting %s size to %d", bestOption.scalingConfig.Url(), newSize)
 
-		if err := gceManager.SetMigSize(bestOption.migConfig, newSize); err != nil {
-			return false, fmt.Errorf("failed to set MIG size: %v", err)
+		if err := cloudManager.SetScalingGroupSize(bestOption.scalingConfig, newSize); err != nil {
+			return false, fmt.Errorf("failed to set scaling group size: %v", err)
 		}
 
 		for pod := range bestOption.estimator.FittingPods {
 			recorder.Eventf(pod, kube_api.EventTypeNormal, "TriggeredScaleUp",
-				"pod triggered scale-up, mig: %s, sizes (current/new): %d/%d", bestOption.migConfig.Name, currentSize, newSize)
+				"pod triggered scale-up, mig: %s, sizes (current/new): %d/%d", bestOption.scalingConfig.Name, currentSize, newSize)
 		}
 
 		return true, nil

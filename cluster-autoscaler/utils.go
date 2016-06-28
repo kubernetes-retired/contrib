@@ -22,7 +22,7 @@ import (
 
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
-	"k8s.io/contrib/cluster-autoscaler/utils/gce"
+	"k8s.io/contrib/cluster-autoscaler/utils/cloud"
 
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_api_unversioned "k8s.io/kubernetes/pkg/api/unversioned"
@@ -228,26 +228,26 @@ func createNodeNameToInfoMap(pods []*kube_api.Pod, nodes []*kube_api.Node) map[s
 }
 
 // CheckMigsAndNodes checks if all migs have all required nodes.
-func CheckMigsAndNodes(nodes []*kube_api.Node, gceManager *gce.GceManager) error {
+func CheckMigsAndNodes(nodes []*kube_api.Node, cloudManager cloud.Manager) error {
 	migCount := make(map[string]int)
-	migs := make(map[string]*config.MigConfig)
+	migs := make(map[string]*config.ScalingConfig)
 	for _, node := range nodes {
 		instanceConfig, err := config.InstanceConfigFromProviderId(node.Spec.ProviderID)
 		if err != nil {
 			return err
 		}
 
-		migConfig, err := gceManager.GetMigForInstance(instanceConfig)
+		sgConfig, err := cloudManager.GetScalingGroupForInstance(instanceConfig)
 		if err != nil {
 			return err
 		}
-		url := migConfig.Url()
+		url := sgConfig.Url()
 		count, _ := migCount[url]
 		migCount[url] = count + 1
-		migs[url] = migConfig
+		migs[url] = sgConfig
 	}
 	for url, mig := range migs {
-		size, err := gceManager.GetMigSize(mig)
+		size, err := cloudManager.GetScalingGroupSize(mig)
 		if err != nil {
 			return err
 		}
@@ -261,7 +261,7 @@ func CheckMigsAndNodes(nodes []*kube_api.Node, gceManager *gce.GceManager) error
 
 // GetNodeInfosForMigs finds NodeInfos for all migs used to manage the given nodes. It also returns a mig to sample node mapping.
 // TODO(mwielgus): This returns map keyed by url, while most code (including scheduler) uses node.Name for a key.
-func GetNodeInfosForMigs(nodes []*kube_api.Node, gceManager *gce.GceManager, kubeClient *kube_client.Client) (map[string]*schedulercache.NodeInfo, error) {
+func GetNodeInfosForScalingGroup(nodes []*kube_api.Node, cloudManager cloud.Manager, kubeClient *kube_client.Client) (map[string]*schedulercache.NodeInfo, error) {
 	result := make(map[string]*schedulercache.NodeInfo)
 	for _, node := range nodes {
 		instanceConfig, err := config.InstanceConfigFromProviderId(node.Spec.ProviderID)
@@ -269,11 +269,11 @@ func GetNodeInfosForMigs(nodes []*kube_api.Node, gceManager *gce.GceManager, kub
 			return map[string]*schedulercache.NodeInfo{}, err
 		}
 
-		migConfig, err := gceManager.GetMigForInstance(instanceConfig)
+		sgConfig, err := cloudManager.GetScalingGroupForInstance(instanceConfig)
 		if err != nil {
 			return map[string]*schedulercache.NodeInfo{}, err
 		}
-		url := migConfig.Url()
+		url := sgConfig.Url()
 
 		nodeInfo, err := simulator.BuildNodeInfoForNode(node, kubeClient)
 		if err != nil {
