@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
+	"sync"
 
 	"github.com/golang/glog"
 )
@@ -31,55 +33,156 @@ const (
 	KubekinsBucket = "kubernetes-jenkins"
 	// LogDir is the directory of kubekins
 	LogDir = "logs"
-	// LogDir is the directory of the pr builder jenkins
-	PRLogDir = "pr-logs"
+	// PullLogDir is the directory of the pr builder jenkins
+	PullLogDir = "pr-logs"
+	// PullKey is a string to look for in a job name to figure out if it's
+	// a pull (presubmit) job.
+	PullKey = "pull"
+
+	// lookUpDirectory is the folder to look in to get output of the PR
+	// builder run of a given number. This is needed because the PR builder
+	// has to store its output in a location with the PR number in the
+	// path.  So to find output, first we look here in the "directory" to
+	// find the place we should actually read the output from.
+	lookUpDirectory = "directory"
 
 	successString = "SUCCESS"
 )
 
 // Utils is a struct handling all communication with a given bucket
 type Utils struct {
-	bucket    *Bucket
-	directory string
+	bucket        *Bucket
+	directory     string
+	pullKey       string
+	pullDirectory string
+
+	derefCache     map[string]string
+	derefCacheLock sync.Mutex
 }
 
 // NewUtils returnes new Utils struct for a given bucket name and subdirectory
 func NewUtils(bucket, directory string) *Utils {
 	return &Utils{
-		bucket:    NewBucket(bucket),
-		directory: directory,
+		bucket:     NewBucket(bucket),
+		directory:  directory,
+		derefCache: map[string]string{},
+	}
+}
+
+// NewWithPresubmitDetection returnes new Utils struct for a given bucket name
+// and subdirectory. If a job name contains the presubmitKey, it will be gotten
+// from the presubmitDirectory and trigger the dereferencing logic.
+func NewWithPresubmitDetection(bucket, directory, presubmitKey, presubmitDirectory string) *Utils {
+	return &Utils{
+		bucket:        NewBucket(bucket),
+		directory:     directory,
+		pullKey:       presubmitKey,
+		pullDirectory: presubmitDirectory,
+		derefCache:    map[string]string{},
 	}
 }
 
 // NewTestUtils returnes new Utils struct for a given url pointing to a file server.
 func NewTestUtils(bucket, directory, url string) *Utils {
 	return &Utils{
-		bucket:    NewTestBucket(bucket, url),
-		directory: directory,
+		bucket:     NewTestBucket(bucket, url),
+		directory:  directory,
+		derefCache: map[string]string{},
 	}
 }
 
-// GetGCSDirectoryURL returns the url of the bucket directory
-func (u *Utils) GetGCSDirectoryURL() string {
-	return u.bucket.ExpandPathURL(u.directory).String()
+// needsDeref returns true if we should use the alternate directory and do a
+// dereferencing step to find where files are actually stored.
+func (u *Utils) needsDeref(job string) bool {
+	return u.pullKey != "" && strings.Contains(job, u.pullKey)
 }
 
-// GetPathToJenkinsGoogleBucket returns a GCS path containing the artifacts for a given job and buildNumber.
-// This only formats the path. It doesn't include a host or protocol necessary for a full URI.
+// deref reads the file in GCS to figure out where the desired file is.  We
+// cache the path that is read, so this only adds an extra call to GCS the
+// first time.
+func (u *Utils) deref(job string, buildNumber int) (directory string, err error) {
+	u.derefCacheLock.Lock()
+	defer u.derefCacheLock.Unlock()
+	cacheKey := fmt.Sprintf("%v/%v", job, buildNumber)
+	if d, ok := u.derefCache[cacheKey]; ok {
+		return d, nil
+	}
+
+	body, err := readResponse(u.bucket.ReadFile(
+		u.pullDirectory,
+		lookUpDirectory,
+		job,
+		fmt.Sprintf("%d.txt", buildNumber),
+	))
+	if err != nil {
+		return "", err
+	}
+	gsPath := strings.TrimSpace(string(body))
+
+	bucketPrefix := "gs://" + u.bucket.bucket
+	if !strings.HasPrefix(gsPath, bucketPrefix) {
+		return "", fmt.Errorf("unexpected format, did not start with %q: %v", bucketPrefix, gsPath)
+	}
+	out := strings.TrimPrefix(gsPath, bucketPrefix)
+	u.derefCache[cacheKey] = out
+	return out, nil
+}
+
+// helper function for extracting bytes from a response.
+func readResponse(response *http.Response, err error) ([]byte, error) {
+	if err != nil {
+		return nil, fmt.Errorf("request didn't succeed: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("got status code %v", response.StatusCode)
+	}
+	return ioutil.ReadAll(response.Body)
+}
+
+// GetPathToJenkinsGoogleBucket returns a GCS path containing the artifacts for
+// a given job and buildNumber.  This only formats the path. It doesn't include
+// a host or protocol necessary for a full URI.  Note: the purpose of this
+// function was to allow us to change the host (to gubernator) without breaking
+// detection of old links.
 func (u *Utils) GetPathToJenkinsGoogleBucket(job string, buildNumber int) string {
+	if u.needsDeref(job) {
+		dir, err := u.deref(job, buildNumber)
+		if err != nil {
+			glog.Errorf("Unable to deref %v/%v: %v", job, buildNumber, err)
+		} else {
+			// TODO: make this function return an error instead of
+			// falling through here.
+			return u.bucket.ExpandPathURL(dir).Path + "/"
+		}
+	}
 	return u.bucket.ExpandPathURL(u.directory, job, buildNumber).Path + "/"
 }
 
 // GetFileFromJenkinsGoogleBucket reads data from Google project's GCS bucket for the given job and buildNumber.
 // Returns a response with file stored under a given (relative) path or an error.
 func (u *Utils) GetFileFromJenkinsGoogleBucket(job string, buildNumber int, path string) (*http.Response, error) {
+	if u.needsDeref(job) {
+		dir, err := u.deref(job, buildNumber)
+		if err != nil {
+			return nil, fmt.Errorf("Couldn't deref %v/%v: %v", job, buildNumber, err)
+		}
+		return u.bucket.ReadFile(dir, path)
+	}
+
 	return u.bucket.ReadFile(u.directory, job, buildNumber, path)
 }
 
 // GetLastestBuildNumberFromJenkinsGoogleBucket reads a the number
-// of last completed build of the given job from the Google project's GCS bucket .
+// of last completed build of the given job from the Google project's GCS bucket.
 func (u *Utils) GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, error) {
-	response, err := u.bucket.ReadFile(u.directory, job, "latest-build.txt")
+	var response *http.Response
+	var err error
+	if u.needsDeref(job) {
+		response, err = u.bucket.ReadFile(u.pullDirectory, lookUpDirectory, job, "latest-build.txt")
+	} else {
+		response, err = u.bucket.ReadFile(u.directory, job, "latest-build.txt")
+	}
 	if err != nil {
 		return -1, err
 	}
@@ -106,7 +209,7 @@ type StartedFile struct {
 // CheckStartedStatus reads the started.json file for a given job and build number.
 // It returns true if the result stored there is success, and false otherwise.
 func (u *Utils) CheckStartedStatus(job string, buildNumber int) (*StartedFile, error) {
-	response, err := u.bucket.ReadFile(u.directory, job, buildNumber, "started.json")
+	response, err := u.GetFileFromJenkinsGoogleBucket(job, buildNumber, "started.json")
 	if err != nil {
 		glog.Errorf("Error while getting data for %v/%v/%v: %v", job, buildNumber, "started.json", err)
 		return nil, err
@@ -135,7 +238,7 @@ type FinishedFile struct {
 // CheckFinishedStatus reads the finished.json file for a given job and build number.
 // It returns true if the result stored there is success, and false otherwise.
 func (u *Utils) CheckFinishedStatus(job string, buildNumber int) (bool, error) {
-	response, err := u.bucket.ReadFile(u.directory, job, buildNumber, "finished.json")
+	response, err := u.GetFileFromJenkinsGoogleBucket(job, buildNumber, "finished.json")
 	if err != nil {
 		glog.Errorf("Error while getting data for %v/%v/%v: %v", job, buildNumber, "finished.json", err)
 		return false, err

@@ -74,7 +74,8 @@ func NewTestBucket(name string, host string) *Bucket {
 
 // ReadFile assembles the path and initiates a read operation.
 func (b *Bucket) ReadFile(pathElements ...interface{}) (*http.Response, error) {
-	return getResponseWithRetry(b.ExpandPathURL(pathElements...).String())
+	url := b.ExpandPathURL(pathElements...)
+	return getResponseWithRetry(url.String())
 }
 
 // ExpandPathURL turns the given path into a complete URL, good for accessing a

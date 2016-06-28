@@ -17,28 +17,57 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
 func TestGetPathToJenkinsGoogleBucket(t *testing.T) {
+	const (
+		bucket  = "kubernetes-jenkins"
+		dir     = "logs"
+		pullDir = "pr-logs"
+		pullKey = "pull"
+	)
 	table := []struct {
-		bucket string
-		dir    string
 		job    string
 		build  int
 		expect string
 	}{
 		{
-			bucket: "kubernetes-jenkins",
-			dir:    "logs",
 			job:    "kubernetes-gce-e2e",
 			build:  1458,
 			expect: "/kubernetes-jenkins/logs/kubernetes-gce-e2e/1458/",
 		},
+		{
+			job:    "kubernetes-pull-build-test-e2e-gce",
+			build:  46924,
+			expect: "/kubernetes-jenkins/pr-logs/pull/27898/kubernetes-pull-build-test-e2e-gce/46924/",
+		},
 	}
 
+	m := http.NewServeMux()
+	m.HandleFunc(
+		"/kubernetes-jenkins/pr-logs/directory/kubernetes-pull-build-test-e2e-gce/46924.txt",
+		func(w http.ResponseWriter, req *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "gs://kubernetes-jenkins/pr-logs/pull/27898/kubernetes-pull-build-test-e2e-gce/46924\n")
+		},
+	)
+	m.HandleFunc(
+		"/",
+		func(w http.ResponseWriter, req *http.Request) {
+			t.Errorf("Unexpected request to %v", req.URL.String())
+			http.NotFound(w, req)
+		},
+	)
+	server := httptest.NewServer(m)
+	defer server.Close()
+
 	for _, tt := range table {
-		u := NewUtils(tt.bucket, tt.dir)
+		u := NewWithPresubmitDetection(bucket, dir, pullKey, pullDir)
+		u.bucket = NewTestBucket(bucket, server.URL)
 		out := u.GetPathToJenkinsGoogleBucket(tt.job, tt.build)
 		if out != tt.expect {
 			t.Errorf("Expected %v but got %v", tt.expect, out)
