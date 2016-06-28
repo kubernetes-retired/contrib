@@ -37,7 +37,7 @@ type AssignFixesMunger struct {
 }
 
 const (
-	hasPRPosted = "has-pr-posted"
+	proxyContributor = "k8s-almost-a-contributor"
 )
 
 var (
@@ -106,26 +106,24 @@ func issueHasMarkFrom(issueObj *github.MungeObject, isCollaborator bool, prOwner
 }
 
 func (a *AssignFixesMunger) markIssue(issueObj *github.MungeObject, prOwner string, prNumber int) {
-	if !issueObj.HasLabel(hasPRPosted) {
-		issueObj.AddLabel(hasPRPosted)
-	}
-
-	needsMark := (github.DescribeUser(issueObj.Issue.Assignee) != prOwner)
 	isCollaborator := a.collaborators.Has(prOwner)
-	if isCollaborator && needsMark {
-		issueObj.AssignPR(prOwner)
+	issueOwner := prOwner
+	if !isCollaborator {
+		issueOwner = proxyContributor
 	}
 
-	if needsMark {
-		hasMark, err := issueHasMarkFrom(issueObj, isCollaborator, prOwner)
-		if err != nil || hasMark {
-			return
-		}
-		text := fmt.Sprintf("%v @%v (mungegithub:assign-fixes) because PR #%v should resolve this issue.\n", claimText[isCollaborator], prOwner, prNumber)
-		err = issueObj.WriteComment(text)
-		if err != nil {
-			glog.Errorf("unexpected error adding comment: %v", err)
-		}
+	if github.DescribeUser(issueObj.Issue.Assignee) != issueOwner {
+		issueObj.AssignPR(issueOwner)
+	}
+
+	hasMark, err := issueHasMarkFrom(issueObj, isCollaborator, prOwner)
+	if err != nil || hasMark {
+		return
+	}
+	text := fmt.Sprintf("%v @%v (mungegithub:assign-fixes) because PR #%v should resolve this issue.\n", claimText[isCollaborator], prOwner, prNumber)
+	err = issueObj.WriteComment(text)
+	if err != nil {
+		glog.Errorf("unexpected error adding comment: %v", err)
 	}
 }
 
