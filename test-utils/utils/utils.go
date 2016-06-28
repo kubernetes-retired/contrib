@@ -22,100 +22,64 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
-	"path"
-	"strconv"
-	"time"
 
 	"github.com/golang/glog"
 )
 
 const (
-	// GCSListAPIURLTemplate is the template of GCS list api for a bucket
-	GCSListAPIURLTemplate = "https://www.googleapis.com/storage/v1/b/%s/o"
-	// GCSBucketURLTemplate is the tempalate for a GCS bucket directory
-	GCSBucketURLTemplate = "https://storage.googleapis.com/%s/%s"
 	// KubekinsBucket is the name of the kubekins bucket
 	KubekinsBucket = "kubernetes-jenkins"
 	// LogDir is the directory of kubekins
 	LogDir = "logs"
+	// LogDir is the directory of the pr builder jenkins
+	PRLogDir = "pr-logs"
 
 	successString = "SUCCESS"
-	retries       = 3
-	retryWait     = 100 * time.Millisecond
 )
 
 // Utils is a struct handling all communication with a given bucket
 type Utils struct {
-	bucket      string
-	directory   string
-	overrideURL string
+	bucket    *Bucket
+	directory string
 }
 
 // NewUtils returnes new Utils struct for a given bucket name and subdirectory
 func NewUtils(bucket, directory string) *Utils {
-	return &Utils{bucket: bucket, directory: directory}
-}
-
-// NewTestUtils returnes new Utils struct for a given url pointing to a file server
-func NewTestUtils(url string) *Utils {
-	return &Utils{overrideURL: url}
-}
-
-func (u *Utils) getResponseWithRetry(url string) (*http.Response, error) {
-	var response *http.Response
-	var err error
-	for i := 0; i < retries; i++ {
-		response, err = http.Get(url)
-		if err != nil {
-			return nil, err
-		}
-		if response.StatusCode == http.StatusOK {
-			return response, nil
-		}
-		time.Sleep(retryWait)
+	return &Utils{
+		bucket:    NewBucket(bucket),
+		directory: directory,
 	}
-	return response, nil
+}
+
+// NewTestUtils returnes new Utils struct for a given url pointing to a file server.
+func NewTestUtils(bucket, directory, url string) *Utils {
+	return &Utils{
+		bucket:    NewTestBucket(bucket, url),
+		directory: directory,
+	}
 }
 
 // GetGCSDirectoryURL returns the url of the bucket directory
 func (u *Utils) GetGCSDirectoryURL() string {
-	// return overrideURL if specified
-	if u.overrideURL != "" {
-		return u.overrideURL
-	}
-	return fmt.Sprintf(GCSBucketURLTemplate, u.bucket, u.directory)
-}
-
-// GetGCSListURL returns the url to the list api
-func (u *Utils) GetGCSListURL() string {
-	// return overrideURL if specified
-	if u.overrideURL != "" {
-		return u.overrideURL
-	}
-	return fmt.Sprintf(GCSListAPIURLTemplate, u.bucket)
+	return u.bucket.ExpandPathURL(u.directory).String()
 }
 
 // GetPathToJenkinsGoogleBucket returns a GCS path containing the artifacts for a given job and buildNumber.
 // This only formats the path. It doesn't include a host or protocol necessary for a full URI.
 func (u *Utils) GetPathToJenkinsGoogleBucket(job string, buildNumber int) string {
-	return fmt.Sprintf("/%s/%s/%s/%d/", u.bucket, u.directory, job, buildNumber)
+	return u.bucket.ExpandPathURL(u.directory, job, buildNumber).Path + "/"
 }
 
 // GetFileFromJenkinsGoogleBucket reads data from Google project's GCS bucket for the given job and buildNumber.
 // Returns a response with file stored under a given (relative) path or an error.
 func (u *Utils) GetFileFromJenkinsGoogleBucket(job string, buildNumber int, path string) (*http.Response, error) {
-	response, err := u.getResponseWithRetry(fmt.Sprintf("%v/%v/%v/%v", u.GetGCSDirectoryURL(), job, buildNumber, path))
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
+	return u.bucket.ReadFile(u.directory, job, buildNumber, path)
 }
 
 // GetLastestBuildNumberFromJenkinsGoogleBucket reads a the number
 // of last completed build of the given job from the Google project's GCS bucket .
 func (u *Utils) GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, error) {
-	response, err := u.getResponseWithRetry(fmt.Sprintf("%v/%v/latest-build.txt", u.GetGCSDirectoryURL(), job))
+	response, err := u.bucket.ReadFile(u.directory, job, "latest-build.txt")
 	if err != nil {
 		return -1, err
 	}
@@ -142,7 +106,7 @@ type StartedFile struct {
 // CheckStartedStatus reads the started.json file for a given job and build number.
 // It returns true if the result stored there is success, and false otherwise.
 func (u *Utils) CheckStartedStatus(job string, buildNumber int) (*StartedFile, error) {
-	response, err := u.GetFileFromJenkinsGoogleBucket(job, buildNumber, "started.json")
+	response, err := u.bucket.ReadFile(u.directory, job, buildNumber, "started.json")
 	if err != nil {
 		glog.Errorf("Error while getting data for %v/%v/%v: %v", job, buildNumber, "started.json", err)
 		return nil, err
@@ -171,7 +135,7 @@ type FinishedFile struct {
 // CheckFinishedStatus reads the finished.json file for a given job and build number.
 // It returns true if the result stored there is success, and false otherwise.
 func (u *Utils) CheckFinishedStatus(job string, buildNumber int) (bool, error) {
-	response, err := u.GetFileFromJenkinsGoogleBucket(job, buildNumber, "finished.json")
+	response, err := u.bucket.ReadFile(u.directory, job, buildNumber, "finished.json")
 	if err != nil {
 		glog.Errorf("Error while getting data for %v/%v/%v: %v", job, buildNumber, "finished.json", err)
 		return false, err
@@ -199,44 +163,19 @@ func (u *Utils) CheckFinishedStatus(job string, buildNumber int) (bool, error) {
 // ListFilesInBuild takes build info and list all file names with matching prefix
 // The returned file name included the complete path from bucket root
 func (u *Utils) ListFilesInBuild(job string, buildNumber int, prefix string) ([]string, error) {
-	combinePrefix := path.Join(u.directory, job, strconv.Itoa(buildNumber), prefix)
-	ret, err := u.ListFilesWithPrefix(combinePrefix)
-	return ret, err
+	if u.needsDeref(job) {
+		dir, err := u.deref(job, buildNumber)
+		if err != nil {
+			return nil, fmt.Errorf("Couldn't deref %v/%v: %v", job, buildNumber, err)
+		}
+		return u.bucket.List(dir, prefix)
+	}
+
+	return u.bucket.List(u.directory, job, buildNumber, prefix)
 }
 
 // ListFilesWithPrefix returns all files with matching prefix in the bucket
 // The returned file name included the complete path from bucket root
 func (u *Utils) ListFilesWithPrefix(prefix string) ([]string, error) {
-	listURL, _ := url.Parse(u.GetGCSListURL())
-	q := listURL.Query()
-	q.Set("prefix", prefix)
-	listURL.RawQuery = q.Encode()
-	res, err := u.getResponseWithRetry(listURL.String())
-	if err != nil {
-		glog.Errorf("Failed to GET %v: %v", listURL, err)
-		return nil, err
-	}
-	if res.StatusCode != http.StatusOK {
-		glog.Errorf("Got a non-success response %v while listing %v", res.StatusCode, listURL.String())
-	}
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		glog.Errorf("Failed to read the response for %v: %v", listURL.String(), err)
-		return nil, err
-	}
-	var data map[string]interface{}
-	err = json.Unmarshal(body, &data)
-	if err != nil {
-		glog.Errorf("Failed to unmarshal %v: %v", string(body), err)
-		return nil, err
-	}
-	var ret []string
-	if _, ok := data["items"]; !ok {
-		glog.Warningf("No matching files were found")
-		return ret, nil
-	}
-	for _, item := range data["items"].([]interface{}) {
-		ret = append(ret, (item.(map[string]interface{})["name"]).(string))
-	}
-	return ret, nil
+	return u.bucket.List(prefix)
 }
