@@ -1,85 +1,57 @@
-# addon-resizer
+# kubelet-to-gcm
 
-This container image watches over another container in a deployment, and
-vertically scales the dependent container up and down. Currently the only
-option is to scale it linearly based on the number of nodes, and it only works
-for a singleton.
+This container watches kubelet on a given host, and pushes the kubelet's
+summary metrics to the GCM v3 API (stack driver).
 
-## Nanny program and arguments
+## Monitor program and arguments
 
-The nanny scales resources linearly with the number of nodes in the cluster. The base and marginal resource requirements are given as command line arguments, but you cannot give a marginal requirement without a base requirement.
+The monitor polls the kubelet API, and pushes those metrics to stack driver. Preferably, the nanny lives on the node it's monitoring.
 
-The cluster size is periodically checked, and used to calculate the expected resources. If the expected and actual resources differ by more than the threshold (given as a +/- percent), then the deployment is updated (updating a deployment stops the old pod, and starts a new pod).
+Translating between Kubelet's summary API is the bulk of the work and logic in the monitor. This code is decoupled from the rest of the container, and presumably re-usable by other components.
 
 ```
-Usage of pod_nanny:
-      --container="pod-nanny": The name of the container to watch. This defaults to the nanny itself.
-      --cpu="MISSING": The base CPU resource requirement.
-      --deployment="": The name of the deployment being monitored. This is required.
-      --extra-cpu="0": The amount of CPU to add per node.
-      --extra-memory="0Mi": The amount of memory to add per node.
-      --extra-storage="0Gi": The amount of storage to add per node.
-      --log-flush-frequency=5s: Maximum number of seconds between log flushes
-      --memory="MISSING": The base memory resource requirement.
-      --namespace=$MY_POD_NAMESPACE: The namespace of the ward. This defaults to the nanny's own pod.
-      --pod=$MY_POD_NAME: The name of the pod to watch. This defaults to the nanny's own pod.
-      --poll-period=10000: The time, in milliseconds, to poll the dependent container.
-      --storage="MISSING": The base storage resource requirement.
-      --threshold=0: A number between 0-100. The dependent's resources are rewritten when they deviate from expected by more than threshold.
+Usage of monitor:
+      --cluster="/MISSING": The cluster where this kubelet holds membership.
+      --host="localhost": The kubelet's host name.
+      --port=10255: The kubelet's port.
+      --project="/MISSING": The project where this kubelet's host lives.
+      --resolution=10: The time, in seconds, to poll the Kubelet.
+      --use-test[=false]: If the test GCM endpoint should be used.
+      --zone="us-central1-b": The zone where this kubelet lives.
 ```
+
+Some of these fields are required for the gke_container schema in StackDriver (e.g., cluster and project). Others are needed for determining endpoints.
 
 ## Example deployment file
 
-The following yaml is an example deployment where the nanny watches and resizes itself.
+The following yaml is an example deployment where the monitor pushes Kubelet metrics to GCM.
 
 ```yaml
-apiVersion: extensions/v1beta1
-kind: Deployment
+apiVersion: v1
+kind: Pod
 metadata:
-  name: nanny-v1
-  namespace: default
+  name: kubelet-mon
+  namespace: kube-system
   labels:
-    k8s-app: nanny
-    version: v1
+    k8s-app: kubelet-mon
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      k8s-app: nanny
-      version: v1
-  template:
-    metadata:
-      labels:
-        k8s-app: nanny
-        version: v1
-        kubernetes.io/cluster-service: "true"
-    spec:
-      containers:
-        - image: gcr.io/google_containers/addon-resizer:1.0
-          imagePullPolicy: Always
-          name: pod-nanny
-          resources:
-            limits:
-              cpu: 300m
-              memory: 200Mi
-            requests:
-              cpu: 300m
-              memory: 200Mi
-          env:
-            - name: MY_POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: MY_POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-          command:
-            - /pod_nanny
-            - --cpu=300m
-            - --extra-cpu=20m
-            - --memory=200Mi
-            - --extra-memory=10Mi
-            - --threshold=5
-            - --deployment=nanny-v1
+  dnsPolicy: Default
+  containers:
+  - name: kubelet-mon
+    image: gcr.io/gke-test-us-central1-b-0/kubelet-to-gcm:1.0
+    resources:
+      limits:
+        cpu: 50m
+        memory: 50Mi
+      requests:
+        cpu: 50m
+        memory: 50Mi
+    command:
+      - /monitor
+      - --host=10.240.0.6
+      - --cluster=quintin-test
+      - --zone=us-central1-b
+      - --project=gke-test-us-central1-b-0
+      - --resolution=60
+  terminationGracePeriodSeconds: 30
 ```
