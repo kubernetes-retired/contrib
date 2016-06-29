@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"io/ioutil"
 	"strings"
+	"flag"
 )
 
 // taken from contrib/e2e.go
@@ -25,8 +26,20 @@ type Testsuite struct {
 // in the artifacts folder and call the functions for getting the 
 // information about each of the failed tests
 func main() {	
-	images, err := filepath.Glob(os.Args[1] + "/artifacts/tmp*")
+	folder := flag.String("f", "", "the folder name")
+	kubeFilter := flag.String("kblt", "all", "filter for kubelet log")
+	flag.Parse()
+
+	images, err := filepath.Glob(*folder + "/artifacts/tmp*")
 	check(err)
+
+	kubeFilters := map[string]bool{"all":true, "p":true, "1":true}
+
+
+	if !kubeFilters[*kubeFilter] {
+		fmt.Println("Invalid kubelet log filter")
+		os.Exit(1)
+	}
 
 	mapPodError := map[string]string{}
 	mapPodCont := map[string]string{}
@@ -38,18 +51,18 @@ func main() {
 			for _, ju := range junits {
 				pods := getFailedPods(ju, mapPodError, mapPodCont)
 				if len(pods) > 0 {
-					mapPodKubelet := rdKubelet(fp, pods)
+					mapPodKubelet := rdKubelet(fp, *kubeFilter, pods)
 					rdKubeAPI(fp, mapPodKubelet)
 				}
 			}
 		}
 	} 
 
-	fmt.Println("mapPodError")
-	fmt.Println(mapPodError)
-	fmt.Println("")
-	fmt.Println("mapPodCont")
-	fmt.Println(mapPodCont)
+	// fmt.Println("mapPodError")
+	// fmt.Println(mapPodError)
+	// fmt.Println("")
+	// fmt.Println("mapPodCont")
+	// fmt.Println(mapPodCont)
 }
 
 // from a junit xml file, populate the testsuite struct and extract
@@ -81,6 +94,8 @@ func getFailedPods(fp string, mapPodError map[string]string, mapPodCont map[stri
 	}
 	
 	fmt.Println("Failed Pods in file", fp)
+	fmt.Println("")
+
 	podNames := make([]string, 0)
 	for _, v := range failures {
 		lines := strings.SplitAfter(v, "\n")
@@ -89,7 +104,12 @@ func getFailedPods(fp string, mapPodError map[string]string, mapPodCont map[stri
 			if (strings.HasPrefix(line, "pod")) {
 				podInfo := strings.Split(line, "'")
 				podName := podInfo[1]
+				
+				fmt.Println("----------")
 				fmt.Println(podName)
+				fmt.Println("----------")
+
+				fmt.Println(line)
 				
 				//map the pod to the error
 				mapPodError[podName] = line
@@ -98,7 +118,7 @@ func getFailedPods(fp string, mapPodError map[string]string, mapPodCont map[stri
 				cont := strings.Split(strings.Split(line, "ContainerID:")[1], "}")
 				mapPodCont[podName] = cont[0]
 				podNames = append(podNames, podName)
-				
+				fmt.Println("")
 			}
 		}
 	}

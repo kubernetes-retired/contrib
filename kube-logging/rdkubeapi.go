@@ -64,9 +64,9 @@ func rdKubeAPI(fp string, mapPodKubelet map[string]string) {
 	
 	for pod, kubelet := range mapPodKubelet {
 		splitKubelet := strings.Split(kubelet, "\n")
-		fmt.Println(splitKubelet[0], splitKubelet[1], splitKubelet[2])	
 		startEndTimes := getTime(splitKubelet)
 		podTimes[pod] = startEndTimes
+		fmt.Println(podTimes)
 		mapPodKubeAPI[pod] = ""
 	}
 
@@ -111,5 +111,4 @@ func checkInChunk(timeNow []int, startTime []int, endTime []int) (bool) {
 	}
 
 	return inChunk
-	
 }
