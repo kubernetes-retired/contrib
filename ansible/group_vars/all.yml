@@ -102,3 +102,6 @@ dns_replicas: 1
 
 # See kube documentation for apiserver runtime config options.  Example below enables HPA, deployments features.
 # apiserver_extra_args: "--runtime-config=extensions/v1beta1/deployments=true"
+
+# Turn to true if kubernetes, docker, etcd and flannel packages are installed already.
+did_install: false
