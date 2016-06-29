@@ -39,9 +39,10 @@ const (
 	nginxConf = `
 daemon off;
 
+worker_processes 4;
+
 events {
 	worker_connections 16384;
-	worker_processes 4;
 }
 
 http {
