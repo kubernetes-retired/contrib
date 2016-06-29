@@ -1,27 +1,19 @@
 ---
 - name: Determine if Atomic
   stat: path=/run/ostree-booted
-  register: s
+  register: os_tree_check
   changed_when: false
   always_run: yes
-
-- name: Init the is_atomic fact
-  set_fact:
-    is_atomic: false
 
 - name: Set the is_atomic fact
   set_fact:
     is_atomic: true
-  when: s.stat.exists
+  when: os_tree_check.stat.exists
 
 - name: Determine if CoreOS
   raw: "grep '^NAME=' /etc/os-release | sed s'/NAME=//'"
   register: distro
   always_run: yes
-
-- name: Init the is_coreos fact
-  set_fact:
-    is_coreos: false
 
 - name: Set the is_coreos fact
   set_fact:
@@ -41,26 +33,14 @@
 
 - name: Determine if has rpm
   stat: path=/usr/bin/rpm
-  register: s
+  register: rpm_check
   changed_when: false
   always_run: yes
-
-- name: Init the has_rpm fact
-  set_fact:
-    has_rpm: false
 
 - name: Set the has_rpm fact
   set_fact:
     has_rpm: true
-  when: s.stat.exists
-
-- name: Init the has_firewalld fact
-  set_fact:
-    has_firewalld: false
-
-- name: Init the has_iptables fact
-  set_fact:
-    has_iptables: false
+  when: rpm_check.stat.exists
 
 # collect information about what packages are installed
 - include: rpm.yml
