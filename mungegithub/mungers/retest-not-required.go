@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,12 +34,11 @@ import (
 type RetestMunger struct{}
 
 const (
-	retestNotRequiredLabel = "retest-not-required"
+	retestCommentBody = "Retest not required for this PR because of changed filetypes."
 )
 
 var (
-	markdownRE      = regexp.MustCompile(`.+\.md$`)
-	retestCommentRE = regexp.MustCompile("Retest not required for this PR because of changed filetypes.")
+	markdownRE = regexp.MustCompile(`.+\.md$`)
 )
 
 func init() {
@@ -71,11 +70,6 @@ func (r *RetestMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	pr, err := obj.GetPR()
-	if err != nil {
-		return
-	}
-
 	commits, err := obj.GetCommits()
 	if err != nil {
 		return
@@ -83,20 +77,24 @@ func (r *RetestMunger) Munge(obj *github.MungeObject) {
 
 	for _, c := range commits {
 		for _, f := range c.Files {
-			if !retestCommentRE.MatchString(*f.Filename) {
+			if !markdownRE.MatchString(*f.Filename) {
 				return
 			}
 		}
 	}
 
 	obj.AddLabel(retestNotRequiredLabel)
+	obj.WriteComment(retestCommentBody)
 }
 
 func (r *RetestMunger) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
-	stale := retestCommentRE.MatchString(*comment.Body)
+	if *comment.Body != retestCommentBody {
+		return false
+	}
+	stale := commentBeforeLastCI(obj, comment)
 	if stale {
 		glog.V(6).Infof("Found stale RetestMunger comment")
 	}
