@@ -35,13 +35,15 @@ import (
 )
 
 const (
-	version = "1.6.2"
+	version = "1.6.4"
 	nginxConf = `
 daemon off;
 
 events {
-	worker_connections 1024;
+	worker_connections 16384;
+	worker_processes 4;
 }
+
 http {
 	# http://nginx.org/en/docs/http/ngx_http_core_module.html
 	types_hash_max_size 2048;
@@ -49,6 +51,12 @@ http {
 	server_names_hash_bucket_size 64;
 	# bite-460
 	client_max_body_size 128m;
+
+	# Optimize
+	ssl_protocols TLSv1.2;
+	ssl_ciphers HIGH:!aNULL;
+	ssl_session_cache shared:SSL:100m;
+	ssl_session_timeout 30m;
 
 	log_format proxied_combined '"$http_x_forwarded_for" - $remote_user [$time_local] "$request" '
 											'$status $body_bytes_sent "$http_referer" '
@@ -78,6 +86,7 @@ http {
 		listen 443 ssl;
 		ssl_certificate		/etc/nginx/certs/{{$i.Host}}.crt;
 		ssl_certificate_key	/etc/nginx/certs/{{$i.Host}}.key;
+
 {{end}}
 {{if $i.Nonssl}}		listen 80;{{end}}
 {{ range $path := $i.Paths }}
