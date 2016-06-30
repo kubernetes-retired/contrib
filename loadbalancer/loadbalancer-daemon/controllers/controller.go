@@ -75,7 +75,27 @@ func NewConfigMapController(kubeClient *client.Client, resyncPeriod time.Duratio
 		nodeInterface := getNodeInterface(kubeClient)
 		configMapController.keepaliveController = keepalived.NewKeepalivedController(nodeInterface)
 		configMapController.keepaliveController.Start()
+
+		// Listen for keepalived process monitor signal
+		go func() {
+			<-configMapController.keepaliveController.ExitChannel()
+			glog.Infof("Keepalived process has stopped. Cleaning VIPs")
+			configMapController.keepaliveController.Clean()
+			// Quit the application
+			os.Exit(255)
+		}()
 	}
+
+	// Listen for nginx process monitor signal
+	go func() {
+		<-configMapController.backendController.ExitChannel()
+		glog.Infof("Nginx process has stopped.")
+		if runKeepalived {
+			configMapController.keepaliveController.Clean()
+		}
+		// Quit the application
+		os.Exit(255)
+	}()
 
 	configMapHandlers := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {

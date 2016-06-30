@@ -17,17 +17,14 @@ limitations under the License.
 package keepalived
 
 import (
-	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"text/template"
 
 	"github.com/golang/glog"
+	"k8s.io/contrib/loadbalancer/loadbalancer-daemon/utils"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/sysctl"
@@ -43,10 +40,12 @@ var (
 		// enable connection tracking for LVS connections
 		"net/ipv4/vs/conntrack": 1,
 	}
+	keepAlivedPIDFile = "/var/run/keepalived.pid"
 )
 
 type KeepalivedController struct {
 	keepalived *Keepalived
+	exitChan   chan struct{}
 }
 
 type Keepalived struct {
@@ -67,8 +66,8 @@ func NewKeepalivedController(nodeInterface string) KeepalivedController {
 
 	kaControl := KeepalivedController{
 		keepalived: &k,
+		exitChan:   make(chan struct{}),
 	}
-
 	return kaControl
 }
 
@@ -90,9 +89,7 @@ func (k *KeepalivedController) Start() {
 	go func() {
 		for range c {
 			glog.Warning("TERM signal received. freeing vips")
-			for vip := range k.keepalived.Vips {
-				k.freeVIP(vip)
-			}
+			k.Clean()
 		}
 	}()
 
@@ -103,6 +100,22 @@ func (k *KeepalivedController) Start() {
 	if err := cmd.Wait(); err != nil {
 		glog.Fatalf("keepalived error: %v", err)
 	}
+
+	// Monitors the keepalived process
+	go utils.MonitorProcess(keepAlivedPIDFile, k.ExitChannel())
+}
+
+// Clean removes all VIPs created by keepalived.
+func (k *KeepalivedController) Clean() {
+	for vip := range k.keepalived.Vips {
+		glog.Infof("removing configured VIP %v", vip)
+		k8sexec.New().Command("ip", "addr", "del", vip+"/32", "dev", k.keepalived.Interface).CombinedOutput()
+	}
+}
+
+// ExitChannel returns the channel used to communicate keepalived process has exited
+func (k *KeepalivedController) ExitChannel() chan struct{} {
+	return k.exitChan
 }
 
 // AddVIP adds a new VIP to the keepalived config and reload keepalived process
@@ -158,26 +171,11 @@ func (k *KeepalivedController) writeCfg() {
 // reload sends SIGHUP to keepalived to reload the configuration.
 func (k *KeepalivedController) reload() {
 	glog.Infof("Reloading keepalived")
-	keepalivedPID, err := ioutil.ReadFile("/var/run/keepalived.pid")
-	if err != nil {
-		glog.Fatalf("Unable to get PID for keepalived. %v", err)
-	}
-	pidInt, _ := strconv.Atoi(strings.Trim(string(keepalivedPID), "\n"))
-	glog.Infof("Pid of keepalived is %v", pidInt)
-
-	err = syscall.Kill(pidInt, syscall.SIGHUP)
+	pid, _ := utils.ReadPID(keepAlivedPIDFile)
+	err := syscall.Kill(pid, syscall.SIGHUP)
 	if err != nil {
 		glog.Fatalf("Could not reload keepalived: %v", err)
 	}
-}
-
-func (k *KeepalivedController) freeVIP(vip string) error {
-	glog.Infof("removing configured VIP %v", vip)
-	out, err := k8sexec.New().Command("ip", "addr", "del", vip+"/32", "dev", k.keepalived.Interface).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error reloading keepalived: %v\n%s", err, out)
-	}
-	return nil
 }
 
 // changeSysctl changes the required network setting in /proc to get

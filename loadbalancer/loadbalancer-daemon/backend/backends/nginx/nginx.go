@@ -12,12 +12,14 @@ import (
 	"sync"
 
 	factory "k8s.io/contrib/loadbalancer/loadbalancer-daemon/backend"
+	"k8s.io/contrib/loadbalancer/loadbalancer-daemon/utils"
 
 	"github.com/golang/glog"
 )
 
 var (
-	configPath = "/etc/nginx"
+	configPath   = "/etc/nginx"
+	nginxPIDFile = "/var/run/nginx.pid"
 )
 
 // NGINXController Updates NGINX configuration, starts and reloads NGINX
@@ -25,6 +27,7 @@ type NGINXController struct {
 	nginxConfdPath    string
 	nginxTCPConfdPath string
 	nginxCertsPath    string
+	exitChan          chan struct{}
 }
 
 type NGINXConfig struct {
@@ -88,6 +91,7 @@ events {
 		nginxConfdPath:    path.Join(configPath, "conf.d"),
 		nginxTCPConfdPath: path.Join(configPath, "conf.d", "tcp"),
 		nginxCertsPath:    path.Join(configPath, "ssl"),
+		exitChan:          make(chan struct{}),
 	}
 
 	// This is to add a include directive for tcp apps
@@ -97,6 +101,9 @@ events {
 	// Create cert dir
 	createDir(ngxc.nginxCertsPath)
 	start()
+
+	// Monitors the nginx process
+	go utils.MonitorProcess(nginxPIDFile, ngxc.exitChan)
 
 	return &ngxc, nil
 }
@@ -144,6 +151,11 @@ func (nginx *NGINXController) DeleteConfig(name string) {
 		glog.Warningf("Failed to delete %v: %v", filename, err)
 	}
 	reload()
+}
+
+// ExitChannel returns the channel used to communicate nginx process has exited
+func (nginx *NGINXController) ExitChannel() chan struct{} {
+	return nginx.exitChan
 }
 
 func getNGINXConfigFileName(cnfPath string, name string) string {

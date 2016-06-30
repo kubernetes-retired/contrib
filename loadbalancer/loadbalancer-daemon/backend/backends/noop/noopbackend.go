@@ -8,6 +8,7 @@ import (
 // NoOpController Controller for noop backend
 type NoOpController struct {
 	variable string
+	exitChan chan struct{}
 }
 
 func init() {
@@ -19,6 +20,7 @@ func NewNoOpController() (factory.BackendController, error) {
 
 	cont := NoOpController{
 		variable: "NOOP",
+		exitChan: make(chan struct{}),
 	}
 
 	return &cont, nil
@@ -37,4 +39,9 @@ func (noop *NoOpController) AddConfig(name string, config factory.BackendConfig)
 // DeleteConfig delete event
 func (noop *NoOpController) DeleteConfig(name string) {
 	glog.Infof("Received delete config name %s", name)
+}
+
+// ExitChannel returns the channel used to communicate nginx process has exited
+func (noop *NoOpController) ExitChannel() chan struct{} {
+	return noop.exitChan
 }

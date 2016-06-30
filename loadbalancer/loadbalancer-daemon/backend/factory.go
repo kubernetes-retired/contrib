@@ -28,6 +28,7 @@ type BackendController interface {
 	Name() string
 	AddConfig(name string, config BackendConfig)
 	DeleteConfig(name string)
+	ExitChannel() chan struct{}
 }
 
 // BackendControllerFactory Factory for backend controllers
