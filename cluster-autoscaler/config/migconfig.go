@@ -48,68 +48,69 @@ func InstanceConfigFromProviderId(id string) (*InstanceConfig, error) {
 	}, nil
 }
 
-// MigConfig contains managed instance group configuration details.
-type MigConfig struct {
+// ScalingConfig contains managed instance group configuration details.
+type ScalingConfig struct {
 	MinSize int
 	MaxSize int
-	Project string
+	Project string // Unused on AWS
 	Zone    string
 	Name    string
 }
 
 // Url builds GCE url for the MIG.
-func (migconfig *MigConfig) Url() string {
-	return gceurl.GenerateMigUrl(migconfig.Project, migconfig.Zone, migconfig.Name)
+func (scalingconfig *ScalingConfig) Url() string {
+	return gceurl.GenerateMigUrl(scalingconfig.Project, scalingconfig.Zone, scalingconfig.Name)
 }
 
 // Node returns a template/dummy node for the mig.
-func (migconfig *MigConfig) Node() *kube_api.Node {
+func (scalingconfig *ScalingConfig) Node() *kube_api.Node {
 	//TODO(fgrzadkowski): Implement this.
 	return nil
 }
 
-// MigConfigFlag is an array of MIG configuration details. Working as a multi-value flag.
-type MigConfigFlag []MigConfig
+// ScalingConfigFlag is an array of MIG configuration details. Working as a multi-value flag.
+type ScalingConfigFlag []ScalingConfig
 
 // String returns string representation of the MIG.
-func (migconfigflag *MigConfigFlag) String() string {
-	configs := make([]string, len(*migconfigflag))
-	for _, migconfig := range *migconfigflag {
-		configs = append(configs, fmt.Sprintf("%d:%d:%s:%s", migconfig.MinSize, migconfig.MaxSize, migconfig.Zone, migconfig.Name))
+func (scalingconfigflag *ScalingConfigFlag) String() string {
+	configs := make([]string, len(*scalingconfigflag))
+	for _, scalingconfig := range *scalingconfigflag {
+		configs = append(configs, fmt.Sprintf("%d:%d:%s:%s", scalingconfig.MinSize, scalingconfig.MaxSize, scalingconfig.Zone, scalingconfig.Name))
 	}
 	return "[" + strings.Join(configs, " ") + "]"
 }
 
 // Set adds a new configuration.
-func (migconfigflag *MigConfigFlag) Set(value string) error {
+func (scalingconfigflag *ScalingConfigFlag) Set(value string) error {
 	tokens := strings.SplitN(value, ":", 3)
 	if len(tokens) != 3 {
 		return fmt.Errorf("wrong nodes configuration: %s", value)
 	}
-	migconfig := MigConfig{}
+	scalingconfig := ScalingConfig{}
 	if size, err := strconv.Atoi(tokens[0]); err == nil {
 		if size <= 0 {
 			return fmt.Errorf("min size must be >= 1")
 		}
-		migconfig.MinSize = size
+		scalingconfig.MinSize = size
 	} else {
 		return fmt.Errorf("failed to set min size: %s, expected integer", tokens[0])
 	}
 
 	if size, err := strconv.Atoi(tokens[1]); err == nil {
-		if size < migconfig.MinSize {
+		if size < scalingconfig.MinSize {
 			return fmt.Errorf("max size must be greater or equal to min size")
 		}
-		migconfig.MaxSize = size
+		scalingconfig.MaxSize = size
 	} else {
 		return fmt.Errorf("failed to set max size: %s, expected integer", tokens[1])
 	}
 
 	var err error
-	if migconfig.Project, migconfig.Zone, migconfig.Name, err = gceurl.ParseMigUrl(tokens[2]); err != nil {
+	// TODO: this is a bit messy on AWS, we're currently forced to fill in a GCE url with AWS ASG details
+	if scalingconfig.Project, scalingconfig.Zone, scalingconfig.Name, err = gceurl.ParseMigUrl(tokens[2]); err != nil {
 		return fmt.Errorf("failed to parse mig url: %s got error: %v", tokens[2], err)
 	}
 
-	*migconfigflag = append(*migconfigflag, migconfig)
+	*scalingconfigflag = append(*scalingconfigflag, scalingconfig)
 	return nil
 }

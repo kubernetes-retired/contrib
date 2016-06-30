@@ -22,7 +22,7 @@ import (
 
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
-	"k8s.io/contrib/cluster-autoscaler/utils/gce"
+	"k8s.io/contrib/cluster-autoscaler/utils/cloud"
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
@@ -106,7 +106,7 @@ func ScaleDown(
 	unneededNodes map[string]time.Time,
 	unneededTime time.Duration,
 	pods []*kube_api.Pod,
-	gceManager *gce.GceManager,
+	cloudManager cloud.Manager,
 	client *kube_client.Client,
 	predicateChecker *simulator.PredicateChecker) (ScaleDownResult, error) {
 
@@ -128,12 +128,12 @@ func ScaleDown(
 				glog.Errorf("Error while parsing providerid of %s: %v", node.Name, err)
 				continue
 			}
-			migConfig, err := gceManager.GetMigForInstance(instance)
+			migConfig, err := cloudManager.GetScalingGroupForInstance(instance)
 			if err != nil {
 				glog.Errorf("Error while checking mig config for instance %v: %v", instance, err)
 				continue
 			}
-			size, err := gceManager.GetMigSize(migConfig)
+			size, err := cloudManager.GetScalingGroupSize(migConfig)
 			if err != nil {
 				glog.Errorf("Error while checking mig size for instance %v: %v", instance, err)
 				continue
@@ -167,7 +167,7 @@ func ScaleDown(
 		return ScaleDownError, fmt.Errorf("Failed to get instance config for %s: %v", nodeToRemove.Name, err)
 	}
 
-	err = gceManager.DeleteInstances([]*config.InstanceConfig{instanceConfig})
+	err = cloudManager.DeleteInstances([]*config.InstanceConfig{instanceConfig})
 	if err != nil {
 		return ScaleDownError, fmt.Errorf("Failed to delete %v: %v", instanceConfig, err)
 	}
