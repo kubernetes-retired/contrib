@@ -40,7 +40,8 @@ import (
 )
 
 type config struct {
-	Cmd []string `json:"Cmd"`
+	Cmd          []string            `json:"Cmd"`
+	ExposedPorts map[string]struct{} `json:"ExposedPorts"`
 }
 
 type image struct {
@@ -53,6 +54,7 @@ type image struct {
 }
 
 var imageName = flag.String("image", "", "namespace/name for the repository, default to go2docker/$(basename)")
+var exposedPorts = flag.String("expose", "", "CSV of ports to expose (e.g. 8080,53/udp,80/tcp)")
 
 const (
 	dockerVersion = "1.4.0"
@@ -158,12 +160,17 @@ func main() {
 	if _, err := tw.Write([]byte(version)); err != nil {
 		log.Fatalf(" failed to write /%s/VERSION body: %v", imageID, err)
 	}
+	ports := map[string]struct{}{}
+	for _, port := range strings.Split(*exposedPorts, ",") {
+		ports[port] = struct{}{}
+	}
 	imageJSON, err := json.Marshal(image{
 		ID:            imageID,
 		Created:       time.Now().UTC(),
 		DockerVersion: version,
 		Config: config{
-			Cmd: []string{"/" + basename},
+			Cmd:          []string{"/" + basename},
+			ExposedPorts: ports,
 		},
 		Architecture: arch,
 		OS:           goos,

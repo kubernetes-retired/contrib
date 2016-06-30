@@ -27,7 +27,6 @@ Hello, Go examples!
 
 ## TODOs
 - [ ] add command line flag for entrypoint
-- [ ] add command line flag for exposed port
 - [ ] add command line flag for volume
 - [ ] go get the package if not present in `$GOPATH`
 - [ ] add push command
