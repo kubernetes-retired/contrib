@@ -6,7 +6,7 @@
         state: latest
   notify:
     - restart etcd
-  when: not is_atomic and ansible_distribution != "Ubuntu" and not is_coreos
+  when: not is_atomic and ansible_distribution != "Ubuntu" and not is_coreos and not did_install
 
 - name: Force etcd_source_type to github when packages are not available
   set_fact:
