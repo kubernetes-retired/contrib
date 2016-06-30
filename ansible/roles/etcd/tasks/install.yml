@@ -1,0 +1,26 @@
+---
+- name: Force etcd_source_type to package manager 
+  set_fact:
+    etcd_source_type: "package-manager"
+  when: not is_atomic and ansible_distribution != "Ubuntu" and not is_coreos
+
+- name: Install etcd
+  action: "{{ ansible_pkg_mgr }}"
+  args:
+        name: etcd
+        state: latest
+  when: etcd_source_type == "package-manager" 
+ 
+- name: Set the etcd_modified fact to true 
+  set_fact:
+    etcd_modified: true
+  when: etcd_source_type == "package-manager" 
+
+- name: Force etcd_source_type to github when packages are not available
+  set_fact:
+    etcd_source_type: "github-release"
+  when: ansible_distribution == "Ubuntu"
+
+- name: Install etcd from github
+  include: etcd-install-github-release.yml
+  when: etcd_source_type == "github-release"

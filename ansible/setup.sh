@@ -16,4 +16,4 @@
 
 inventory=${INVENTORY:-inventory}
 
-ansible-playbook -i ${inventory} cluster.yml $@
+ansible-playbook -i ${inventory} deploy-cluster.yml $@
