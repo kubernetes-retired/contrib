@@ -54,8 +54,8 @@ http {
 	client_max_body_size 128m;
 
 	# Optimize
-	ssl_protocols TLSv1.2;
-	ssl_ciphers HIGH:!aNULL;
+	ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+	ssl_ciphers HIGH:!aNULL:!MD5;
 	ssl_session_cache shared:SSL:100m;
 	ssl_session_timeout 30m;
 
