@@ -20,7 +20,6 @@ import (
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
-	cmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
 
@@ -28,7 +27,7 @@ import (
 // node was just created (like deamonset and manifest-run pods). It reuses kubectl
 // drain command to get the list.
 func GetRequiredPodsForNode(nodename string, client *kube_client.Client) ([]*kube_api.Pod, error) {
-	podsToRemoveList, _, _, err := cmd.GetPodsForDeletionOnNodeDrain(client, nodename,
+	podsToRemoveList, _, _, err := GetPodsForDeletionOnNodeDrain(client, nodename,
 		kube_api.Codecs.UniversalDecoder(), true, true)
 	if err != nil {
 		return []*kube_api.Pod{}, err

@@ -35,6 +35,7 @@ func init() {
 	if err := Scheme.AddGeneratedDeepCopyFuncs(
 		DeepCopy_api_AWSElasticBlockStoreVolumeSource,
 		DeepCopy_api_Affinity,
+		DeepCopy_api_AttachedVolume,
 		DeepCopy_api_AzureFileVolumeSource,
 		DeepCopy_api_Binding,
 		DeepCopy_api_Capabilities,
@@ -225,6 +226,12 @@ func DeepCopy_api_Affinity(in Affinity, out *Affinity, c *conversion.Cloner) err
 	} else {
 		out.PodAntiAffinity = nil
 	}
+	return nil
+}
+
+func DeepCopy_api_AttachedVolume(in AttachedVolume, out *AttachedVolume, c *conversion.Cloner) error {
+	out.Name = in.Name
+	out.DevicePath = in.DevicePath
 	return nil
 }
 
@@ -1601,6 +1608,26 @@ func DeepCopy_api_NodeStatus(in NodeStatus, out *NodeStatus, c *conversion.Clone
 	} else {
 		out.Images = nil
 	}
+	if in.VolumesInUse != nil {
+		in, out := in.VolumesInUse, &out.VolumesInUse
+		*out = make([]UniqueVolumeName, len(in))
+		for i := range in {
+			(*out)[i] = in[i]
+		}
+	} else {
+		out.VolumesInUse = nil
+	}
+	if in.VolumesAttached != nil {
+		in, out := in.VolumesAttached, &out.VolumesAttached
+		*out = make([]AttachedVolume, len(in))
+		for i := range in {
+			if err := DeepCopy_api_AttachedVolume(in[i], &(*out)[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.VolumesAttached = nil
+	}
 	return nil
 }
 
@@ -1706,6 +1733,13 @@ func DeepCopy_api_OwnerReference(in OwnerReference, out *OwnerReference, c *conv
 	out.Kind = in.Kind
 	out.Name = in.Name
 	out.UID = in.UID
+	if in.Controller != nil {
+		in, out := in.Controller, &out.Controller
+		*out = new(bool)
+		**out = *in
+	} else {
+		out.Controller = nil
+	}
 	return nil
 }
 
@@ -1771,6 +1805,15 @@ func DeepCopy_api_PersistentVolumeClaimSpec(in PersistentVolumeClaimSpec, out *P
 		}
 	} else {
 		out.AccessModes = nil
+	}
+	if in.Selector != nil {
+		in, out := in.Selector, &out.Selector
+		*out = new(unversioned.LabelSelector)
+		if err := unversioned.DeepCopy_unversioned_LabelSelector(*in, *out, c); err != nil {
+			return err
+		}
+	} else {
+		out.Selector = nil
 	}
 	if err := DeepCopy_api_ResourceRequirements(in.Resources, &out.Resources, c); err != nil {
 		return err
@@ -2455,11 +2498,7 @@ func DeepCopy_api_Preconditions(in Preconditions, out *Preconditions, c *convers
 	if in.UID != nil {
 		in, out := in.UID, &out.UID
 		*out = new(types.UID)
-		if newVal, err := c.DeepCopy(*in); err != nil {
-			return err
-		} else {
-			**out = newVal.(types.UID)
-		}
+		**out = *in
 	} else {
 		out.UID = nil
 	}

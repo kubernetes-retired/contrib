@@ -38,6 +38,7 @@ import (
 
 	"k8s.io/kubernetes/federation/apis/federation"
 	"k8s.io/kubernetes/pkg/api"
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/service"
 	"k8s.io/kubernetes/pkg/api/unversioned"
@@ -48,7 +49,6 @@ import (
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
-	"k8s.io/kubernetes/pkg/apis/metrics"
 	"k8s.io/kubernetes/pkg/apis/policy"
 	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/client/restclient"
@@ -159,6 +159,7 @@ const (
 	ServiceV2GeneratorName                      = "service/v2"
 	ServiceAccountV1GeneratorName               = "serviceaccount/v1"
 	HorizontalPodAutoscalerV1Beta1GeneratorName = "horizontalpodautoscaler/v1beta1"
+	HorizontalPodAutoscalerV1GeneratorName      = "horizontalpodautoscaler/v1"
 	DeploymentV1Beta1GeneratorName              = "deployment/v1beta1"
 	JobV1Beta1GeneratorName                     = "job/v1beta1"
 	JobV1GeneratorName                          = "job/v1"
@@ -185,6 +186,7 @@ func DefaultGenerators(cmdName string) map[string]kubectl.Generator {
 	}
 	generators["autoscale"] = map[string]kubectl.Generator{
 		HorizontalPodAutoscalerV1Beta1GeneratorName: kubectl.HorizontalPodAutoscalerV1Beta1{},
+		HorizontalPodAutoscalerV1GeneratorName:      kubectl.HorizontalPodAutoscalerV1{},
 	}
 	generators["namespace"] = map[string]kubectl.Generator{
 		NamespaceV1GeneratorName: kubectl.NamespaceGeneratorV1{},
@@ -260,7 +262,18 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 				client, err := clients.ClientForVersion(&unversioned.GroupVersion{Version: "v1"})
 				CheckErr(err)
 
-				versions, gvks, err := GetThirdPartyGroupVersions(client.Discovery())
+				var versions []unversioned.GroupVersion
+				var gvks []unversioned.GroupVersionKind
+				retries := 3
+				for i := 0; i < retries; i++ {
+					versions, gvks, err = GetThirdPartyGroupVersions(client.Discovery())
+					// Retry if we got a NotFound error, because user may delete
+					// a thirdparty group when the GetThirdPartyGroupVersions is
+					// running.
+					if err == nil || !apierrors.IsNotFound(err) {
+						break
+					}
+				}
 				CheckErr(err)
 				if len(versions) > 0 {
 					priorityMapper, ok := mapper.RESTMapper.(meta.PriorityRESTMapper)
@@ -306,14 +319,14 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 				Delegate: outputRESTMapper,
 				ResourcePriority: []unversioned.GroupVersionResource{
 					{Group: api.GroupName, Version: meta.AnyVersion, Resource: meta.AnyResource},
+					{Group: autoscaling.GroupName, Version: meta.AnyVersion, Resource: meta.AnyResource},
 					{Group: extensions.GroupName, Version: meta.AnyVersion, Resource: meta.AnyResource},
-					{Group: metrics.GroupName, Version: meta.AnyVersion, Resource: meta.AnyResource},
 					{Group: federation.GroupName, Version: meta.AnyVersion, Resource: meta.AnyResource},
 				},
 				KindPriority: []unversioned.GroupVersionKind{
 					{Group: api.GroupName, Version: meta.AnyVersion, Kind: meta.AnyKind},
+					{Group: autoscaling.GroupName, Version: meta.AnyVersion, Kind: meta.AnyKind},
 					{Group: extensions.GroupName, Version: meta.AnyVersion, Kind: meta.AnyKind},
-					{Group: metrics.GroupName, Version: meta.AnyVersion, Kind: meta.AnyKind},
 					{Group: federation.GroupName, Version: meta.AnyVersion, Kind: meta.AnyKind},
 				},
 			}
@@ -364,7 +377,8 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 				gv := gvk.GroupVersion()
 				cfg.GroupVersion = &gv
 				cfg.APIPath = "/apis"
-				cfg.Codec = thirdpartyresourcedata.NewCodec(c.ExtensionsClient.RESTClient.Codec(), gvk.Kind)
+				cfg.Codec = thirdpartyresourcedata.NewCodec(c.ExtensionsClient.RESTClient.Codec(), gvk)
+				cfg.NegotiatedSerializer = thirdpartyresourcedata.NewNegotiatedSerializer(api.Codecs, gvk.Kind, gv, gv)
 				return restclient.RESTClientFor(cfg)
 			}
 		},
@@ -389,10 +403,14 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 			return nil, fmt.Errorf("no description has been implemented for %q", mapping.GroupVersionKind.Kind)
 		},
 		Decoder: func(toInternal bool) runtime.Decoder {
+			var decoder runtime.Decoder
 			if toInternal {
-				return api.Codecs.UniversalDecoder()
+				decoder = api.Codecs.UniversalDecoder()
+			} else {
+				decoder = api.Codecs.UniversalDeserializer()
 			}
-			return api.Codecs.UniversalDeserializer()
+			return thirdpartyresourcedata.NewDecoder(decoder, "")
+
 		},
 		JSONEncoder: func() runtime.Encoder {
 			return api.Codecs.LegacyCodec(registered.EnabledVersions()...)

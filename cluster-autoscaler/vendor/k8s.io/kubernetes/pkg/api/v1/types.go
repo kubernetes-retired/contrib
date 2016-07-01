@@ -177,7 +177,9 @@ type ObjectMeta struct {
 	Annotations map[string]string `json:"annotations,omitempty" protobuf:"bytes,12,rep,name=annotations"`
 
 	// List of objects depended by this object. If ALL objects in the list have
-	// been deleted, this object will be garbage collected.
+	// been deleted, this object will be garbage collected. If this object is managed by a controller,
+	// then an entry in this list will point to this controller, with the controller field set to true.
+	// There cannot be more than one managing controller.
 	OwnerReferences []OwnerReference `json:"ownerReferences,omitempty" patchStrategy:"merge" patchMergeKey:"uid" protobuf:"bytes,13,rep,name=ownerReferences"`
 
 	// Must be empty before the object is deleted from the registry. Each entry
@@ -456,6 +458,8 @@ type PersistentVolumeClaimSpec struct {
 	// AccessModes contains the desired access modes the volume should have.
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/persistent-volumes.md#access-modes-1
 	AccessModes []PersistentVolumeAccessMode `json:"accessModes,omitempty" protobuf:"bytes,1,rep,name=accessModes,casttype=PersistentVolumeAccessMode"`
+	// A label query over volumes to consider for binding.
+	Selector *unversioned.LabelSelector `json:"selector,omitempty" protobuf:"bytes,4,opt,name=selector"`
 	// Resources represents the minimum resources the volume should have.
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/persistent-volumes.md#resources
 	Resources ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,2,opt,name=resources"`
@@ -569,20 +573,20 @@ type RBDVolumeSource struct {
 	// The rados pool name.
 	// Default is rbd.
 	// More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it.
-	RBDPool string `json:"pool" protobuf:"bytes,4,opt,name=pool"`
+	RBDPool string `json:"pool,omitempty" protobuf:"bytes,4,opt,name=pool"`
 	// The rados user name.
 	// Default is admin.
 	// More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it
-	RadosUser string `json:"user" protobuf:"bytes,5,opt,name=user"`
+	RadosUser string `json:"user,omitempty" protobuf:"bytes,5,opt,name=user"`
 	// Keyring is the path to key ring for RBDUser.
 	// Default is /etc/ceph/keyring.
 	// More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it
-	Keyring string `json:"keyring" protobuf:"bytes,6,opt,name=keyring"`
+	Keyring string `json:"keyring,omitempty" protobuf:"bytes,6,opt,name=keyring"`
 	// SecretRef is name of the authentication secret for RBDUser. If provided
 	// overrides keyring.
-	// Default is empty.
+	// Default is nil.
 	// More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it
-	SecretRef *LocalObjectReference `json:"secretRef" protobuf:"bytes,7,opt,name=secretRef"`
+	SecretRef *LocalObjectReference `json:"secretRef,omitempty" protobuf:"bytes,7,opt,name=secretRef"`
 	// ReadOnly here will force the ReadOnly setting in VolumeMounts.
 	// Defaults to false.
 	// More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it
@@ -2382,6 +2386,21 @@ type NodeStatus struct {
 	NodeInfo NodeSystemInfo `json:"nodeInfo,omitempty" protobuf:"bytes,7,opt,name=nodeInfo"`
 	// List of container images on this node
 	Images []ContainerImage `json:"images,omitempty" protobuf:"bytes,8,rep,name=images"`
+	// List of attachable volumes in use (mounted) by the node.
+	VolumesInUse []UniqueVolumeName `json:"volumesInUse,omitempty" protobuf:"bytes,9,rep,name=volumesInUse"`
+	// List of volumes that are attached to the node.
+	VolumesAttached []AttachedVolume `json:"volumesAttached,omitempty" protobuf:"bytes,10,rep,name=volumesAttached"`
+}
+
+type UniqueVolumeName string
+
+// AttachedVolume describes a volume attached to a node
+type AttachedVolume struct {
+	// Name of the attached volume
+	Name UniqueVolumeName `json:"name" protobuf:"bytes,1,rep,name=name"`
+
+	// DevicePath represents the device path where the volume should be avilable
+	DevicePath string `json:"devicePath" protobuf:"bytes,2,rep,name=devicePath"`
 }
 
 // Describe a container image
@@ -2775,6 +2794,8 @@ type OwnerReference struct {
 	// UID of the referent.
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/identifiers.md#uids
 	UID types.UID `json:"uid" protobuf:"bytes,4,opt,name=uid,casttype=k8s.io/kubernetes/pkg/types.UID"`
+	// If true, this reference points to the managing controller.
+	Controller *bool `json:"controller,omitempty" protobuf:"varint,6,opt,name=controller"`
 }
 
 // ObjectReference contains enough information to let you inspect or modify the referred object.

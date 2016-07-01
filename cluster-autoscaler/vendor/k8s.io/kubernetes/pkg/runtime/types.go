@@ -40,6 +40,7 @@ import (
 // TypeMeta is provided here for convenience. You may use it directly from this package or define
 // your own with the same fields.
 //
+// +gencopy=true
 // +protobuf=true
 type TypeMeta struct {
 	APIVersion string `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty" protobuf:"bytes,1,opt,name=apiVersion"`
@@ -92,6 +93,7 @@ const (
 // in the Object. (TODO: In the case where the object is of an unknown type, a
 // runtime.Unknown object will be created and stored.)
 //
+// +gencopy=true
 // +protobuf=true
 type RawExtension struct {
 	// Raw is the underlying serialization of this object.
@@ -109,6 +111,7 @@ type RawExtension struct {
 // TODO: Make this object have easy access to field based accessors and settors for
 // metadata and field mutatation.
 //
+// +gencopy=true
 // +protobuf=true
 type Unknown struct {
 	TypeMeta `json:",inline" protobuf:"bytes,1,opt,name=typeMeta"`
@@ -231,20 +234,36 @@ func (u *Unstructured) setNestedMap(value map[string]string, fields ...string) {
 
 func extractOwnerReference(src interface{}) metatypes.OwnerReference {
 	v := src.(map[string]interface{})
+	controllerPtr, ok := (getNestedField(v, "controller")).(*bool)
+	if !ok {
+		controllerPtr = nil
+	} else {
+		if controllerPtr != nil {
+			controller := *controllerPtr
+			controllerPtr = &controller
+		}
+	}
 	return metatypes.OwnerReference{
 		Kind:       getNestedString(v, "kind"),
 		Name:       getNestedString(v, "name"),
 		APIVersion: getNestedString(v, "apiVersion"),
 		UID:        (types.UID)(getNestedString(v, "uid")),
+		Controller: controllerPtr,
 	}
 }
 
 func setOwnerReference(src metatypes.OwnerReference) map[string]interface{} {
 	ret := make(map[string]interface{})
+	controllerPtr := src.Controller
+	if controllerPtr != nil {
+		controller := *controllerPtr
+		controllerPtr = &controller
+	}
 	setNestedField(ret, src.Kind, "kind")
 	setNestedField(ret, src.Name, "name")
 	setNestedField(ret, src.APIVersion, "apiVersion")
 	setNestedField(ret, string(src.UID), "uid")
+	setNestedField(ret, controllerPtr, "controller")
 	return ret
 }
 

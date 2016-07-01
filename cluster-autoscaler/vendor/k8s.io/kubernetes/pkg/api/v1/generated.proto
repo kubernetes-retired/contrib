@@ -71,6 +71,15 @@ message Affinity {
   optional PodAntiAffinity podAntiAffinity = 3;
 }
 
+// AttachedVolume describes a volume attached to a node
+message AttachedVolume {
+  // Name of the attached volume
+  optional string name = 1;
+
+  // DevicePath represents the device path where the volume should be avilable
+  optional string devicePath = 2;
+}
+
 // AzureFile represents an Azure File Service mount on the host and bind mount to the pod.
 message AzureFileVolumeSource {
   // the name of secret that contains Azure Storage Account Name and Key
@@ -1303,6 +1312,12 @@ message NodeStatus {
 
   // List of container images on this node
   repeated ContainerImage images = 8;
+
+  // List of attachable volumes in use (mounted) by the node.
+  repeated string volumesInUse = 9;
+
+  // List of volumes that are attached to the node.
+  repeated AttachedVolume volumesAttached = 10;
 }
 
 // NodeSystemInfo is a set of ids/uuids to uniquely identify the node.
@@ -1461,7 +1476,9 @@ message ObjectMeta {
   map<string, string> annotations = 12;
 
   // List of objects depended by this object. If ALL objects in the list have
-  // been deleted, this object will be garbage collected.
+  // been deleted, this object will be garbage collected. If this object is managed by a controller,
+  // then an entry in this list will point to this controller, with the controller field set to true.
+  // There cannot be more than one managing controller.
   repeated OwnerReference ownerReferences = 13;
 
   // Must be empty before the object is deleted from the registry. Each entry
@@ -1525,6 +1542,9 @@ message OwnerReference {
   // UID of the referent.
   // More info: http://releases.k8s.io/HEAD/docs/user-guide/identifiers.md#uids
   optional string uid = 4;
+
+  // If true, this reference points to the managing controller.
+  optional bool controller = 6;
 }
 
 // PersistentVolume (PV) is a storage resource provisioned by an administrator.
@@ -1580,6 +1600,9 @@ message PersistentVolumeClaimSpec {
   // AccessModes contains the desired access modes the volume should have.
   // More info: http://releases.k8s.io/HEAD/docs/user-guide/persistent-volumes.md#access-modes-1
   repeated string accessModes = 1;
+
+  // A label query over volumes to consider for binding.
+  optional k8s.io.kubernetes.pkg.api.unversioned.LabelSelector selector = 4;
 
   // Resources represents the minimum resources the volume should have.
   // More info: http://releases.k8s.io/HEAD/docs/user-guide/persistent-volumes.md#resources
@@ -2265,7 +2288,7 @@ message RBDVolumeSource {
 
   // SecretRef is name of the authentication secret for RBDUser. If provided
   // overrides keyring.
-  // Default is empty.
+  // Default is nil.
   // More info: http://releases.k8s.io/HEAD/examples/rbd/README.md#how-to-use-it
   optional LocalObjectReference secretRef = 7;
 

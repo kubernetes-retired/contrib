@@ -140,7 +140,9 @@ type ObjectMeta struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 
 	// List of objects depended by this object. If ALL objects in the list have
-	// been deleted, this object will be garbage collected.
+	// been deleted, this object will be garbage collected. If this object is managed by a controller,
+	// then an entry in this list will point to this controller, with the controller field set to true.
+	// There cannot be more than one managing controller.
 	OwnerReferences []OwnerReference `json:"ownerReferences,omitempty"`
 
 	// Must be empty before the object is deleted from the registry. Each entry
@@ -304,6 +306,8 @@ type PersistentVolumeSpec struct {
 	// ClaimRef is part of a bi-directional binding between PersistentVolume and PersistentVolumeClaim.
 	// ClaimRef is expected to be non-nil when bound.
 	// claim.VolumeName is the authoritative bind between PV and PVC.
+	// When set to non-nil value, PVC.Spec.Selector of the referenced PVC is
+	// ignored, i.e. labels of this PV do not need to match PVC selector.
 	ClaimRef *ObjectReference `json:"claimRef,omitempty"`
 	// Optional: what happens to a persistent volume when released from its claim.
 	PersistentVolumeReclaimPolicy PersistentVolumeReclaimPolicy `json:"persistentVolumeReclaimPolicy,omitempty"`
@@ -364,9 +368,13 @@ type PersistentVolumeClaimList struct {
 type PersistentVolumeClaimSpec struct {
 	// Contains the types of access modes required
 	AccessModes []PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+	// A label query over volumes to consider for binding. This selector is
+	// ignored when VolumeName is set
+	Selector *unversioned.LabelSelector `json:"selector,omitempty"`
 	// Resources represents the minimum resources required
 	Resources ResourceRequirements `json:"resources,omitempty"`
-	// VolumeName is the binding reference to the PersistentVolume backing this claim
+	// VolumeName is the binding reference to the PersistentVolume backing this
+	// claim. When set to non-empty value Selector is not evaluated
 	VolumeName string `json:"volumeName,omitempty"`
 }
 
@@ -641,13 +649,13 @@ type RBDVolumeSource struct {
 	// TODO: how do we prevent errors in the filesystem from compromising the machine
 	FSType string `json:"fsType,omitempty"`
 	// Optional: RadosPool is the rados pool name,default is rbd
-	RBDPool string `json:"pool"`
+	RBDPool string `json:"pool,omitempty"`
 	// Optional: RBDUser is the rados user name, default is admin
-	RadosUser string `json:"user"`
+	RadosUser string `json:"user,omitempty"`
 	// Optional: Keyring is the path to key ring for RBDUser, default is /etc/ceph/keyring
-	Keyring string `json:"keyring"`
-	// Optional: SecretRef is name of the authentication secret for RBDUser, default is empty.
-	SecretRef *LocalObjectReference `json:"secretRef"`
+	Keyring string `json:"keyring,omitempty"`
+	// Optional: SecretRef is name of the authentication secret for RBDUser, default is nil.
+	SecretRef *LocalObjectReference `json:"secretRef,omitempty"`
 	// Optional: Defaults to false (read/write). ReadOnly here will force
 	// the ReadOnly setting in VolumeMounts.
 	ReadOnly bool `json:"readOnly,omitempty"`
@@ -1979,6 +1987,21 @@ type NodeStatus struct {
 	NodeInfo NodeSystemInfo `json:"nodeInfo,omitempty"`
 	// List of container images on this node
 	Images []ContainerImage `json:"images,omitempty"`
+	// List of attachable volumes in use (mounted) by the node.
+	VolumesInUse []UniqueVolumeName `json:"volumesInUse,omitempty"`
+	// List of volumes that are attached to the node.
+	VolumesAttached []AttachedVolume `json:"volumesAttached,omitempty"`
+}
+
+type UniqueVolumeName string
+
+// AttachedVolume describes a volume attached to a node
+type AttachedVolume struct {
+	// Name of the attached volume
+	Name UniqueVolumeName `json:"name"`
+
+	// DevicePath represents the device path where the volume should be avilable
+	DevicePath string `json:"devicePath"`
 }
 
 // Describe a container image
@@ -2328,6 +2351,8 @@ type OwnerReference struct {
 	// UID of the referent.
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/identifiers.md#uids
 	UID types.UID `json:"uid"`
+	// If true, this reference points to the managing controller.
+	Controller *bool `json:"controller,omitempty"`
 }
 
 // ObjectReference contains enough information to let you inspect or modify the referred object.

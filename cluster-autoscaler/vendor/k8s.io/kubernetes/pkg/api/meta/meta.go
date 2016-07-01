@@ -35,6 +35,11 @@ func ListAccessor(obj interface{}) (List, error) {
 			return om, nil
 		}
 	}
+	if listMetaAccessor, ok := obj.(unversioned.ListMetaAccessor); ok {
+		if om := listMetaAccessor.GetListMeta(); om != nil {
+			return om, nil
+		}
+	}
 	// we may get passed an object that is directly portable to List
 	if list, ok := obj.(List); ok {
 		return list, nil
@@ -359,6 +364,14 @@ func extractFromOwnerReference(v reflect.Value, o *metatypes.OwnerReference) err
 	if err := runtime.Field(v, "UID", &o.UID); err != nil {
 		return err
 	}
+	var controllerPtr *bool
+	if err := runtime.Field(v, "Controller", &controllerPtr); err != nil {
+		return err
+	}
+	if controllerPtr != nil {
+		controller := *controllerPtr
+		o.Controller = &controller
+	}
 	return nil
 }
 
@@ -375,6 +388,12 @@ func setOwnerReference(v reflect.Value, o *metatypes.OwnerReference) error {
 	}
 	if err := runtime.SetField(o.UID, v, "UID"); err != nil {
 		return err
+	}
+	if o.Controller != nil {
+		controller := *(o.Controller)
+		if err := runtime.SetField(&controller, v, "Controller"); err != nil {
+			return err
+		}
 	}
 	return nil
 }

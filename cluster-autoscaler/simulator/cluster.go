@@ -24,7 +24,6 @@ import (
 	kube_api "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
-	cmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
@@ -75,7 +74,7 @@ candidateloop:
 				continue candidateloop
 			}
 		} else {
-			drainResult, _, _, err := cmd.GetPodsForDeletionOnNodeDrain(client, node.Name,
+			drainResult, _, _, err := GetPodsForDeletionOnNodeDrain(client, node.Name,
 				kube_api.Codecs.UniversalDecoder(), false, true)
 
 			if err != nil {
