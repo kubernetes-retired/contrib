@@ -1,6 +1,5 @@
 ---
-# etcd_source_type: package | github-release
-etcd_source_type: package
+etcd_source_type: "pass"
 etcd_version: 2.2.3
 
 etcd_client_port: 2379
@@ -46,3 +45,7 @@ etcd_data_dir: /var/lib/etcd
 
 etcd_download_url_base: "https://github.com/coreos/etcd/releases/download/v{{ etcd_version }}"
 etcd_download_url: "{{ etcd_download_url_base }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+
+etcd_enable: true
+etcd_modified: false
+etcd2_modified: false

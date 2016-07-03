@@ -241,6 +241,9 @@ func CheckMigsAndNodes(nodes []*kube_api.Node, gceManager *gce.GceManager) error
 		if err != nil {
 			return err
 		}
+		if migConfig == nil {
+			continue
+		}
 		url := migConfig.Url()
 		count, _ := migCount[url]
 		migCount[url] = count + 1
@@ -272,6 +275,9 @@ func GetNodeInfosForMigs(nodes []*kube_api.Node, gceManager *gce.GceManager, kub
 		migConfig, err := gceManager.GetMigForInstance(instanceConfig)
 		if err != nil {
 			return map[string]*schedulercache.NodeInfo{}, err
+		}
+		if migConfig == nil {
+			continue
 		}
 		url := migConfig.Url()
 
