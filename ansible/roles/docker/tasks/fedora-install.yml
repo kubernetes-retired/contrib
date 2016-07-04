@@ -1,0 +1,32 @@
+---
+- name: add docker.repo
+  become: yes
+  copy:
+    src=docker.repo
+    dest="/etc/yum.repos.d/docker.repo"
+    mode=0600
+    owner="{{ansible_env.USER}}"
+    group="{{ansible_env.USER}}"
+  tags: install-docker
+
+- name: Install docker-engine package
+  become: yes
+  command: "{{ansible_pkg_mgr}} install -y {{item}} --allowerasing"
+  with_items:
+    - docker-engine
+  tags: install-docker
+
+- name: Create docker group
+  become: yes
+  group: name=docker state=present
+  tags: install-docker
+
+- name: Add {{ansible_env.USER}} to docker group
+  become: yes
+  user: >
+    name='{{ansible_env.USER}}'
+    state=present
+    groups=docker,{{ansible_env.USER}}
+    shell=/bin/bash
+    append=yes
+  tags: install-docker
