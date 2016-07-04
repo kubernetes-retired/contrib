@@ -53,6 +53,11 @@ var (
     namespace/name. The controller uses the first node port of this Service for
     the default backend.`)
 
+	publishService = flags.String("publish-service", "",
+		`Service fronting the ingress controllers. Takes the form
+		namespace/name. The controller will set the endpoint records on the
+		ingress objects to reflect those on the service.`)
+
 	nxgConfigMap = flags.String("nginx-configmap", "",
 		`Name of the ConfigMap that containes the custom nginx configuration to use`)
 
@@ -118,14 +123,32 @@ func main() {
 		glog.Fatalf("failed to create client: %v", err)
 	}
 
-	runtimePodInfo := &podInfo{NodeIP: "127.0.0.1"}
+	publishIngress := api.LoadBalancerIngress{IP: "127.0.0.1"}
+	unpublish := true
 	if *inCluster {
-		runtimePodInfo, err = getPodDetails(kubeClient)
-		if err != nil {
-			glog.Fatalf("unexpected error getting runtime information: %v", err)
+		if *publishService != "" {
+			svc, err := findService(kubeClient, *publishService)
+			if err != nil {
+				glog.Fatalf("no service with name %v found: %v", *publishService, err)
+			}
+			if len(svc.Status.LoadBalancer.Ingress) == 0 {
+				// We could poll here, but we instead just exit and rely on k8s to restart us
+				glog.Fatalf("service %s does not (yet) have ingress points", *publishService)
+			}
+			if len(svc.Status.LoadBalancer.Ingress) != 1 {
+				glog.Warningf("service %s has multiple ingress points; only considering the first", *publishService)
+			}
+			publishIngress = svc.Status.LoadBalancer.Ingress[0]
+			unpublish = false
+		} else {
+			runtimePodInfo, err := getPodDetails(kubeClient)
+			if err != nil {
+				glog.Fatalf("unexpected error getting runtime information: %v", err)
+			}
+			publishIngress = api.LoadBalancerIngress{IP: runtimePodInfo.NodeIP}
 		}
 	}
-	if err := isValidService(kubeClient, *defaultSvc); err != nil {
+	if _, err := findService(kubeClient, *defaultSvc); err != nil {
 		glog.Fatalf("no service with name %v found: %v", *defaultSvc, err)
 	}
 	glog.Infof("Validated %v as the default backend", *defaultSvc)
@@ -137,7 +160,7 @@ func main() {
 		}
 	}
 
-	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName, *udpConfigMapName, runtimePodInfo)
+	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName, *udpConfigMapName, publishIngress, unpublish)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}

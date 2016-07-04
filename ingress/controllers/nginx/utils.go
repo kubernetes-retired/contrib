@@ -153,18 +153,17 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 	}, nil
 }
 
-func isValidService(kubeClient *unversioned.Client, name string) error {
+func findService(kubeClient *unversioned.Client, name string) (*api.Service, error) {
 	if name == "" {
-		return fmt.Errorf("empty string is not a valid service name")
+		return nil, fmt.Errorf("empty string is not a valid service name")
 	}
 
 	parts := strings.Split(name, "/")
 	if len(parts) != 2 {
-		return fmt.Errorf("invalid name format (namespace/name) in service '%v'", name)
+		return nil, fmt.Errorf("invalid name format (namespace/name) in service '%v'", name)
 	}
 
-	_, err := kubeClient.Services(parts[0]).Get(parts[1])
-	return err
+	return kubeClient.Services(parts[0]).Get(parts[1])
 }
 
 func isHostValid(host string, cns []string) bool {

@@ -40,6 +40,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/watch"
 
+	"bytes"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/auth"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
@@ -100,11 +101,15 @@ type loadBalancerController struct {
 	secrLister     StoreToSecretsLister
 	mapLister      StoreToConfigmapLister
 	nginx          *nginx.Manager
-	podInfo        *podInfo
+	publishIngress api.LoadBalancerIngress
 	defaultSvc     string
 	nxgConfigMap   string
 	tcpConfigMap   string
 	udpConfigMap   string
+
+	// unpublish is true if we should automatically remove the publishIngress info
+	// from the ingress objects when we shut down
+	unpublish bool
 
 	recorder record.EventRecorder
 
@@ -124,21 +129,23 @@ type loadBalancerController struct {
 
 // newLoadBalancerController creates a controller for nginx loadbalancer
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, defaultSvc,
-	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName string, runtimeInfo *podInfo) (*loadBalancerController, error) {
+	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName string,
+	publishIngress api.LoadBalancerIngress, unpublish bool) (*loadBalancerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(kubeClient.Events(namespace))
 
 	lbc := loadBalancerController{
-		client:       kubeClient,
-		stopCh:       make(chan struct{}),
-		podInfo:      runtimeInfo,
-		nginx:        nginx.NewManager(kubeClient),
-		nxgConfigMap: nxgConfigMapName,
-		tcpConfigMap: tcpConfigMapName,
-		udpConfigMap: udpConfigMapName,
-		defaultSvc:   defaultSvc,
+		client:         kubeClient,
+		stopCh:         make(chan struct{}),
+		publishIngress: publishIngress,
+		unpublish:      unpublish,
+		nginx:          nginx.NewManager(kubeClient),
+		nxgConfigMap:   nxgConfigMapName,
+		tcpConfigMap:   tcpConfigMapName,
+		udpConfigMap:   udpConfigMapName,
+		defaultSvc:     defaultSvc,
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{
 			Component: "nginx-ingress-controller",
 		}),
@@ -473,24 +480,36 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) error {
 
 	lbIPs := ing.Status.LoadBalancer.Ingress
 	if !lbc.isStatusIPDefined(lbIPs) {
-		glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
-		currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
-			IP: lbc.podInfo.NodeIP,
-		})
+		glog.Infof("Updating loadbalancer %v/%v with %v", ing.Namespace, ing.Name, formatLBIngress(lbc.publishIngress))
+		currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, lbc.publishIngress)
 		if _, err := ingClient.UpdateStatus(currIng); err != nil {
 			lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
 			return err
 		}
 
-		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", lbc.podInfo.NodeIP)
+		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", formatLBIngress(lbc.publishIngress))
 	}
 
 	return nil
 }
 
+func formatLBIngress(i api.LoadBalancerIngress) string {
+	var b bytes.Buffer
+	if i.Hostname != "" {
+		b.WriteString("hostname: " + i.Hostname)
+	}
+	if i.IP != "" {
+		if b.Len() != 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString("ip: " + i.IP)
+	}
+	return b.String()
+}
+
 func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIngress) bool {
 	for _, lbing := range lbings {
-		if lbing.IP == lbc.podInfo.NodeIP {
+		if lbing == lbc.publishIngress {
 			return true
 		}
 	}
@@ -1048,9 +1067,11 @@ func (lbc *loadBalancerController) Stop() error {
 		lbc.shutdown = true
 		close(lbc.stopCh)
 
-		ings := lbc.ingLister.Store.List()
-		glog.Infof("removing IP address %v from ingress rules", lbc.podInfo.NodeIP)
-		lbc.removeFromIngress(ings)
+		if lbc.unpublish {
+			ings := lbc.ingLister.Store.List()
+			glog.Infof("removing %v from ingress rules", formatLBIngress(lbc.publishIngress))
+			lbc.removeFromIngress(ings)
+		}
 
 		glog.Infof("Shutting down controller queues.")
 		lbc.syncQueue.shutdown()
@@ -1079,10 +1100,10 @@ func (lbc *loadBalancerController) removeFromIngress(ings []interface{}) {
 
 		lbIPs := ing.Status.LoadBalancer.Ingress
 		if len(lbIPs) > 0 && lbc.isStatusIPDefined(lbIPs) {
-			glog.Infof("Updating loadbalancer %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
+			glog.Infof("Updating loadbalancer %v/%v. Removing %v", ing.Namespace, ing.Name, formatLBIngress(lbc.publishIngress))
 
 			for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
-				if lbStatus.IP == lbc.podInfo.NodeIP {
+				if lbStatus == lbc.publishIngress {
 					currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
 						currIng.Status.LoadBalancer.Ingress[idx+1:]...)
 					break
@@ -1094,7 +1115,7 @@ func (lbc *loadBalancerController) removeFromIngress(ings []interface{}) {
 				continue
 			}
 
-			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", lbc.podInfo.NodeIP)
+			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", formatLBIngress(lbc.publishIngress))
 		}
 	}
 }
