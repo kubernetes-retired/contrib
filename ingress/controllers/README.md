@@ -8,60 +8,86 @@ An Ingress Controller is a daemon, deployed as a Kubernetes Pod, that watches th
 
 ## Writing an Ingress Controller
 
-Writing an Ingress controller is simple. By way of example, the [nginx controller] (nginx-alpha) does the following:
+Writing an Ingress controller is simple. By way of example, the [nginx controller](nginx) does the following:
 * Poll until apiserver reports a new Ingress
-* Write the nginx config file based on a [go text/template](https://golang.org/pkg/text/template/)
+* Write the nginx config file based on a [go text/template](https://golang.org/pkg/text/template/).
 * Reload nginx
 
-Pay attention to how it denormalizes the Kubernetes Ingress object into an nginx config:
+By default nginx controller uses [this template](nginx/nginx.tmpl).
+
+If you wish to use custom nginx template, please refer for this [example](nginx/examples/custom-template).
+
+In this example let's use following simplified `nginx.conf` template:
+
 ```go
-const (
-	nginxConf = `
+{{ $cfg := .cfg }}
+daemon on;
+
 events {
   worker_connections 1024;
 }
 http {
-{{range $ing := .Items}}
-{{range $rule := $ing.Spec.Rules}}
-  server {
-    listen 80;
-    server_name {{$rule.Host}};
-{{ range $path := $rule.HTTP.Paths }}
-    location {{$path.Path}} {
-      proxy_set_header Host $host;
-      proxy_pass http://{{$path.Backend.ServiceName}}.{{$ing.Namespace}}.svc.cluster.local:{{$path.Backend.ServicePort}};
-    }{{end}}
-  }{{end}}{{end}}
-}`
-)
+  {{range $name, $upstream := .upstreams}}
+  upstream {{$upstream.Name}} {
+      {{ if $cfg.enableStickySessions -}}
+      sticky hash=sha1 httponly;
+      {{ else -}}
+      least_conn;
+      {{- end }}
+      {{ range $server := $upstream.Backends }}server {{ $server.Address }}:{{ $server.Port }} max_fails={{ $server.MaxFails }} fail_timeout={{ $server.FailTimeout }};
+      {{ end }}
+  }
+  {{ end }}                                                                                                             
+  # http://nginx.org/en/docs/http/ngx_http_core_module.html                                                             
+  types_hash_max_size 2048;                                                                                             
+  server_names_hash_max_size 512;                                                                                       
+  server_names_hash_bucket_size 64;                                                                                     
+{{ range $server := .servers }}                                                                                         
+  server {                                                                                                              
+    listen 80;                                                                                                          
+    server_name {{ $server.Name }};                                                                                     
+{{- range $location := $server.Locations }}                                                                             
+{{ $path := buildLocation $location }}                                                                                  
+    location {{ $path }} {                                                                                              
+      proxy_set_header Host $host;                                                                                      
+      {{ buildProxyPass $location }}                                                                                    
+    }{{end}}                                                                                                            
+  }{{end}}                                                                                                              
+                                                                                                                        
+  # default server, including healthcheck                                                                               
+  server {                                                                                                              
+      listen 8080 default_server reuseport;                                                                             
+
+      location /healthz {
+          access_log off;
+          return 200;
+      }
+
+      location /nginx_status {
+          {{ if $cfg.enableVtsStatus -}}
+          vhost_traffic_status_display;
+          vhost_traffic_status_display_format html;
+          {{ else }}
+          access_log off;
+          stub_status on;
+          {{- end }}
+      }
+
+      location / {
+          proxy_pass             http://upstream-default-backend;
+      }
+  }
+}
 ```
 
 You can take a similar approach to denormalize the Ingress to a [haproxy config](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/template.cfg) or use it to configure a cloud loadbalancer such as a [GCE L7](https://github.com/kubernetes/contrib/blob/master/ingress/controllers/gce/README.md).
 
-And here is the Ingress controller's control loop:
-
-```go
-for {
-	rateLimiter.Accept()
-	ingresses, err := ingClient.List(labels.Everything(), fields.Everything())
-	if err != nil || reflect.DeepEqual(ingresses.Items, known.Items) {
-	    continue
-	}
-	if w, err := os.Create("/etc/nginx/nginx.conf"); err != nil {
-		log.Fatalf("Failed to open %v: %v", nginxConf, err)
-	} else if err := tmpl.Execute(w, ingresses); err != nil {
-		log.Fatalf("Failed to write template %v", err)
-	}
-	shellOut("nginx -s reload")
-}
-```
-
 All this is doing is:
-* List Ingresses, optionally you can watch for changes (see [GCE Ingress controller](https://github.com/kubernetes/contrib/blob/master/ingress/controllers/gce/controller.go) for an example)
+* List Ingresses, optionally you can watch for changes (see [GCE Ingress controller](https://github.com/kubernetes/contrib/blob/master/ingress/controllers/gce/controller/controller.go) for an example)
 * Executes the template and writes results to `/etc/nginx/nginx.conf`
 * Reloads nginx
 
-You can deploy this controller to a Kubernetes cluster by [creating an RC](nginx-alpha/rc.yaml). After doing so, if you were to create an Ingress such as:
+You can deploy this controller to a Kubernetes cluster by [creating an RC](nginx/rc.yaml). After doing so, if you were to create an Ingress such as:
 ```yaml
 apiVersion: extensions/v1beta1
 kind: Ingress
@@ -74,29 +100,57 @@ spec:
       paths:
       - path: /foo
         backend:
-          serviceName: fooSvc
+          serviceName: foosvc
           servicePort: 80
   - host: bar.baz.com
     http:
       paths:
       - path: /bar
         backend:
-          serviceName: barSvc
+          serviceName: barsvc
           servicePort: 80
 ```
 
-Where `fooSvc` and `barSvc` are 2 services running in your Kubernetes cluster. The controller would satisfy the Ingress by writing a configuration file to /etc/nginx/nginx.conf:
+Where `foosvc` and `barsvc` are 2 services running in your Kubernetes cluster. The controller would satisfy the Ingress by writing a configuration file to `/etc/nginx/nginx.conf`:
+
 ```nginx
+daemon on;
+
 events {
   worker_connections 1024;
 }
 http {
+  
+  upstream default-barsvc-80 {
+      least_conn;
+      server 127.0.0.1:8181 max_fails=0 fail_timeout=0;
+      
+  }
+  
+  upstream default-foosvc-80 {
+      least_conn;
+      server 127.0.0.1:8181 max_fails=0 fail_timeout=0;
+      
+  }
+  
+  upstream upstream-default-backend {
+      least_conn;
+      server 10.100.75.10:8080 max_fails=0 fail_timeout=0;
+      
+  }
+  
+  # http://nginx.org/en/docs/http/ngx_http_core_module.html
+  types_hash_max_size 2048;
+  server_names_hash_max_size 512;
+  server_names_hash_bucket_size 64;
+
   server {
     listen 80;
-    server_name foo.bar.com;
+    server_name _;
 
-    location /foo {
-      proxy_pass http://fooSvc;
+    location / {
+      proxy_set_header Host $host;
+      proxy_pass http://upstream-default-backend;
     }
   }
   server {
@@ -104,8 +158,48 @@ http {
     server_name bar.baz.com;
 
     location /bar {
-      proxy_pass http://barSvc;
+      proxy_set_header Host $host;
+      proxy_pass http://default-barsvc-80;
     }
+
+    location / {
+      proxy_set_header Host $host;
+      proxy_pass http://upstream-default-backend;
+    }
+  }
+  server {
+    listen 80;
+    server_name foo.bar.com;
+
+    location /foo {
+      proxy_set_header Host $host;
+      proxy_pass http://default-foosvc-80;
+    }
+
+    location / {
+      proxy_set_header Host $host;
+      proxy_pass http://upstream-default-backend;
+    }
+  }
+
+  # default server, including healthcheck
+  server {
+      listen 8080 default_server reuseport;
+
+      location /healthz {
+          access_log off;
+          return 200;
+      }
+     
+      location /nginx_status {
+          
+          access_log off;
+          stub_status on;
+      }
+
+      location / {
+          proxy_pass             http://upstream-default-backend;
+      }
   }
 }
 ```
@@ -131,5 +225,3 @@ This section can also bear the title "why anyone would want to write an Ingress 
 * Ingress Rules that are not limited to a simple path regex (eg: redirect rules, session persistence)
 
 And is expected to be the way one configures a "frontends" that handle user traffic for a Kubernetes cluster.
-
-
