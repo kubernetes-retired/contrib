@@ -35,6 +35,12 @@ Vagrant.require_version ">= 1.7"
 # Determine whether vagrant should use nfs to sync folders
 $use_nfs = ENV['KUBERNETES_VAGRANT_USE_NFS'] == 'true'
 
+# Give VM 1024MB of RAM by default
+# In Fedora VM, tmpfs device is mapped to /tmp.  tmpfs is given 50% of RAM allocation.
+# When doing Salt provisioning, we copy approximately 200MB of content in /tmp before anything else happens.
+# This causes problems if anything else was in /tmp or the other directories that are bound to tmpfs device (i.e /run, etc.)
+$vm_master_mem = (ENV['KUBERNETES_MASTER_MEMORY'] || ENV['KUBERNETES_MEMORY'] || 1280).to_i
+$vm_node_mem = (ENV['KUBERNETES_NODE_MEMORY'] || ENV['KUBERNETES_MEMORY'] || 1024).to_i
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # By default, Vagrant 1.7+ automatically inserts a different
@@ -140,12 +146,12 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     os.server_name = n.vm.hostname
   end
 
-  def set_vbox(vb, config, vm_idx)
+  def set_vbox(vb, config, vm_idx, vm_mem)
     set_vbox_box(config)
 
     config.vm.network "private_network", ip: VBOX_STATIC_IP_TEMPLATE % vm_idx
     vb.gui = false
-    vb.memory = 2048
+    vb.memory = vm_mem
     vb.cpus = 2
 
     # Use faster paravirtualized networking
@@ -153,10 +159,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     vb.customize ["modifyvm", :id, "--nictype2", "virtio"]
   end
 
-  def set_libvirt(lv, config)
+  def set_libvirt(lv, config, vm_mem)
     set_libvirt_box(config)
 
-    lv.memory = 2048
+    lv.memory = vm_mem
     lv.cpus = 2
     lv.nested = true
     lv.volume_cache = 'none'
@@ -177,15 +183,15 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     aws.region = "YOUR REGION"
   end
 
-  def set_provider(n, vm_idx)
+  def set_provider(n, vm_idx, vm_mem)
     n.vm.provider :openstack do |os, override|
       set_openstack(os, override, n)
     end
     n.vm.provider :virtualbox do |vb, override|
-      set_vbox(vb, override, vm_idx)
+      set_vbox(vb, override, vm_idx, vm_mem)
     end
     n.vm.provider :libvirt do |lv, override|
-      set_libvirt(lv, override)
+      set_libvirt(lv, override, vm_mem)
     end
      n.vm.provider :aws do |aws, override|
       set_aws(aws, override, n)
@@ -274,7 +280,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     config.vm.define "#{name}" do |n|
       customize_vm(n)
       n.vm.hostname = name
-      set_provider(n, i )
+      set_provider(n, i, $vm_master_mem)
     end
   end
 
@@ -286,7 +292,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     config.vm.define "#{name}" do |n|
       customize_vm(n)
       n.vm.hostname = name
-      set_provider(n, i + $num_masters)
+      set_provider(n, i + $num_masters, $vm_node_mem)
       if i == $num_nodes-1
         # GROUP CONFIGURATION
         # This is how we create the ansible inventory, see it in .vagrant
