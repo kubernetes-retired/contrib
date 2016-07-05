@@ -11,4 +11,4 @@
 
 - name: Call restart etcd2
   include: etcd2_restart.yml
-  when: etcd2_modified == true and etcd_started.changed == false
+  when: etcd2_modified == true and etcd2_started.changed == false
