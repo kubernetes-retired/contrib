@@ -1,8 +1,9 @@
 # 404-server (default backend)
 
-404-server is a simple webserver that satisfies the ingress, which means it have to do two things:
-1. It should serve a 404 page at /
-2. It should serve 200 on a /healthz endpoint
+404-server is a simple webserver that satisfies the ingress, which means it has to do two things:
+
+ 1. Serves a 404 page at `/`
+ 2. Serves 200 on a `/healthz`
 
 ## How to release:
 
