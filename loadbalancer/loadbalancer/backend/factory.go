@@ -40,7 +40,7 @@ func Register(name string, factory BackendControllerFactory) {
 		glog.Errorf("Backend controller factory %s already registered. Ignoring.", name)
 	}
 	backendControllerFactories[name] = factory
-	glog.Infof("Registed backend %v.", name)
+	glog.Infof("Registered backend %v.", name)
 }
 
 // CreateBackendController creates a backend controller factory for a specific backend

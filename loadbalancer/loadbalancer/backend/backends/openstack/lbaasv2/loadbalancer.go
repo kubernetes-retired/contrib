@@ -14,6 +14,7 @@ import (
 	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas_v2/loadbalancers"
 	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas_v2/monitors"
 	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas_v2/pools"
+	"github.com/rackspace/gophercloud/openstack/networking/v2/subnets"
 	"github.com/rackspace/gophercloud/pagination"
 	"k8s.io/contrib/loadbalancer/loadbalancer/backend"
 	"k8s.io/contrib/loadbalancer/loadbalancer/utils"
@@ -28,6 +29,8 @@ const (
 	POOL         = "pool"
 	MONITOR      = "monitor"
 )
+
+var empty struct{}
 
 // LBaaSController Controller to manage LBaaS resources
 type LBaaSController struct {
@@ -83,6 +86,54 @@ func NewLBaaSController(kubeClient *unversioned.Client, watchNamespace string, c
 		network:             network,
 		subnetID:            os.Getenv("OS_SUBNET_ID"),
 	}
+
+	// check if subnet-id exists
+	_, err = subnets.Get(network, lbaasControl.subnetID).Extract()
+	if err != nil {
+		glog.Infof("Error checking subnet-id: %v %v", lbaasControl.subnetID, err)
+		if strings.Contains(err.Error(), "404") {
+			//subnetID not found
+			return nil, err
+		}
+	}
+
+	// sync deleted nodes with loadbalancer pool members
+	nodeIPs, _ := lbaasControl.getReadyNodeIPs()
+	currentNodes := make(map[string]struct{})
+	for _, ip := range nodeIPs {
+		currentNodes[ip] = empty
+	}
+
+	configMapNodePortMap := utils.GetLBConfigMapNodePortMap(kubeClient, watchNamespace, configLabelKey, configLabelValue)
+	for configmapName := range configMapNodePortMap {
+		poolName := getResourceName(POOL, configmapName)
+		poolID, err := lbaasControl.getPoolIDFromName(poolName)
+		if err != nil {
+			glog.Errorf("Could not get pool %v. %v", poolName, err)
+		}
+
+		allPages, err := pools.ListAssociateMembers(network, poolID, pools.MemberListOpts{}).AllPages()
+		if err != nil {
+			glog.Errorf("Error listing pool members %v", err.Error)
+			if strings.Contains(err.Error(), "404") {
+				break
+			}
+		}
+		memberList, _ := pools.ExtractMembers(allPages)
+
+		// check if member IP exist in the Ready node IP list
+		for _, member := range memberList {
+			if _, ok := currentNodes[member.Address]; !ok {
+				// delete the member
+				err = pools.DeleteMember(network, poolID, member.ID).ExtractErr()
+				if err != nil {
+					glog.Errorf("Could not delete member for pool %v. memberID: %v", poolName, member.ID)
+					continue
+				}
+			}
+		}
+	}
+
 	return &lbaasControl, nil
 }
 
@@ -124,6 +175,80 @@ func (lbaas *LBaaSController) GetBindIP(name string) string {
 	return bindIP
 }
 
+// check if Loadbalancer already exists with the correct resources
+func (lbaas *LBaaSController) checkLoadbalancerExist(cmName string, servicePort *api.ServicePort, listenerBindPort string) (bool, error) {
+	expectedBindPort, _ := strconv.Atoi(listenerBindPort)
+	expectedPoolProtocol := string(servicePort.Protocol)
+	expectedNodePort := servicePort.NodePort
+	expectedLbName := getResourceName(LOADBALANCER, cmName)
+	expectedPoolName := getResourceName(POOL, cmName)
+	expectedListenerName := getResourceName(LISTENER, cmName)
+	opts := loadbalancers.ListOpts{Name: expectedLbName}
+
+	//get all pages and check if the  loadbalancer doesnt exists
+	allPages, err := loadbalancers.List(lbaas.network, opts).AllPages()
+	if err != nil {
+		glog.Errorf("Error getting list of Loadbalancers")
+		return false, err
+	}
+
+	// extract the loadbalancer list
+	loadbalancerList, err := loadbalancers.ExtractLoadbalancers(allPages)
+	if err != nil {
+		return false, err
+	}
+	if len(loadbalancerList) == 0 {
+		glog.Infof("No Load balancer found")
+		return false, nil
+	}
+	if len(loadbalancerList) > 1 {
+		err = fmt.Errorf("More than one loadbalancer with name %v found.", expectedLbName)
+		return false, err
+	}
+
+	lbFound := loadbalancerList[0] // assuming there is only one loadbalancer with this name
+	if lbFound.Name == expectedLbName {
+		// check if loadbalancer listener exists
+		if lbFound.VipSubnetID != lbaas.subnetID {
+			return false, nil
+		}
+		listenerList := lbFound.Listeners
+		if len(listenerList) != 0 {
+			listener, _ := listeners.Get(lbaas.network, listenerList[0].ID).Extract() // assuming there is only one listener
+
+			if listener.Name == expectedListenerName {
+				if listener.ProtocolPort != expectedBindPort {
+					glog.Infof("Listener port %v is different from expected port %v", listener.ProtocolPort, expectedBindPort)
+					return false, nil
+				}
+				// check if loadbalancer listener pool exists
+				poolID := listener.DefaultPoolID
+				if poolID != "" {
+					pool, _ := pools.Get(lbaas.network, poolID).Extract()
+					if pool.Name == expectedPoolName {
+						if pool.Protocol != expectedPoolProtocol {
+							glog.Infof("Pool protocol %v is different from expected protocol %v", pool.Protocol, expectedPoolProtocol)
+							return false, nil
+						}
+					}
+					//check if service hasn't changed by comparing the member nodePort
+					allPages, _ := pools.ListAssociateMembers(lbaas.network, poolID, pools.MemberListOpts{}).AllPages()
+					memberList, _ := pools.ExtractMembers(allPages)
+					poolMember0 := memberList[0]
+					if expectedNodePort != int32(poolMember0.ProtocolPort) {
+						return false, nil
+					}
+					if pool.MonitorID != "" {
+						return true, nil
+					}
+				}
+			}
+		}
+	}
+
+	return false, nil
+}
+
 // HandleConfigMapCreate creates a new lbaas loadbalancer resource
 func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) {
 	name := configMap.Namespace + "-" + configMap.Name
@@ -147,6 +272,15 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) {
 		return
 	}
 
+	// check if the loadbalancer already exists
+	lbExists, err := lbaas.checkLoadbalancerExist(name, servicePort, config["bind-port"])
+	if err != nil {
+		glog.Errorf("Couldn't check the existence of %v loadbalancer", getResourceName(LOADBALANCER, name))
+	}
+	if lbExists {
+		glog.Infof("Loadbalancer %v already exists", getResourceName(LOADBALANCER, name))
+		return
+	}
 	// Delete current load balancer for this service if it exist
 	lbaas.HandleConfigMapDelete(name)
 
@@ -165,7 +299,7 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) {
 	// Wait for load balancer resource to be ACTIVE state
 	lbaas.waitLoadbalancerReady(lb.ID)
 
-	// Create a listener resouce for the loadbalancer
+	// Create a listener resource for the loadbalancer
 	listenerName := getResourceName(LISTENER, name)
 	bindPort, _ := strconv.Atoi(config["bind-port"])
 	listener, err := listeners.Create(lbaas.network, listeners.CreateOpts{
@@ -185,7 +319,7 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) {
 	// Wait for load balancer resource to be ACTIVE state
 	lbaas.waitLoadbalancerReady(lb.ID)
 
-	// Create a pool resouce for the listener
+	// Create a pool resource for the listener
 	poolName := getResourceName(POOL, name)
 	pool, err := pools.Create(lbaas.network, pools.CreateOpts{
 		LBMethod:   pools.LBMethodRoundRobin,
@@ -370,24 +504,23 @@ func (lbaas *LBaaSController) HandleNodeUpdate(oldNode *api.Node, curNode *api.N
 		memberID, err := lbaas.getMemberIDFromIP(poolID, *oldIP)
 		if err != nil {
 			glog.Warningf("Could not get member for pool %v. IP: %v. Creating...", poolName, *oldIP)
-			memberID, err := lbaas.createMemberResource(poolID, *newIP, nodePort)
+		} else {
+			// delete the existing pool member with old IP
+			err = pools.DeleteMember(lbaas.network, poolID, memberID).ExtractErr()
 			if err != nil {
-				glog.Errorf("Could not create member for pool %v. IP: %v. Port: %v", poolName, *newIP, nodePort)
+				glog.Errorf("Could not get member for pool %v. memberID: %v", poolName, memberID)
 				continue
 			}
-			glog.Infof("Created member for %v. ID: %v", *newIP, memberID)
-			continue
+			glog.Infof("Deleted member for pool %v with IP: %v. ID: %v", poolName, *oldIP, memberID)
 		}
 
-		// Update member. Change IP
-		res, err := pools.UpdateAssociateMember(lbaas.network, poolID, memberID, pools.MemberUpdateOpts{
-			Address:      *newIP,
-			ProtocolPort: nodePort,
-		}).ExtractMember()
+		// create the pool member again to update with new IP
+		memberID, err = lbaas.createMemberResource(poolID, *newIP, nodePort)
 		if err != nil {
-			glog.Errorf("Could not update member %v. %v", memberID, err)
+			glog.Errorf("Could not create member for pool %v. IP: %v. Port: %v", poolName, *newIP, nodePort)
+			continue
 		}
-		glog.Infof("Updated member %v. Changed IP from %v to %v.", res.ID, *oldIP, *newIP)
+		glog.Infof("Created member for %v. ID: %v", *newIP, memberID)
 	}
 }
 
