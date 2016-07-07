@@ -60,6 +60,7 @@ on-start
 path-label-config
 poll-period
 pr-mungers
+presubmit-jobs
 rate-limit
 rate-limit-burst
 relnote-filter
