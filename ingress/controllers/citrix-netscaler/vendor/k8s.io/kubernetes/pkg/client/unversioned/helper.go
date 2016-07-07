@@ -22,13 +22,18 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
+	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/apis/policy"
+	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/typed/discovery"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/version"
+	// Import solely to initialize client auth plugins.
+	_ "k8s.io/kubernetes/plugin/pkg/client/auth"
 )
 
 const (
@@ -82,8 +87,34 @@ func New(c *restclient.Config) (*Client, error) {
 			return nil, err
 		}
 	}
+	var policyClient *PolicyClient
+	if registered.IsRegistered(policy.GroupName) {
+		policyConfig := *c
+		policyClient, err = NewPolicy(&policyConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	return &Client{RESTClient: client, AutoscalingClient: autoscalingClient, BatchClient: batchClient, ExtensionsClient: extensionsClient, DiscoveryClient: discoveryClient}, nil
+	var appsClient *AppsClient
+	if registered.IsRegistered(apps.GroupName) {
+		appsConfig := *c
+		appsClient, err = NewApps(&appsConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var rbacClient *RbacClient
+	if registered.IsRegistered(rbac.GroupName) {
+		rbacConfig := *c
+		rbacClient, err = NewRbac(&rbacConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &Client{RESTClient: client, AutoscalingClient: autoscalingClient, BatchClient: batchClient, ExtensionsClient: extensionsClient, DiscoveryClient: discoveryClient, AppsClient: appsClient, PolicyClient: policyClient, RbacClient: rbacClient}, nil
 }
 
 // MatchesServerVersion queries the server to compares the build version
@@ -220,6 +251,9 @@ func SetKubernetesDefaults(config *restclient.Config) error {
 	// TODO: Unconditionally set the config.Version, until we fix the config.
 	copyGroupVersion := g.GroupVersion
 	config.GroupVersion = &copyGroupVersion
+	if config.NegotiatedSerializer == nil {
+		config.NegotiatedSerializer = api.Codecs
+	}
 	if config.Codec == nil {
 		config.Codec = api.Codecs.LegacyCodec(*config.GroupVersion)
 	}
