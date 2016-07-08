@@ -1,7 +1,8 @@
 all: push
 
 # 0.0 shouldn't clobber any released builds
-TAG = 0.5
+# current latest is 0.5
+TAG = 0.0
 PREFIX = gcr.io/google_containers/leader-elector
 
 NODEJS_TAG = 0.1

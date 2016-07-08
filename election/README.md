@@ -117,4 +117,10 @@ const www = http.createServer((request, response) => {
 www.listen(8080);
 ```
 
+Test the client is running:
+```
+$ kubectl exec elector-sidecar -c nodejs -- wget -qO- http://localhost:8080
+Master is elector-sidecar
+```
+
 Of course, you can use this sidecar from any language that you choose that supports HTTP and JSON.
