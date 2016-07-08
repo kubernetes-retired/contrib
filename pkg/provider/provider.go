@@ -32,8 +32,8 @@ import (
 const (
 	UserAgent = "terraform-kubernetes"
 
-	PollInterval = 5 * time.Second
-	PollTimeout  = 5 * time.Minute
+	PollInterval = 10 * time.Second
+	PollTimeout  = 10 * time.Minute
 )
 
 func Provider() terraform.ResourceProvider {
@@ -69,11 +69,11 @@ func resourceKubeconfig() *schema.Resource {
 
 func CreateKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	server := d.Get("server").(string)
-	cfg, err := clientcmd.BuildConfigFromKubeconfigGetter(server, kubeCfgGetter(d))
+	clientConfig, err := clientcmd.BuildConfigFromKubeconfigGetter(server, kubeConfigGetter(d))
 	if err != nil {
 		return fmt.Errorf("couldn't parse the supplied config: %v", err)
 	}
-	clientset, err := release_1_4.NewForConfig(restclient.AddUserAgent(cfg, UserAgent))
+	clientset, err := release_1_4.NewForConfig(restclient.AddUserAgent(clientConfig, UserAgent))
 	if err != nil {
 		return fmt.Errorf("failed to initialize the cluster client: %v", err)
 	}
@@ -92,6 +92,15 @@ func CreateKubeconfig(d *schema.ResourceData, meta interface{}) error {
 		case <-timeout.C:
 			return fmt.Errorf("cluster components never turned healthy")
 		}
+	}
+
+	configAccess := clientcmd.NewDefaultPathOptions()
+	kubeConfig, err := kubeConfigGetter(d)()
+	if err != nil {
+		return fmt.Errorf("couldn't parse the supplied config: %v", err)
+	}
+	if err := modifyConfig(configAccess, kubeConfig); err != nil {
+		return fmt.Errorf("couldn't update kubeconfig: %v", err)
 	}
 
 	return nil
@@ -118,9 +127,52 @@ func allComponentsHealthy(clientset *release_1_4.Clientset) bool {
 	return true
 }
 
-func kubeCfgGetter(d *schema.ResourceData) clientcmd.KubeconfigGetter {
+func kubeConfigGetter(d *schema.ResourceData) clientcmd.KubeconfigGetter {
 	return func() (*clientcmdapi.Config, error) {
-		kubeCfgStr := d.Get("configdata").(string)
-		return clientcmd.Load([]byte(kubeCfgStr))
+		kubeConfigStr := d.Get("configdata").(string)
+		return clientcmd.Load([]byte(kubeConfigStr))
 	}
+}
+
+func modifyConfig(configAccess clientcmd.ConfigAccess, suppliedConfig *clientcmdapi.Config) error {
+	config, err := configAccess.GetStartingConfig()
+	if err != nil {
+		return err
+	}
+
+	for name, cluster := range suppliedConfig.Clusters {
+		initial, ok := config.Clusters[name]
+		if !ok {
+			initial = clientcmdapi.NewCluster()
+		}
+		modified := *initial
+
+		if len(cluster.Server) > 0 {
+			modified.Server = cluster.Server
+		}
+		if cluster.InsecureSkipTLSVerify {
+			modified.InsecureSkipTLSVerify = cluster.InsecureSkipTLSVerify
+			// Specifying insecure mode clears any certificate authority
+			if modified.InsecureSkipTLSVerify {
+				modified.CertificateAuthority = ""
+				modified.CertificateAuthorityData = nil
+			}
+		}
+		if len(cluster.CertificateAuthorityData) > 0 {
+			modified.CertificateAuthorityData = cluster.CertificateAuthorityData
+			modified.InsecureSkipTLSVerify = false
+			modified.CertificateAuthority = ""
+		} else if len(cluster.CertificateAuthority) > 0 {
+			modified.CertificateAuthority = cluster.CertificateAuthority
+			modified.InsecureSkipTLSVerify = false
+			modified.CertificateAuthorityData = nil
+		}
+		config.Clusters[name] = &modified
+	}
+
+	if err := clientcmd.ModifyConfig(configAccess, *config, true); err != nil {
+		return err
+	}
+
+	return nil
 }
