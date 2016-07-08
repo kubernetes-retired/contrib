@@ -11,4 +11,5 @@ doNotBlockRegexp:
   - ^docs/admin/federation-apiserver.md$
   - ^docs/admin/federation-controller-manager.md$
   - ^docs/man/man1/kubectl.*\.1$
+  - ^docs/user-guide/kubectl-cheatsheet.md$
   - ^docs/user-guide/kubectl/kubectl.*\.md$
