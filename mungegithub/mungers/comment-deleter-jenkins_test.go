@@ -51,9 +51,16 @@ Please reference the [list of currently known flakes](https://github.com/kuberne
 * [Build Log](http://pr-test.k8s.io/28636/kubernetes-pull-build-test-e2e-gce/48147/build-log.txt)
 * [Test Artifacts](https://console.developers.google.com/storage/browser/kubernetes-jenkins/pr-logs/pull/28636/kubernetes-pull-build-test-e2e-gce/48147/artifacts/)
 * [Internal Jenkins Results](http://goto.google.com/prkubekins/job/kubernetes-pull-build-test-e2e-gce//48147)`
+	//Transition to OKToTest consts
+	okToTestComment = `Can one of the admins verify that this patch is reasonable to test? If so, please reply "ok to test".
+(Note: "add to whitelist" is no longer supported. Please update configurations in kubernetes/test-infra/jenkins/job-configs/kubernetes-jenkins-pull instead.)
+
+This message may repeat a few times in short succession due to jenkinsci/ghprb-plugin#292. Sorry.
+
+Otherwise, if this message is too spammy, please complain to ixdy.`
 )
 
-func TestIsJenkinsTestComment(t *testing.T) {
+func TestIsE2EComment(t *testing.T) {
 	tests := []struct {
 		name      string
 		value     string
@@ -95,7 +102,34 @@ func TestIsJenkinsTestComment(t *testing.T) {
 		},
 	}
 	for testNum, test := range tests {
-		output := isJenkinsTestComment(test.value)
+		output := isE2EComment(test.value)
+		if output != test.isJenkins {
+			t.Errorf("%d:%s: expected: %v, saw: %v for %s", testNum, test.name, test.isJenkins, output, test.value)
+		}
+	}
+}
+
+func TestIsOKToTestComment(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     string
+		isJenkins bool
+	}{
+		{
+			name:      "success comment",
+			value:     okToTestComment,
+			isJenkins: true,
+		}, {
+			name:      "Empty string",
+			isJenkins: false,
+		}, {
+			name:      "Random String",
+			value:     "Bob says do it another way, ok Brendan?!",
+			isJenkins: false,
+		},
+	}
+	for testNum, test := range tests {
+		output := isOKToTestComment(test.value)
 		if output != test.isJenkins {
 			t.Errorf("%d:%s: expected: %v, saw: %v for %s", testNum, test.name, test.isJenkins, output, test.value)
 		}

@@ -27,22 +27,28 @@ import (
 
 const (
 	commentDeleterJenkinsName = "comment-deleter-jenkins"
-	commentRegexpStr          = `GCE e2e( test)? build/test \*\*(passed|failed)\*\* for commit [[:xdigit:]]+\.
+	//These two regular expressions for testing commits
+	e2eTestStr = `GCE e2e( test)? build/test \*\*(passed|failed)\*\* for commit [[:xdigit:]]+\.
 \* \[Build Log\]\([^)]+\)
 \* \[Test Artifacts\]\([^)]+\)
 \* \[Internal Jenkins Results\]\([^)]+\)`
-	commentRegexpStrUpdated = `GCE e2e( test)? build/test \*\*(passed|failed)\*\* for commit [[:xdigit:]]+\.
+	e2eUpdatedTestStr = `GCE e2e( test)? build/test \*\*(passed|failed)\*\* for commit [[:xdigit:]]+\.
 \* \[Test Results\]\([^)]+\)
 \* \[Build Log\]\([^)]+\)
 \* \[Test Artifacts\]\([^)]+\)
 \* \[Internal Jenkins Results\]\([^)]+\)`
+
+	//This regular expression for testing patches, is spammy
+	okToTestStr = `Can one of the admins verify that this patch is reasonable to test\? If so, please reply "ok to test"\.`
 )
 
 var (
 	_ = glog.Infof
-	//Changed so that this variable is true if it compiles old or updated
-	commentRegexp        = regexp.MustCompile(commentRegexpStr)
-	updatedCommentRegexp = regexp.MustCompile(commentRegexpStrUpdated)
+	//For testing commits
+	e2eRegexp        = regexp.MustCompile(e2eTestStr)
+	e2eUpdatedRegexp = regexp.MustCompile(e2eUpdatedTestStr)
+	//For testing patches
+	okToTestRegexp = regexp.MustCompile(okToTestStr)
 )
 
 // CommentDeleterJenkins looks for jenkins comments which are no longer useful
@@ -54,28 +60,41 @@ func init() {
 	RegisterStaleComments(c)
 }
 
-func isJenkinsTestComment(body string) bool {
-	return updatedCommentRegexp.MatchString(body) || commentRegexp.MatchString(body)
+func isOKToTestComment(body string) bool {
+	return okToTestRegexp.MatchString(body)
+}
+
+func isE2EComment(body string) bool {
+	return e2eUpdatedRegexp.MatchString(body) || e2eRegexp.MatchString(body)
 }
 
 // StaleComments returns a slice of comments which are stale
 func (CommentDeleterJenkins) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
 	out := []githubapi.IssueComment{}
-	var last *githubapi.IssueComment
+	var lastE2E *githubapi.IssueComment
+	var lastOKToTest *githubapi.IssueComment
 
 	for i := range comments {
 		comment := comments[i]
+		//Tests if jenkins bot authored comment
 		if !jenkinsBotComment(comment) {
 			continue
 		}
-
-		if !isJenkinsTestComment(*comment.Body) {
+		//Tests if comment is either about commit or patch
+		if !isE2EComment(*comment.Body) && !isOKToTestComment(*comment.Body) {
 			continue
 		}
-		if last != nil {
-			out = append(out, *last)
+		if isE2EComment(*comment.Body) {
+			if lastE2E != nil {
+				out = append(out, *lastE2E)
+			}
+			lastE2E = &comment
+		} else if isOKToTestComment(*comment.Body) {
+			if lastOKToTest != nil {
+				out = append(out, *lastOKToTest)
+			}
+			lastOKToTest = &comment
 		}
-		last = &comment
 	}
 	return out
 }
