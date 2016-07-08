@@ -86,11 +86,7 @@ func CreateKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	for {
 		select {
 		case <-interval.C:
-			healthy, err := allComponentsHealthy(clientset)
-			if err != nil {
-				return fmt.Errorf("couldn't obtain cluster component statuses: %v", err)
-			}
-			if healthy {
+			if allComponentsHealthy(clientset) {
 				break
 			}
 		case <-timeout.C:
@@ -109,20 +105,17 @@ func ReadKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func allComponentsHealthy(clientset *release_1_4.Clientset) (bool, error) {
+func allComponentsHealthy(clientset *release_1_4.Clientset) bool {
 	csList, err := clientset.Core().ComponentStatuses().List(api.ListOptions{})
-	if err != nil {
-		return false, err
+	if err != nil || len(csList.Items) <= 0 {
+		return false
 	}
 	for _, cs := range csList.Items {
 		if !(len(cs.Conditions) > 1 && cs.Conditions[0].Type == "Healthy" && cs.Conditions[0].Status == "True") {
-			return false, nil
+			return false
 		}
 	}
-	if len(csList.Items) > 0 {
-		return true, nil
-	}
-	return false, nil
+	return true
 }
 
 func kubeCfgGetter(d *schema.ResourceData) clientcmd.KubeconfigGetter {
