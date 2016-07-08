@@ -54,12 +54,13 @@ type ipRange struct {
 func NewIPManager(kubeClient *unversioned.Client, ipCmNamespace, userNamespace, configLabelKey, configLabelValue string) *IPManager {
 
 	startIP := os.Getenv("VIP_ALLOCATION_START")
-	if startIP == "" {
-		glog.Fatalln("Start IP for VIP range not provided")
-	}
-
 	endIP := os.Getenv("VIP_ALLOCATION_END")
-	if endIP == "" {
+
+	if startIP == "" && endIP == "" {
+		glog.Fatalln("Start IP for VIP range not provided")
+	} else if startIP == "" {
+		glog.Fatalln("Start IP for VIP range not provided")
+	} else if endIP == "" {
 		glog.Fatalln("End IP for VIP range not provided")
 	}
 

@@ -17,6 +17,7 @@ limitations under the License.
 package controllers
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -177,13 +178,18 @@ func (lbController *LoadBalancerController) syncConfigMap(key string) {
 	} else {
 		go func() {
 			configMap := obj.(*api.ConfigMap)
-			lbController.backendController.HandleConfigMapCreate(configMap)
-			bindIP := lbController.backendController.GetBindIP(name)
-			configMapData := configMap.Data
-			configMapData["bind-ip"] = bindIP
-			_, err = lbController.client.ConfigMaps(configMap.Namespace).Update(configMap)
+			err := lbController.backendController.HandleConfigMapCreate(configMap)
 			if err != nil {
-				glog.Errorf("Error updating bind ip %v in configmap %v", bindIP, name)
+				glog.Errorf("Error creating loadbalancer: %v", err)
+				lbController.updateConfigMapStatusBindIP(err.Error(), "", configMap)
+				return
+			}
+			bindIP, err := lbController.backendController.GetBindIP(name)
+			if err != nil {
+				err = fmt.Errorf("Error getting bind IP for %v configmap: %v", name, err)
+				lbController.updateConfigMapStatusBindIP(err.Error(), "", configMap)
+			} else {
+				lbController.updateConfigMapStatusBindIP("", bindIP, configMap)
 			}
 		}()
 	}
@@ -191,4 +197,23 @@ func (lbController *LoadBalancerController) syncConfigMap(key string) {
 
 func configmapsEqual(m1 map[string]string, m2 map[string]string) bool {
 	return m1["namespace"] == m2["namespace"] && m1["bind-port"] == m2["bind-port"] && m1["target-service-name"] == m2["target-service-name"] && m1["target-port-name"] == m2["target-port-name"]
+}
+
+// update user configmap with status
+func (lbController *LoadBalancerController) updateConfigMapStatusBindIP(errMessage string, bindIP string, configMap *api.ConfigMap) {
+	configMapData := configMap.Data
+
+	//set status
+	if errMessage != "" {
+		configMapData["status"] = "ERROR : " + errMessage
+		delete(configMapData, "bind-ip")
+	} else if bindIP != "" {
+		configMapData["status"] = "SUCCESS"
+		configMapData["bind-ip"] = bindIP
+	}
+
+	_, err := lbController.client.ConfigMaps(configMap.Namespace).Update(configMap)
+	if err != nil {
+		glog.Errorf("Error updating ConfigMap Status : %v", err)
+	}
 }
