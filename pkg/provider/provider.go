@@ -18,6 +18,7 @@ package provider
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/hashicorp/terraform/helper/schema"
@@ -99,6 +100,7 @@ func CreateKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	if err != nil {
 		return fmt.Errorf("couldn't parse the supplied config: %v", err)
 	}
+
 	if err := modifyConfig(configAccess, kubeConfig); err != nil {
 		return fmt.Errorf("couldn't update kubeconfig: %v", err)
 	}
@@ -117,10 +119,12 @@ func ReadKubeconfig(d *schema.ResourceData, meta interface{}) error {
 func allComponentsHealthy(clientset *release_1_4.Clientset) bool {
 	csList, err := clientset.Core().ComponentStatuses().List(api.ListOptions{})
 	if err != nil || len(csList.Items) <= 0 {
+		log.Printf("[DEBUG] Listing components failed %s", err)
 		return false
 	}
 	for _, cs := range csList.Items {
 		if !(len(cs.Conditions) > 0 && cs.Conditions[0].Type == "Healthy" && cs.Conditions[0].Status == "True") {
+			log.Printf("[DEBUG] %s isn't healthy. Conditions: %+v", cs.Name, cs.Conditions)
 			return false
 		}
 	}
