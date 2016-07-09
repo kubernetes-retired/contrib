@@ -120,7 +120,7 @@ func allComponentsHealthy(clientset *release_1_4.Clientset) bool {
 		return false
 	}
 	for _, cs := range csList.Items {
-		if !(len(cs.Conditions) > 1 && cs.Conditions[0].Type == "Healthy" && cs.Conditions[0].Status == "True") {
+		if !(len(cs.Conditions) > 0 && cs.Conditions[0].Type == "Healthy" && cs.Conditions[0].Status == "True") {
 			return false
 		}
 	}
