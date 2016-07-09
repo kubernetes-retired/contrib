@@ -74,25 +74,14 @@ func CreateKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	if err != nil {
 		return fmt.Errorf("couldn't parse the supplied config: %v", err)
 	}
+
 	clientset, err := release_1_4.NewForConfig(restclient.AddUserAgent(clientConfig, UserAgent))
 	if err != nil {
 		return fmt.Errorf("failed to initialize the cluster client: %v", err)
 	}
 
-	interval := time.NewTicker(PollInterval)
-	defer interval.Stop()
-	timeout := time.NewTimer(PollTimeout)
-	defer timeout.Stop()
-
-	for {
-		select {
-		case <-interval.C:
-			if allComponentsHealthy(clientset) {
-				break
-			}
-		case <-timeout.C:
-			return fmt.Errorf("cluster components never turned healthy")
-		}
+	if !clusterHealthy(clientset, PollInterval, PollTimeout) {
+		return fmt.Errorf("cluster components never turned healthy")
 	}
 
 	configAccess := clientcmd.NewDefaultPathOptions()
@@ -116,7 +105,35 @@ func ReadKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func allComponentsHealthy(clientset *release_1_4.Clientset) bool {
+func clusterHealthy(clientset release_1_4.Interface, pollInterval, pollTimeout time.Duration) bool {
+	interval := time.NewTicker(pollInterval)
+	defer interval.Stop()
+	timeout := time.NewTimer(pollTimeout)
+	defer timeout.Stop()
+
+	for {
+		select {
+		case <-interval.C:
+			// // Try re-creating the client until all the components turn healthy
+			// // or we timeout. Until the server comes up, the clientset creation
+			// // completely fails. Also, do not re-use this clientset outside this
+			// // block, just to be safe.
+			// healthClientSet, err := release_1_4.NewForConfig(restclient.AddUserAgent(clientConfig, UserAgent))
+			if allComponentsHealthy(clientset) {
+				log.Printf("[DEBUG] all components are healthy")
+				return true
+			} else {
+				log.Printf("[DEBUG] components aren't healthy")
+			}
+		case <-timeout.C:
+			return false
+		}
+	}
+	// Something went wrong
+	return false
+}
+
+func allComponentsHealthy(clientset release_1_4.Interface) bool {
 	csList, err := clientset.Core().ComponentStatuses().List(api.ListOptions{})
 	if err != nil || len(csList.Items) <= 0 {
 		log.Printf("[DEBUG] Listing components failed %s", err)
