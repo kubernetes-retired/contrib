@@ -7,6 +7,7 @@ blunderbuss-config
 blunderbuss-reassign
 change-permissions
 cloud-config
+cloud-provider
 cluster-uid
 configuration-name
 current-release-pr
