@@ -25,7 +25,6 @@ endif
 
 TOKEN ?= "./token"
 token=$(shell cat $(TOKEN))
-token64=$(shell base64 $(TOKEN))
 
 READONLY ?= true
 
@@ -79,9 +78,7 @@ endif
 
 # simple transformation of a github oauth secret file to a kubernetes secret
 secret:
-	@echo $(token64)
-	sed -e 's|1234567890123456789012345678901234567890123456789012345=|$(token64)|' $(APP)/secret.yaml > $(APP)/local.secret.yaml
-
+	kubectl create secret generic $(APP)-github-token --from-file=token=$(TOKEN)
 clean:
 	rm -f mungegithub $(APP)/local.deployment.yaml $(APP)/local.secret.yaml
 
