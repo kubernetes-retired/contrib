@@ -18,13 +18,14 @@ package testowner
 
 import (
 	"encoding/csv"
+	"errors"
 	"io"
-	"os"
+	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/golang/glog"
+	"github.com/gregjones/httpcache"
 )
 
 var tagRegex = regexp.MustCompile(`\[.*?\]|\{.*?\}`)
@@ -87,18 +88,23 @@ func NewOwnerListFromCsv(r io.Reader) (*OwnerList, error) {
 	return NewOwnerList(mapping), nil
 }
 
-// ReloadingOwnerList maps test names to owners, reloading the mapping when the
-// underlying file is changed.
-type ReloadingOwnerList struct {
-	path      string
-	mtime     time.Time
+// HTTPOwnerList maps test names to owners, loading the mapping from a given
+// URL and reloading as necessary when it expries from the cache.
+type HTTPOwnerList struct {
+	url       string
+	client    http.Client
 	ownerList *OwnerList
 }
 
-// NewReloadingOwnerList creates a ReloadingOwnerList given a path to a CSV
+// NewHTTPOwnerList creates a HTTPOwnerList given a URL to a CSV
 // file containing owner mapping information.
-func NewReloadingOwnerList(path string) (*ReloadingOwnerList, error) {
-	ownerList := &ReloadingOwnerList{path: path}
+func NewHTTPOwnerList(url string) (*HTTPOwnerList, error) {
+	// httpcache respects
+	transport := httpcache.NewMemoryCacheTransport()
+	ownerList := &HTTPOwnerList{
+		url:    url,
+		client: http.Client{Transport: transport},
+	}
 	err := ownerList.reload()
 	if err != nil {
 		return nil, err
@@ -107,33 +113,31 @@ func NewReloadingOwnerList(path string) (*ReloadingOwnerList, error) {
 }
 
 // TestOwner returns the owner for a test, or the empty string if none is found.
-func (o *ReloadingOwnerList) TestOwner(testName string) string {
+func (o *HTTPOwnerList) TestOwner(testName string) string {
 	err := o.reload()
 	if err != nil {
-		glog.Errorf("Unable to reload test owners at %s: %v", o.path, err)
+		glog.Errorf("Unable to reload test owners at %s: %v", o.url, err)
 		// Process using the previous data.
 	}
 	return o.ownerList.TestOwner(testName)
 }
 
-func (o *ReloadingOwnerList) reload() error {
-	info, err := os.Stat(o.path)
+func (o *HTTPOwnerList) reload() error {
+	resp, err := o.client.Get(o.url)
 	if err != nil {
 		return err
 	}
-	if info.ModTime() == o.mtime {
-		return nil
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return errors.New("error status " + resp.Status)
 	}
-	file, err := os.Open(o.path)
+	ownerList, err := NewOwnerListFromCsv(resp.Body)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	ownerList, err := NewOwnerListFromCsv(file)
-	if err != nil {
-		return err
+	if resp.Header.Get(httpcache.XFromCache) == "" {
+		glog.Info("Fetched new test owners from %s", o.url)
 	}
 	o.ownerList = ownerList
-	o.mtime = info.ModTime()
 	return nil
 }

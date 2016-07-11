@@ -17,12 +17,12 @@ limitations under the License.
 package testowner
 
 import (
-	"bufio"
 	"bytes"
-	"io/ioutil"
-	"os"
+	"fmt"
+	"hash/crc32"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-	"time"
 )
 
 func TestNormalize(t *testing.T) {
@@ -69,46 +69,50 @@ func TestOwnerListFromCsv(t *testing.T) {
 	}
 }
 
-func TestReloadingOwnerList(t *testing.T) {
-	tempfile, err := ioutil.TempFile(os.TempDir(), "ownertest")
+type DataServer struct {
+	data  string
+	calls int
+}
+
+func (t *DataServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	dataHash := fmt.Sprintf("%d", crc32.ChecksumIEEE([]byte(t.data)))
+	if r.Header.Get("If-None-Match") == dataHash {
+		w.WriteHeader(304)
+		return
+	}
+	t.calls++
+	w.Header().Add("ETag", dataHash)
+	w.Write([]byte(t.data))
+}
+
+func TestHTTPOwnerList(t *testing.T) {
+	handler := DataServer{data: "owner,test name\nfoo,flake\n"}
+
+	server := httptest.NewServer(&handler)
+	defer server.Close()
+
+	list, err := NewHTTPOwnerList(server.URL)
+
 	if err != nil {
 		t.Error(err)
 	}
-	defer os.Remove(tempfile.Name())
-	defer tempfile.Close()
-	writer := bufio.NewWriter(tempfile)
-	_, err = writer.WriteString("owner,test name\nfoo,flake\n")
-	if err != nil {
-		t.Error(err)
-	}
-	err = writer.Flush()
-	if err != nil {
-		t.Error(err)
-	}
-	list, err := NewReloadingOwnerList(tempfile.Name())
-	if err != nil {
-		t.Error(err)
-	}
+
 	if owner := list.TestOwner("flake"); owner != "foo" {
 		t.Error("unexpected owner for 'flake': ", owner)
 	}
 
-	// Assuming millisecond resolution on our FS, this sleep
-	// ensures the mtime will change with the next write.
-	time.Sleep(5 * time.Millisecond)
-
-	tempfile.Seek(0, os.SEEK_SET)
-	writer.Reset(tempfile)
-	_, err = writer.WriteString("owner,test name\nbar,flake\n")
-	if err != nil {
-		t.Error(err)
-	}
-	err = writer.Flush()
-	if err != nil {
-		t.Error(err)
-	}
+	handler.data = "owner,test name\nbar,flake\n"
 
 	if owner := list.TestOwner("flake"); owner != "bar" {
 		t.Error("unexpected owner for 'flake': ", owner)
+	}
+
+	// Verify that the httpcache is preventing excessive modifications.
+	for i := 0; i < 10; i++ {
+		list.TestOwner("flake")
+	}
+
+	if handler.calls != 2 {
+		t.Error("expected only 2 http requests, got ", handler.calls)
 	}
 }
