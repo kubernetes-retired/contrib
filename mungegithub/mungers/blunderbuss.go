@@ -94,8 +94,8 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	files, err := obj.ListFiles()
-	if err != nil {
+	files, ok := obj.ListFiles()
+	if !ok {
 		return
 	}
 

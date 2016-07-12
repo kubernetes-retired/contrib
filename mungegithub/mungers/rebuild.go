@@ -86,9 +86,9 @@ func (r *RebuildMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	comments, err := obj.ListComments()
-	if err != nil {
-		glog.Errorf("unexpected error getting comments: %v", err)
+	comments, ok := obj.ListComments()
+	if !ok {
+		return
 	}
 
 	for ix := range comments {

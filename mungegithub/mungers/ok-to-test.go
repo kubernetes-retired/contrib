@@ -39,31 +39,31 @@ type OkToTestMunger struct {
 }
 
 func init() {
-	ok := &OkToTestMunger{}
-	RegisterMungerOrDie(ok)
-	RegisterStaleComments(ok)
+	oktt := &OkToTestMunger{}
+	RegisterMungerOrDie(oktt)
+	RegisterStaleComments(oktt)
 }
 
 // Name is the name usable in --pr-mungers
-func (ok *OkToTestMunger) Name() string { return "ok-to-test" }
+func (oktt *OkToTestMunger) Name() string { return "ok-to-test" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (ok *OkToTestMunger) RequiredFeatures() []string { return []string{features.TestOptionsFeature} }
+func (oktt *OkToTestMunger) RequiredFeatures() []string { return []string{features.TestOptionsFeature} }
 
 // Initialize will initialize the munger
-func (ok *OkToTestMunger) Initialize(config *github.Config, features *features.Features) error {
-	ok.features = features
+func (oktt *OkToTestMunger) Initialize(config *github.Config, features *features.Features) error {
+	oktt.features = features
 	return nil
 }
 
 // EachLoop is called at the start of every munge loop
-func (ok *OkToTestMunger) EachLoop() error { return nil }
+func (oktt *OkToTestMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (ok *OkToTestMunger) AddFlags(cmd *cobra.Command, config *github.Config) {}
+func (oktt *OkToTestMunger) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
 // Munge is the workhorse the will actually make updates to the PR
-func (ok *OkToTestMunger) Munge(obj *github.MungeObject) {
+func (oktt *OkToTestMunger) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
 		return
 	}
@@ -71,21 +71,24 @@ func (ok *OkToTestMunger) Munge(obj *github.MungeObject) {
 	if !obj.HasLabel(lgtmLabel) {
 		return
 	}
-	state := obj.GetStatusState(ok.features.TestOptions.RequiredRetestContexts)
+	state, ok := obj.GetStatusState(oktt.features.TestOptions.RequiredRetestContexts)
+	if !ok {
+		return
+	}
 	if state == "incomplete" {
 		glog.V(2).Infof("status is incomplete, adding ok to test")
 		obj.WriteComment(okToTestBody)
 	}
 }
 
-func (ok *OkToTestMunger) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+func (oktt *OkToTestMunger) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
 	if *comment.Body != okToTestBody {
 		return false
 	}
-	stale := commentBeforeLastCI(obj, comment, ok.features.TestOptions.RequiredRetestContexts)
+	stale := commentBeforeLastCI(obj, comment, oktt.features.TestOptions.RequiredRetestContexts)
 	if stale {
 		glog.V(6).Infof("Found stale OkToTestMunger comment")
 	}
@@ -93,6 +96,6 @@ func (ok *OkToTestMunger) isStaleComment(obj *github.MungeObject, comment *githu
 }
 
 // StaleComments returns a slice of comments which are stale
-func (ok *OkToTestMunger) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
-	return forEachCommentTest(obj, comments, ok.isStaleComment)
+func (oktt *OkToTestMunger) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, oktt.isStaleComment)
 }

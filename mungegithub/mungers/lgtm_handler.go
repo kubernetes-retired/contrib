@@ -64,9 +64,8 @@ func (h LGTMHandler) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	comments, err := getComments(obj)
-	if err != nil {
-		glog.Errorf("unexpected error getting comments: %v", err)
+	comments, ok := getComments(obj)
+	if !ok {
 		return
 	}
 
@@ -151,13 +150,18 @@ func getReviewers(obj *github.MungeObject) mungerutil.UserSet {
 	return mungerutil.GetUsers(allAssignees...)
 }
 
-func getComments(obj *github.MungeObject) ([]*githubapi.IssueComment, error) {
+func getComments(obj *github.MungeObject) ([]*githubapi.IssueComment, bool) {
 	afterLastModified := func(opt *githubapi.IssueListCommentsOptions) *githubapi.IssueListCommentsOptions {
 		// Only comments updated at or after this time are returned.
 		// One possible case is that reviewer might "/lgtm" first, contributor updated PR, and reviewer updated "/lgtm".
 		// This is still valid. We don't recommend user to update it.
-		lastModified := *obj.LastModifiedTime()
-		opt.Since = lastModified
+		lastModified, ok := obj.LastModifiedTime()
+		if !ok {
+			glog.Errorf("LastModifiedTime() failed using time way in the future for PR: %d", obj.Number())
+			opt.Since = maxTime
+		} else {
+			opt.Since = *lastModified
+		}
 		return opt
 	}
 	return obj.ListComments(afterLastModified)
