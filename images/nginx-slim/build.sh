@@ -17,7 +17,7 @@
 
 set -e
 
-export NGINX_VERSION=1.11.1
+export NGINX_VERSION=1.11.2
 export NDK_VERSION=0.3.0
 export VTS_VERSION=0.1.9
 export SETMISC_VERSION=0.30
@@ -70,7 +70,7 @@ apt-get update && apt-get install --no-install-recommends -y \
   linux-headers-generic || exit 1
 
 # download, verify and extract the source files
-get_src 5d8dd0197e3ffeb427729c045382182fb28db8e045c635221b2e0e6722821ad0 \
+get_src a0327be3e647bdc4a1b3ef98946a8e8fbf258ce8da6bed9a94222b249ae2700a \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 88e05a99a8a7419066f5ae75966fb1efc409bad4522d14986da074554ae61619 \
@@ -117,13 +117,17 @@ curl -sSL -o nginx__dynamic_tls_records.patch https://raw.githubusercontent.com/
 # https://github.com/cloudflare/sslconfig
 curl -sSL -o nginx_1_9_15_http2_spdy.patch https://raw.githubusercontent.com/felixbuenemann/sslconfig/7c23d2791857f0b07e3008ba745bcf48d8d6b170/patches/nginx_1_9_15_http2_spdy.patch
 
+# Since nginx 1.11.2 --with-md5 and --with-sha1 options were removed.
+# This patch uses the previous functions from OpenSSL.
+cd "$BUILD_PATH/nginx-goodies-nginx-sticky-module-ng-$STICKY_SESSIONS_VERSION"
+patch -p1 < /tmp/nginx-sticky-module-ng.patch
+
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
 
 echo "Applying tls nginx patches..."
 patch -p1 < $BUILD_PATH/nginx__dynamic_tls_records.patch
 patch -p1 < $BUILD_PATH/nginx_1_9_15_http2_spdy.patch 
-
 
 ./configure \
   --prefix=/usr/share/nginx \
