@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: configmap-mysql-svc
+    labels:
+        app: loadbalancer
+data:
+    namespace: "default"
+    bind-port: "3306"
+    target-service-name: "mysql-service"

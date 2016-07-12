@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: configmap-coffee-svc
+    labels:
+        app: loadbalancer
+data:
+    namespace: "default"
+    bind-port: "80"
+    target-service-name: "coffee-svc"
+    target-port-name: "http"
+
