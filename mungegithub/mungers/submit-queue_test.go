@@ -359,10 +359,10 @@ func TestValidateLGTMAfterPush(t *testing.T) {
 			t.Errorf("Unexpected error getting events commits: %v", err)
 		}
 
-		lastModifiedTime := obj.LastModifiedTime()
-		lgtmTime := obj.LabelTime(lgtmLabel)
+		lastModifiedTime, ok1 := obj.LastModifiedTime()
+		lgtmTime, ok2 := obj.LabelTime(lgtmLabel)
 
-		if lastModifiedTime == nil || lgtmTime == nil {
+		if !ok1 || !ok2 || lastModifiedTime == nil || lgtmTime == nil {
 			t.Errorf("unexpected lastModifiedTime or lgtmTime == nil")
 		}
 

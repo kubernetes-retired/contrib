@@ -647,7 +647,7 @@ func objToStatusPullRequest(obj *github.MungeObject) *statusPullRequest {
 
 	milestone, ok := obj.Annotations["milestone"]
 	if !ok {
-		milestone = obj.ReleaseMilestone()
+		milestone, ok = obj.ReleaseMilestone()
 		obj.Annotations["milestone"] = milestone
 	}
 	if milestone != "" {
@@ -690,8 +690,8 @@ func (sq *SubmitQueue) SetMergeStatus(obj *github.MungeObject, reason string) {
 		Reason:            reason,
 	}
 
-	status := obj.GetStatus(sqContext)
-	if status == nil || *status.Description != reason {
+	status, ok := obj.GetStatus(sqContext)
+	if !ok || status == nil || *status.Description != reason {
 		state := reasonToState(reason)
 		url := fmt.Sprintf("http://submit-queue.k8s.io/#/prs/?prDisplay=%d&historyDisplay=%d", *obj.Issue.Number, *obj.Issue.Number)
 		_ = obj.SetStatus(state, url, reason, sqContext)
@@ -863,13 +863,13 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 
 	// Validate the status information for this PR
 	if len(sq.RequiredStatusContexts) > 0 {
-		if ok := obj.IsStatusSuccess(sq.RequiredStatusContexts); !ok {
+		if ok, _ := obj.IsStatusSuccess(sq.RequiredStatusContexts); !ok {
 			sq.SetMergeStatus(obj, ciFailure)
 			return false
 		}
 	}
 	if len(sq.RequiredRetestContexts) > 0 {
-		if ok := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok {
+		if ok, _ := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok {
 			sq.SetMergeStatus(obj, ciFailure)
 			return false
 		}
@@ -882,10 +882,10 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	}
 
 	// PR cannot change since LGTM was added
-	lastModifiedTime := obj.LastModifiedTime()
-	lgtmTime := obj.LabelTime(lgtmLabel)
+	lastModifiedTime, ok := obj.LastModifiedTime()
+	lgtmTime, ok2 := obj.LabelTime(lgtmLabel)
 
-	if lastModifiedTime == nil || lgtmTime == nil {
+	if !ok || !ok2 || lastModifiedTime == nil || lgtmTime == nil {
 		glog.Errorf("PR %d was unable to determine when LGTM was added or when last modified", *obj.Issue.Number)
 		sq.SetMergeStatus(obj, unknown)
 		return false
@@ -998,8 +998,8 @@ func (s queueSorter) Less(i, j int) bool {
 		return false
 	}
 
-	aDue := a.ReleaseMilestoneDue()
-	bDue := b.ReleaseMilestoneDue()
+	aDue, _ := a.ReleaseMilestoneDue()
+	bDue, _ := b.ReleaseMilestoneDue()
 
 	if aDue.Before(bDue) {
 		return true
@@ -1168,7 +1168,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 		}
 
 		// Check if the thing we care about is success
-		if ok := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok {
+		if ok, _ := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok {
 			sq.SetMergeStatus(obj, ghE2EFailed)
 			return true
 		}

@@ -68,7 +68,10 @@ func (OkToTestMunger) Munge(obj *github.MungeObject) {
 	if !obj.HasLabel(lgtmLabel) {
 		return
 	}
-	state := obj.GetStatusState(requiredContexts)
+	state, ok := obj.GetStatusState(requiredContexts)
+	if !ok {
+		return
+	}
 	if state == "incomplete" {
 		glog.V(2).Infof("status is incomplete, adding ok to test")
 		obj.WriteComment(okToTestBody)

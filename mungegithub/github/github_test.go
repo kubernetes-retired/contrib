@@ -414,8 +414,8 @@ func TestGetLastModified(t *testing.T) {
 			config: config,
 			Issue:  github_test.Issue("bob", 1, nil, true),
 		}
-		ts := obj.LastModifiedTime()
-		if !ts.Equal(*test.expectedTime) {
+		ts, ok := obj.LastModifiedTime()
+		if !ok || !ts.Equal(*test.expectedTime) {
 			t.Errorf("expected: %v, saw: %v for: %v", test.expectedTime, ts, test)
 		}
 		server.Close()
@@ -522,8 +522,8 @@ this pr Fixes #23 and FIXES #45 but not fixxx #99`,
 			t.Fatalf("%d: unable to get issue: %v", testNum, *test.issue.Number)
 		}
 		obj.Issue.Body = &test.body
-		fixes := obj.GetPRFixesList()
-		if len(test.expected) != len(fixes) {
+		fixes, ok := obj.GetPRFixesList()
+		if !ok || len(test.expected) != len(fixes) {
 			t.Errorf("%d: len(fixes) not equal, expected: %v but got: %v", testNum, test.expected, fixes)
 			return
 		}

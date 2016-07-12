@@ -88,14 +88,14 @@ func (StalePendingCI) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	status := obj.GetStatusState(requiredContexts)
-	if status != "pending" {
+	status, ok := obj.GetStatusState(requiredContexts)
+	if !ok || status != "pending" {
 		return
 	}
 
 	for _, context := range requiredContexts {
-		statusTime := obj.GetStatusTime(context)
-		if statusTime == nil {
+		statusTime, ok := obj.GetStatusTime(context)
+		if !ok || statusTime == nil {
 			glog.Errorf("%d: unable to determine time %q context was set", *obj.Issue.Number, context)
 			return
 		}

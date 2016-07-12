@@ -71,8 +71,8 @@ func (a *AssignFixesMunger) Munge(obj *github.MungeObject) {
 	}
 	prOwner := github.DescribeUser(pr.User)
 
-	issuesFixed := obj.GetPRFixesList()
-	if issuesFixed == nil {
+	issuesFixed, ok := obj.GetPRFixesList()
+	if issuesFixed == nil || !ok {
 		return
 	}
 	for _, fixesNum := range issuesFixed {
