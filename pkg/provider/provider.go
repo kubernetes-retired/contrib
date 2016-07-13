@@ -36,14 +36,70 @@ const (
 
 	PollInterval = 10 * time.Second
 	PollTimeout  = 10 * time.Minute
+
+	ConfigPollInterval = 100 * time.Millisecond
+	ConfigPollTimeout  = 2 * time.Minute
+
+	ResourceShutdownInterval = 1 * time.Minute
 )
 
 func Provider() terraform.ResourceProvider {
 	return &schema.Provider{
 		ResourcesMap: map[string]*schema.Resource{
 			"kubernetes_kubeconfig": resourceKubeconfig(),
+			"kubernetes_cluster":    resourceCluster(),
 		},
+
+		ConfigureFunc: providerConfig,
 	}
+}
+
+type configFunc func(*schema.ResourceData) (*config, error)
+
+type config struct {
+	pollInterval             time.Duration
+	pollTimeout              time.Duration
+	configPollInterval       time.Duration
+	ConfigPollTimeout        time.Duration
+	resourceShutdownInterval time.Duration
+
+	kubeConfig *clientcmdapi.Config
+	clientset  release_1_4.Interface
+}
+
+func providerConfig(d *schema.ResourceData) (interface{}, error) {
+	var f configFunc = func(d *schema.ResourceData) (*config, error) {
+		server := d.Get("server").(string)
+
+		configGetter := kubeConfigGetter(d)
+
+		clientConfig, err := clientcmd.BuildConfigFromKubeconfigGetter(server, configGetter)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't parse the supplied config: %v", err)
+		}
+
+		clientset, err := release_1_4.NewForConfig(restclient.AddUserAgent(clientConfig, UserAgent))
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize the cluster client: %v", err)
+		}
+
+		kubeConfig, err := configGetter()
+		if err != nil {
+			return nil, fmt.Errorf("couldn't parse the supplied config: %v", err)
+		}
+
+		return &config{
+			pollInterval:             PollInterval,
+			pollTimeout:              PollTimeout,
+			configPollInterval:       ConfigPollInterval,
+			ConfigPollTimeout:        ConfigPollTimeout,
+			resourceShutdownInterval: ResourceShutdownInterval,
+
+			kubeConfig: kubeConfig,
+			clientset:  clientset,
+		}, nil
+	}
+	return f, nil
 }
 
 func resourceKubeconfig() *schema.Resource {
@@ -65,40 +121,51 @@ func resourceKubeconfig() *schema.Resource {
 				Description: "kubeconfig in the serialized JSON format",
 				ForceNew:    true,
 			},
+			"path": &schema.Schema{
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "path to the kubeconfig file",
+				ForceNew:    true,
+			},
 		},
 	}
 }
 
 func CreateKubeconfig(d *schema.ResourceData, meta interface{}) error {
-	server := d.Get("server").(string)
-	clientConfig, err := clientcmd.BuildConfigFromKubeconfigGetter(server, kubeConfigGetter(d))
-	if err != nil {
-		return fmt.Errorf("couldn't parse the supplied config: %v", err)
-	}
-
-	clientset, err := release_1_4.NewForConfig(restclient.AddUserAgent(clientConfig, UserAgent))
+	configF := meta.(configFunc)
+	cfg, err := configF(d)
 	if err != nil {
 		return fmt.Errorf("failed to initialize the cluster client: %v", err)
 	}
 
-	if !clusterHealthy(clientset, PollInterval, PollTimeout) {
+	if len(cfg.kubeConfig.Clusters) != 1 || len(cfg.kubeConfig.AuthInfos) != 1 || len(cfg.kubeConfig.Contexts) != 1 {
+		return fmt.Errorf("config must supplied for exactly one cluster - number of clusters: %d, number of users: %d, number of contexts: %d", len(cfg.kubeConfig.Clusters), len(cfg.kubeConfig.AuthInfos), len(cfg.kubeConfig.Contexts))
+	}
+
+	log.Printf("[DEBUG] checking for cluster components' health")
+	if !poll(cfg.pollInterval, cfg.pollTimeout, allComponentsHealthy(cfg.clientset)) {
 		return fmt.Errorf("cluster components never turned healthy")
 	}
 
-	configAccess := clientcmd.NewDefaultPathOptions()
-	kubeConfig, err := kubeConfigGetter(d)()
-	if err != nil {
-		return fmt.Errorf("couldn't parse the supplied config: %v", err)
+	po := clientcmd.NewDefaultPathOptions()
+	if path, ok := d.GetOk("path"); ok {
+		po.LoadingRules.ExplicitPath = path.(string)
 	}
 
-	if err := modifyConfig(configAccess, kubeConfig); err != nil {
-		return fmt.Errorf("couldn't update kubeconfig: %v", err)
+	// Retry until modifyConfig succeeds or times out.
+	log.Printf("[DEBUG] updating kubeconfig")
+	if !poll(cfg.configPollInterval, cfg.ConfigPollTimeout, updateConfig(po, cfg.kubeConfig)) {
+		return fmt.Errorf("cluster components never turned healthy")
 	}
+
+	// Store the ID now
+	d.SetId(d.Get("server").(string))
 
 	return nil
 }
 
 func DeleteKubeconfig(d *schema.ResourceData, meta interface{}) error {
+	d.SetId("")
 	return nil
 }
 
