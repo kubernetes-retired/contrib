@@ -34,6 +34,8 @@ set -o pipefail
 
 cert_ip="${MASTER_IP:="${1}"}"
 master_name="${MASTER_NAME:="kubernetes"}"
+master_cluster_hostname="${CLUSTER_MASTER_HOSTNAME:="public-kubernetes"}"
+master_cluster_public_hostname="${CLUSTER_MASTER_PUBLIC_HOSTNAME:="int-kubernetes"}"
 service_range="${SERVICE_CLUSTER_IP_RANGE:="10.0.0.0/16"}"
 dns_domain="${DNS_DOMAIN:="cluster.local"}"
 cert_dir="${CERT_DIR:-"/srv/kubernetes"}"
@@ -94,7 +96,7 @@ octets=($(echo "${service_range}" | sed -e 's|/.*||' -e 's/\./ /g'))
 service_ip=$(echo "${octets[*]}" | sed 's/ /./g')
 
 # Determine appropriete subject alt names
-sans="IP:${cert_ip},IP:${service_ip},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.${dns_domain},DNS:${master_name}"
+sans="IP:${cert_ip},IP:${service_ip},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.${dns_domain},DNS:${master_name},DNS:${master_cluster_hostname},DNS:${master_cluster_public_hostname}"
 
 curl -sSL -O https://storage.googleapis.com/kubernetes-release/easy-rsa/easy-rsa.tar.gz
 tar xzf easy-rsa.tar.gz

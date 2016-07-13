@@ -31,6 +31,8 @@
   environment:
     MASTER_IP: "{{ kube_cert_ip }}"
     MASTER_NAME: "{{ inventory_hostname }}"
+    CLUSTER_MASTER_HOSTNAME: "{{ kube_master_cluster_hostname }}"
+    CLUSTER_MASTER_PUBLIC_HOSTNAME: "{{ kube_master_cluster_public_hostname }}"
     DNS_DOMAIN: "{{ dns_domain }}"
     SERVICE_CLUSTER_IP_RANGE: "{{ kube_service_addresses }}"
     CERT_DIR: "{{ kube_cert_dir }}"
