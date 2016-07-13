@@ -19,6 +19,7 @@ package provider
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/hashicorp/terraform/helper/schema"
@@ -105,53 +106,82 @@ func ReadKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func clusterHealthy(clientset release_1_4.Interface, pollInterval, pollTimeout time.Duration) bool {
+func poll(pollInterval, pollTimeout time.Duration, cond func() (bool, error)) bool {
 	interval := time.NewTicker(pollInterval)
 	defer interval.Stop()
 	timeout := time.NewTimer(pollTimeout)
 	defer timeout.Stop()
 
+	// Try the first time before waiting.
+	if ok, err := cond(); ok {
+		log.Printf("[DEBUG] condition succeeded, error: %v", err)
+		return true
+	} else if err != nil {
+		log.Printf("[DEBUG] condition error: %v", err)
+		return false
+	} else {
+		log.Printf("[DEBUG] condition has failed, retrying...")
+	}
+
 	for {
 		select {
 		case <-interval.C:
-			// // Try re-creating the client until all the components turn healthy
-			// // or we timeout. Until the server comes up, the clientset creation
-			// // completely fails. Also, do not re-use this clientset outside this
-			// // block, just to be safe.
-			// healthClientSet, err := release_1_4.NewForConfig(restclient.AddUserAgent(clientConfig, UserAgent))
-			if allComponentsHealthy(clientset) {
-				log.Printf("[DEBUG] all components are healthy")
+			if ok, err := cond(); ok {
+				log.Printf("[DEBUG] condition succeeded, error: %v", err)
 				return true
+			} else if err != nil {
+				log.Printf("[DEBUG] condition error: %v", err)
+				return false
 			} else {
-				log.Printf("[DEBUG] components aren't healthy")
+				log.Printf("[DEBUG] condition has failed, retrying...")
 			}
 		case <-timeout.C:
 			return false
 		}
 	}
 	// Something went wrong
+	log.Printf("[DEBUG] something went wrong while polling, that's all we know")
 	return false
 }
 
-func allComponentsHealthy(clientset release_1_4.Interface) bool {
-	csList, err := clientset.Core().ComponentStatuses().List(api.ListOptions{})
-	if err != nil || len(csList.Items) <= 0 {
-		log.Printf("[DEBUG] Listing components failed %s", err)
-		return false
-	}
-	for _, cs := range csList.Items {
-		if !(len(cs.Conditions) > 0 && cs.Conditions[0].Type == "Healthy" && cs.Conditions[0].Status == "True") {
-			log.Printf("[DEBUG] %s isn't healthy. Conditions: %+v", cs.Name, cs.Conditions)
-			return false
+func allComponentsHealthy(clientset release_1_4.Interface) func() (bool, error) {
+	return func() (bool, error) {
+		csList, err := clientset.Core().ComponentStatuses().List(api.ListOptions{})
+		if err != nil || len(csList.Items) <= 0 {
+			log.Printf("[DEBUG] Listing components failed %s", err)
+			return false, nil
 		}
+		for _, cs := range csList.Items {
+			if !(len(cs.Conditions) > 0 && cs.Conditions[0].Type == "Healthy" && cs.Conditions[0].Status == "True") {
+				log.Printf("[DEBUG] %s isn't healthy. Conditions: %+v", cs.Name, cs.Conditions)
+				return false, nil
+			}
+		}
+		return true, nil
 	}
-	return true
 }
 
 func kubeConfigGetter(d *schema.ResourceData) clientcmd.KubeconfigGetter {
 	return func() (*clientcmdapi.Config, error) {
 		kubeConfigStr := d.Get("configdata").(string)
 		return clientcmd.Load([]byte(kubeConfigStr))
+	}
+}
+
+func updateConfig(configAccess clientcmd.ConfigAccess, suppliedConfig *clientcmdapi.Config) func() (bool, error) {
+	return func() (bool, error) {
+		err := modifyConfig(configAccess, suppliedConfig)
+		if err != nil {
+			// TODO: We are relying too much on the fact that this error is going
+			// to be an *os.PathError returned by file locking mechanism. This is
+			// dangerous. Try to introduce a specific error for this in
+			// "k8s.io/kubernetes/pkg/client/unversioned/clientcmd" package.
+			if os.IsExist(err) {
+				return false, nil
+			}
+			return false, fmt.Errorf("couldn't update kubeconfig: %v", err)
+		}
+		return true, nil
 	}
 }
 
