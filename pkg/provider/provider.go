@@ -173,6 +173,74 @@ func ReadKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
+func resourceCluster() *schema.Resource {
+	return &schema.Resource{
+		Create: CreateCluster,
+		Delete: DeleteCluster,
+		Read:   ReadCluster,
+
+		Schema: map[string]*schema.Schema{
+			"server": &schema.Schema{
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "Domain name or IP address of the API server",
+				ForceNew:    true,
+			},
+			"configdata": &schema.Schema{
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "kubeconfig in the serialized JSON format",
+				ForceNew:    true,
+			},
+		},
+	}
+}
+
+func CreateCluster(d *schema.ResourceData, meta interface{}) error {
+	configF := meta.(configFunc)
+	cfg, err := configF(d)
+	if err != nil {
+		return fmt.Errorf("failed to initialize the cluster client: %v", err)
+	}
+
+	log.Printf("[DEBUG] checking for cluster components' health")
+	if !poll(cfg.pollInterval, cfg.pollTimeout, allComponentsHealthy(cfg.clientset)) {
+		return fmt.Errorf("cluster components never turned healthy")
+	}
+
+	// Store the ID now
+	d.SetId(d.Get("server").(string))
+
+	return nil
+}
+
+func DeleteCluster(d *schema.ResourceData, meta interface{}) error {
+	configF := meta.(configFunc)
+	cfg, err := configF(d)
+	if err != nil {
+		return fmt.Errorf("failed to initialize the cluster client: %v", err)
+	}
+
+	if err := cfg.clientset.Core().Nodes().DeleteCollection(&api.DeleteOptions{}, api.ListOptions{}); err != nil {
+		return fmt.Errorf("failed to delete the nodes: %v", err)
+	}
+
+	// Block for some time to give the controllers sufficient time to
+	// delete the cloud provider resources they might have acquired.
+	// Only resources we are considering right now are routes installed
+	// by the route controller.
+	// TODO: Enumerate the resources we should wait for before returning.
+	time.Sleep(cfg.resourceShutdownInterval)
+
+	d.SetId("")
+
+	return nil
+}
+
+func ReadCluster(d *schema.ResourceData, meta interface{}) error {
+	return nil
+}
+
 func poll(pollInterval, pollTimeout time.Duration, cond func() (bool, error)) bool {
 	interval := time.NewTicker(pollInterval)
 	defer interval.Stop()
