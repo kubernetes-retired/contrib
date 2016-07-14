@@ -78,7 +78,7 @@ endif
 
 # simple transformation of a github oauth secret file to a kubernetes secret
 secret:
-	kubectl create secret generic $(APP)-github-token --from-file=token=$(TOKEN)
+	kubectl create secret generic $(APP)-github-token --from-file=token=$(TOKEN) --kubeconfig=$(KUBECONFIG)
 clean:
 	rm -f mungegithub $(APP)/local.deployment.yaml $(APP)/local.secret.yaml
 
