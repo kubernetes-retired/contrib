@@ -78,9 +78,9 @@ func (r *ReleaseNoteLabel) EachLoop() error { return nil }
 func (r *ReleaseNoteLabel) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
 func (r *ReleaseNoteLabel) prMustFollowRelNoteProcess(obj *github.MungeObject) bool {
-	boolean, err := obj.IsForBranch("master")
+	boolean, ok := obj.IsForBranch("master")
 
-	if err != nil || boolean {
+	if !ok || boolean {
 		return true
 	}
 

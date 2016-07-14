@@ -69,8 +69,8 @@ func (LabelUnapprovedPicks) Munge(obj *github.MungeObject) {
 		return
 	}
 	//true=return
-	boolean, err := obj.IsForBranch("master")
-	if err != nil || boolean {
+	boolean, ok := obj.IsForBranch("master")
+	if !ok || boolean {
 		return
 	}
 

@@ -619,8 +619,8 @@ func objToStatusPullRequest(obj *github.MungeObject) *statusPullRequest {
 		Login:     *obj.Issue.User.Login,
 		AvatarURL: *obj.Issue.User.AvatarURL,
 	}
-	pr, err := obj.GetPR()
-	if err != nil {
+	pr, ok := obj.GetPR()
+	if !ok {
 		return &res
 	}
 	if pr.Additions != nil {
@@ -823,8 +823,8 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	}
 
 	// Can't merge something already merged.
-	if m, err := obj.IsMerged(); err != nil {
-		glog.Errorf("%d: unknown err: %v", *obj.Issue.Number, err)
+	if m, ok := obj.IsMerged(); !ok {
+		glog.Errorf("%d: unknown err", *obj.Issue.Number)
 		sq.SetMergeStatus(obj, unknown)
 		return false
 	} else if m {
@@ -853,7 +853,7 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	}
 
 	// Obviously must be mergeable
-	if mergeable, err := obj.IsMergeable(); err != nil {
+	if mergeable, ok := obj.IsMergeable(); !ok {
 		sq.SetMergeStatus(obj, undeterminedMergability)
 		return false
 	} else if !mergeable {
@@ -1118,9 +1118,9 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 	interruptedObj := sq.interruptedObj
 	sq.interruptedObj = nil
 
-	err := obj.Refresh()
-	if err != nil {
-		glog.Errorf("%d: unknown err: %v", *obj.Issue.Number, err)
+	ok := obj.Refresh()
+	if !ok {
+		glog.Errorf("%d: unknown err", *obj.Issue.Number)
 		sq.SetMergeStatus(obj, unknown)
 		return true
 	}
@@ -1153,7 +1153,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 		// Wait for the retest to start
 		sq.SetMergeStatus(obj, ghE2EWaitingStart)
 		atomic.AddInt32(&sq.prsTested, 1)
-		err = obj.WaitForPending(sq.RequiredRetestContexts)
+		err := obj.WaitForPending(sq.RequiredRetestContexts)
 		if err != nil {
 			sq.SetMergeStatus(obj, fmt.Sprintf("Failed waiting for PR to start testing: %v", err))
 			return true

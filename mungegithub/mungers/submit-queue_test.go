@@ -351,8 +351,8 @@ func TestValidateLGTMAfterPush(t *testing.T) {
 
 		obj := github_util.TestObject(config, BareIssue(), nil, nil, nil)
 
-		if _, err := obj.GetCommits(); err != nil {
-			t.Errorf("Unexpected error getting filled commits: %v", err)
+		if _, ok := obj.GetCommits(); !ok {
+			t.Errorf("Unexpected error getting filled commits")
 		}
 
 		if _, err := obj.GetEvents(); err != nil {

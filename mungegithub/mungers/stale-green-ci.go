@@ -74,7 +74,7 @@ func (StaleGreenCI) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	if mergeable, err := obj.IsMergeable(); !mergeable || err != nil {
+	if mergeable, ok := obj.IsMergeable(); !ok || !mergeable {
 		return
 	}
 

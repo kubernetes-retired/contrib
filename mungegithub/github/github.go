@@ -19,7 +19,6 @@ package github
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	goflag "flag"
 	"fmt"
 	"io/ioutil"
@@ -459,22 +458,23 @@ func (config *Config) getIssue(num int) (*github.Issue, error) {
 
 // Refresh will refresh the Issue (and PR if this is a PR)
 // (not the commits or events)
-func (obj *MungeObject) Refresh() error {
+func (obj *MungeObject) Refresh() bool {
 	num := *obj.Issue.Number
 	issue, err := obj.config.getIssue(num)
 	if err != nil {
-		return err
+		glog.Errorf("Error in Refresh")
+		return false
 	}
 	obj.Issue = issue
 	if !obj.IsPR() {
-		return nil
+		return true
 	}
 	pr, err := obj.config.getPR(*obj.Issue.Number)
 	if err != nil {
-		return err
+		return false
 	}
 	obj.pr = pr
-	return nil
+	return true
 }
 
 // ListMilestones will return all milestones of the given `state`
@@ -482,12 +482,12 @@ func (config *Config) ListMilestones(state string) ([]github.Milestone, bool) {
 	listopts := github.MilestoneListOptions{
 		State: state,
 	}
-	milestones, resp, ok := config.client.Issues.ListMilestones(config.Org, config.Project, &listopts)
+	milestones, resp, err := config.client.Issues.ListMilestones(config.Org, config.Project, &listopts)
 	config.analytics.ListMilestones.Call(config, resp)
-	if !ok {
-		glog.Errorf("Error getting milestones of state %q: %v", state, err)
+	if err != nil {
+		glog.Errorf("Error getting milestones of state")
 	}
-	return milestones, ok
+	return milestones, true
 }
 
 // GetObject will return an object (with only the issue filled in)
@@ -1024,10 +1024,9 @@ func computeStatus(combinedStatus *github.CombinedStatus, requiredContexts []str
 
 func (obj *MungeObject) getCombinedStatus() (status *github.CombinedStatus, ok bool) {
 	config := obj.config
-	pr, err := obj.GetPR()
-	if err != nil {
-		glog.Errorf("Error in getCombinedStatus: %v", err)
-		return nil, false
+	pr, ok := obj.GetPR()
+	if !ok {
+		return nil, true
 	}
 	if pr.Head == nil {
 		glog.Errorf("pr.Head is nil in getCombinedStatus for PR# %d", *obj.Issue.Number)
@@ -1044,7 +1043,7 @@ func (obj *MungeObject) getCombinedStatus() (status *github.CombinedStatus, ok b
 }
 
 // SetStatus allowes you to set the Github Status
-func (obj *MungeObject) SetStatus(state, url, description, context string) error {
+func (obj *MungeObject) SetStatus(state, url, description, context string) bool {
 	config := obj.config
 	status := &github.RepoStatus{
 		State:       &state,
@@ -1052,21 +1051,22 @@ func (obj *MungeObject) SetStatus(state, url, description, context string) error
 		Description: &description,
 		Context:     &context,
 	}
-	pr, err := obj.GetPR()
-	if err != nil {
-		return err
+	pr, ok := obj.GetPR()
+	if !ok {
+		glog.Errorf("Error in SetStatus")
+		return false
 	}
 	ref := *pr.Head.SHA
 	glog.Infof("PR %d setting %q Github status to %q", *obj.Issue.Number, context, description)
 	config.analytics.SetStatus.Call(config, nil)
 	if config.DryRun {
-		return nil
+		return true
 	}
-	_, _, err = config.client.Repositories.CreateStatus(config.Org, config.Project, ref, status)
+	_, _, err := config.client.Repositories.CreateStatus(config.Org, config.Project, ref, status)
 	if err != nil {
 		glog.Errorf("Unable to set status. PR %d Ref: %q: %v", *obj.Issue.Number, ref, err)
 	}
-	return err
+	return false
 }
 
 // GetStatus returns the actual requested status, or nil if not found
@@ -1200,9 +1200,9 @@ func (obj *MungeObject) WaitForNotPending(requiredContexts []string) error {
 }
 
 // GetCommits returns all of the commits for a given PR
-func (obj *MungeObject) GetCommits() ([]github.RepositoryCommit, error) {
+func (obj *MungeObject) GetCommits() ([]github.RepositoryCommit, bool) {
 	if obj.commits != nil {
-		return obj.commits, nil
+		return obj.commits, true
 	}
 	config := obj.config
 	commits := []github.RepositoryCommit{}
@@ -1212,7 +1212,7 @@ func (obj *MungeObject) GetCommits() ([]github.RepositoryCommit, error) {
 		config.analytics.ListCommits.Call(config, response)
 		if err != nil {
 			glog.Errorf("Error commits for PR %d: %v", *obj.Issue.Number, err)
-			return nil, err
+			return nil, false
 		}
 		commits = append(commits, commitsPage...)
 		if response.LastPage == 0 || response.LastPage <= page {
@@ -1236,23 +1236,25 @@ func (obj *MungeObject) GetCommits() ([]github.RepositoryCommit, error) {
 		filledCommits = append(filledCommits, *commit)
 	}
 	obj.commits = filledCommits
-	return filledCommits, nil
+	return filledCommits, true
 }
 
 // GetPR will return the PR of the object.
-func (obj *MungeObject) GetPR() (*github.PullRequest, error) {
+func (obj *MungeObject) GetPR() (*github.PullRequest, bool) {
 	if obj.pr != nil {
-		return obj.pr, nil
+		return obj.pr, true
 	}
 	if !obj.IsPR() {
-		return nil, fmt.Errorf("Issue: %d is not a PR", *obj.Issue.Number)
+		fmt.Errorf("Issue: %d is not a PR", *obj.Issue.Number)
+		return nil, false
 	}
 	pr, err := obj.config.getPR(*obj.Issue.Number)
 	if err != nil {
-		return nil, err
+		fmt.Errorf("Error in GetPR")
+		return nil, false
 	}
 	obj.pr = pr
-	return pr, nil
+	return pr, true
 }
 
 // AssignPR will assign `prNum` to the `owner` where the `owner` is asignee's github login
@@ -1294,54 +1296,57 @@ func (obj *MungeObject) CloseIssuef(format string, args ...interface{}) error {
 }
 
 // ClosePR will close the Given PR
-func (obj *MungeObject) ClosePR() error {
+func (obj *MungeObject) ClosePR() bool {
 	config := obj.config
-	pr, err := obj.GetPR()
-	if err != nil {
-		return err
+	pr, ok := obj.GetPR()
+	if !ok {
+		glog.Errorf("Error in ClosePR")
+		return false
 	}
 	config.analytics.ClosePR.Call(config, nil)
 	glog.Infof("Closing PR# %d", *pr.Number)
 	if config.DryRun {
-		return nil
+		return true
 	}
 	state := "closed"
 	pr.State = &state
 	if _, _, err := config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr); err != nil {
 		glog.Errorf("Failed to close pr %d: %v", *pr.Number, err)
-		return err
+		return false
 	}
-	return nil
+	return true
 }
 
 // OpenPR will attempt to open the given PR.
 // It will attempt to reopen the pr `numTries` before returning an error
 // and giving up.
-func (obj *MungeObject) OpenPR(numTries int) error {
+//CHECK
+func (obj *MungeObject) OpenPR(numTries int) bool {
 	config := obj.config
-	pr, err := obj.GetPR()
-	if err != nil {
-		return err
+	pr, ok := obj.GetPR()
+	if !ok {
+		glog.Errorf("Error in OpenPR")
+		return false
 	}
 	config.analytics.OpenPR.Call(config, nil)
 	glog.Infof("Opening PR# %d", *pr.Number)
 	if config.DryRun {
-		return nil
+		return true
 	}
 	state := "open"
 	pr.State = &state
 	// Try pretty hard to re-open, since it's pretty bad if we accidentally leave a PR closed
 	for tries := 0; tries < numTries; tries++ {
-		if _, _, err = config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr); err == nil {
-			return nil
+		if _, _, err := config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr); err == nil {
+			return true
 		}
-		glog.Warningf("failed to re-open pr %d: %v", *pr.Number, err)
+		glog.Warningf("failed to re-open pr %d", *pr.Number)
 		time.Sleep(5 * time.Second)
 	}
-	if err != nil {
-		glog.Errorf("failed to re-open pr %d after %d tries, giving up: %v", *pr.Number, numTries, err)
+	if !ok {
+		glog.Errorf("failed to re-open pr %d after %d tries, giving up", *pr.Number, numTries)
 	}
-	return err
+	return false
 }
 
 // GetFileContents will return the contents of the `file` in the repo at `sha`
@@ -1391,13 +1396,13 @@ func (obj *MungeObject) MergeCommit() (*string, bool) {
 
 // MergePR will merge the given PR, duh
 // "who" is who is doing the merging, like "submit-queue"
-func (obj *MungeObject) MergePR(who string) error {
+func (obj *MungeObject) MergePR(who string) bool {
 	config := obj.config
 	prNum := *obj.Issue.Number
 	config.analytics.Merge.Call(config, nil)
 	glog.Infof("Merging PR# %d", prNum)
 	if config.DryRun {
-		return nil
+		return true
 	}
 	mergeBody := fmt.Sprintf("Automatic merge from %s", who)
 	obj.WriteComment(mergeBody)
@@ -1414,8 +1419,9 @@ func (obj *MungeObject) MergePR(who string) error {
 
 	// Get the text of the first commit
 	firstCommit := ""
-	if commits, err := obj.GetCommits(); err != nil {
-		return err
+	if commits, ok := obj.GetCommits(); !ok {
+		glog.Errorf("Error in MergePR")
+		return false
 	} else if commits[0].Commit.Message != nil {
 		firstCommit = *commits[0].Commit.Message
 	}
@@ -1445,9 +1451,9 @@ func (obj *MungeObject) MergePR(who string) error {
 	}
 	if err != nil {
 		glog.Errorf("Failed to merge PR: %d: %v", prNum, err)
-		return err
+		return false
 	}
-	return nil
+	return true
 }
 
 // GetPRFixesList returns a list of issue numbers that are referenced in the PR body.
@@ -1565,51 +1571,54 @@ func (obj *MungeObject) DeleteComment(comment *github.IssueComment) error {
 // PR again if github did not respond the first time. So the hopefully github
 // will have a response the second time. If we have no answer twice, we return
 // false
-func (obj *MungeObject) IsMergeable() (bool, error) {
+func (obj *MungeObject) IsMergeable() (bool, bool) {
 	if !obj.IsPR() {
-		return false, nil
+		return false, true
 	}
-	pr, err := obj.GetPR()
-	if err != nil {
-		return false, err
+	pr, ok := obj.GetPR()
+	if !ok {
+		glog.Errorf("Error in IsMergable")
+		return false, false
 	}
 	prNum := *pr.Number
 	if pr.Mergeable == nil {
 		glog.V(4).Infof("Waiting for mergeability on %q %d", *pr.Title, *pr.Number)
 		// TODO: determine what a good empirical setting for this is.
 		time.Sleep(2 * time.Second)
-		err := obj.Refresh()
-		if err != nil {
-			glog.Errorf("Unable to refresh PR# %d: %v", prNum, err)
-			return false, err
+		ok = obj.Refresh()
+		if !ok {
+			glog.Errorf("Unable to refresh PR# %d", prNum)
+			return false, false
 		}
-		pr, err = obj.GetPR()
-		if err != nil {
-			glog.Errorf("Unable to get PR# %d: %v", prNum, err)
-			return false, err
+		pr, ok = obj.GetPR()
+		if !ok {
+			glog.Errorf("Unable to get PR# %d", prNum)
+			return false, false
 		}
 	}
 	if pr.Mergeable == nil {
-		err := fmt.Errorf("no mergeability information for %q %d, Skipping", *pr.Title, *pr.Number)
-		glog.Errorf("%v", err)
-		return false, err
+		glog.Errorf("No mergeability information for %q %d, Skipping", *pr.Title, *pr.Number)
+		return false, false
 	}
-	return *pr.Mergeable, nil
+	return *pr.Mergeable, true
 }
 
 // IsMerged returns if the issue in question was already merged
-func (obj *MungeObject) IsMerged() (bool, error) {
+func (obj *MungeObject) IsMerged() (bool, bool) {
 	if !obj.IsPR() {
-		return false, fmt.Errorf("Issue: %d is not a PR and is thus 'merged' is indeterminate", *obj.Issue.Number)
+		glog.Errorf("Issue: %d is not a PR and is thus 'merged' is indeterminate", *obj.Issue.Number)
+		return false, false
 	}
-	pr, err := obj.GetPR()
-	if err != nil {
-		return false, err
+	pr, ok := obj.GetPR()
+	if !ok {
+		glog.Errorf("Error in IsMerged")
+		return false, false
 	}
 	if pr.Merged != nil {
-		return *pr.Merged, nil
+		return *pr.Merged, true
 	}
-	return false, fmt.Errorf("Unable to determine if PR %d was merged", *obj.Issue.Number)
+	glog.Errorf("Unable to determine if PR %d was merged", *obj.Issue.Number)
+	return false, false
 }
 
 // MergedAt returns the time an issue was merged (for nil if unmerged)
@@ -1617,9 +1626,9 @@ func (obj *MungeObject) MergedAt() (*time.Time, bool) {
 	if !obj.IsPR() {
 		return nil, true
 	}
-	pr, err := obj.GetPR()
-	if err != nil {
-		glog.Errorf("Error in MergedAt: %v", err)
+	pr, ok := obj.GetPR()
+	if !ok {
+		glog.Errorf("Error in MergedAt")
 		return nil, false
 	}
 	return pr.MergedAt, true

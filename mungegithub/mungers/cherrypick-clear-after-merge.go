@@ -141,8 +141,8 @@ func (c *ClearPickAfterMerge) foundByPickWithoutDashX(obj *github.MungeObject, b
 
 // Check that the commit messages for all commits in the PR are on the branch
 func (c *ClearPickAfterMerge) foundByAllCommits(obj *github.MungeObject, branch string) bool {
-	commits, err := obj.GetCommits()
-	if err != nil {
+	commits, ok := obj.GetCommits()
+	if !ok {
 		glog.Infof("unable to get commits")
 		return false
 	}
@@ -181,7 +181,7 @@ func (c *ClearPickAfterMerge) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	if merged, err := obj.IsMerged(); !merged || err != nil {
+	if merged, ok := obj.IsMerged(); !ok || !merged {
 		return
 	}
 
