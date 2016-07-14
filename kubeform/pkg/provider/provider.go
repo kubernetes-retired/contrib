@@ -133,14 +133,9 @@ func resourceKubeconfig() *schema.Resource {
 }
 
 func createKubeconfig(d *schema.ResourceData, meta interface{}) error {
-	configF := meta.(configFunc)
-	cfg, err := configF(d)
+	cfg, err := kubeconfigInit(d, meta)
 	if err != nil {
-		return fmt.Errorf("failed to initialize the cluster client: %v", err)
-	}
-
-	if len(cfg.kubeConfig.Clusters) != 1 || len(cfg.kubeConfig.AuthInfos) != 1 || len(cfg.kubeConfig.Contexts) != 1 {
-		return fmt.Errorf("config must supplied for exactly one cluster - number of clusters: %d, number of users: %d, number of contexts: %d", len(cfg.kubeConfig.Clusters), len(cfg.kubeConfig.AuthInfos), len(cfg.kubeConfig.Contexts))
+		return err
 	}
 
 	log.Printf("[DEBUG] checking for cluster components' health")
@@ -155,7 +150,7 @@ func createKubeconfig(d *schema.ResourceData, meta interface{}) error {
 
 	// Retry until modifyConfig succeeds or times out.
 	log.Printf("[DEBUG] updating kubeconfig")
-	if !poll(cfg.configPollInterval, cfg.ConfigPollTimeout, updateConfig(po, cfg.kubeConfig)) {
+	if !poll(cfg.configPollInterval, cfg.ConfigPollTimeout, updateConfig(po, cfg.kubeConfig, modifyConfig)) {
 		return fmt.Errorf("couldn't update kubeconfig")
 	}
 
@@ -166,7 +161,24 @@ func createKubeconfig(d *schema.ResourceData, meta interface{}) error {
 }
 
 func deleteKubeconfig(d *schema.ResourceData, meta interface{}) error {
+	cfg, err := kubeconfigInit(d, meta)
+	if err != nil {
+		return err
+	}
+
+	po := clientcmd.NewDefaultPathOptions()
+	if path, ok := d.GetOk("path"); ok {
+		po.LoadingRules.ExplicitPath = path.(string)
+	}
+
+	// Retry until modifyConfig succeeds or times out.
+	log.Printf("[DEBUG] updating kubeconfig")
+	if !poll(cfg.configPollInterval, cfg.ConfigPollTimeout, updateConfig(po, cfg.kubeConfig, removeConfig)) {
+		return fmt.Errorf("cluster components never turned healthy")
+	}
+
 	d.SetId("")
+
 	return nil
 }
 
@@ -304,9 +316,23 @@ func kubeConfigGetter(d *schema.ResourceData) clientcmd.KubeconfigGetter {
 	}
 }
 
-func updateConfig(configAccess clientcmd.ConfigAccess, suppliedConfig *clientcmdapi.Config) func() (bool, error) {
+func kubeconfigInit(d *schema.ResourceData, meta interface{}) (*config, error) {
+	configF := meta.(configFunc)
+	cfg, err := configF(d)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize the cluster client: %v", err)
+	}
+
+	if len(cfg.kubeConfig.Clusters) != 1 || len(cfg.kubeConfig.AuthInfos) != 1 || len(cfg.kubeConfig.Contexts) != 1 {
+		return nil, fmt.Errorf("config must supplied for exactly one cluster - number of clusters: %d, number of users: %d, number of contexts: %d", len(cfg.kubeConfig.Clusters), len(cfg.kubeConfig.AuthInfos), len(cfg.kubeConfig.Contexts))
+	}
+
+	return cfg, nil
+}
+
+func updateConfig(configAccess clientcmd.ConfigAccess, suppliedConfig *clientcmdapi.Config, modifyFunc func(configAccess clientcmd.ConfigAccess, suppliedConfig *clientcmdapi.Config) error) func() (bool, error) {
 	return func() (bool, error) {
-		err := modifyConfig(configAccess, suppliedConfig)
+		err := modifyFunc(configAccess, suppliedConfig)
 		if err != nil {
 			// TODO: We are relying too much on the fact that this error is going
 			// to be an *os.PathError returned by file locking mechanism. This is
@@ -423,6 +449,31 @@ func modifyConfig(configAccess clientcmd.ConfigAccess, suppliedConfig *clientcmd
 			modifiedContext.Namespace = context.Namespace
 		}
 		config.Contexts[name] = &modifiedContext
+	}
+
+	if err := clientcmd.ModifyConfig(configAccess, *config, true); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func removeConfig(configAccess clientcmd.ConfigAccess, suppliedConfig *clientcmdapi.Config) error {
+	config, err := configAccess.GetStartingConfig()
+	if err != nil {
+		return err
+	}
+
+	for name := range suppliedConfig.AuthInfos {
+		delete(config.AuthInfos, name)
+	}
+
+	for name := range suppliedConfig.Clusters {
+		delete(config.Clusters, name)
+	}
+
+	for name := range suppliedConfig.Contexts {
+		delete(config.Contexts, name)
 	}
 
 	if err := clientcmd.ModifyConfig(configAccess, *config, true); err != nil {
