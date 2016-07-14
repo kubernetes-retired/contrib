@@ -28,7 +28,7 @@ do
   format none
   time_key time
   path ${filepath}
-  pos_file /etc/google-fluentd/fluentd-gcp.log.pos
+  pos_file /etc/google-fluentd/fluentd-gcp-${filename}.pos
   time_format %Y-%m-%dT%H:%M:%S
   tag file.${filename}
   read_from_head true
