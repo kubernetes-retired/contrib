@@ -9,7 +9,7 @@ import:
 - package: k8s.io/kubernetes
   # TODO(madhusudancs): Should be replaced with ^1.4.0. Temporary solution
   # to get release_1_4 client.
-  version: 327e5463e22ae9473de5e36c295aecd8b9bec601
+  version: ec47f5c926da7479939b4ab2948fda5479f0a999
   subpackages:
   - pkg/api
   - pkg/client/clientset_generated/release_1_4

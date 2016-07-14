@@ -1,5 +1,5 @@
-hash: 7c26a3b45990c5971e2a55ab4710c1afa95aeb0878d6c858a3d65be0b79da878
-updated: 2016-07-10T23:37:40.573843063-07:00
+hash: bee497b69d6c91c0f1872d1426312f7cab847fc47c8c0a129db0d831b7b5a22c
+updated: 2016-07-13T18:22:14.93572133-07:00
 imports:
 - name: github.com/apparentlymart/go-cidr
   version: a3ebdb999b831ecb6ab8a226e31b07b2b9061c47
@@ -84,17 +84,6 @@ imports:
   subpackages:
   - digest
   - reference
-- name: github.com/docker/docker
-  version: 0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d
-  subpackages:
-  - pkg/jsonmessage
-  - pkg/mount
-  - pkg/stdcopy
-  - pkg/symlink
-  - pkg/term
-  - pkg/term/winconsole
-  - pkg/timeutils
-  - pkg/units
 - name: github.com/docker/go-units
   version: 0bbddae09c5a5419a8c6dcdd7ff90da3d450393b
 - name: github.com/emicklei/go-restful
@@ -204,7 +193,7 @@ imports:
 - name: github.com/mitchellh/reflectwalk
   version: eecf4c70c626c7cfbb95c90195bc34d386c74ac6
 - name: github.com/opencontainers/runc
-  version: 7ca2aa4873aea7cb4265b1726acb24b90d8726c6
+  version: 4eb8c2fb1dcb10fa3bf9bd7031f3a25a8ce2fef6
   subpackages:
   - libcontainer
   - libcontainer/apparmor
@@ -214,6 +203,7 @@ imports:
   - libcontainer/configs
   - libcontainer/configs/validate
   - libcontainer/criurpc
+  - libcontainer/keys
   - libcontainer/label
   - libcontainer/seccomp
   - libcontainer/selinux
@@ -239,6 +229,8 @@ imports:
   - model
 - name: github.com/prometheus/procfs
   version: 490cc6eb5fa45bf8a8b7b73c8bc82a8160e8531d
+- name: github.com/Sirupsen/logrus
+  version: 51fe59aca108dc5680109e7b2051cbdcfa5a253c
 - name: github.com/spf13/pflag
   version: 08b1a584251b5b62f458943640fc8ebd4d50aaa5
 - name: github.com/ugorji/go
@@ -258,7 +250,7 @@ imports:
 - name: gopkg.in/yaml.v2
   version: a83829b6f1293c91addabc89d0571c246397bbf4
 - name: k8s.io/kubernetes
-  version: 327e5463e22ae9473de5e36c295aecd8b9bec601
+  version: ec47f5c926da7479939b4ab2948fda5479f0a999
   subpackages:
   - pkg/api
   - pkg/client/clientset_generated/release_1_4
@@ -282,10 +274,8 @@ imports:
   - pkg/util/sets
   - pkg/api/install
   - pkg/apimachinery/registered
-  - pkg/apis/authorization/install
   - pkg/apis/autoscaling/install
   - pkg/apis/batch/install
-  - pkg/apis/componentconfig/install
   - pkg/apis/extensions/install
   - pkg/client/clientset_generated/release_1_4/typed/autoscaling/v1
   - pkg/client/clientset_generated/release_1_4/typed/batch/v1
@@ -318,15 +308,11 @@ imports:
   - pkg/runtime/serializer/versioning
   - pkg/util/wait
   - pkg/apimachinery
-  - pkg/apis/authorization
-  - pkg/apis/authorization/v1beta1
   - pkg/apis/autoscaling
   - pkg/apis/autoscaling/v1
   - pkg/apis/batch
   - pkg/apis/batch/v1
   - pkg/apis/batch/v2alpha1
-  - pkg/apis/componentconfig
-  - pkg/apis/componentconfig/v1alpha1
   - pkg/apis/extensions
   - pkg/apis/extensions/v1beta1
   - pkg/util/integer
@@ -342,8 +328,6 @@ imports:
   - pkg/util/runtime
   - pkg/client/unversioned/clientcmd/api/v1
   - pkg/util/framer
-  - pkg/kubelet/qos
-  - pkg/master/ports
   - pkg/util/hash
   - pkg/util/net/sets
 devImports: []
