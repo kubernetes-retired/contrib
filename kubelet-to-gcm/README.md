@@ -11,13 +11,13 @@ Translating between Kubelet's summary API is the bulk of the work and logic in t
 
 ```
 Usage of monitor:
-      --cluster="/MISSING": The cluster where this kubelet holds membership.
+      --cluster="unknown": The cluster where this kubelet holds membership.
+      --gcm-endpoint="": The GCM endpoint to hit. Defaults to the default endpoint.
       --host="localhost": The kubelet's host name.
       --port=10255: The kubelet's port.
-      --project="/MISSING": The project where this kubelet's host lives.
+      --project="": The project where this kubelet's host lives.
       --resolution=10: The time, in seconds, to poll the Kubelet.
-      --use-test[=false]: If the test GCM endpoint should be used.
-      --zone="us-central1-b": The zone where this kubelet lives.
+      --zone="": The zone where this kubelet lives.
 ```
 
 Some of these fields are required for the gke_container schema in StackDriver (e.g., cluster and project). Others are needed for determining endpoints.
