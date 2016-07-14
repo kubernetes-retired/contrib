@@ -478,16 +478,16 @@ func (obj *MungeObject) Refresh() error {
 }
 
 // ListMilestones will return all milestones of the given `state`
-func (config *Config) ListMilestones(state string) ([]github.Milestone, error) {
+func (config *Config) ListMilestones(state string) ([]github.Milestone, bool) {
 	listopts := github.MilestoneListOptions{
 		State: state,
 	}
-	milestones, resp, err := config.client.Issues.ListMilestones(config.Org, config.Project, &listopts)
+	milestones, resp, ok := config.client.Issues.ListMilestones(config.Org, config.Project, &listopts)
 	config.analytics.ListMilestones.Call(config, resp)
-	if err != nil {
+	if !ok {
 		glog.Errorf("Error getting milestones of state %q: %v", state, err)
 	}
-	return milestones, err
+	return milestones, ok
 }
 
 // GetObject will return an object (with only the issue filled in)
@@ -536,39 +536,41 @@ func (config *Config) NewIssue(title, body string, labels []string, owner string
 
 // Branch returns the branch the PR is for. Return "" if this is not a PR or
 // it does not have the required information.
-func (obj *MungeObject) Branch() (string, error) {
-	pr, err := obj.GetPR()
-	if err != nil {
-		return "", err
+func (obj *MungeObject) Branch() (string, bool) {
+	pr, ok := obj.GetPR()
+	if !ok {
+		glog.Errorf("Error in Branch, GetPR failed on obj")
+		return "", ok
 	}
 	if pr.Base != nil && pr.Base.Ref != nil {
-		return *pr.Base.Ref, nil
+		return *pr.Base.Ref, ok
 	}
-	return "", errors.New("Unable to determine git branch")
+	return "", ok
 }
 
 // IsForBranch return true if the object is a PR for a branch with the given
 // name. It return false if it is not a pr, it isn't against the given branch,
 // or we can't tell
-func (obj *MungeObject) IsForBranch(branch string) (bool, error) {
-	objBranch, err := obj.Branch()
-	if err != nil {
-		return false, err
+func (obj *MungeObject) IsForBranch(branch string) (bool, bool) {
+	objBranch, ok := obj.Branch()
+	if !ok {
+		glog.Errorf("Errof in IsForBranch, obj.Branch failed")
+		return false, ok
 	}
 	if objBranch == branch {
-		return true, nil
+		return true, ok
 	}
-	return false, nil
+	return false, ok
 }
 
 // LastModifiedTime returns the time the last commit was made
 // BUG: this should probably return the last time a git push happened or something like that.
 func (obj *MungeObject) LastModifiedTime() (*time.Time, bool) {
 	var lastModified *time.Time
-	commits, err := obj.GetCommits()
-	if err != nil {
-		glog.Errorf("Error in LastModifiedTime, unable to get commits: %v", err)
-		return lastModified, false
+	commits, ok := obj.GetCommits()
+	if !ok {
+		glog.Errorf("Error in LastModifiedTime, unable to get commits")
+		return lastModified, ok
 	}
 	for _, commit := range commits {
 		if commit.Commit == nil || commit.Commit.Committer == nil || commit.Commit.Committer.Date == nil {
@@ -579,7 +581,7 @@ func (obj *MungeObject) LastModifiedTime() (*time.Time, bool) {
 			lastModified = commit.Commit.Committer.Date
 		}
 	}
-	return lastModified, true
+	return lastModified, ok
 }
 
 // labelEvent returns the most recent event where the given label was added to an issue
@@ -734,9 +736,9 @@ func (obj *MungeObject) RemoveLabel(label string) error {
 // the base's sha in a second step. Purpose: if head and base SHA are the same
 // across two merge attempts, we don't need to rerun tests.
 func (obj *MungeObject) GetHeadAndBase() (headSHA, baseRef string, ok bool) {
-	pr, err := obj.GetPR()
-	if err != nil {
-		glog.Errorf("Error: %v", err)
+	pr, ok := obj.GetPR()
+	if !ok {
+		glog.Errorf("Error in GetHeadAndBase, obj.GetPR failed")
 		return "", "", false
 	}
 	if pr.Head == nil || pr.Head.SHA == nil {
@@ -765,10 +767,11 @@ func (obj *MungeObject) GetSHAFromRef(ref string) (sha string, ok bool) {
 }
 
 // SetMilestone will set the milestone to the value specified
-func (obj *MungeObject) SetMilestone(title string) error {
-	milestones, err := obj.config.ListMilestones("all")
-	if err != nil {
-		return err
+func (obj *MungeObject) SetMilestone(title string) bool {
+	milestones, ok := obj.config.ListMilestones("all")
+	if !ok {
+		glog.Errorf("Error in SetMilestone, obj.config.ListMilestones failed")
+		return false
 	}
 	var milestone *github.Milestone
 	for _, m := range milestones {
@@ -783,21 +786,21 @@ func (obj *MungeObject) SetMilestone(title string) error {
 	}
 	if milestone == nil {
 		glog.Errorf("Unable to find milestone with title %q", title)
-		return fmt.Errorf("Unable to find milestone")
+		return false
 	}
 
 	obj.config.analytics.SetMilestone.Call(obj.config, nil)
 	obj.Issue.Milestone = milestone
 	if obj.config.DryRun {
-		return nil
+		return true
 	}
 
 	request := &github.IssueRequest{Milestone: milestone.Number}
 	if _, _, err := obj.config.client.Issues.Edit(obj.config.Org, obj.config.Project, *obj.Issue.Number, request); err != nil {
 		glog.Errorf("Failed to set milestone %d on issue %d: %v", *milestone.Number, *obj.Issue.Number, err)
-		return err
+		return false
 	}
-	return nil
+	return true
 }
 
 // ReleaseMilestone returns the name of the 'release' milestone or an empty string
@@ -1616,7 +1619,7 @@ func (obj *MungeObject) MergedAt() (*time.Time, bool) {
 	}
 	pr, err := obj.GetPR()
 	if err != nil {
-		glog.Errorf("Error: %v", err)
+		glog.Errorf("Error in MergedAt: %v", err)
 		return nil, false
 	}
 	return pr.MergedAt, true
