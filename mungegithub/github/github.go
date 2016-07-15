@@ -539,7 +539,6 @@ func (config *Config) NewIssue(title, body string, labels []string, owner string
 func (obj *MungeObject) Branch() (string, bool) {
 	pr, ok := obj.GetPR()
 	if !ok {
-		glog.Errorf("Error in Branch, GetPR failed on obj")
 		return "", ok
 	}
 	if pr.Base != nil && pr.Base.Ref != nil {
@@ -554,7 +553,6 @@ func (obj *MungeObject) Branch() (string, bool) {
 func (obj *MungeObject) IsForBranch(branch string) (bool, bool) {
 	objBranch, ok := obj.Branch()
 	if !ok {
-		glog.Errorf("Errof in IsForBranch, obj.Branch failed")
 		return false, ok
 	}
 	if objBranch == branch {
