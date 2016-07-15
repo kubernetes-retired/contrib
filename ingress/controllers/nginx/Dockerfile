@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
   --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
+COPY entrypoint.sh /
 COPY nginx-ingress-controller /
 COPY nginx.tmpl /etc/nginx/template/nginx.tmpl
 COPY default.conf /etc/nginx/nginx.conf
@@ -26,5 +27,7 @@ COPY default.conf /etc/nginx/nginx.conf
 COPY lua /etc/nginx/lua/
 
 WORKDIR /
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 CMD ["/nginx-ingress-controller"]
