@@ -127,8 +127,8 @@ func (b *BlockPath) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	commits, err := obj.GetCommits()
-	if err != nil {
+	commits, ok := obj.GetCommits()
+	if !ok {
 		return
 	}
 

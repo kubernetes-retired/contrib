@@ -74,25 +74,25 @@ func (StaleGreenCI) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	if mergeable, err := obj.IsMergeable(); !mergeable || err != nil {
+	if mergeable, ok := obj.IsMergeable(); !ok || !mergeable {
 		return
 	}
 
-	if !obj.IsStatusSuccess(requiredContexts) {
+	if success, ok := obj.IsStatusSuccess(requiredContexts); !success || !ok {
 		return
 	}
 
 	for _, context := range requiredContexts {
-		statusTime := obj.GetStatusTime(context)
-		if statusTime == nil {
+		statusTime, ok := obj.GetStatusTime(context)
+		if statusTime == nil || !ok {
 			glog.Errorf("%d: unable to determine time %q context was set", *obj.Issue.Number, context)
 			return
 		}
 		if time.Since(*statusTime) > staleGreenCIHours*time.Hour {
 			obj.WriteComment(greenMsgBody)
-			err := obj.WaitForPending(requiredContexts)
-			if err != nil {
-				glog.Errorf("Failed waiting for PR to start testing: %v", err)
+			ok := obj.WaitForPending(requiredContexts)
+			if !ok {
+				glog.Errorf("Failed waiting for PR to start testing")
 			}
 			return
 		}
@@ -119,7 +119,7 @@ func (s StaleGreenCI) StaleComments(obj *github.MungeObject, comments []githubap
 }
 
 func commentBeforeLastCI(obj *github.MungeObject, comment githubapi.IssueComment) bool {
-	if !obj.IsStatusSuccess(requiredContexts) {
+	if success, ok := obj.IsStatusSuccess(requiredContexts); !success || !ok {
 		return false
 	}
 	if comment.CreatedAt == nil {
@@ -128,8 +128,8 @@ func commentBeforeLastCI(obj *github.MungeObject, comment githubapi.IssueComment
 	commentTime := *comment.CreatedAt
 
 	for _, context := range requiredContexts {
-		statusTimeP := obj.GetStatusTime(context)
-		if statusTimeP == nil {
+		statusTimeP, ok := obj.GetStatusTime(context)
+		if statusTimeP == nil || !ok {
 			return false
 		}
 		statusTime := statusTimeP.Add(30 * time.Minute)

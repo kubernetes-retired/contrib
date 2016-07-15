@@ -66,10 +66,10 @@ func (LGTMAfterCommitMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	lastModified := obj.LastModifiedTime()
-	lgtmTime := obj.LabelTime(lgtmLabel)
+	lastModified, ok := obj.LastModifiedTime()
+	lgtmTime, ok2 := obj.LabelTime(lgtmLabel)
 
-	if lastModified == nil || lgtmTime == nil {
+	if !ok || !ok2 || lastModified == nil || lgtmTime == nil {
 		glog.Errorf("PR %d unable to determine lastModified or lgtmTime", *obj.Issue.Number)
 		return
 	}
@@ -93,8 +93,8 @@ func (LGTMAfterCommitMunger) isStaleComment(obj *github.MungeObject, comment git
 	if !obj.HasLabel("lgtm") {
 		return false
 	}
-	lgtmTime := obj.LabelTime("lgtm")
-	if lgtmTime == nil {
+	lgtmTime, ok := obj.LabelTime("lgtm")
+	if lgtmTime == nil || !ok {
 		return false
 	}
 	stale := lgtmTime.After(*comment.CreatedAt)

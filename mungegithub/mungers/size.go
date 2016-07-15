@@ -149,8 +149,8 @@ func (s *SizeMunger) Munge(obj *github.MungeObject) {
 	}
 
 	issue := obj.Issue
-	pr, err := obj.GetPR()
-	if err != nil {
+	pr, ok := obj.GetPR()
+	if !ok {
 		return
 	}
 
@@ -169,8 +169,8 @@ func (s *SizeMunger) Munge(obj *github.MungeObject) {
 	}
 	dels := *pr.Deletions
 
-	commits, err := obj.GetCommits()
-	if err != nil {
+	commits, ok := obj.GetCommits()
+	if !ok {
 		return
 	}
 
