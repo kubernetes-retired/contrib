@@ -33,6 +33,8 @@ extra-storage
 fake-e2e
 fixes-issue-reassign
 forward-services
+gcs-bucket
+gcs-logs-dir
 generated-files-config
 health-check-path
 healthz-port
@@ -62,6 +64,8 @@ path-label-config
 poll-period
 pr-mungers
 presubmit-jobs
+pull-key
+pull-logs-dir
 rate-limit
 rate-limit-burst
 relnote-filter
