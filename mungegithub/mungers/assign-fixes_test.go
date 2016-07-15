@@ -40,25 +40,74 @@ func TestAssignFixes(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	tests := []struct {
-		name       string
-		assignee   string
-		pr         *github.PullRequest
-		prIssue    *github.Issue
-		prBody     string
-		fixesIssue *github.Issue
+		name           string
+		assignee       string
+		expectAssignee string
+		pr             *github.PullRequest
+		prIssue        *github.Issue
+		prBody         string
+		fixesIssue     *github.Issue
+		comments       []github.IssueComment
+		expectClaim    bool
 	}{
 		{
-			name:       "fixes an issue",
-			assignee:   "dev45",
-			pr:         github_test.PullRequest("dev45", false, true, true),
-			prIssue:    github_test.Issue("fred", 7779, []string{}, true),
-			prBody:     "does stuff and fixes #8889.",
-			fixesIssue: github_test.Issue("jill", 8889, []string{}, true),
+			name:           "fixes an issue, with comment and contributor change",
+			assignee:       "eparis",
+			expectAssignee: "eparis",
+			pr:             github_test.PullRequest("eparis", false, true, true),
+			prIssue:        github_test.Issue("eparis", 7779, []string{}, true),
+			prBody:         "does stuff and fixes #8889.",
+			fixesIssue:     github_test.Issue("jill", 8889, []string{}, true),
+			comments: []github.IssueComment{
+				comment(8889, "bla \nbla"),
+				comment(8889, "food for all")},
+			expectClaim: true,
+		},
+		{
+			name:           "fixes an issue, no comment",
+			assignee:       "eparis",
+			expectAssignee: "eparis",
+			pr:             github_test.PullRequest("eparis", false, true, true),
+			prIssue:        github_test.Issue("eparis", 7779, []string{}, true),
+			prBody:         "does stuff and fixes #8889.",
+			fixesIssue:     github_test.Issue("eparis", 8889, []string{}, true),
+			comments: []github.IssueComment{
+				comment(8889, "bla \nbla"),
+				comment(8889, "Assigned to @eparis")},
+			expectClaim: false,
+		},
+		{
+			name:           "fixes an issue, no comment",
+			assignee:       "asalkeld",
+			expectAssignee: "k8s-almost-a-contributor",
+			pr:             github_test.PullRequest("asalkeld", false, true, true),
+			prIssue:        github_test.Issue("eparis", 7779, []string{}, true),
+			prBody:         "does stuff and fixes #8889.",
+			fixesIssue:     github_test.Issue("jill", 8889, []string{}, true),
+			comments: []github.IssueComment{
+				comment(8889, "bla \nbla"),
+				comment(8889, "food for all\nClaimed by @asalkeld")},
+			expectClaim: false,
+		},
+		{
+			name:           "fixes an issue, with comment and contributor",
+			assignee:       "asalkeld",
+			expectAssignee: "k8s-almost-a-contributor",
+			pr:             github_test.PullRequest("asalkeld", false, true, true),
+			prIssue:        github_test.Issue("eparis", 7779, []string{}, true),
+			prBody:         "does stuff and fixes #8889.",
+			fixesIssue:     github_test.Issue("jill", 8889, []string{}, true),
+			comments: []github.IssueComment{
+				comment(8889, "Claimed by @jonny"),
+				comment(8889, "food for all\nClaimed by @asalkeld"),
+				comment(8889, "Claimed by @lazy.dude")},
+			expectClaim: true,
 		},
 	}
+	collaborators := []github.User{*github_test.User("eparis")}
 	for _, test := range tests {
 		test.prIssue.Body = &test.prBody
-		client, server, mux := github_test.InitServer(t, test.prIssue, test.pr, nil, nil, nil, nil)
+		client, server, mux := github_test.InitServerWithCollaborators(t, test.prIssue, test.pr, nil, nil, nil, nil, collaborators)
 		path := fmt.Sprintf("/repos/o/r/issues/%d", *test.fixesIssue.Number)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			data, err := json.Marshal(test.fixesIssue)
@@ -79,12 +128,22 @@ func TestAssignFixes(t *testing.T) {
 				if err != nil {
 					fmt.Println("error:", err)
 				}
-				if ip.Assignee != test.assignee {
-					t.Errorf("Patching the incorrect Assignee %v instead of %v", ip.Assignee, test.assignee)
+				if ip.Assignee != test.expectAssignee {
+					t.Errorf("Patching the incorrect Assignee %v instead of %v", ip.Assignee, test.expectAssignee)
 				}
 			}
 			w.WriteHeader(http.StatusOK)
 			w.Write(data)
+		})
+		mux.HandleFunc(fmt.Sprintf("/repos/o/r/issues/8889/comments"), func(w http.ResponseWriter, r *http.Request) {
+			if !(r.Method == "GET" || (r.Method == "POST" && test.expectClaim)) {
+				t.Errorf("Unexpected method: expected: GET/POST got: %s", r.Method)
+			}
+			w.WriteHeader(http.StatusOK)
+			if r.Method == "GET" {
+				data, _ := json.Marshal(test.comments)
+				w.Write(data)
+			}
 		})
 
 		config := &github_util.Config{}

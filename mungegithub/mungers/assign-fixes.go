@@ -17,8 +17,12 @@ limitations under the License.
 package mungers
 
 import (
+	"fmt"
+	"regexp"
+
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -27,10 +31,19 @@ import (
 // AssignFixesMunger will assign issues to users based on the config file
 // provided by --assignfixes-config.
 type AssignFixesMunger struct {
-	config              *github.Config
-	features            *features.Features
-	assignfixesReassign bool
+	config        *github.Config
+	features      *features.Features
+	collaborators sets.String
 }
+
+const (
+	proxyContributor = "k8s-almost-a-contributor"
+)
+
+var (
+	claimMatcher = regexp.MustCompile(`(?:Assigned to|Claimed by) @(\w+)`)
+	claimText    = map[bool]string{true: "Assigned to", false: "Claimed by"}
+)
 
 func init() {
 	assignfixes := &AssignFixesMunger{}
@@ -47,15 +60,71 @@ func (a *AssignFixesMunger) RequiredFeatures() []string { return []string{} }
 func (a *AssignFixesMunger) Initialize(config *github.Config, features *features.Features) error {
 	a.features = features
 	a.config = config
+	a.collaborators = sets.String{}
 	return nil
 }
 
 // EachLoop is called at the start of every munge loop
-func (a *AssignFixesMunger) EachLoop() error { return nil }
+func (a *AssignFixesMunger) EachLoop() error {
+	users, err := a.config.FetchAllCollaborators()
+	if err != nil {
+		return err
+	}
+	for _, user := range users {
+		a.collaborators.Insert(github.DescribeUser(&user))
+	}
+	return nil
+}
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (a *AssignFixesMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().BoolVar(&a.assignfixesReassign, "fixes-issue-reassign", false, "Assign fixes Issues even if they're already assigned")
+}
+
+func issueHasMarkFrom(issueObj *github.MungeObject, isCollaborator bool, prOwner string) (bool, error) {
+	comments, err := issueObj.ListComments()
+	if err != nil {
+		glog.Errorf("unexpected error getting comments: %v", err)
+		return true, nil
+	}
+
+	// This allows for the case of someone adding a PR to an old issue that previously
+	// had a different claimee/assignee.
+	lastClaimedBy := ""
+	for ix := range comments {
+		comment := &comments[ix]
+		matches := claimMatcher.FindAllStringSubmatch(comment.String(), -1)
+		if matches == nil {
+			continue
+		}
+		for _, match := range matches {
+			if match[1] != lastClaimedBy {
+				lastClaimedBy = match[1]
+			}
+		}
+	}
+	return (lastClaimedBy == prOwner), nil
+}
+
+func (a *AssignFixesMunger) markIssue(issueObj *github.MungeObject, prOwner string, prNumber int) {
+	isCollaborator := a.collaborators.Has(prOwner)
+	issueOwner := prOwner
+	if !isCollaborator {
+		issueOwner = proxyContributor
+	}
+
+	if github.DescribeUser(issueObj.Issue.Assignee) != issueOwner {
+		issueObj.AssignPR(issueOwner)
+	}
+
+	hasMark, err := issueHasMarkFrom(issueObj, isCollaborator, prOwner)
+	if err != nil || hasMark {
+		return
+	}
+	text := fmt.Sprintf("%v @%v (mungegithub:assign-fixes) because PR #%v should resolve this issue.\n", claimText[isCollaborator], prOwner, prNumber)
+	err = issueObj.WriteComment(text)
+	if err != nil {
+		glog.Errorf("unexpected error adding comment: %v", err)
+	}
 }
 
 // Munge is the workhorse the will actually make updates to the PR
@@ -82,14 +151,6 @@ func (a *AssignFixesMunger) Munge(obj *github.MungeObject) {
 			glog.Infof("Couldn't get issue %v", fixesNum)
 			continue
 		}
-		issue := issueObj.Issue
-		if !a.assignfixesReassign && issue.Assignee != nil {
-			glog.V(6).Infof("skipping %v: reassign: %v assignee: %v", *issue.Number, a.assignfixesReassign, github.DescribeUser(issue.Assignee))
-			continue
-		}
-		glog.Infof("Assigning %v to %v (previously assigned to %v)", *issue.Number, prOwner, github.DescribeUser(issue.Assignee))
-		// although it says "AssignPR" it's more generic than that and is really just an issue.
-		issueObj.AssignPR(prOwner)
+		a.markIssue(issueObj, prOwner, *obj.Issue.Number)
 	}
-
 }
