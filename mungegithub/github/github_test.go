@@ -522,8 +522,8 @@ this pr Fixes #23 and FIXES #45 but not fixxx #99`,
 			t.Fatalf("%d: unable to get issue: %v", testNum, *test.issue.Number)
 		}
 		obj.Issue.Body = &test.body
-		fixes, ok := obj.GetPRFixesList()
-		if !ok || len(test.expected) != len(fixes) {
+		fixes := obj.GetPRFixesList()
+		if len(test.expected) != len(fixes) {
 			t.Errorf("%d: len(fixes) not equal, expected: %v but got: %v", testNum, test.expected, fixes)
 			return
 		}

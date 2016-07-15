@@ -462,7 +462,7 @@ func (obj *MungeObject) Refresh() bool {
 	num := *obj.Issue.Number
 	issue, err := obj.config.getIssue(num)
 	if err != nil {
-		glog.Errorf("Error in Refresh")
+		glog.Errorf("Error in Refresh: %v", err)
 		return false
 	}
 	obj.Issue = issue
@@ -485,7 +485,7 @@ func (config *Config) ListMilestones(state string) ([]github.Milestone, bool) {
 	milestones, resp, err := config.client.Issues.ListMilestones(config.Org, config.Project, &listopts)
 	config.analytics.ListMilestones.Call(config, resp)
 	if err != nil {
-		glog.Errorf("Error getting milestones of state")
+		glog.Errorf("Error getting milestones of state %q: %v", state, err)
 	}
 	return milestones, true
 }
@@ -581,7 +581,7 @@ func (obj *MungeObject) LastModifiedTime() (*time.Time, bool) {
 			lastModified = commit.Commit.Committer.Date
 		}
 	}
-	return lastModified, ok
+	return lastModified, true
 }
 
 // labelEvent returns the most recent event where the given label was added to an issue
@@ -738,7 +738,6 @@ func (obj *MungeObject) RemoveLabel(label string) error {
 func (obj *MungeObject) GetHeadAndBase() (headSHA, baseRef string, ok bool) {
 	pr, ok := obj.GetPR()
 	if !ok {
-		glog.Errorf("Error in GetHeadAndBase, obj.GetPR failed")
 		return "", "", false
 	}
 	if pr.Head == nil || pr.Head.SHA == nil {
@@ -828,8 +827,7 @@ func (obj *MungeObject) ReleaseMilestone() (string, bool) {
 func (obj *MungeObject) ReleaseMilestoneDue() (time.Time, bool) {
 	milestone := obj.Issue.Milestone
 	if milestone == nil {
-		glog.Errorf("Error in ReleaseMilestoneDue, nil milestone")
-		return maxTime, false
+		return maxTime, true
 	}
 	title := milestone.Title
 	if title == nil {
@@ -837,12 +835,10 @@ func (obj *MungeObject) ReleaseMilestoneDue() (time.Time, bool) {
 		return maxTime, false
 	}
 	if !releaseMilestoneRE.MatchString(*title) {
-		glog.Errorf("Error in ReleaseMilestoneDue, does not match *title")
-		return maxTime, false
+		return maxTime, true
 	}
 	if milestone.DueOn == nil {
-		glog.Errorf("Error in ReleaseMilestoneDue, nil milestone.DueOn")
-		return maxTime, false
+		return maxTime, true
 	}
 	return *milestone.DueOn, true
 }
@@ -1026,7 +1022,7 @@ func (obj *MungeObject) getCombinedStatus() (status *github.CombinedStatus, ok b
 	config := obj.config
 	pr, ok := obj.GetPR()
 	if !ok {
-		return nil, true
+		return nil, false
 	}
 	if pr.Head == nil {
 		glog.Errorf("pr.Head is nil in getCombinedStatus for PR# %d", *obj.Issue.Number)
@@ -1065,6 +1061,7 @@ func (obj *MungeObject) SetStatus(state, url, description, context string) bool 
 	_, _, err := config.client.Repositories.CreateStatus(config.Org, config.Project, ref, status)
 	if err != nil {
 		glog.Errorf("Unable to set status. PR %d Ref: %q: %v", *obj.Issue.Number, ref, err)
+		return false
 	}
 	return false
 }
@@ -1072,17 +1069,18 @@ func (obj *MungeObject) SetStatus(state, url, description, context string) bool 
 // GetStatus returns the actual requested status, or nil if not found
 func (obj *MungeObject) GetStatus(context string) (*github.RepoStatus, bool) {
 	combinedStatus, ok := obj.getCombinedStatus()
-	if combinedStatus == nil || ok == false {
-		glog.Errorf("Error in GetStatus, nil obj.getCombinedStatus()")
+	if !ok {
+		glog.Errorf("Error in GetStatus, getCombinedStatus returned error")
 		return nil, false
+	} else if combinedStatus == nil {
+		return nil, true
 	}
 	for _, status := range combinedStatus.Statuses {
 		if *status.Context == context {
 			return &status, true
 		}
 	}
-	glog.Errorf("Error in GetStatus, contexts never matched")
-	return nil, false
+	return nil, true
 }
 
 // GetStatusState gets the current status of a PR.
@@ -1093,7 +1091,7 @@ func (obj *MungeObject) GetStatus(context string) (*github.RepoStatus, bool) {
 //    * Otherwise the PR is 'success'
 func (obj *MungeObject) GetStatusState(requiredContexts []string) (string, bool) {
 	combinedStatus, ok := obj.getCombinedStatus()
-	if combinedStatus == nil {
+	if !ok || combinedStatus == nil {
 		return "failure", ok
 	}
 	return computeStatus(combinedStatus, requiredContexts), ok
@@ -1102,7 +1100,7 @@ func (obj *MungeObject) GetStatusState(requiredContexts []string) (string, bool)
 // IsStatusSuccess makes sure that the combined status for all commits in a PR is 'success'
 func (obj *MungeObject) IsStatusSuccess(requiredContexts []string) (bool, bool) {
 	status, ok := obj.GetStatusState(requiredContexts)
-	if status == "success" {
+	if ok && status == "success" {
 		return true, ok
 	}
 	return false, ok
@@ -1112,7 +1110,6 @@ func (obj *MungeObject) IsStatusSuccess(requiredContexts []string) (bool, bool) 
 func (obj *MungeObject) GetStatusTime(context string) (*time.Time, bool) {
 	status, ok := obj.GetStatus(context)
 	if status == nil || ok == false {
-		glog.Errorf("Error in GetStatusTime, nil status")
 		return nil, false
 	}
 	if status.UpdatedAt != nil {
@@ -1169,7 +1166,7 @@ func (obj *MungeObject) doWaitStatus(pending bool, requiredContexts []string, c 
 // WaitForPending will wait for a PR to move into Pending.  This is useful
 // because the request to test a PR again is asynchronous with the PR actually
 // moving into a pending state
-func (obj *MungeObject) WaitForPending(requiredContexts []string) error {
+func (obj *MungeObject) WaitForPending(requiredContexts []string) bool {
 	timeoutChan := make(chan bool, 1)
 	done := make(chan bool, 1)
 	// Wait 45 minutes for the github e2e test to start
@@ -1177,15 +1174,16 @@ func (obj *MungeObject) WaitForPending(requiredContexts []string) error {
 	go obj.doWaitStatus(true, requiredContexts, done)
 	select {
 	case <-done:
-		return nil
+		return true
 	case <-timeoutChan:
-		return fmt.Errorf("PR# %d timed out waiting to go \"pending\"", *obj.Issue.Number)
+		glog.Errorf("PR# %d timed out waiting to go \"pending\"", *obj.Issue.Number)
+		return false
 	}
 }
 
 // WaitForNotPending will check if the github status is "pending" (CI still running)
 // if so it will sleep and try again until all required status hooks have complete
-func (obj *MungeObject) WaitForNotPending(requiredContexts []string) error {
+func (obj *MungeObject) WaitForNotPending(requiredContexts []string) bool {
 	timeoutChan := make(chan bool, 1)
 	done := make(chan bool, 1)
 	// Wait for the github e2e test to finish
@@ -1193,9 +1191,10 @@ func (obj *MungeObject) WaitForNotPending(requiredContexts []string) error {
 	go obj.doWaitStatus(false, requiredContexts, done)
 	select {
 	case <-done:
-		return nil
+		return true
 	case <-timeoutChan:
-		return fmt.Errorf("PR# %d timed out waiting to go \"not pending\"", *obj.Issue.Number)
+		glog.Errorf("PR# %d timed out waiting to go \"not pending\"", *obj.Issue.Number)
+		return false
 	}
 }
 
@@ -1245,12 +1244,12 @@ func (obj *MungeObject) GetPR() (*github.PullRequest, bool) {
 		return obj.pr, true
 	}
 	if !obj.IsPR() {
-		fmt.Errorf("Issue: %d is not a PR", *obj.Issue.Number)
+		glog.Errorf("Issue: %d is not a PR", *obj.Issue.Number)
 		return nil, false
 	}
 	pr, err := obj.config.getPR(*obj.Issue.Number)
 	if err != nil {
-		fmt.Errorf("Error in GetPR")
+		glog.Errorf("Error in GetPR")
 		return nil, false
 	}
 	obj.pr = pr
@@ -1300,7 +1299,6 @@ func (obj *MungeObject) ClosePR() bool {
 	config := obj.config
 	pr, ok := obj.GetPR()
 	if !ok {
-		glog.Errorf("Error in ClosePR")
 		return false
 	}
 	config.analytics.ClosePR.Call(config, nil)
@@ -1320,7 +1318,6 @@ func (obj *MungeObject) ClosePR() bool {
 // OpenPR will attempt to open the given PR.
 // It will attempt to reopen the pr `numTries` before returning an error
 // and giving up.
-//CHECK
 func (obj *MungeObject) OpenPR(numTries int) bool {
 	config := obj.config
 	pr, ok := obj.GetPR()
@@ -1337,10 +1334,11 @@ func (obj *MungeObject) OpenPR(numTries int) bool {
 	pr.State = &state
 	// Try pretty hard to re-open, since it's pretty bad if we accidentally leave a PR closed
 	for tries := 0; tries < numTries; tries++ {
-		if _, _, err := config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr); err == nil {
+		_, _, err := config.client.PullRequests.Edit(config.Org, config.Project, *pr.Number, pr)
+		if err == nil {
 			return true
 		}
-		glog.Warningf("failed to re-open pr %d", *pr.Number)
+		glog.Warningf("failed to re-open pr %d: %v", *pr.Number, err)
 		time.Sleep(5 * time.Second)
 	}
 	if !ok {
@@ -1391,7 +1389,7 @@ func (obj *MungeObject) MergeCommit() (*string, bool) {
 			return event.CommitID, true
 		}
 	}
-	return nil, false
+	return nil, true
 }
 
 // MergePR will merge the given PR, duh
@@ -1420,7 +1418,6 @@ func (obj *MungeObject) MergePR(who string) bool {
 	// Get the text of the first commit
 	firstCommit := ""
 	if commits, ok := obj.GetCommits(); !ok {
-		glog.Errorf("Error in MergePR")
 		return false
 	} else if commits[0].Commit.Message != nil {
 		firstCommit = *commits[0].Commit.Message
@@ -1457,14 +1454,14 @@ func (obj *MungeObject) MergePR(who string) bool {
 }
 
 // GetPRFixesList returns a list of issue numbers that are referenced in the PR body.
-func (obj *MungeObject) GetPRFixesList() ([]int, bool) {
+func (obj *MungeObject) GetPRFixesList() []int {
 	prBody := ""
 	if obj.Issue.Body != nil {
 		prBody = *obj.Issue.Body
 	}
 	matches := fixesIssueRE.FindAllStringSubmatch(prBody, -1)
 	if matches == nil {
-		return nil, true
+		return nil
 	}
 
 	issueNums := []int{}
@@ -1473,7 +1470,7 @@ func (obj *MungeObject) GetPRFixesList() ([]int, bool) {
 			issueNums = append(issueNums, num)
 		}
 	}
-	return issueNums, true
+	return issueNums
 }
 
 // ListComments returns all comments for the issue/PR in question
@@ -1577,22 +1574,19 @@ func (obj *MungeObject) IsMergeable() (bool, bool) {
 	}
 	pr, ok := obj.GetPR()
 	if !ok {
-		glog.Errorf("Error in IsMergable")
 		return false, false
 	}
 	prNum := *pr.Number
 	if pr.Mergeable == nil {
-		glog.V(4).Infof("Waiting for mergeability on %q %d", *pr.Title, *pr.Number)
+		glog.V(4).Infof("Waiting for mergeability on %q %d", *pr.Title, prNum)
 		// TODO: determine what a good empirical setting for this is.
 		time.Sleep(2 * time.Second)
 		ok = obj.Refresh()
 		if !ok {
-			glog.Errorf("Unable to refresh PR# %d", prNum)
 			return false, false
 		}
 		pr, ok = obj.GetPR()
 		if !ok {
-			glog.Errorf("Unable to get PR# %d", prNum)
 			return false, false
 		}
 	}
@@ -1611,7 +1605,6 @@ func (obj *MungeObject) IsMerged() (bool, bool) {
 	}
 	pr, ok := obj.GetPR()
 	if !ok {
-		glog.Errorf("Error in IsMerged")
 		return false, false
 	}
 	if pr.Merged != nil {
@@ -1624,11 +1617,10 @@ func (obj *MungeObject) IsMerged() (bool, bool) {
 // MergedAt returns the time an issue was merged (for nil if unmerged)
 func (obj *MungeObject) MergedAt() (*time.Time, bool) {
 	if !obj.IsPR() {
-		return nil, true
+		return nil, false
 	}
 	pr, ok := obj.GetPR()
 	if !ok {
-		glog.Errorf("Error in MergedAt")
 		return nil, false
 	}
 	return pr.MergedAt, true

@@ -90,9 +90,9 @@ func (StaleGreenCI) Munge(obj *github.MungeObject) {
 		}
 		if time.Since(*statusTime) > staleGreenCIHours*time.Hour {
 			obj.WriteComment(greenMsgBody)
-			err := obj.WaitForPending(requiredContexts)
-			if err != nil {
-				glog.Errorf("Failed waiting for PR to start testing: %v", err)
+			ok := obj.WaitForPending(requiredContexts)
+			if !ok {
+				glog.Errorf("Failed waiting for PR to start testing")
 			}
 			return
 		}

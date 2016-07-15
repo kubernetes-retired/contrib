@@ -1153,17 +1153,17 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 		// Wait for the retest to start
 		sq.SetMergeStatus(obj, ghE2EWaitingStart)
 		atomic.AddInt32(&sq.prsTested, 1)
-		err := obj.WaitForPending(sq.RequiredRetestContexts)
-		if err != nil {
-			sq.SetMergeStatus(obj, fmt.Sprintf("Failed waiting for PR to start testing: %v", err))
+		ok := obj.WaitForPending(sq.RequiredRetestContexts)
+		if !ok {
+			sq.SetMergeStatus(obj, fmt.Sprintf("Failed waiting for PR to start testing"))
 			return true
 		}
 
 		// Wait for the status to go back to something other than pending
 		sq.SetMergeStatus(obj, ghE2ERunning)
-		err = obj.WaitForNotPending(sq.RequiredRetestContexts)
-		if err != nil {
-			sq.SetMergeStatus(obj, fmt.Sprintf("Failed waiting for PR to finish testing: %v", err))
+		ok = obj.WaitForNotPending(sq.RequiredRetestContexts)
+		if !ok {
+			sq.SetMergeStatus(obj, fmt.Sprintf("Failed waiting for PR to finish testing"))
 			return true
 		}
 
