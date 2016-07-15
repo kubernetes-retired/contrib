@@ -6,6 +6,7 @@ block-path-config
 blunderbuss-config
 blunderbuss-reassign
 change-permissions
+close-after
 cloud-config
 cloud-provider
 cluster-uid
@@ -103,6 +104,8 @@ user-whitelist
 use-unicast
 verify-unschedulable-pods
 vrrp-password
+warn-before
+warn-reminder
 watch-namespace
 weak-stable-jobs
 whitelist-override-label
