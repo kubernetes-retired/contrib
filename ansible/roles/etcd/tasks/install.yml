@@ -4,7 +4,7 @@
     etcd_source_type: "package-manager"
   when: not is_atomic and ansible_distribution != "Ubuntu" and not is_coreos
 
-- name: Install etcd
+- name: Install etcd via package manager
   action: "{{ ansible_pkg_mgr }}"
   args:
         name: etcd
