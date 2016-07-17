@@ -125,15 +125,17 @@ type healthRecord struct {
 // information about the sq itself including how fast things are merging and
 // how long since the last merge
 type submitQueueStats struct {
-	StartTime          time.Time
-	LastMergeTime      time.Time
-	MergesSinceRestart int
-	MergeRate          float64
-	RetestsAvoided     int
+	Added              int // Number of items added to the queue since restart
 	FlakesIgnored      int
-
-	// Will be true if we've made at least one complete pass.
-	Initialized bool
+	Initialized        bool // true if we've made at least one complete pass
+	InstantMerges      int  // Number of commits without retests required
+	LastMergeTime      time.Time
+	MergeRate          float64
+	MergesSinceRestart int
+	Removed            int // Number of items dequeued since restart
+	RetestsAvoided     int
+	StartTime          time.Time
+	Tested             int // Number of e2e tests completed
 }
 
 // pull-request that has been tested as successful, but interrupted because head flaked
@@ -152,6 +154,7 @@ type SubmitQueue struct {
 	githubConfig        *github.Config
 	BlockingJobNames    []string
 	NonBlockingJobNames []string
+	PresubmitJobNames   []string
 	WeakStableJobNames  []string
 
 	// If FakeE2E is true, don't try to connect to JenkinsHost, all jobs are passing.
@@ -184,8 +187,12 @@ type SubmitQueue struct {
 	e2e           e2e.E2ETester
 
 	interruptedObj *submitQueueInterruptedObject
-	retestsAvoided int32
-	flakesIgnored  int32
+	flakesIgnored  int32 // Increments for each merge while 1+ job is flaky
+	instantMerges  int32 // Increments whenever we commit without retesting
+	prsAdded       int32 // Increments whenever an items queues
+	prsRemoved     int32 // Increments whenever an item dequeues
+	prsTested      int32 // Number of prs that completed second testing
+	retestsAvoided int32 // Increments whenever we skip due to head not changing.
 
 	health        submitQueueHealth
 	healthHistory []healthRecord
@@ -193,6 +200,7 @@ type SubmitQueue struct {
 	emergencyMergeStopFlag int32
 
 	adminPort int
+	features  *features.Features
 }
 
 func init() {
@@ -214,7 +222,7 @@ func init() {
 func (sq *SubmitQueue) Name() string { return "submit-queue" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (sq *SubmitQueue) RequiredFeatures() []string { return []string{} }
+func (sq *SubmitQueue) RequiredFeatures() []string { return []string{features.GCSFeature} }
 
 func (sq *SubmitQueue) emergencyMergeStop() bool {
 	return atomic.LoadInt32(&sq.emergencyMergeStopFlag) != 0
@@ -348,6 +356,7 @@ func cleanStringSlice(in []string) []string {
 
 // Initialize will initialize the munger
 func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Features) error {
+	sq.features = features
 	return sq.internalInitialize(config, features, "")
 }
 
@@ -360,6 +369,7 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 	// Clean up all of our flags which we wish --flag="" to mean []string{}
 	sq.BlockingJobNames = cleanStringSlice(sq.BlockingJobNames)
 	sq.NonBlockingJobNames = cleanStringSlice(sq.NonBlockingJobNames)
+	sq.PresubmitJobNames = cleanStringSlice(sq.PresubmitJobNames)
 	sq.WeakStableJobNames = cleanStringSlice(sq.WeakStableJobNames)
 	sq.RequiredStatusContexts = cleanStringSlice(sq.RequiredStatusContexts)
 	sq.RequiredRetestContexts = cleanStringSlice(sq.RequiredRetestContexts)
@@ -376,9 +386,12 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 	} else {
 		var gcs *utils.Utils
 		if overrideUrl != "" {
-			gcs = utils.NewTestUtils(overrideUrl)
+			gcs = utils.NewTestUtils("bucket", "logs", overrideUrl)
 		} else {
-			gcs = utils.NewUtils(utils.KubekinsBucket, utils.LogDir)
+			gcs = utils.NewWithPresubmitDetection(
+				sq.features.GCSInfo.BucketName, sq.features.GCSInfo.LogDir,
+				sq.features.GCSInfo.PullKey, sq.features.GCSInfo.PullLogDir,
+			)
 		}
 
 		sq.e2e = (&e2e.RealE2ETester{
@@ -459,6 +472,7 @@ func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 		"kubernetes-e2e-gke-test",
 		"kubernetes-e2e-gce-examples",
 		"kubernetes-e2e-gce-federation",
+		"kubernetes-e2e-gce-scalability",
 		"kubernetes-soak-continuous-e2e-gce",
 		"kubernetes-soak-continuous-e2e-gke",
 	}, "Comma separated list of jobs that don't block merges, but will have status reported and issues filed.")
@@ -471,9 +485,11 @@ func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 		"kubernetes-e2e-gce-slow",
 		"kubernetes-e2e-gke",
 		"kubernetes-e2e-gke-slow",
-		"kubernetes-e2e-gce-scalability",
 		"kubernetes-kubemark-5-gce",
 	}, "Comma separated list of jobs in Jenkins that should block merges if failing.")
+	cmd.Flags().StringSliceVar(&sq.PresubmitJobNames, "presubmit-jobs", []string{
+		"kubernetes-pull-build-test-e2e-gce",
+	}, "Comma separated list of jobs in Jenkins that run presubmit and should have issues filed for flakes.")
 	cmd.Flags().StringSliceVar(&sq.WeakStableJobNames, "weak-stable-jobs",
 		[]string{},
 		"Comma separated list of jobs in Jenkins to use for stability testing that needs only weak success")
@@ -900,6 +916,7 @@ func (sq *SubmitQueue) Munge(obj *github.MungeObject) {
 	added := false
 	sq.Lock()
 	if _, ok := sq.githubE2EQueue[*obj.Issue.Number]; !ok {
+		atomic.AddInt32(&sq.prsAdded, 1)
 		added = true
 	}
 	// Add this most-recent object in place of the existing object. It will
@@ -913,6 +930,13 @@ func (sq *SubmitQueue) Munge(obj *github.MungeObject) {
 	}
 
 	return
+}
+
+func (sq *SubmitQueue) deleteQueueItem(obj *github.MungeObject) {
+	if sq.onQueue(obj) {
+		atomic.AddInt32(&sq.prsRemoved, 1)
+	}
+	delete(sq.githubE2EQueue, *obj.Issue.Number)
 }
 
 // If the PR was put in the github e2e queue previously, but now we don't
@@ -938,7 +962,7 @@ func (sq *SubmitQueue) cleanupOldE2E(obj *github.MungeObject, reason string) {
 		if sq.githubE2ERunning != nil && *sq.githubE2ERunning.Issue.Number == *obj.Issue.Number {
 			sq.githubE2ERunning = nil
 		}
-		delete(sq.githubE2EQueue, *obj.Issue.Number)
+		sq.deleteQueueItem(obj)
 	}
 
 }
@@ -1038,7 +1062,7 @@ func (sq *SubmitQueue) handleGithubE2EAndMerge() {
 			// remove it from the map after we finish testing
 			sq.Lock()
 			sq.githubE2ERunning = nil
-			delete(sq.githubE2EQueue, *obj.Issue.Number)
+			sq.deleteQueueItem(obj)
 			sq.Unlock()
 		}
 	}
@@ -1108,6 +1132,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 	}
 
 	if obj.HasLabel(retestNotRequiredLabel) {
+		atomic.AddInt32(&sq.instantMerges, 1)
 		sq.mergePullRequest(obj)
 		return true
 	}
@@ -1129,6 +1154,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 
 		// Wait for the retest to start
 		sq.SetMergeStatus(obj, ghE2EWaitingStart)
+		atomic.AddInt32(&sq.prsTested, 1)
 		err = obj.WaitForPending(sq.RequiredRetestContexts)
 		if err != nil {
 			sq.SetMergeStatus(obj, fmt.Sprintf("Failed waiting for PR to start testing: %v", err))
@@ -1200,13 +1226,17 @@ func (sq *SubmitQueue) serveHealth(res http.ResponseWriter, req *http.Request) {
 
 func (sq *SubmitQueue) serveSQStats(res http.ResponseWriter, req *http.Request) {
 	data := submitQueueStats{
-		StartTime:          sq.startTime,
-		LastMergeTime:      sq.lastMergeTime,
-		MergesSinceRestart: int(atomic.LoadInt32(&sq.totalMerges)),
-		MergeRate:          sq.calcMergeRateWithTail(),
-		RetestsAvoided:     int(atomic.LoadInt32(&sq.retestsAvoided)),
+		Added:              int(atomic.LoadInt32(&sq.prsAdded)),
 		FlakesIgnored:      int(atomic.LoadInt32(&sq.flakesIgnored)),
 		Initialized:        atomic.LoadInt32(&sq.loopStarts) > 1,
+		InstantMerges:      int(atomic.LoadInt32(&sq.instantMerges)),
+		LastMergeTime:      sq.lastMergeTime,
+		MergeRate:          sq.calcMergeRateWithTail(),
+		MergesSinceRestart: int(atomic.LoadInt32(&sq.totalMerges)),
+		Removed:            int(atomic.LoadInt32(&sq.prsRemoved)),
+		RetestsAvoided:     int(atomic.LoadInt32(&sq.retestsAvoided)),
+		StartTime:          sq.startTime,
+		Tested:             int(atomic.LoadInt32(&sq.prsTested)),
 	}
 	sq.serve(sq.marshal(data), res, req)
 }

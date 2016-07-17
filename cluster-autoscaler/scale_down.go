@@ -20,9 +20,8 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/contrib/cluster-autoscaler/config"
+	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
-	"k8s.io/contrib/cluster-autoscaler/utils/gce"
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
@@ -45,12 +44,15 @@ const (
 )
 
 // FindUnneededNodes calculates which nodes are not needed, i.e. all pods can be scheduled somewhere else,
-// and updates unneededNodes map accordingly.
+// and updates unneededNodes map accordingly. It also returns information where pods can be rescheduld.
 func FindUnneededNodes(nodes []*kube_api.Node,
 	unneededNodes map[string]time.Time,
 	utilizationThreshold float64,
 	pods []*kube_api.Pod,
-	predicateChecker *simulator.PredicateChecker) map[string]time.Time {
+	predicateChecker *simulator.PredicateChecker,
+	oldHints map[string]string,
+	tracker *simulator.UsageTracker,
+	timestamp time.Time) (unnededTimeMap map[string]time.Time, podReschedulingHints map[string]string) {
 
 	currentlyUnneededNodes := make([]*kube_api.Node, 0)
 	nodeNameToNodeInfo := schedulercache.CreateNodeNameToInfoMap(pods)
@@ -77,12 +79,12 @@ func FindUnneededNodes(nodes []*kube_api.Node,
 	}
 
 	// Phase2 - check which nodes can be probably removed using fast drain.
-	nodesToRemove, err := simulator.FindNodesToRemove(currentlyUnneededNodes, nodes, pods,
+	nodesToRemove, newHints, err := simulator.FindNodesToRemove(currentlyUnneededNodes, nodes, pods,
 		nil, predicateChecker,
-		len(currentlyUnneededNodes), true)
+		len(currentlyUnneededNodes), true, oldHints, tracker, timestamp)
 	if err != nil {
 		glog.Errorf("Error while simulating node drains: %v", err)
-		return map[string]time.Time{}
+		return map[string]time.Time{}, oldHints
 	}
 
 	// Update the timestamp map.
@@ -96,7 +98,7 @@ func FindUnneededNodes(nodes []*kube_api.Node,
 			result[name] = val
 		}
 	}
-	return result
+	return result, newHints
 }
 
 // ScaleDown tries to scale down the cluster. It returns ScaleDownResult indicating if any node was
@@ -106,9 +108,11 @@ func ScaleDown(
 	unneededNodes map[string]time.Time,
 	unneededTime time.Duration,
 	pods []*kube_api.Pod,
-	gceManager *gce.GceManager,
+	cloudProvider cloudprovider.CloudProvider,
 	client *kube_client.Client,
-	predicateChecker *simulator.PredicateChecker) (ScaleDownResult, error) {
+	predicateChecker *simulator.PredicateChecker,
+	oldHints map[string]string,
+	usageTracker *simulator.UsageTracker) (ScaleDownResult, error) {
 
 	now := time.Now()
 	candidates := make([]*kube_api.Node, 0)
@@ -122,30 +126,24 @@ func ScaleDown(
 				continue
 			}
 
-			// Check mig size.
-			instance, err := config.InstanceConfigFromProviderId(node.Spec.ProviderID)
+			nodeGroup, err := cloudProvider.NodeGroupForNode(node)
 			if err != nil {
-				glog.Errorf("Error while parsing providerid of %s: %v", node.Name, err)
+				glog.Errorf("Error while checking node group for %s: %v", node.Name, err)
 				continue
 			}
-			migConfig, err := gceManager.GetMigForInstance(instance)
-			if err != nil {
-				glog.Errorf("Error while checking mig config for instance %v: %v", instance, err)
-				continue
-			}
-			if migConfig == nil {
-				glog.V(4).Infof("Skipping %s - no mig config", node.Name)
+			if nodeGroup == nil {
+				glog.V(4).Infof("Skipping %s - no node group config", node.Name)
 				continue
 			}
 
-			size, err := gceManager.GetMigSize(migConfig)
+			size, err := nodeGroup.TargetSize()
 			if err != nil {
-				glog.Errorf("Error while checking mig size for instance %v: %v", instance, err)
+				glog.Errorf("Error while checking node group size %s: %v", nodeGroup.Id(), err)
 				continue
 			}
 
-			if size <= int64(migConfig.MinSize) {
-				glog.V(1).Infof("Skipping %s - mig min size reached", node.Name)
+			if size <= nodeGroup.MinSize() {
+				glog.V(1).Infof("Skipping %s - node group min size reached", node.Name)
 				continue
 			}
 
@@ -157,7 +155,10 @@ func ScaleDown(
 		return ScaleDownNoUnneeded, nil
 	}
 
-	nodesToRemove, err := simulator.FindNodesToRemove(candidates, nodes, pods, client, predicateChecker, 1, false)
+	// We look for only 1 node so new hints may be incomplete.
+	nodesToRemove, _, err := simulator.FindNodesToRemove(candidates, nodes, pods, client, predicateChecker, 1, false,
+		oldHints, usageTracker, time.Now())
+
 	if err != nil {
 		return ScaleDownError, fmt.Errorf("Find node to remove failed: %v", err)
 	}
@@ -167,14 +168,20 @@ func ScaleDown(
 	}
 	nodeToRemove := nodesToRemove[0]
 	glog.Infof("Removing %s", nodeToRemove.Name)
-	instanceConfig, err := config.InstanceConfigFromProviderId(nodeToRemove.Spec.ProviderID)
+
+	nodeGroup, err := cloudProvider.NodeGroupForNode(nodeToRemove)
 	if err != nil {
-		return ScaleDownError, fmt.Errorf("Failed to get instance config for %s: %v", nodeToRemove.Name, err)
+		return ScaleDownError, fmt.Errorf("failed to node group for %s: %v", nodeToRemove.Name, err)
+	}
+	if nodeGroup == nil {
+		return ScaleDownError, fmt.Errorf("picked node that doesn't belong to a node group: %s", nodeToRemove.Name)
 	}
 
-	err = gceManager.DeleteInstances([]*config.InstanceConfig{instanceConfig})
+	err = nodeGroup.DeleteNodes([]*kube_api.Node{nodeToRemove})
+	simulator.RemoveNodeFromTracker(usageTracker, nodeToRemove.Name, unneededNodes)
+
 	if err != nil {
-		return ScaleDownError, fmt.Errorf("Failed to delete %v: %v", instanceConfig, err)
+		return ScaleDownError, fmt.Errorf("Failed to delete %s: %v", nodeToRemove.Name, err)
 	}
 
 	return ScaleDownNodeDeleted, nil
