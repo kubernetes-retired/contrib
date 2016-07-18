@@ -108,3 +108,4 @@ whitelist-override-label
 config-file-path
 required-retest-contexts
 retest-body
+default-ssl-certificate
