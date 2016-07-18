@@ -158,9 +158,9 @@ func (m *AwsManager) GetAsgForInstance(instance *AwsRef) (*Asg, error) {
 	if config, found := m.asgCache[*instance]; found {
 		return config, nil
 	}
-	// if err := m.regenerateCache(); err != nil {
-	// 	return nil, fmt.Errorf("Error while looking for ASG for instance %+v, error: %v", *instance, err)
-	// }
+	if err := m.regenerateCache(); err != nil {
+		return nil, fmt.Errorf("Error while looking for ASG for instance %+v, error: %v", *instance, err)
+	}
 	if config, found := m.asgCache[*instance]; found {
 		return config, nil
 	}
@@ -176,18 +176,18 @@ func (m *AwsManager) regenerateCacheIgnoreError() {
 }
 
 func (m *AwsManager) regenerateCache() error {
-	// newCache := map[config.InstanceConfig]*config.ScalingConfig{}
 	newCache := make(map[AwsRef]*Asg)
 
 	for _, asg := range m.asgs {
-		glog.V(4).Infof("Regenerating ASG information for %s", asg.basename)
+		glog.V(4).Infof("Regenerating ASG information for %s", asg.config.Name)
+
 		params := &autoscaling.DescribeAutoScalingGroupsInput{
-			AutoScalingGroupNames: []*string{aws.String(asg.basename)},
+			AutoScalingGroupNames: []*string{aws.String(asg.config.Name)},
 			MaxRecords:            aws.Int64(1),
 		}
 		groups, err := m.service.DescribeAutoScalingGroups(params)
 		if err != nil {
-			glog.V(4).Infof("Failed ASG info request for %s: %v", asg.basename, err)
+			glog.V(4).Infof("Failed ASG info request for %s: %v", asg.config.Name, err)
 			return err
 		}
 		// TODO: check for nil pointers
