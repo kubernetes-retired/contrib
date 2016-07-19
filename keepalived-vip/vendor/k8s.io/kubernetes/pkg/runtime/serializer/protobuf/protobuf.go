@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -124,7 +124,7 @@ func (s *Serializer) Decode(originalData []byte, gvk *unversioned.GroupVersionKi
 
 	if intoUnknown, ok := into.(*runtime.Unknown); ok && intoUnknown != nil {
 		*intoUnknown = unk
-		if len(intoUnknown.ContentType) == 0 {
+		if ok, _ := s.RecognizesData(bytes.NewBuffer(unk.Raw)); ok {
 			intoUnknown.ContentType = s.contentType
 		}
 		return intoUnknown, &actual, nil
@@ -165,18 +165,31 @@ func (s *Serializer) Decode(originalData []byte, gvk *unversioned.GroupVersionKi
 	return unmarshalToObject(s.typer, s.creater, &actual, into, unk.Raw)
 }
 
-// EncodeToStream serializes the provided object to the given writer. Overrides is ignored.
-func (s *Serializer) EncodeToStream(obj runtime.Object, w io.Writer, overrides ...unversioned.GroupVersion) error {
-	var unk runtime.Unknown
-	kind := obj.GetObjectKind().GroupVersionKind()
-	unk = runtime.Unknown{
-		TypeMeta: runtime.TypeMeta{
-			Kind:       kind.Kind,
-			APIVersion: kind.GroupVersion().String(),
-		},
-	}
-
+// Encode serializes the provided object to the given writer.
+func (s *Serializer) Encode(obj runtime.Object, w io.Writer) error {
 	prefixSize := uint64(len(s.prefix))
+
+	var unk runtime.Unknown
+	switch t := obj.(type) {
+	case *runtime.Unknown:
+		estimatedSize := prefixSize + uint64(t.Size())
+		data := make([]byte, estimatedSize)
+		i, err := t.MarshalTo(data[prefixSize:])
+		if err != nil {
+			return err
+		}
+		copy(data, s.prefix)
+		_, err = w.Write(data[:prefixSize+uint64(i)])
+		return err
+	default:
+		kind := obj.GetObjectKind().GroupVersionKind()
+		unk = runtime.Unknown{
+			TypeMeta: runtime.TypeMeta{
+				Kind:       kind.Kind,
+				APIVersion: kind.GroupVersion().String(),
+			},
+		}
+	}
 
 	switch t := obj.(type) {
 	case bufferedMarshaller:
@@ -388,8 +401,8 @@ func unmarshalToObject(typer runtime.ObjectTyper, creater runtime.ObjectCreater,
 	return obj, actual, nil
 }
 
-// EncodeToStream serializes the provided object to the given writer. Overrides is ignored.
-func (s *RawSerializer) EncodeToStream(obj runtime.Object, w io.Writer, overrides ...unversioned.GroupVersion) error {
+// Encode serializes the provided object to the given writer. Overrides is ignored.
+func (s *RawSerializer) Encode(obj runtime.Object, w io.Writer) error {
 	switch t := obj.(type) {
 	case bufferedMarshaller:
 		// this path performs a single allocation during write but requires the caller to implement
