@@ -24,6 +24,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -115,6 +116,12 @@ type ipvsControllerController struct {
 	ruCfg             []vip
 	ruMD5             string
 
+	// stopLock is used to enforce only a single call to Stop is active.
+	// Needed because we allow stopping through an http endpoint and
+	// allowing concurrent stoppers leads to stack traces.
+	stopLock sync.Mutex
+
+	shutdown  bool
 	syncQueue *taskQueue
 	stopCh    chan struct{}
 }
@@ -254,6 +261,27 @@ func (ipvsc *ipvsControllerController) sync(key string) error {
 	}
 
 	return nil
+}
+
+// Stop stops the loadbalancer controller.
+func (ipvsc *ipvsControllerController) Stop() error {
+	ipvsc.stopLock.Lock()
+	defer ipvsc.stopLock.Unlock()
+
+	// Only try draining the workqueue if we haven't already.
+	if !ipvsc.shutdown {
+		ipvsc.shutdown = true
+		close(ipvsc.stopCh)
+
+		glog.Infof("Shutting down controller queue")
+		ipvsc.syncQueue.shutdown()
+
+		ipvsc.keepalived.Stop()
+
+		return nil
+	}
+
+	return fmt.Errorf("shutdown already in progress")
 }
 
 // newIPVSController creates a new controller from the given config.
