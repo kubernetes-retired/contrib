@@ -137,7 +137,7 @@ func (asg *Asg) IncreaseSize(delta int) error {
 		return err
 	}
 	if int(size)+delta > asg.MaxSize() {
-		return fmt.Errorf("size increase to large - desired:%d max:%d", int(size)+delta, asg.MaxSize())
+		return fmt.Errorf("size increase too large - desired:%d max:%d", int(size)+delta, asg.MaxSize())
 	}
 	return asg.awsManager.SetAsgSize(asg, size+int64(delta))
 }

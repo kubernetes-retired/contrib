@@ -68,7 +68,13 @@ func CreateAwsManager(configReader io.Reader) (*AwsManager, error) {
 		asgCache: make(map[AwsRef]*Asg),
 	}
 
-	go wait.Forever(func() { manager.regenerateCacheIgnoreError() }, time.Hour)
+	go wait.Forever(func() {
+		manager.cacheMutex.Lock()
+		defer manager.cacheMutex.Unlock()
+		if err := manager.regenerateCache(); err != nil {
+			glog.Errorf("Error while regenerating Asg cache: %v", err)
+		}
+	}, time.Hour)
 
 	return manager, nil
 }
@@ -89,14 +95,16 @@ func (m *AwsManager) GetAsgSize(asgConfig *Asg) (int64, error) {
 		AutoScalingGroupNames: []*string{aws.String(asgConfig.Name)},
 		MaxRecords:            aws.Int64(1),
 	}
-	resp, err := m.service.DescribeAutoScalingGroups(params)
+	groups, err := m.service.DescribeAutoScalingGroups(params)
 
 	if err != nil {
 		return -1, err
 	}
 
-	// TODO: check for nil pointers
-	asg := *resp.AutoScalingGroups[0]
+	if len(groups.AutoScalingGroups) < 1 {
+		return -1, fmt.Errorf("Unable to get first autoscaling.Group for %s", asgConfig.Name)
+	}
+	asg := *groups.AutoScalingGroups[0]
 	return *asg.DesiredCapacity, nil
 }
 
@@ -107,10 +115,7 @@ func (m *AwsManager) SetAsgSize(asg *Asg, size int64) error {
 		DesiredCapacity:      aws.Int64(size),
 		HonorCooldown:        aws.Bool(false),
 	}
-	// TODO implement waitForOp as it is on GCE
-	// TODO do something with the response
 	_, err := m.service.SetDesiredCapacity(params)
-
 	if err != nil {
 		return err
 	}
@@ -141,11 +146,11 @@ func (m *AwsManager) DeleteInstances(instances []*AwsRef) error {
 			InstanceId:                     aws.String(instance.Name),
 			ShouldDecrementDesiredCapacity: aws.Bool(true),
 		}
-		// TODO: do something with this response
-		_, err := m.service.TerminateInstanceInAutoScalingGroup(params)
+		resp, err := m.service.TerminateInstanceInAutoScalingGroup(params)
 		if err != nil {
 			return err
 		}
+		glog.V(4).Infof(*resp.Activity.Description)
 	}
 
 	return nil
@@ -167,14 +172,6 @@ func (m *AwsManager) GetAsgForInstance(instance *AwsRef) (*Asg, error) {
 	return nil, fmt.Errorf("Instance %+v does not belong to any known ASG", *instance)
 }
 
-func (m *AwsManager) regenerateCacheIgnoreError() {
-	m.cacheMutex.Lock()
-	defer m.cacheMutex.Unlock()
-	if err := m.regenerateCache(); err != nil {
-		glog.Errorf("Error while regenerating Asg cache: %v", err)
-	}
-}
-
 func (m *AwsManager) regenerateCache() error {
 	newCache := make(map[AwsRef]*Asg)
 
@@ -190,24 +187,14 @@ func (m *AwsManager) regenerateCache() error {
 			glog.V(4).Infof("Failed ASG info request for %s: %v", asg.config.Name, err)
 			return err
 		}
-		// TODO: check for nil pointers
+		if len(groups.AutoScalingGroups) < 1 {
+			return fmt.Errorf("Unable to get first autoscaling.Group for %s", asg.config.Name)
+		}
 		group := *groups.AutoScalingGroups[0]
 
 		for _, instance := range group.Instances {
-			// TODO fewer queries
-			params := &autoscaling.DescribeAutoScalingInstancesInput{
-				InstanceIds: []*string{
-					aws.String(*instance.InstanceId),
-				},
-				MaxRecords: aws.Int64(1),
-			}
-			resp, err := m.service.DescribeAutoScalingInstances(params)
-
-			if err != nil {
-				return err
-			}
-			details := *resp.AutoScalingInstances[0]
-			newCache[AwsRef{Zone: *details.AvailabilityZone, Name: *instance.InstanceId}] = asg.config
+			ref := AwsRef{Zone: *instance.AvailabilityZone, Name: *instance.InstanceId}
+			newCache[ref] = asg.config
 		}
 	}
 
