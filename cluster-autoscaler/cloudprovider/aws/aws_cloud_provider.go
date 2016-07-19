@@ -18,6 +18,7 @@ package aws
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -90,10 +91,11 @@ type AwsRef struct {
 // AwsRefFromProviderId creates InstanceConfig object from provider id which
 // must be in format: aws:///zone/name
 func AwsRefFromProviderId(id string) (*AwsRef, error) {
-	splitted := strings.Split(id[7:], "/")
-	if len(splitted) != 2 {
+	validIdRegex := regexp.MustCompile(`^aws\:\/\/\/[-a-z]*\/[-a-z]*$`)
+	if validIdRegex.FindStringSubmatch(id) == nil {
 		return nil, fmt.Errorf("Wrong id: expected format aws:///<zone>/<name>, got %v", id)
 	}
+	splitted := strings.Split(id[7:], "/")
 	return &AwsRef{
 		Zone: splitted[0],
 		Name: splitted[1],
