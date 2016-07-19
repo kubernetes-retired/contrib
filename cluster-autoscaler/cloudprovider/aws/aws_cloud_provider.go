@@ -81,26 +81,22 @@ func (aws *AwsCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudprovide
 	return asg, err
 }
 
-// AwsRef contains s reference to some entity in AWS/GKE world.
+// AwsRef contains a reference to some entity in AWS/GKE world.
 type AwsRef struct {
-	Project string
-	Zone    string
-	Name    string
+	Zone string
+	Name string
 }
 
-// AwsRefFromProviderId creates InstanceConfig object
-// from provider id which must be in format:
-// aws://<project-id>/<zone>/<name>
-// TODO(piosz): add better check whether the id is correct
+// AwsRefFromProviderId creates InstanceConfig object from provider id which
+// must be in format: aws:///zone/name
 func AwsRefFromProviderId(id string) (*AwsRef, error) {
-	splitted := strings.Split(id[6:], "/")
-	if len(splitted) != 3 {
-		return nil, fmt.Errorf("Wrong id: expected format aws://<project-id>/<zone>/<name>, got %v", id)
+	splitted := strings.Split(id[7:], "/")
+	if len(splitted) != 2 {
+		return nil, fmt.Errorf("Wrong id: expected format aws:///<zone>/<name>, got %v", id)
 	}
 	return &AwsRef{
-		Project: splitted[0],
-		Zone:    splitted[1],
-		Name:    splitted[2],
+		Zone: splitted[0],
+		Name: splitted[1],
 	}, nil
 }
 
@@ -146,7 +142,7 @@ func (asg *Asg) IncreaseSize(delta int) error {
 	return asg.awsManager.SetAsgSize(asg, size+int64(delta))
 }
 
-// Belongs retruns true if the given node belongs to the NodeGroup.
+// Belongs returns true if the given node belongs to the NodeGroup.
 func (asg *Asg) Belongs(node *kube_api.Node) (bool, error) {
 	ref, err := AwsRefFromProviderId(node.Spec.ProviderID)
 	if err != nil {
@@ -176,13 +172,12 @@ func (asg *Asg) DeleteNodes(nodes []*kube_api.Node) error {
 	}
 	refs := make([]*AwsRef, 0, len(nodes))
 	for _, node := range nodes {
-
 		belongs, err := asg.Belongs(node)
 		if err != nil {
 			return err
 		}
-		if belongs {
-			return fmt.Errorf("%s belong to a different asg than %s", node.Name, asg.Id())
+		if belongs != true {
+			return fmt.Errorf("%s belongs to a different asg than %s", node.Name, asg.Id())
 		}
 		awsref, err := AwsRefFromProviderId(node.Spec.ProviderID)
 		if err != nil {
@@ -193,9 +188,9 @@ func (asg *Asg) DeleteNodes(nodes []*kube_api.Node) error {
 	return asg.awsManager.DeleteInstances(refs)
 }
 
-// Id returns asg url.
+// Id returns asg id.
 func (asg *Asg) Id() string {
-	return GenerateAsgUrl(asg.Project, asg.Zone, asg.Name)
+	return fmt.Sprintf("%s/%s", asg.Zone, asg.Name)
 }
 
 // Debug returns a debug string for the Asg.
@@ -204,8 +199,8 @@ func (asg *Asg) Debug() string {
 }
 
 func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
-	tokens := strings.SplitN(value, ":", 3)
-	if len(tokens) != 3 {
+	tokens := strings.SplitN(value, ":", 4)
+	if len(tokens) != 4 {
 		return nil, fmt.Errorf("wrong nodes configuration: %s", value)
 	}
 
@@ -230,9 +225,13 @@ func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 		return nil, fmt.Errorf("failed to set max size: %s, expected integer", tokens[1])
 	}
 
-	var err error
-	if asg.Project, asg.Zone, asg.Name, err = ParseAsgUrl(tokens[2]); err != nil {
-		return nil, fmt.Errorf("failed to parse asg url: %s got error: %v", tokens[2], err)
+	if tokens[2] == "" {
+		return nil, fmt.Errorf("asg zone must not be blank: %s got error: %v", tokens[2])
 	}
+	if tokens[3] == "" {
+		return nil, fmt.Errorf("asg name must not be blank: %s got error: %v", tokens[2])
+	}
+	asg.Zone = tokens[2]
+	asg.Name = tokens[3]
 	return &asg, nil
 }
