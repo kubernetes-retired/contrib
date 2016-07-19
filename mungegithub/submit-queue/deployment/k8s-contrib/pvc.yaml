@@ -1,7 +1,9 @@
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
-  name: submit-queue-cache
+  labels:
+    app: k8s-contrib-submit-queue
+  name: k8s-contrib-cache
 spec:
   accessModes:
     - ReadWriteOnce

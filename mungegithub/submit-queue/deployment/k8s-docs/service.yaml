@@ -2,14 +2,13 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: submit-queue
-  name: submit-queue-status
-  namespace: default
+    app: k8s-docs-submit-queue
+  name: k8s-docs-sq-status
 spec:
   ports:
   - name: status
     port: 80
     targetPort: status
   selector:
-    app: submit-queue
-  type: LoadBalancer
+    app: k8s-docs-submit-queue
+  type: NodePort
