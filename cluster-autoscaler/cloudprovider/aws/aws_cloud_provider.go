@@ -18,6 +18,7 @@ package aws
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -83,19 +84,18 @@ func (aws *AwsCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudprovide
 
 // AwsRef contains a reference to some entity in AWS/GKE world.
 type AwsRef struct {
-	Zone string
 	Name string
 }
 
 // AwsRefFromProviderId creates InstanceConfig object from provider id which
 // must be in format: aws:///zone/name
 func AwsRefFromProviderId(id string) (*AwsRef, error) {
-	splitted := strings.Split(id[7:], "/")
-	if len(splitted) != 2 {
+	validIdRegex := regexp.MustCompile(`^aws\:\/\/\/[-a-z]*\/[-a-z]*$`)
+	if validIdRegex.FindStringSubmatch(id) == nil {
 		return nil, fmt.Errorf("Wrong id: expected format aws:///<zone>/<name>, got %v", id)
 	}
+	splitted := strings.Split(id[7:], "/")
 	return &AwsRef{
-		Zone: splitted[0],
 		Name: splitted[1],
 	}, nil
 }
@@ -190,7 +190,7 @@ func (asg *Asg) DeleteNodes(nodes []*kube_api.Node) error {
 
 // Id returns asg id.
 func (asg *Asg) Id() string {
-	return fmt.Sprintf("%s/%s", asg.Zone, asg.Name)
+	return asg.Name
 }
 
 // Debug returns a debug string for the Asg.
@@ -199,8 +199,8 @@ func (asg *Asg) Debug() string {
 }
 
 func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
-	tokens := strings.SplitN(value, ":", 4)
-	if len(tokens) != 4 {
+	tokens := strings.SplitN(value, ":", 3)
+	if len(tokens) != 3 {
 		return nil, fmt.Errorf("wrong nodes configuration: %s", value)
 	}
 
@@ -226,12 +226,9 @@ func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 	}
 
 	if tokens[2] == "" {
-		return nil, fmt.Errorf("asg zone must not be blank: %s got error: %v", tokens[2])
-	}
-	if tokens[3] == "" {
 		return nil, fmt.Errorf("asg name must not be blank: %s got error: %v", tokens[2])
 	}
-	asg.Zone = tokens[2]
-	asg.Name = tokens[3]
+
+	asg.Name = tokens[2]
 	return &asg, nil
 }
