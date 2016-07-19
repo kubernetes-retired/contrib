@@ -19,6 +19,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"regexp"
@@ -416,5 +417,18 @@ func NewTaskQueue(syncFn func(string) error) *taskQueue {
 		queue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
+	}
+}
+
+// copyHaproxyCfg copies the default haproxy configuration file
+// to the mounted directory (the mount overwrites the default file)
+func copyHaproxyCfg() {
+	data, err := ioutil.ReadFile("/haproxy.cfg")
+	if err != nil {
+		glog.Fatalf("unexpected error reading haproxy.cfg: %v", err)
+	}
+	err = ioutil.WriteFile("/etc/haproxy/haproxy.cfg", data, 0644)
+	if err != nil {
+		glog.Fatalf("unexpected error writing haproxy.cfg: %v", err)
 	}
 }

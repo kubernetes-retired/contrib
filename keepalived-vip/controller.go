@@ -200,7 +200,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 			sort.Sort(serviceByIPPort(ep))
 
 			svcs = append(svcs, vip{
-				Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
+				Name:      fmt.Sprintf("%v-%v", s.Namespace, s.Name),
 				IP:        externalIP,
 				Port:      int(servicePort.Port),
 				LVSMethod: lvsm,
@@ -284,7 +284,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string) *ipvsControllerController {
+func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string, proxyMode bool) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
@@ -326,13 +326,14 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
 		useUnicast: useUnicast,
 		ipt:        iptInterface,
+		proxyMode:  proxyMode,
 	}
 
 	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)
 
-	err = ipvsc.keepalived.loadTemplate()
+	err = ipvsc.keepalived.loadTemplates()
 	if err != nil {
-		glog.Fatalf("Error loading keepalived template: %v", err)
+		glog.Fatalf("Error loading templates: %v", err)
 	}
 
 	eventHandlers := cache.ResourceEventHandlerFuncs{
