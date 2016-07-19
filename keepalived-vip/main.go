@@ -114,7 +114,7 @@ func main() {
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 
-	go wait.Until(ipvsc.sync, 10*time.Second, wait.NeverStop)
+	go ipvsc.syncQueue.run(time.Second, ipvsc.stopCh)
 
 	glog.Info("starting keepalived to announce VIPs")
 	ipvsc.keepalived.Start()
