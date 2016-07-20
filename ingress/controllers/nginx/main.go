@@ -23,6 +23,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -59,6 +60,11 @@ var (
 	inCluster = flags.Bool("running-in-cluster", true,
 		`Optional, if this controller is running in a kubernetes cluster, use the
 		 pod secrets for creating a Kubernetes client.`)
+
+	defaultTLS = flags.String("default-tls", "",
+		`An optional default certificate pair to use if no TLS secretName is specified in the ingress
+		 controller. This permits you to throw a wildcard certificate into one namespace and reuse the
+		 same certificate across others, format is namespace/secret_name`)
 
 	tcpConfigMapName = flags.String("tcp-services-configmap", "",
 		`Name of the ConfigMap that containes the definition of the TCP services to expose.
@@ -104,6 +110,12 @@ func main() {
 		glog.Fatalf("Please specify --default-backend-service")
 	}
 
+	if *defaultTLS != "" {
+		if len(strings.Split(*defaultTLS, "/")) != 2 {
+			glog.Fatalf("the default tls must be in format NAMESPACE/SECRET_NAME")
+		}
+	}
+
 	var err error
 	if *inCluster {
 		kubeClient, err = unversioned.NewInCluster()
@@ -137,7 +149,7 @@ func main() {
 		}
 	}
 
-	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName, *udpConfigMapName, runtimePodInfo)
+	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName, *udpConfigMapName, *defaultTLS, runtimePodInfo)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}

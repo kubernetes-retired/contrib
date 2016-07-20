@@ -102,6 +102,7 @@ type loadBalancerController struct {
 	nginx          *nginx.Manager
 	podInfo        *podInfo
 	defaultSvc     string
+	defaultTLS     string
 	nxgConfigMap   string
 	tcpConfigMap   string
 	udpConfigMap   string
@@ -124,7 +125,7 @@ type loadBalancerController struct {
 
 // newLoadBalancerController creates a controller for nginx loadbalancer
 func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, defaultSvc,
-	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName string, runtimeInfo *podInfo) (*loadBalancerController, error) {
+	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName, defaultTLS string, runtimeInfo *podInfo) (*loadBalancerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
@@ -139,6 +140,7 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		tcpConfigMap: tcpConfigMapName,
 		udpConfigMap: udpConfigMapName,
 		defaultSvc:   defaultSvc,
+		defaultTLS:   defaultTLS,
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{
 			Component: "nginx-ingress-controller",
 		}),
@@ -894,11 +896,22 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 	for _, ingIf := range data {
 		ing := ingIf.(*extensions.Ingress)
 		for _, tls := range ing.Spec.TLS {
+			namespace := ing.Namespace
 			secretName := tls.SecretName
-			secretKey := fmt.Sprintf("%s/%s", ing.Namespace, secretName)
+
+			// step: if no secretName is defined check if we have a default TLS secret defined
+			var secretKey string
+			if secretName == "" && lbc.defaultTLS != "" {
+				items := strings.Split(lbc.defaultTLS, "/")
+				namespace = items[0]
+				secretName = items[1]
+				glog.Infof("using the default tls key: %s/%s for ingress resource: %s/%s", namespace, secretName, ing.Namespace, ing.Name)
+			}
+			secretKey = fmt.Sprintf("%s/%s", namespace, secretName)
+
 			secretInterface, exists, err := lbc.secrLister.Store.GetByKey(secretKey)
 			if err != nil {
-				glog.Warningf("Error retriveing secret %v for ing %v: %v", secretName, ing.Name, err)
+				glog.Warningf("Error retrieving secret %v for ing %v: %v", secretKey, ing.Name, err)
 				continue
 			}
 			if !exists {
@@ -908,29 +921,29 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 			secret := secretInterface.(*api.Secret)
 			cert, ok := secret.Data[api.TLSCertKey]
 			if !ok {
-				glog.Warningf("Secret %v has no private key", secretName)
+				glog.Warningf("Secret %v has no private key", secretKey)
 				continue
 			}
 			key, ok := secret.Data[api.TLSPrivateKeyKey]
 			if !ok {
-				glog.Warningf("Secret %v has no cert", secretName)
+				glog.Warningf("Secret %v has no cert", secretKey)
 				continue
 			}
 
-			ngxCert, err := lbc.nginx.AddOrUpdateCertAndKey(fmt.Sprintf("%v-%v", ing.Namespace, secretName), string(cert), string(key))
+			ngxCert, err := lbc.nginx.AddOrUpdateCertAndKey(fmt.Sprintf("%v-%v", namespace, secretName), string(cert), string(key))
 			if err != nil {
-				glog.Errorf("No valid SSL certificate found in secret %v: %v", secretName, err)
+				glog.Errorf("No valid SSL certificate found in secret %v: %v", secretKey, err)
 				continue
 			}
 
 			if len(tls.Hosts) == 0 {
 				if _, ok := pems["_"]; ok {
-					glog.Warningf("It is not possible to use %v secret for default SSL certificate because there is one already defined", secretName)
+					glog.Warningf("It is not possible to use %v secret for default SSL certificate because there is one already defined", secretKey)
 					continue
 				}
 
 				pems["_"] = ngxCert
-				glog.Infof("Using the secret %v as source for the default SSL certificate", secretName)
+				glog.Infof("Using the secret %v as source for the default SSL certificate", secretKey)
 				continue
 			}
 
@@ -938,7 +951,7 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 				if isHostValid(host, ngxCert.CN) {
 					pems[host] = ngxCert
 				} else {
-					glog.Warningf("SSL Certificate stored in secret %v is not valid for the host %v defined in the Ingress rule %v", secretName, host, ing.Name)
+					glog.Warningf("SSL Certificate stored in secret %v is not valid for the host %v defined in the Ingress rule %v", secretKey, host, ing.Name)
 				}
 			}
 		}
