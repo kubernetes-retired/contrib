@@ -27,6 +27,10 @@ spec:
     targetPort: 80
     protocol: TCP
     name: http
+  - port: 8080
+    targetPort: 80
+    protocol: TCP
+    name: http2
   selector:
     app: coffee
 #  type: NodePort

@@ -50,7 +50,6 @@ is intended to provide support for many different backends and work with all kub
   apiVersion: v1
   data:
     bind-ip: "10.0.0.10"
-    bind-port: "80"
     namespace: default
     target-service-name: coffee-svc
   kind: ConfigMap
@@ -113,7 +112,6 @@ is intended to provide support for many different backends and work with all kub
   apiVersion: v1
   data:
     bind-ip: "10.0.0.60"
-    bind-port: "80"
     namespace: default
     target-service-name: coffee-svc
   kind: ConfigMap
@@ -176,7 +174,6 @@ is intended to provide support for many different backends and work with all kub
   apiVersion: v1
   data:
     bind-ip: "10.0.0.81"
-    bind-port: "80"
     namespace: default
     target-service-name: coffee-svc
   kind: ConfigMap

@@ -21,6 +21,8 @@ type diff struct {
 
 type orderedDiffs []diff
 
+var empty struct{}
+
 func (d orderedDiffs) Len() int      { return len(d) }
 func (d orderedDiffs) Swap(i, j int) { d[i], d[j] = d[j], d[i] }
 func (d orderedDiffs) Less(i, j int) bool {
@@ -42,6 +44,15 @@ func GetConfigMapGroups(cm map[string]string) sets.String {
 		configMapGroups.Insert(getGroupName(k))
 	}
 	return configMapGroups
+}
+
+func DeleteConfigMapGroups(cm map[string]string, deleteCms map[string]struct{}) map[string]string {
+	for k := range cm {
+		if _, ok := deleteCms[getGroupName(k)]; ok {
+			delete(cm, k)
+		}
+	}
+	return cm
 }
 
 func getGroupName(key string) string {
@@ -119,23 +130,6 @@ func GetNodeHostIP(node api.Node) (*string, error) {
 	return nil, fmt.Errorf("Host IP unknown; known addresses: %v", addresses)
 }
 
-// Get the port service based on the name. If no name is given, return the first port found
-func GetServicePort(service *api.Service, portName string) (*api.ServicePort, error) {
-	if len(service.Spec.Ports) == 0 {
-		return nil, fmt.Errorf("Could not find any port from service %v.", service.Name)
-	}
-
-	if portName == "" {
-		return &service.Spec.Ports[0], nil
-	}
-	for _, p := range service.Spec.Ports {
-		if p.Name == portName {
-			return &p, nil
-		}
-	}
-	return nil, fmt.Errorf("Could not find matching port %v from service %v.", portName, service.Name)
-}
-
 // Filter uses the input function f to filter the given node list, and return the filtered nodes
 func Filter(nodeList *api.NodeList, f func(api.Node) bool) []api.Node {
 	nodes := make([]api.Node, 0)
@@ -158,8 +152,8 @@ func NodeReady(node api.Node) bool {
 	return false
 }
 
-// GetLBConfigMapNodePortMap fetches all the configmaps and returns a map of loadbalancer configmaps to node port
-func GetLBConfigMapNodePortMap(client *unversioned.Client, configMapNamespace string, configMapLabelKey, configMapLabelValue string) map[string]int {
+// GetPoolNodePortMap fetches all the configmaps and returns a map of loadbalancer pool to node port
+func GetPoolNodePortMap(client *unversioned.Client, configMapNamespace string, configMapLabelKey, configMapLabelValue string) map[string]int {
 	configMapNodePortMap := make(map[string]int)
 	labelSelector := labels.Set{configMapLabelKey: configMapLabelValue}.AsSelector()
 	opt := api.ListOptions{LabelSelector: labelSelector}
@@ -172,25 +166,54 @@ func GetLBConfigMapNodePortMap(client *unversioned.Client, configMapNamespace st
 		cmData := cm.Data
 		namespace := cmData["namespace"]
 		serviceName := cmData["target-service-name"]
+		name := namespace + "-" + cm.Name
 		serviceObj, err := client.Services(namespace).Get(serviceName)
 		if err != nil {
 			glog.Errorf("Error getting service object %v/%v. %v", namespace, serviceName, err)
 			continue
 		}
 
-		targetPort, _ := cmData["target-port-name"]
-		servicePort, err := GetServicePort(serviceObj, targetPort)
-		if err != nil {
-			glog.Errorf("Error while getting the service port %v", err)
+		if serviceObj.Spec.Type != api.ServiceTypeNodePort {
+			glog.Errorf("Service %v does not have a type nodeport", serviceName)
 			continue
 		}
 
-		if servicePort.NodePort == 0 {
-			glog.Warningf("Service %v does not have a nodeport", serviceName)
+		if len(serviceObj.Spec.Ports) == 0 {
+			glog.Errorf("Could not find any port from service %v.", serviceName)
 			continue
 		}
 
-		configMapNodePortMap[namespace+"-"+cm.Name] = int(servicePort.NodePort)
+		for _, port := range serviceObj.Spec.Ports {
+			servicePortName := port.Name
+			poolName := GetResourceName("pool", name, servicePortName)
+			nodePort := int(port.NodePort)
+			configMapNodePortMap[poolName] = nodePort
+		}
 	}
 	return configMapNodePortMap
+}
+
+// GetResourceName returns given args seperated by hypen
+func GetResourceName(resourceType string, names ...string) string {
+	return strings.Join(names, "-") + "-" + resourceType
+}
+
+// GetUserConfigMaps gets list of all user configmaps
+func GetUserConfigMaps(kubeClient *unversioned.Client, configLabelKey, configLabelValue, namespace string) map[string]struct{} {
+	var opts api.ListOptions
+	opts.LabelSelector = labels.Set{configLabelKey: configLabelValue}.AsSelector()
+	cms, err := kubeClient.ConfigMaps(namespace).List(opts)
+	if err != nil {
+		glog.Infof("Error getting user configmap list %v", err)
+		return nil
+	}
+
+	cmList := cms.Items
+	userCms := make(map[string]struct{})
+	for _, cm := range cmList {
+		name := cm.Namespace + "-" + cm.Name
+		userCms[name] = empty
+	}
+
+	return userCms
 }

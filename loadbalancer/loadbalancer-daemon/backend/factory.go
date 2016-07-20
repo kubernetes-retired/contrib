@@ -13,10 +13,9 @@ type BackendConfig struct {
 	Host              string
 	Namespace         string
 	BindIp            string
-	BindPort          int
 	TargetServiceName string
 	TargetIP          string
-	TargetPort        int
+	Ports             []string
 	SSL               bool
 	SSLPort           int
 	Path              string

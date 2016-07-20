@@ -6,5 +6,4 @@ metadata:
         app: loadbalancer
 data:
     namespace: "default"
-    bind-port: "80"
     target-service-name: "coffee-svc"

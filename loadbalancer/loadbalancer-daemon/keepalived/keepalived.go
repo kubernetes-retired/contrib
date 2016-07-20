@@ -17,9 +17,12 @@ limitations under the License.
 package keepalived
 
 import (
+	"hash/fnv"
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"text/template"
 
@@ -37,10 +40,9 @@ var (
 	sysctlAdjustments = map[string]int{
 		// allows processes to bind() to non-local IP addresses
 		"net/ipv4/ip_nonlocal_bind": 1,
-		// enable connection tracking for LVS connections
-		"net/ipv4/vs/conntrack": 1,
 	}
-	keepAlivedPIDFile = "/var/run/keepalived.pid"
+	keepAlivedPIDFile      = "/var/run/keepalived.pid"
+	defaultVirtualRouterID = "50"
 )
 
 type KeepalivedController struct {
@@ -49,19 +51,32 @@ type KeepalivedController struct {
 }
 
 type Keepalived struct {
-	Interface string
-	Vips      sets.String
+	Interface       string
+	Vips            sets.String
+	VirtualRouterID string
+	Password        string
 }
 
 // NewKeepalivedController creates a new keepalived controller
 func NewKeepalivedController(nodeInterface string) KeepalivedController {
 
 	// System init
-	changeSysctl()
+	err := changeSysctl()
+	if err != nil {
+		glog.Errorf("Unexpected error for system settings: %v", err)
+	}
 
+	virtualRouterID := os.Getenv("VIRTUAL_ROUTER_ID")
+	if len(virtualRouterID) == 0 {
+		virtualRouterID = defaultVirtualRouterID
+	}
+	hash := fnv.New32a()
+	hash.Write([]byte(virtualRouterID))
 	k := Keepalived{
-		Interface: nodeInterface,
-		Vips:      sets.NewString(),
+		Interface:       nodeInterface,
+		Vips:            sets.NewString(),
+		VirtualRouterID: virtualRouterID,
+		Password:        strconv.FormatUint(uint64(hash.Sum32()), 10),
 	}
 
 	kaControl := KeepalivedController{
@@ -75,10 +90,21 @@ func NewKeepalivedController(nodeInterface string) KeepalivedController {
 // In case of any error it will terminate the execution with a fatal error
 func (k *KeepalivedController) Start() {
 
-	glog.Infof("Starting keepalived")
-	cmd := exec.Command("keepalived",
-		"--log-console",
-		"--release-vips")
+	opts := os.Getenv("KEEPALIVED_OPTS")
+	var args []string
+	if len(opts) == 0 {
+		args = append(args, "--log-console")
+		args = append(args, "--vrrp")
+		args = append(args, "--release-vips")
+	} else {
+		args = strings.Split(opts, ",")
+		for index, arg := range args {
+			args[index] = "--" + arg
+		}
+	}
+
+	glog.Infof("Starting keepalived with options %v", args)
+	cmd := exec.Command("keepalived", args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -163,6 +189,8 @@ func (k *KeepalivedController) writeCfg() {
 	conf := make(map[string]interface{})
 	conf["interface"] = k.keepalived.Interface
 	conf["vips"] = k.keepalived.Vips.List()
+	conf["virtualRouterID"] = k.keepalived.VirtualRouterID
+	conf["password"] = k.keepalived.Password
 	if err := tmpl.Execute(w, conf); err != nil {
 		glog.Fatalf("Failed to write template %v", err)
 	}

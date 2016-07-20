@@ -68,7 +68,8 @@ func NewLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 			lbController.configMapQueue.enqueue(obj)
 		},
 		DeleteFunc: func(obj interface{}) {
-			lbController.configMapQueue.enqueue(obj)
+			deletedConfigMap := obj.(*api.ConfigMap)
+			go lbController.backendController.HandleConfigMapDelete(deletedConfigMap)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			curCM := old.(*api.ConfigMap).Data
@@ -166,37 +167,36 @@ func configMapWatchFunc(c *client.Client, ns string, labelKey, labelValue string
 func (lbController *LoadBalancerController) syncConfigMap(key string) {
 	glog.Infof("Syncing configmap %v", key)
 
-	obj, configMapExists, err := lbController.configMapLister.Store.GetByKey(key)
+	obj, _, err := lbController.configMapLister.Store.GetByKey(key)
 	if err != nil {
 		lbController.configMapQueue.requeue(key, err)
 		return
 	}
 	// defaut/some-configmap -> default-some-configmap
 	name := strings.Replace(key, "/", "-", -1)
-	if !configMapExists {
-		go lbController.backendController.HandleConfigMapDelete(name)
-	} else {
-		go func() {
-			configMap := obj.(*api.ConfigMap)
-			err := lbController.backendController.HandleConfigMapCreate(configMap)
-			if err != nil {
-				glog.Errorf("Error creating loadbalancer: %v", err)
-				lbController.updateConfigMapStatusBindIP(err.Error(), "", configMap)
-				return
-			}
-			bindIP, err := lbController.backendController.GetBindIP(name)
-			if err != nil {
-				err = fmt.Errorf("Error getting bind IP for %v configmap: %v", name, err)
-				lbController.updateConfigMapStatusBindIP(err.Error(), "", configMap)
-			} else {
-				lbController.updateConfigMapStatusBindIP("", bindIP, configMap)
-			}
-		}()
-	}
+	go func() {
+		configMap := obj.(*api.ConfigMap)
+		err := lbController.backendController.HandleConfigMapCreate(configMap)
+		if err != nil {
+			glog.Errorf("Error creating loadbalancer: %v", err)
+			lbController.updateConfigMapStatusBindIP(err.Error(), "", configMap)
+			return
+		}
+		bindIP, err := lbController.backendController.GetBindIP(name)
+		if err != nil {
+			err = fmt.Errorf("Error getting bind IP for %v configmap: %v", name, err)
+			lbController.updateConfigMapStatusBindIP(err.Error(), "", configMap)
+		} else if bindIP == "" {
+			err = fmt.Errorf("No BindIP found for %v configmap", name)
+			lbController.updateConfigMapStatusBindIP(err.Error(), "", configMap)
+		} else {
+			lbController.updateConfigMapStatusBindIP("", bindIP, configMap)
+		}
+	}()
 }
 
 func configmapsEqual(m1 map[string]string, m2 map[string]string) bool {
-	return m1["namespace"] == m2["namespace"] && m1["bind-port"] == m2["bind-port"] && m1["target-service-name"] == m2["target-service-name"] && m1["target-port-name"] == m2["target-port-name"]
+	return m1["namespace"] == m2["namespace"] && m1["target-service-name"] == m2["target-service-name"]
 }
 
 // update user configmap with status

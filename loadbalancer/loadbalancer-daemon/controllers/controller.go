@@ -178,18 +178,24 @@ func configMapWatchFunc(c *client.Client, ns string) func(options api.ListOption
 }
 
 func createBackendConfig(cm map[string]string, group string) factory.BackendConfig {
-	bindPort, _ := strconv.Atoi(cm[group+".bind-port"])
-	targetPort, _ := strconv.Atoi(cm[group+".target-port"])
+	// Get all the ports
+	i := 0
+	ports := []string{}
+	for port, exist := cm[group+".port"+strconv.Itoa(i)]; exist; {
+		ports = append(ports, port)
+		i++
+		port, exist = cm[group+".port"+strconv.Itoa(i)]
+	}
+
 	ssl, _ := strconv.ParseBool(cm[group+".SSL"])
 	sslPort, _ := strconv.Atoi(cm[group+".ssl-port"])
 	backendConfig := factory.BackendConfig{
 		Host:              cm[group+".host"],
 		Namespace:         cm[group+".namespace"],
 		BindIp:            cm[group+".bind-ip"],
-		BindPort:          bindPort,
+		Ports:             ports,
 		TargetServiceName: cm[group+".target-service-name"],
 		TargetIP:          cm[group+".target-ip"],
-		TargetPort:        targetPort,
 		SSL:               ssl,
 		SSLPort:           sslPort,
 		Path:              cm[group+".path"],

@@ -3,7 +3,9 @@ package daemon
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
+	"sync"
 
 	"github.com/golang/glog"
 	"k8s.io/contrib/loadbalancer/loadbalancer/backend"
@@ -18,6 +20,9 @@ const (
 	configLabelValue     = "daemon"
 	defaultConfigMapName = "daemon-configmap"
 )
+
+var configMapMutex sync.Mutex
+var empty struct{}
 
 // LoadbalancerDaemonController Controller to communicate with loadbalancer-daemon controllers
 type LoadbalancerDaemonController struct {
@@ -54,6 +59,33 @@ func NewLoadbalancerDaemonController(kubeClient *unversioned.Client, watchNamesp
 		namespace:     ns,
 		ipManager:     ipMgr,
 	}
+
+	// sync daemon configmap data with user configmaps
+	olddaemonCm := lbControl.getDaemonConfigMap()
+	daemonCm := lbControl.getDaemonConfigMap()
+	daemonData := daemonCm.Data
+
+	if len(daemonData) != 0 {
+		userCms := utils.GetUserConfigMaps(kubeClient, configLabelKey, configLabelValue, watchNamespace)
+		cmGroup := utils.GetConfigMapGroups(daemonData)
+
+		// delete daemon group if user configmap doesnt exist
+		deleteCm := make(map[string]struct{})
+		for k := range cmGroup {
+			if _, ok := userCms[k]; !ok {
+				deleteCm[k] = empty
+			}
+		}
+		updatedDaemonCm := utils.DeleteConfigMapGroups(daemonData, deleteCm)
+
+		//update Daemon Configmap if its changed
+		if !reflect.DeepEqual(olddaemonCm.Data, updatedDaemonCm) {
+			_, err := lbControl.kubeClient.ConfigMaps(lbControl.namespace).Update(daemonCm)
+			if err != nil {
+				glog.Infof("Error updating daemon configmap %v: %v", daemonCm.Name, err)
+			}
+		}
+	}
 	return &lbControl, nil
 }
 
@@ -71,6 +103,10 @@ func (lbControl *LoadbalancerDaemonController) GetBindIP(name string) (string, e
 
 // HandleConfigMapCreate a new loadbalancer resource
 func (lbControl *LoadbalancerDaemonController) HandleConfigMapCreate(configMap *api.ConfigMap) error {
+
+	// Block execution until the ip config map gets updated
+	configMapMutex.Lock()
+	defer configMapMutex.Unlock()
 	name := configMap.Namespace + "-" + configMap.Name
 	glog.Infof("Adding group %v to daemon configmap", name)
 
@@ -85,12 +121,6 @@ func (lbControl *LoadbalancerDaemonController) HandleConfigMapCreate(configMap *
 		return err
 	}
 
-	servicePort, err := utils.GetServicePort(serviceObj, cmData["target-port-name"])
-	if err != nil {
-		err = fmt.Errorf("Error while getting the service port %v", err)
-		return err
-	}
-
 	//generate Virtual IP
 	bindIP, err := lbControl.ipManager.GenerateVirtualIP(configMap)
 	if err != nil {
@@ -98,12 +128,18 @@ func (lbControl *LoadbalancerDaemonController) HandleConfigMapCreate(configMap *
 		return err
 	}
 
+	servicePorts := serviceObj.Spec.Ports
+	if len(servicePorts) == 0 {
+		err = fmt.Errorf("Could not find any port from service %v.", serviceName)
+		return err
+	}
 	daemonData[name+".namespace"] = namespace
 	daemonData[name+".bind-ip"] = bindIP
-	daemonData[name+".bind-port"] = cmData["bind-port"]
 	daemonData[name+".target-service-name"] = serviceName
 	daemonData[name+".target-ip"] = serviceObj.Spec.ClusterIP
-	daemonData[name+".target-port"] = strconv.Itoa(int(servicePort.Port))
+	for i, port := range servicePorts {
+		daemonData[name+".port"+strconv.Itoa(i)] = strconv.Itoa(int(port.Port))
+	}
 
 	_, err = lbControl.kubeClient.ConfigMaps(lbControl.namespace).Update(daemonCM)
 	if err != nil {
@@ -112,19 +148,27 @@ func (lbControl *LoadbalancerDaemonController) HandleConfigMapCreate(configMap *
 	return nil
 }
 
-// HandleConfigMapDelete the lbaas loadbalancer resource
-func (lbControl *LoadbalancerDaemonController) HandleConfigMapDelete(name string) {
+func (lbControl *LoadbalancerDaemonController) HandleConfigMapDelete(configMap *api.ConfigMap) {
+	// Block execution until the ip config map gets updated
+	configMapMutex.Lock()
+	name := configMap.Namespace + "-" + configMap.Name
 	glog.Infof("Deleting group %v from daemon configmap", name)
 	daemonCM := lbControl.getDaemonConfigMap()
 	daemonData := daemonCM.Data
 	delete(daemonData, name+".namespace")
 	delete(daemonData, name+".bind-ip")
-	delete(daemonData, name+".bind-port")
 	delete(daemonData, name+".target-service-name")
 	delete(daemonData, name+".target-ip")
 	delete(daemonData, name+".target-port")
 
+	i := 0
+	for _, exist := daemonData[name+".port"+strconv.Itoa(i)]; exist; {
+		delete(daemonData, name+".port"+strconv.Itoa(i))
+		i++
+		_, exist = daemonData[name+".port"+strconv.Itoa(i)]
+	}
 	_, err := lbControl.kubeClient.ConfigMaps(lbControl.namespace).Update(daemonCM)
+	configMapMutex.Unlock()
 	if err != nil {
 		glog.Infof("Error updating daemon configmap %v: %v", daemonCM.Name, err)
 	}

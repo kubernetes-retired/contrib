@@ -31,8 +31,8 @@ type NGINXController struct {
 }
 
 type NGINXConfig struct {
-	Upstream Upstream
-	Server   Server
+	Upstreams []Upstream
+	Servers   []Server
 }
 
 // Upstream describes an NGINX upstream
@@ -119,10 +119,6 @@ func (nginx *NGINXController) AddConfig(name string, config factory.BackendConfi
 	glog.Infof("Updating NGINX configuration")
 	glog.Infof("Received config %s: %v", name, config)
 	nginxConfig := generateNGINXCfg(nginx.nginxCertsPath, name, config)
-	if nginxConfig == (NGINXConfig{}) {
-		glog.Errorf("Could not generate nginx config for %v", name)
-		return
-	}
 
 	var configFile string
 	if config.Path != "" {
@@ -237,44 +233,49 @@ func generateNGINXCfg(certPath string, name string, config factory.BackendConfig
 		return nginxConfig
 	}
 
-	upsName := getNameForUpstream(name, config.Host, config.TargetServiceName)
-	upstream := createUpstream(upsName, config)
+	upstreams := []Upstream{}
+	servers := []Server{}
+	for _, port := range config.Ports {
+		upsName := getNameForUpstream(name, config.Host, config.TargetServiceName, port)
+		upstream := createUpstream(upsName, config.TargetIP, port)
+		upstreams = append(upstreams, upstream)
 
-	serverName := config.Host
-	server := Server{
-		Name:     serverName,
-		BindIP:   config.BindIp,
-		BindPort: strconv.Itoa(config.BindPort),
-	}
+		serverName := config.Host
+		server := Server{
+			Name:     serverName,
+			BindIP:   config.BindIp,
+			BindPort: port,
+		}
+		if config.SSL {
+			pemFile := addOrUpdateCertAndKey(certPath, name, config.TlsCert, config.TlsKey)
+			server.SSLPort = strconv.Itoa(config.SSLPort)
+			server.SSL = true
+			server.SSLCertificate = pemFile
+			server.SSLCertificateKey = pemFile
+		}
 
-	if config.SSL {
-		pemFile := addOrUpdateCertAndKey(certPath, name, config.TlsCert, config.TlsKey)
-		server.SSLPort = strconv.Itoa(config.SSLPort)
-		server.SSL = true
-		server.SSLCertificate = pemFile
-		server.SSLCertificateKey = pemFile
+		loc := Location{
+			Path:     config.Path,
+			Upstream: upstream,
+		}
+		server.Location = loc
+		servers = append(servers, server)
 	}
-
-	loc := Location{
-		Path:     config.Path,
-		Upstream: upstream,
-	}
-	server.Location = loc
 
 	nginxConfig = NGINXConfig{
-		Upstream: upstream,
-		Server:   server,
+		Upstreams: upstreams,
+		Servers:   servers,
 	}
 
 	return nginxConfig
 }
 
-func createUpstream(name string, backend factory.BackendConfig) Upstream {
+func createUpstream(name, address, port string) Upstream {
 	ups := Upstream{
 		Name: name,
 		UpstreamServer: UpstreamServer{
-			Address: backend.TargetIP,
-			Port:    strconv.Itoa(backend.TargetPort),
+			Address: address,
+			Port:    port,
 		},
 	}
 	return ups
@@ -307,8 +308,8 @@ func addOrUpdateCertAndKey(path string, name string, cert string, key string) st
 	return pemFileName
 }
 
-func getNameForUpstream(name string, host string, service string) string {
-	return fmt.Sprintf("%v-%v-%v", name, host, service)
+func getNameForUpstream(name string, host string, service string, port string) string {
+	return fmt.Sprintf("%v-%v-%v-%v", name, host, service, port)
 }
 
 func shellOut(cmd string) {
