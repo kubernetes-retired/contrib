@@ -51,59 +51,16 @@ Please reference the [list of currently known flakes](https://github.com/kuberne
 * [Build Log](http://pr-test.k8s.io/28636/kubernetes-pull-build-test-e2e-gce/48147/build-log.txt)
 * [Test Artifacts](https://console.developers.google.com/storage/browser/kubernetes-jenkins/pr-logs/pull/28636/kubernetes-pull-build-test-e2e-gce/48147/artifacts/)
 * [Internal Jenkins Results](http://goto.google.com/prkubekins/job/kubernetes-pull-build-test-e2e-gce//48147)`
+	okToTestComment = `Can one of the admins verify that this patch is reasonable to test? If so, please reply "ok to test".
+	(Note: "add to whitelist" is no longer supported. Please update configurations in [kubernetes/test-infra/jenkins/job-configs/kubernetes-jenkins-pull](https://github.com/kubernetes/test-infra/tree/master/jenkins/job-configs/kubernetes-jenkins-pull) instead.)
+
+	This message may repeat a few times in short succession due to https://github.com/jenkinsci/ghprb-plugin/issues/292. Sorry.
+
+	Otherwise, if this message is too spammy, please complain to ixdy.`
 )
 
-func TestIsJenkinsTestComment(t *testing.T) {
-	tests := []struct {
-		name      string
-		value     string
-		isJenkins bool
-	}{
-		{
-			name:      "success comment",
-			value:     updatedPassComment,
-			isJenkins: true,
-		},
-		{
-			name:      "success comment",
-			value:     passComment,
-			isJenkins: true,
-		},
-		{
-			name:      "fail comment",
-			value:     updatedFailComment,
-			isJenkins: true,
-		},
-		{
-			name:      "fail comment",
-			value:     failComment,
-			isJenkins: true,
-		},
-		{
-			name:      "other comment",
-			value:     oldBuildLinkComment,
-			isJenkins: true,
-		},
-		{
-			name:      "Empty string",
-			isJenkins: false,
-		},
-		{
-			name:      "Random string",
-			value:     "Bob says do it another way, ok Brendan?!",
-			isJenkins: false,
-		},
-	}
-	for testNum, test := range tests {
-		output := isJenkinsTestComment(test.value)
-		if output != test.isJenkins {
-			t.Errorf("%d:%s: expected: %v, saw: %v for %s", testNum, test.name, test.isJenkins, output, test.value)
-		}
-	}
-}
-
 func comment(id int, body string) githubapi.IssueComment {
-	return github_test.Comment(id, jenkinsBotName, time.Now(), passComment)
+	return github_test.Comment(id, jenkinsBotName, time.Now(), body)
 }
 
 func TestJenkinsStaleComments(t *testing.T) {
@@ -140,6 +97,59 @@ func TestJenkinsStaleComments(t *testing.T) {
 			expected: []githubapi.IssueComment{
 				comment(1, passComment),
 				comment(2, failComment),
+			},
+		},
+		{
+			name: "match nothing",
+			comments: []githubapi.IssueComment{
+				comment(1, "This is nothing!"),
+				comment(2, "This is also nothing!"),
+			},
+		},
+		{
+			name: "single updated comment",
+			comments: []githubapi.IssueComment{
+				comment(1, updatedFailComment),
+			},
+		},
+		{
+			name: "old new ",
+			comments: []githubapi.IssueComment{
+				comment(1, passComment),
+				comment(2, updatedPassComment),
+			},
+		},
+		{
+			name: "old new old new",
+			comments: []githubapi.IssueComment{
+				comment(1, passComment),
+				comment(2, updatedPassComment),
+				comment(3, passComment),
+				comment(4, updatedPassComment),
+			},
+			expected: []githubapi.IssueComment{
+				comment(1, passComment),
+				comment(2, updatedPassComment),
+			},
+		},
+		{
+			name: "ok ok ok ok old new old new",
+			comments: []githubapi.IssueComment{
+				comment(1, okToTestComment),
+				comment(2, okToTestComment),
+				comment(3, okToTestComment),
+				comment(4, okToTestComment),
+				comment(5, passComment),
+				comment(6, updatedFailComment),
+				comment(7, failComment),
+				comment(8, updatedPassComment),
+			},
+			expected: []githubapi.IssueComment{
+				comment(1, okToTestComment),
+				comment(2, okToTestComment),
+				comment(3, okToTestComment),
+				comment(5, passComment),
+				comment(6, updatedFailComment),
 			},
 		},
 	}
