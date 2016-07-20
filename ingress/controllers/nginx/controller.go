@@ -102,6 +102,7 @@ type loadBalancerController struct {
 	nginx             *nginx.Manager
 	podInfo           *podInfo
 	defaultSvc        string
+	allowedTLS        []string
 	nxgConfigMap      string
 	tcpConfigMap      string
 	udpConfigMap      string
@@ -124,9 +125,8 @@ type loadBalancerController struct {
 }
 
 // newLoadBalancerController creates a controller for nginx loadbalancer
-func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration,
-	defaultSvc, namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName,
-	defSSLCertificate string, runtimeInfo *podInfo) (*loadBalancerController, error) {
+func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, defaultSvc,
+	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName, defSSLCertificate string, allowedTLS []string, runtimeInfo *podInfo) (*loadBalancerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
@@ -140,8 +140,9 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		nxgConfigMap:      nxgConfigMapName,
 		tcpConfigMap:      tcpConfigMapName,
 		udpConfigMap:      udpConfigMapName,
-		defSSLCertificate: defSSLCertificate,
 		defaultSvc:        defaultSvc,
+		allowedTLS:        allowedTLS,
+		defSSLCertificate: defSSLCertificate,
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{
 			Component: "nginx-ingress-controller",
 		}),
@@ -917,8 +918,28 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 	for _, ingIf := range data {
 		ing := ingIf.(*extensions.Ingress)
 		for _, tls := range ing.Spec.TLS {
+			namespace := ing.Namespace
 			secretName := tls.SecretName
-			secretKey := fmt.Sprintf("%s/%s", ing.Namespace, secretName)
+
+			// step: if the secretName crosses a namespace we need to check it's permitted
+			elements := strings.Split(secretName, "/")
+			if len(elements) == 2 && len(lbc.allowedTLS) > 0 {
+				var permitted bool
+				for _, x := range lbc.allowedTLS {
+					if secretName == x {
+						permitted = true
+						break
+					}
+				}
+				if !permitted {
+					glog.Warningf("The cross namespace secret: %s is not permitted by ingress resource: %s/%s", secretName, ing.Namespace, ing.Name)
+					continue
+				}
+				namespace = elements[0]
+				secretName = elements[1]
+			}
+
+			secretKey := fmt.Sprintf("%s/%s", namespace, secretName)
 
 			ngxCert, err := lbc.getPemCertificate(secretKey)
 			if err != nil {
@@ -945,7 +966,7 @@ func (lbc *loadBalancerController) getPemCertificate(secretName string) (nginx.S
 		return nginx.SSLCert{}, fmt.Errorf("Error retriveing secret %v: %v", secretName, err)
 	}
 	if !exists {
-		return nginx.SSLCert{}, fmt.Errorf("Secret %v does not exists", secretName)
+		return nginx.SSLCert{}, fmt.Errorf("Secret %v does not exist", secretName)
 	}
 
 	secret := secretInterface.(*api.Secret)
