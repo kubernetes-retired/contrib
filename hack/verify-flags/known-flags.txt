@@ -35,6 +35,7 @@ fixes-issue-reassign
 forward-services
 gcs-bucket
 gcs-logs-dir
+gcm-endpoint
 generated-files-config
 health-check-path
 healthz-port
