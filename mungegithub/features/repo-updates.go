@@ -135,8 +135,9 @@ func (o *RepoInfo) updateRepoUsers() error {
 
 // Initialize will initialize the munger
 func (o *RepoInfo) Initialize() error {
-	o.enabled = true
+	glog.Infof("kubernetes-dir: %#v\n", o.kubernetesDir)
 
+	o.enabled = true
 	if len(o.kubernetesDir) == 0 {
 		glog.Fatalf("--kubernetes-dir is required with selected munger(s)")
 	}
@@ -167,7 +168,7 @@ func (o *RepoInfo) EachLoop() error {
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (o *RepoInfo) AddFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&o.kubernetesDir, "kubernetes-dir", "./gitrepos/kubernetes", "Path to git checkout of kubernetes tree")
+	cmd.Flags().StringVar(&o.kubernetesDir, "kubernetes-dir", "", "Path to git checkout of kubernetes tree")
 }
 
 // GitCommand will execute the git command with the `args`

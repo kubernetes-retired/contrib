@@ -17,6 +17,7 @@ limitations under the License.
 package features
 
 import (
+	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 )
 
@@ -50,6 +51,10 @@ func (g *GCSInfo) Name() string {
 
 // Initialize will initialize the feature.
 func (g *GCSInfo) Initialize() error {
+	glog.Infof("gcs-bucket: %#v\n", g.BucketName)
+	glog.Infof("gcs-logs-dir: %#v\n", g.LogDir)
+	glog.Infof("pull-logs-dir: %#v\n", g.PullLogDir)
+	glog.Infof("pull-key: %#v\n", g.PullKey)
 	return nil
 }
 
@@ -60,8 +65,8 @@ func (g *GCSInfo) EachLoop() error {
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (g *GCSInfo) AddFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&g.BucketName, "gcs-bucket", "kubernetes-jenkins", "Name of GCS bucket.")
-	cmd.Flags().StringVar(&g.LogDir, "gcs-logs-dir", "logs", "Directory containing test logs.")
-	cmd.Flags().StringVar(&g.PullLogDir, "pull-logs-dir", "pr-logs", "Directory of the PR builder.")
-	cmd.Flags().StringVar(&g.PullKey, "pull-key", "pull", "String to look for in job name for it to be a pull (presubmit) job.")
+	cmd.Flags().StringVar(&g.BucketName, "gcs-bucket", "", "Name of GCS bucket.")
+	cmd.Flags().StringVar(&g.LogDir, "gcs-logs-dir", "", "Directory containing test logs.")
+	cmd.Flags().StringVar(&g.PullLogDir, "pull-logs-dir", "", "Directory of the PR builder.")
+	cmd.Flags().StringVar(&g.PullKey, "pull-key", "", "String to look for in job name for it to be a pull (presubmit) job.")
 }

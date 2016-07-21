@@ -63,6 +63,8 @@ func (SizeMunger) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
 func (s *SizeMunger) Initialize(config *github.Config, features *features.Features) error {
+	glog.Infof("generated-files-config: %#v\n", s.generatedFilesFile)
+
 	return nil
 }
 
@@ -71,7 +73,7 @@ func (SizeMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (s *SizeMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringVar(&s.generatedFilesFile, "generated-files-config", "generated-files.txt", "file containing the pathname to label mappings")
+	cmd.Flags().StringVar(&s.generatedFilesFile, "generated-files-config", "", "file containing the pathname to label mappings")
 }
 
 // getGeneratedFiles returns a list of all automatically generated files in the repo. These include

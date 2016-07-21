@@ -301,9 +301,9 @@ func (config *Config) AddRootFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().IntVar(&config.MinPRNumber, "min-pr-number", 0, "The minimum PR to start with")
 	cmd.PersistentFlags().IntVar(&config.MaxPRNumber, "max-pr-number", maxInt, "The maximum PR to start with")
 	cmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", true, "If true, don't actually merge anything")
-	cmd.PersistentFlags().StringVar(&config.Org, "organization", "kubernetes", "The github organization to scan")
-	cmd.PersistentFlags().StringVar(&config.Project, "project", "kubernetes", "The github project to scan")
-	cmd.PersistentFlags().StringVar(&config.state, "state", "open", "State of PRs to process: 'open', 'all', etc")
+	cmd.PersistentFlags().StringVar(&config.Org, "organization", "", "The github organization to scan")
+	cmd.PersistentFlags().StringVar(&config.Project, "project", "", "The github project to scan")
+	cmd.PersistentFlags().StringVar(&config.state, "state", "", "State of PRs to process: 'open', 'all', etc")
 	cmd.PersistentFlags().StringSliceVar(&config.labels, "labels", []string{}, "CSV list of label which should be set on processed PRs. Unset is all labels.")
 	cmd.PersistentFlags().StringVar(&config.Address, "address", ":8080", "The address to listen on for HTTP Status")
 	cmd.PersistentFlags().StringVar(&config.WWWRoot, "www", "www", "Path to static web files to serve from the webserver")
@@ -315,6 +315,20 @@ func (config *Config) AddRootFlags(cmd *cobra.Command) {
 // PreExecute will initialize the Config. It MUST be run before the config
 // may be used to get information from Github
 func (config *Config) PreExecute() error {
+	glog.Infof("token: %#v\n", config.Token)
+	glog.Infof("token-file: %#v\n", config.TokenFile)
+	glog.Infof("min-pr-number: %#v\n", config.MinPRNumber)
+	glog.Infof("max-pr-number: %#v\n", config.MaxPRNumber)
+	glog.Infof("dry-run: %#v\n", config.DryRun)
+	glog.Infof("organization: %#v\n", config.Org)
+	glog.Infof("project: %#v\n", config.Project)
+	glog.Infof("state: %#v\n", config.state)
+	glog.Infof("labels: %#v\n", config.labels)
+	glog.Infof("address: %#v\n", config.Address)
+	glog.Infof("www: %#v\n", config.WWWRoot)
+	glog.Infof("http-cache-dir: %#v\n", config.HTTPCacheDir)
+	glog.Infof("http-cache-size: %#v\n", config.HTTPCacheSize)
+
 	if len(config.Org) == 0 {
 		glog.Fatalf("--organization is required.")
 	}
