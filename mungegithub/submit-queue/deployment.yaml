@@ -40,7 +40,7 @@ spec:
       volumes:
       - name: secret-volume
         secret:
-          secretName: github-token
+          secretName: submit-queue-github-token
       - name: kubernetes-repo
         gitRepo:
           repository: "https://github.com/kubernetes/kubernetes.git"

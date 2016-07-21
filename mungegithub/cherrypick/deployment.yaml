@@ -37,7 +37,7 @@ spec:
       volumes:
       - name: cherrypick-secret-volume
         secret:
-          secretName: cherrypick-secret-volume
+          secretName: cherrypick-github-token
       - name: kubernetes-repo
         gitRepo:
           repository: "https://github.com/kubernetes/kubernetes.git"
