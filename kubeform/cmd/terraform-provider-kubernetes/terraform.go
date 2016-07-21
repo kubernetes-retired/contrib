@@ -19,7 +19,7 @@ package main
 import (
 	"github.com/hashicorp/terraform/plugin"
 
-	"k8s.io/kubeform/pkg/provider"
+	"k8s.io/contrib/kubeform/pkg/provider"
 )
 
 func main() {
