@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2016 The Kubernetes Authors All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,8 +59,8 @@ func TestCluster(t *testing.T) {
 		Providers:    testProviders,
 		CheckDestroy: testClusterDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
-				Config: testCluster_basic(),
+			{
+				Config: testClusterBasic(),
 				Check: resource.ComposeTestCheckFunc(
 					testClusterExists("kubernetes_cluster.cluster-foo"),
 				),
@@ -118,7 +118,7 @@ func testPreCheck(t *testing.T) {
 	return
 }
 
-func testCluster_basic() string {
+func testClusterBasic() string {
 	return fmt.Sprintf(`
 	resource "kubernetes_cluster" "cluster-foo" {
 		server = "https://cluster-master.test"

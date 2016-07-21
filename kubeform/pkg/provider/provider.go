@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2016 The Kubernetes Authors All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,17 +32,18 @@ import (
 )
 
 const (
-	UserAgent = "terraform-kubernetes"
+	userAgent = "terraform-kubernetes"
 
-	PollInterval = 10 * time.Second
-	PollTimeout  = 10 * time.Minute
+	pollInterval = 10 * time.Second
+	pollTimeout  = 10 * time.Minute
 
-	ConfigPollInterval = 100 * time.Millisecond
-	ConfigPollTimeout  = 2 * time.Minute
+	configPollInterval = 100 * time.Millisecond
+	configPollTimeout  = 2 * time.Minute
 
-	ResourceShutdownInterval = 1 * time.Minute
+	resourceShutdownInterval = 1 * time.Minute
 )
 
+// Provider returns an implementation of the Kubernetes provider.
 func Provider() terraform.ResourceProvider {
 	return &schema.Provider{
 		ResourcesMap: map[string]*schema.Resource{
@@ -78,7 +79,7 @@ func providerConfig(d *schema.ResourceData) (interface{}, error) {
 			return nil, fmt.Errorf("couldn't parse the supplied config: %v", err)
 		}
 
-		clientset, err := release_1_4.NewForConfig(restclient.AddUserAgent(clientConfig, UserAgent))
+		clientset, err := release_1_4.NewForConfig(restclient.AddUserAgent(clientConfig, userAgent))
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize the cluster client: %v", err)
 		}
@@ -89,11 +90,11 @@ func providerConfig(d *schema.ResourceData) (interface{}, error) {
 		}
 
 		return &config{
-			pollInterval:             PollInterval,
-			pollTimeout:              PollTimeout,
-			configPollInterval:       ConfigPollInterval,
-			ConfigPollTimeout:        ConfigPollTimeout,
-			resourceShutdownInterval: ResourceShutdownInterval,
+			pollInterval:             pollInterval,
+			pollTimeout:              pollTimeout,
+			configPollInterval:       configPollInterval,
+			ConfigPollTimeout:        configPollTimeout,
+			resourceShutdownInterval: resourceShutdownInterval,
 
 			kubeConfig: kubeConfig,
 			clientset:  clientset,
@@ -104,24 +105,24 @@ func providerConfig(d *schema.ResourceData) (interface{}, error) {
 
 func resourceKubeconfig() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateKubeconfig,
-		Delete: DeleteKubeconfig,
-		Read:   ReadKubeconfig,
+		Create: createKubeconfig,
+		Delete: deleteKubeconfig,
+		Read:   readKubeconfig,
 
 		Schema: map[string]*schema.Schema{
-			"server": &schema.Schema{
+			"server": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "Domain name or IP address of the API server",
 				ForceNew:    true,
 			},
-			"configdata": &schema.Schema{
+			"configdata": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "kubeconfig in the serialized JSON format",
 				ForceNew:    true,
 			},
-			"path": &schema.Schema{
+			"path": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "path to the kubeconfig file",
@@ -131,7 +132,7 @@ func resourceKubeconfig() *schema.Resource {
 	}
 }
 
-func CreateKubeconfig(d *schema.ResourceData, meta interface{}) error {
+func createKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	configF := meta.(configFunc)
 	cfg, err := configF(d)
 	if err != nil {
@@ -164,29 +165,29 @@ func CreateKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func DeleteKubeconfig(d *schema.ResourceData, meta interface{}) error {
+func deleteKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	d.SetId("")
 	return nil
 }
 
-func ReadKubeconfig(d *schema.ResourceData, meta interface{}) error {
+func readKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
 func resourceCluster() *schema.Resource {
 	return &schema.Resource{
-		Create: CreateCluster,
-		Delete: DeleteCluster,
-		Read:   ReadCluster,
+		Create: createCluster,
+		Delete: deleteCluster,
+		Read:   readCluster,
 
 		Schema: map[string]*schema.Schema{
-			"server": &schema.Schema{
+			"server": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "Domain name or IP address of the API server",
 				ForceNew:    true,
 			},
-			"configdata": &schema.Schema{
+			"configdata": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "kubeconfig in the serialized JSON format",
@@ -196,7 +197,7 @@ func resourceCluster() *schema.Resource {
 	}
 }
 
-func CreateCluster(d *schema.ResourceData, meta interface{}) error {
+func createCluster(d *schema.ResourceData, meta interface{}) error {
 	configF := meta.(configFunc)
 	cfg, err := configF(d)
 	if err != nil {
@@ -214,7 +215,7 @@ func CreateCluster(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func DeleteCluster(d *schema.ResourceData, meta interface{}) error {
+func deleteCluster(d *schema.ResourceData, meta interface{}) error {
 	configF := meta.(configFunc)
 	cfg, err := configF(d)
 	if err != nil {
@@ -237,7 +238,7 @@ func DeleteCluster(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func ReadCluster(d *schema.ResourceData, meta interface{}) error {
+func readCluster(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
