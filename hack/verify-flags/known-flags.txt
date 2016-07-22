@@ -6,6 +6,7 @@ block-path-config
 blunderbuss-config
 blunderbuss-reassign
 change-permissions
+chart-url
 cloud-config
 cloud-provider
 cluster-uid
@@ -39,6 +40,7 @@ gcm-endpoint
 generated-files-config
 health-check-path
 healthz-port
+history-url
 http-cache-dir
 http-cache-size
 http-port
