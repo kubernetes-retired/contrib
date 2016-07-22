@@ -115,3 +115,5 @@ config-file-path
 required-retest-contexts
 retest-body
 default-ssl-certificate
+housekeeping-interval
+system-namespace
