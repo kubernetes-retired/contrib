@@ -17,8 +17,12 @@ limitations under the License.
 package mungers
 
 import (
+	"strings"
+	"time"
+
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 
 	"github.com/golang/glog"
 	githubapi "github.com/google/go-github/github"
@@ -29,44 +33,56 @@ const (
 	lgtmRemovedBody = "PR changed after LGTM, removing LGTM."
 )
 
-// LGTMAfterCommitMunger will remove the LGTM flag from an PR which has been
-// updated since the reviewer added LGTM
-type LGTMAfterCommitMunger struct{}
+// LGTMHandler will
+// - apply the LGTM label if reviewer has said so, or
+// - remove the LGTM label from an PR which has been updated since the reviewer added LGTM
+type LGTMHandler struct{}
 
 func init() {
-	l := LGTMAfterCommitMunger{}
+	l := LGTMHandler{}
 	RegisterMungerOrDie(l)
 	RegisterStaleComments(l)
 }
 
 // Name is the name usable in --pr-mungers
-func (LGTMAfterCommitMunger) Name() string { return "lgtm-after-commit" }
+func (LGTMHandler) Name() string { return "lgtm-after-commit" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (LGTMAfterCommitMunger) RequiredFeatures() []string { return []string{} }
+func (LGTMHandler) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
-func (LGTMAfterCommitMunger) Initialize(config *github.Config, features *features.Features) error {
+func (LGTMHandler) Initialize(config *github.Config, features *features.Features) error {
 	return nil
 }
 
 // EachLoop is called at the start of every munge loop
-func (LGTMAfterCommitMunger) EachLoop() error { return nil }
+func (LGTMHandler) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (LGTMAfterCommitMunger) AddFlags(cmd *cobra.Command, config *github.Config) {}
+func (LGTMHandler) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
 // Munge is the workhorse the will actually make updates to the PR
-func (LGTMAfterCommitMunger) Munge(obj *github.MungeObject) {
+func (h LGTMHandler) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
 		return
 	}
 
+	lastModified := obj.LastModifiedTime()
 	if !obj.HasLabel(lgtmLabel) {
+		reviewers := append(obj.Issue.Assignees, obj.Issue.Assignee)
+		if !mungerutil.HasValidReviwer(reviewers) {
+			return
+		}
+		comments, err := obj.ListComments()
+		if err != nil {
+			glog.Errorf("unexpected error getting comments: %v", err)
+		}
+		if foundLGTMFromReviewer(comments, reviewers, lastModified) {
+			obj.AddLabel(lgtmLabel)
+		}
 		return
 	}
 
-	lastModified := obj.LastModifiedTime()
 	lgtmTime := obj.LabelTime(lgtmLabel)
 
 	if lastModified == nil || lgtmTime == nil {
@@ -83,7 +99,37 @@ func (LGTMAfterCommitMunger) Munge(obj *github.MungeObject) {
 	}
 }
 
-func (LGTMAfterCommitMunger) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+func foundLGTMFromReviewer(comments []*githubapi.IssueComment, reviewers []*githubapi.User, lastModified *time.Time) bool {
+	for _, c := range comments {
+		if lastModified == nil || c.CreatedAt == nil || (*lastModified).After(*c.CreatedAt) {
+			continue
+		}
+		if !isReviewer(c.User, reviewers) {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(*c.Body)) == "lgtm" {
+			return true
+		}
+	}
+	return false
+}
+
+func isReviewer(user *githubapi.User, reviewers []*githubapi.User) bool {
+	if user == nil || user.Login == nil {
+		return false
+	}
+	for _, r := range reviewers {
+		if r == nil || r.Login == nil {
+			continue
+		}
+		if *user.Login == *r.Login {
+			return true
+		}
+	}
+	return false
+}
+
+func (LGTMHandler) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
@@ -99,12 +145,12 @@ func (LGTMAfterCommitMunger) isStaleComment(obj *github.MungeObject, comment *gi
 	}
 	stale := lgtmTime.After(*comment.CreatedAt)
 	if stale {
-		glog.V(6).Infof("Found stale LGTMAfterCommitMunger comment")
+		glog.V(6).Infof("Found stale LGTMHandler comment")
 	}
 	return stale
 }
 
 // StaleComments returns a list of comments which are stale
-func (l LGTMAfterCommitMunger) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
-	return forEachCommentTest(obj, comments, l.isStaleComment)
+func (h LGTMHandler) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, h.isStaleComment)
 }
