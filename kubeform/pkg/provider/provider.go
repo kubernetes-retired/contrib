@@ -156,7 +156,7 @@ func createKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	// Retry until modifyConfig succeeds or times out.
 	log.Printf("[DEBUG] updating kubeconfig")
 	if !poll(cfg.configPollInterval, cfg.ConfigPollTimeout, updateConfig(po, cfg.kubeConfig)) {
-		return fmt.Errorf("cluster components never turned healthy")
+		return fmt.Errorf("couldn't update kubeconfig")
 	}
 
 	// Store the ID now
