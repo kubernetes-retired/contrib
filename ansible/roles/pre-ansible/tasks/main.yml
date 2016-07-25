@@ -31,6 +31,7 @@
   register: s
   changed_when: false
   failed_when: false
+  always_run: yes
 
 - name: Set the is_atomic fact
   set_fact:
