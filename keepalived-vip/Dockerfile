@@ -38,7 +38,8 @@ RUN mkdir -p /etc/keepalived && \
   ln -s /keepalived/sbin/keepalived /usr/sbin && \
   ln -s /keepalived/bin/genhash /usr/sbin
 
-COPY kube-keepalived-vip /kube-keepalived-vip
-COPY keepalived.tmpl /keepalived.tmpl
+COPY kube-keepalived-vip /
+COPY keepalived.tmpl /
+COPY keepalived.conf /etc/keepalived
 
 ENTRYPOINT ["/kube-keepalived-vip"]
