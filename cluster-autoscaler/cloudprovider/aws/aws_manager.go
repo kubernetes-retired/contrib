@@ -193,7 +193,7 @@ func (m *AwsManager) regenerateCache() error {
 		group := *groups.AutoScalingGroups[0]
 
 		for _, instance := range group.Instances {
-			ref := AwsRef{Zone: *instance.AvailabilityZone, Name: *instance.InstanceId}
+			ref := AwsRef{Name: *instance.InstanceId}
 			newCache[ref] = asg.config
 		}
 	}
