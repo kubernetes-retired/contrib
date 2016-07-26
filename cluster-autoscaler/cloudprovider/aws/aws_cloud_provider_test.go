@@ -50,7 +50,7 @@ func TestAddNodeGroup(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, len(provider.asgs), 0)
 
-	err = provider.addNodeGroup("1:5:test-az:test-asg")
+	err = provider.addNodeGroup("1:5:test-asg")
 	assert.NoError(t, err)
 	assert.Equal(t, len(provider.asgs), 1)
 }
@@ -63,7 +63,7 @@ func TestName(t *testing.T) {
 func TestNodeGroups(t *testing.T) {
 	provider := testProvider(t)
 	assert.Equal(t, len(provider.NodeGroups()), 0)
-	err := provider.addNodeGroup("1:5:test-az:test-asg")
+	err := provider.addNodeGroup("1:5:test-asg")
 	assert.NoError(t, err)
 	assert.Equal(t, len(provider.NodeGroups()), 1)
 }
@@ -78,12 +78,12 @@ func TestAwsRefFromProviderId(t *testing.T) {
 
 	awsRef, err := AwsRefFromProviderId("aws:///test-az/test-instance-id")
 	assert.NoError(t, err)
-	assert.Equal(t, awsRef, &AwsRef{Zone: "test-az", Name: "test-instance-id"})
+	assert.Equal(t, awsRef, &AwsRef{Name: "test-instance-id"})
 }
 
 func TestMaxSize(t *testing.T) {
 	provider := testProvider(t)
-	err := provider.addNodeGroup("1:5:test-az:test-asg")
+	err := provider.addNodeGroup("1:5:test-asg")
 	assert.NoError(t, err)
 	assert.Equal(t, len(provider.asgs), 1)
 	assert.Equal(t, provider.asgs[0].MaxSize(), 5)
@@ -91,7 +91,7 @@ func TestMaxSize(t *testing.T) {
 
 func TestMinSize(t *testing.T) {
 	provider := testProvider(t)
-	err := provider.addNodeGroup("1:5:test-az:test-asg")
+	err := provider.addNodeGroup("1:5:test-asg")
 	assert.NoError(t, err)
 	assert.Equal(t, len(provider.asgs), 1)
 	assert.Equal(t, provider.asgs[0].MinSize(), 1)
@@ -100,7 +100,7 @@ func TestMinSize(t *testing.T) {
 // TODO: Mock aws api response
 // func TestTargetSize(t *testing.T) {
 // 	provider := testProvider(t)
-// 	err := provider.addNodeGroup("1:5:test-az:test-asg")
+// 	err := provider.addNodeGroup("1:5:test-asg")
 // 	assert.NoError(t, err)
 // 	assert.Equal(t, len(provider.asgs), 1)
 // 	targetSize, err := provider.asgs[0].TargetSize()
@@ -116,10 +116,10 @@ func TestMinSize(t *testing.T) {
 
 func TestId(t *testing.T) {
 	provider := testProvider(t)
-	err := provider.addNodeGroup("1:5:test-az:test-asg")
+	err := provider.addNodeGroup("1:5:test-asg")
 	assert.NoError(t, err)
 	assert.Equal(t, len(provider.asgs), 1)
-	assert.Equal(t, provider.asgs[0].Id(), "test-az/test-asg")
+	assert.Equal(t, provider.asgs[0].Id(), "test-asg")
 }
 
 func TestDebug(t *testing.T) {
@@ -128,9 +128,8 @@ func TestDebug(t *testing.T) {
 		minSize:    5,
 		maxSize:    55,
 	}
-	asg.Zone = "test-az"
 	asg.Name = "test-asg"
-	assert.Equal(t, asg.Debug(), "test-az/test-asg (5:55)")
+	assert.Equal(t, asg.Debug(), "test-asg (5:55)")
 }
 
 func TestBuildAsg(t *testing.T) {
@@ -143,10 +142,9 @@ func TestBuildAsg(t *testing.T) {
 	_, err = buildAsg("1:2:", nil)
 	assert.Error(t, err)
 
-	asg, err := buildAsg("111:222:test-az:test-name", nil)
+	asg, err := buildAsg("111:222:test-name", nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 111, asg.MinSize())
 	assert.Equal(t, 222, asg.MaxSize())
-	assert.Equal(t, "test-az", asg.Zone)
 	assert.Equal(t, "test-name", asg.Name)
 }
