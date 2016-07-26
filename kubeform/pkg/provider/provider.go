@@ -174,7 +174,7 @@ func deleteKubeconfig(d *schema.ResourceData, meta interface{}) error {
 	// Retry until modifyConfig succeeds or times out.
 	log.Printf("[DEBUG] updating kubeconfig")
 	if !poll(cfg.configPollInterval, cfg.ConfigPollTimeout, updateConfig(po, cfg.kubeConfig, removeConfig)) {
-		return fmt.Errorf("cluster components never turned healthy")
+		return fmt.Errorf("couldn't remove kubeconfig entries")
 	}
 
 	d.SetId("")
