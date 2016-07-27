@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ import (
 	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
+	"k8s.io/kubernetes/pkg/apis/certificates"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/apis/policy"
 	"k8s.io/kubernetes/pkg/apis/rbac"
@@ -98,7 +99,7 @@ type Factory struct {
 	// Returns a Describer for displaying the specified RESTMapping type or an error.
 	Describer func(mapping *meta.RESTMapping) (kubectl.Describer, error)
 	// Returns a Printer for formatting objects of the given type or an error.
-	Printer func(mapping *meta.RESTMapping, noHeaders, withNamespace bool, wide bool, showAll bool, showLabels bool, absoluteTimestamps bool, columnLabels []string) (kubectl.ResourcePrinter, error)
+	Printer func(mapping *meta.RESTMapping, options kubectl.PrintOptions) (kubectl.ResourcePrinter, error)
 	// Returns a Scaler for changing the size of the specified RESTMapping type or an error
 	Scaler func(mapping *meta.RESTMapping) (kubectl.Scaler, error)
 	// Returns a Reaper for gracefully shutting down resources.
@@ -159,6 +160,7 @@ const (
 	ServiceV2GeneratorName                      = "service/v2"
 	ServiceAccountV1GeneratorName               = "serviceaccount/v1"
 	HorizontalPodAutoscalerV1Beta1GeneratorName = "horizontalpodautoscaler/v1beta1"
+	HorizontalPodAutoscalerV1GeneratorName      = "horizontalpodautoscaler/v1"
 	DeploymentV1Beta1GeneratorName              = "deployment/v1beta1"
 	JobV1Beta1GeneratorName                     = "job/v1beta1"
 	JobV1GeneratorName                          = "job/v1"
@@ -185,6 +187,7 @@ func DefaultGenerators(cmdName string) map[string]kubectl.Generator {
 	}
 	generators["autoscale"] = map[string]kubectl.Generator{
 		HorizontalPodAutoscalerV1Beta1GeneratorName: kubectl.HorizontalPodAutoscalerV1Beta1{},
+		HorizontalPodAutoscalerV1GeneratorName:      kubectl.HorizontalPodAutoscalerV1{},
 	}
 	generators["namespace"] = map[string]kubectl.Generator{
 		NamespaceV1GeneratorName: kubectl.NamespaceGeneratorV1{},
@@ -251,14 +254,14 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 		// have been dynamically added to the apiserver
 		Object: func(discoverDynamicAPIs bool) (meta.RESTMapper, runtime.ObjectTyper) {
 			cfg, err := clientConfig.ClientConfig()
-			CheckErr(err)
+			checkErrWithPrefix("failed to get client config: ", err)
 			cmdApiVersion := unversioned.GroupVersion{}
 			if cfg.GroupVersion != nil {
 				cmdApiVersion = *cfg.GroupVersion
 			}
 			if discoverDynamicAPIs {
 				client, err := clients.ClientForVersion(&unversioned.GroupVersion{Version: "v1"})
-				CheckErr(err)
+				checkErrWithPrefix("failed to find client for version v1: ", err)
 
 				var versions []unversioned.GroupVersion
 				var gvks []unversioned.GroupVersionKind
@@ -272,7 +275,7 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 						break
 					}
 				}
-				CheckErr(err)
+				checkErrWithPrefix("failed to get third-party group versions: ", err)
 				if len(versions) > 0 {
 					priorityMapper, ok := mapper.RESTMapper.(meta.PriorityRESTMapper)
 					if !ok {
@@ -292,7 +295,7 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 						preferredExternalVersion := versionList[0]
 
 						thirdPartyMapper, err := kubectl.NewThirdPartyResourceMapper(versionList, getGroupVersionKinds(gvks, group))
-						CheckErr(err)
+						checkErrWithPrefix("failed to create third party resource mapper: ", err)
 						accessor := meta.NewAccessor()
 						groupMeta := apimachinery.GroupMeta{
 							GroupVersion:  preferredExternalVersion,
@@ -302,7 +305,7 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 							InterfacesFor: makeInterfacesFor(versionList),
 						}
 
-						CheckErr(registered.RegisterGroup(groupMeta))
+						checkErrWithPrefix("failed to register group: ", registered.RegisterGroup(groupMeta))
 						registered.AddThirdPartyAPIGroupVersions(versionList...)
 						multiMapper = append(meta.MultiRESTMapper{thirdPartyMapper}, multiMapper...)
 					}
@@ -315,16 +318,21 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 			outputRESTMapper := kubectl.OutputVersionMapper{RESTMapper: mapper, OutputVersions: []unversioned.GroupVersion{cmdApiVersion}}
 			priorityRESTMapper := meta.PriorityRESTMapper{
 				Delegate: outputRESTMapper,
-				ResourcePriority: []unversioned.GroupVersionResource{
-					{Group: api.GroupName, Version: meta.AnyVersion, Resource: meta.AnyResource},
-					{Group: extensions.GroupName, Version: meta.AnyVersion, Resource: meta.AnyResource},
-					{Group: federation.GroupName, Version: meta.AnyVersion, Resource: meta.AnyResource},
-				},
-				KindPriority: []unversioned.GroupVersionKind{
-					{Group: api.GroupName, Version: meta.AnyVersion, Kind: meta.AnyKind},
-					{Group: extensions.GroupName, Version: meta.AnyVersion, Kind: meta.AnyKind},
-					{Group: federation.GroupName, Version: meta.AnyVersion, Kind: meta.AnyKind},
-				},
+			}
+			// TODO: this should come from registered versions
+			groups := []string{api.GroupName, autoscaling.GroupName, extensions.GroupName, federation.GroupName, batch.GroupName}
+			// set a preferred version
+			for _, group := range groups {
+				gvs := registered.EnabledVersionsForGroup(group)
+				if len(gvs) == 0 {
+					continue
+				}
+				priorityRESTMapper.ResourcePriority = append(priorityRESTMapper.ResourcePriority, unversioned.GroupVersionResource{Group: group, Version: gvs[0].Version, Resource: meta.AnyResource})
+				priorityRESTMapper.KindPriority = append(priorityRESTMapper.KindPriority, unversioned.GroupVersionKind{Group: group, Version: gvs[0].Version, Kind: meta.AnyKind})
+			}
+			for _, group := range groups {
+				priorityRESTMapper.ResourcePriority = append(priorityRESTMapper.ResourcePriority, unversioned.GroupVersionResource{Group: group, Version: meta.AnyVersion, Resource: meta.AnyResource})
+				priorityRESTMapper.KindPriority = append(priorityRESTMapper.KindPriority, unversioned.GroupVersionKind{Group: group, Version: meta.AnyVersion, Kind: meta.AnyKind})
 			}
 			return priorityRESTMapper, api.Scheme
 		},
@@ -362,6 +370,8 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 				return clients.FederationClientForVersion(&mappingVersion)
 			case rbac.GroupName:
 				return c.RbacClient.RESTClient, nil
+			case certificates.GroupName:
+				return c.CertificatesClient.RESTClient, nil
 			default:
 				if !registered.IsThirdPartyAPIGroupVersion(gvk.GroupVersion()) {
 					return nil, fmt.Errorf("unknown api group/version: %s", gvk.String())
@@ -373,7 +383,7 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 				gv := gvk.GroupVersion()
 				cfg.GroupVersion = &gv
 				cfg.APIPath = "/apis"
-				cfg.Codec = thirdpartyresourcedata.NewCodec(c.ExtensionsClient.RESTClient.Codec(), gvk.Kind)
+				cfg.NegotiatedSerializer = thirdpartyresourcedata.NewNegotiatedSerializer(api.Codecs, gvk.Kind, gv, gv)
 				return restclient.RESTClientFor(cfg)
 			}
 		},
@@ -398,16 +408,20 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 			return nil, fmt.Errorf("no description has been implemented for %q", mapping.GroupVersionKind.Kind)
 		},
 		Decoder: func(toInternal bool) runtime.Decoder {
+			var decoder runtime.Decoder
 			if toInternal {
-				return api.Codecs.UniversalDecoder()
+				decoder = api.Codecs.UniversalDecoder()
+			} else {
+				decoder = api.Codecs.UniversalDeserializer()
 			}
-			return api.Codecs.UniversalDeserializer()
+			return thirdpartyresourcedata.NewDecoder(decoder, "")
+
 		},
 		JSONEncoder: func() runtime.Encoder {
 			return api.Codecs.LegacyCodec(registered.EnabledVersions()...)
 		},
-		Printer: func(mapping *meta.RESTMapping, noHeaders, withNamespace bool, wide bool, showAll bool, showLabels bool, absoluteTimestamps bool, columnLabels []string) (kubectl.ResourcePrinter, error) {
-			return kubectl.NewHumanReadablePrinter(noHeaders, withNamespace, wide, showAll, showLabels, absoluteTimestamps, columnLabels), nil
+		Printer: func(mapping *meta.RESTMapping, options kubectl.PrintOptions) (kubectl.ResourcePrinter, error) {
+			return kubectl.NewHumanReadablePrinter(options), nil
 		},
 		MapBasedSelectorForObject: func(object runtime.Object) (string, error) {
 			// TODO: replace with a swagger schema based approach (identify pod selector via schema introspection)
@@ -511,7 +525,7 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 					return nil, errors.New("provided options object is not a PodLogOptions")
 				}
 				selector := labels.SelectorFromSet(t.Spec.Selector)
-				sortBy := func(pods []*api.Pod) sort.Interface { return controller.ActivePods(pods) }
+				sortBy := func(pods []*api.Pod) sort.Interface { return controller.ByLogging(pods) }
 				pod, numPods, err := GetFirstPod(c, t.Namespace, selector, 20*time.Second, sortBy)
 				if err != nil {
 					return nil, err
@@ -531,7 +545,7 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 				if err != nil {
 					return nil, fmt.Errorf("invalid label selector: %v", err)
 				}
-				sortBy := func(pods []*api.Pod) sort.Interface { return controller.ActivePods(pods) }
+				sortBy := func(pods []*api.Pod) sort.Interface { return controller.ByLogging(pods) }
 				pod, numPods, err := GetFirstPod(c, t.Namespace, selector, 20*time.Second, sortBy)
 				if err != nil {
 					return nil, err
@@ -791,7 +805,7 @@ See http://releases.k8s.io/HEAD/docs/user-guide/services-firewalls.md for more d
 
 // GetFirstPod returns a pod matching the namespace and label selector
 // and the number of all pods that match the label selector.
-func GetFirstPod(client client.Interface, namespace string, selector labels.Selector, timeout time.Duration, sortBy func([]*api.Pod) sort.Interface) (*api.Pod, int, error) {
+func GetFirstPod(client client.PodsNamespacer, namespace string, selector labels.Selector, timeout time.Duration, sortBy func([]*api.Pod) sort.Interface) (*api.Pod, int, error) {
 	options := api.ListOptions{LabelSelector: selector}
 
 	podList, err := client.Pods(namespace).List(options)
@@ -1095,6 +1109,12 @@ func (c *clientSwaggerSchema) ValidateBytes(data []byte) error {
 		}
 		return getSchemaAndValidate(c.fedc, data, "apis/", gvk.GroupVersion().String(), c.cacheDir, c)
 	}
+	if gvk.Group == certificates.GroupName {
+		if c.c.CertificatesClient == nil {
+			return errors.New("unable to validate: no certificates client")
+		}
+		return getSchemaAndValidate(c.c.CertificatesClient.RESTClient, data, "apis/", gvk.GroupVersion().String(), c.cacheDir, c)
+	}
 	return getSchemaAndValidate(c.c.RESTClient, data, "api", gvk.GroupVersion().String(), c.cacheDir, c)
 }
 
@@ -1203,7 +1223,15 @@ func (f *Factory) PrinterForMapping(cmd *cobra.Command, mapping *meta.RESTMappin
 		if err != nil {
 			columnLabel = []string{}
 		}
-		printer, err = f.Printer(mapping, GetFlagBool(cmd, "no-headers"), withNamespace, GetWideFlag(cmd), GetFlagBool(cmd, "show-all"), GetFlagBool(cmd, "show-labels"), isWatch(cmd), columnLabel)
+		printer, err = f.Printer(mapping, kubectl.PrintOptions{
+			NoHeaders:          GetFlagBool(cmd, "no-headers"),
+			WithNamespace:      withNamespace,
+			Wide:               GetWideFlag(cmd),
+			ShowAll:            GetFlagBool(cmd, "show-all"),
+			ShowLabels:         GetFlagBool(cmd, "show-labels"),
+			AbsoluteTimestamps: isWatch(cmd),
+			ColumnLabels:       columnLabel,
+		})
 		if err != nil {
 			return nil, err
 		}

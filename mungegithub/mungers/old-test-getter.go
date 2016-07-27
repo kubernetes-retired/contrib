@@ -49,6 +49,8 @@ func (p *OldTestGetter) RequiredFeatures() []string { return nil }
 
 // Initialize will initialize the munger
 func (p *OldTestGetter) Initialize(config *github.Config, features *features.Features) error {
+	glog.Infof("number-of-old-test-results: %#v\n", p.numberOfOldTestsToGet)
+
 	// TODO: don't get the mungers from the global list, they should be passed in...
 	for _, m := range GetAllMungers() {
 		if m.Name() == "submit-queue" {
@@ -125,7 +127,7 @@ func (p *OldTestGetter) getPresubmitTests(jobs []string, e2eTester *e2e.RealE2ET
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (p *OldTestGetter) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().IntVar(&p.numberOfOldTestsToGet, "number-of-old-test-results", 5, "The number of old test results to get (and therefore file issues for). In case submit queue has some downtime, set this to a higher number and it will file issues for older test runs.")
+	cmd.Flags().IntVar(&p.numberOfOldTestsToGet, "number-of-old-test-results", 0, "The number of old test results to get (and therefore file issues for). In case submit queue has some downtime, set this to a higher number and it will file issues for older test runs.")
 }
 
 // Munge is unused by this munger.

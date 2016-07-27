@@ -19,6 +19,7 @@ package mungers
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"k8s.io/contrib/mungegithub/features"
@@ -35,21 +36,19 @@ const (
 	stalePullRequest = 90 * day // Close the PR if no human interaction for `stalePullRequest`
 	startWarning     = 60 * day
 	remindWarning    = 30 * day
-	closingComment   = `This PR hasn't been active in %s. Feel free to reopen.
+	closingComment   = `This PR hasn't been active in %s. Closing this PR. Please reopen if you would like to work towards merging this change, if/when the PR is ready for the next round of review.
 
-You can add 'keep-open' label to prevent this from happening again.`
-	warningComment = `This PR hasn't been active in %s. Will be closed in %s.
+%s
+You can add 'keep-open' label to prevent this from happening again, or add a comment to keep it open another 90 days`
+	warningComment = `This PR hasn't been active in %s. It will be closed in %s (%s).
 
-You can add 'keep-open' label to prevent this from happening.`
+%s
+You can add 'keep-open' label to prevent this from happening, or add a comment to keep it open another 90 days`
 )
 
 var (
-	closingCommentRE = regexp.MustCompile(`This PR hasn't been active in \d+ days?\. Feel free to reopen.
-
-You can add 'keep-open' label to prevent this from happening again\.`)
-	warningCommentRE = regexp.MustCompile(`This PR hasn't been active in \d+ days?\. Will be closed in \d+ days?\.
-
-You can add 'keep-open' label to prevent this from happening\.`)
+	closingCommentRE = regexp.MustCompile(`This PR hasn't been active in \d+ days?\..*label to prevent this from happening again`)
+	warningCommentRE = regexp.MustCompile(`This PR hasn't been active in \d+ days?\..*be closed in \d+ days`)
 )
 
 // CloseStalePR will ask the Bot to close any PullRequest that didn't
@@ -206,7 +205,7 @@ func findLatestWarningComment(obj *github.MungeObject) *githubapi.IssueComment {
 			if lastFoundComment != nil {
 				obj.DeleteComment(lastFoundComment)
 			}
-			lastFoundComment = &comment
+			lastFoundComment = comment
 		}
 	}
 
@@ -223,20 +222,63 @@ func durationToDays(duration time.Duration) string {
 }
 
 func closePullRequest(obj *github.MungeObject, inactiveFor time.Duration) {
+	mention := mentionUsers(getInvolvedUsers(obj))
+	if mention != "" {
+		mention = "cc " + mention + "\n"
+	}
+
 	comment := findLatestWarningComment(obj)
 	if comment != nil {
 		obj.DeleteComment(comment)
 	}
 
-	obj.WriteComment(fmt.Sprintf(closingComment, durationToDays(inactiveFor)))
+	obj.WriteComment(fmt.Sprintf(closingComment, durationToDays(inactiveFor), mention))
 	obj.ClosePR()
 }
 
+func getInvolvedUsers(obj *github.MungeObject) []string {
+	var users []string
+
+	var user string
+	if obj.Issue.User != nil && obj.Issue.User.Login != nil {
+		user = *obj.Issue.User.Login
+		users = append(users, user)
+	}
+
+	for _, assignee := range obj.Issue.Assignees {
+		if assignee.Login == nil || *assignee.Login == user {
+			continue
+		}
+		users = append(users, *assignee.Login)
+	}
+
+	return users
+}
+
+func mentionUsers(users []string) string {
+	var mentions []string
+	for _, user := range users {
+		mentions = append(mentions, "@"+user)
+	}
+
+	return strings.Join(mentions, " ")
+}
+
 func postWarningComment(obj *github.MungeObject, inactiveFor time.Duration, closeIn time.Duration) {
+	mention := mentionUsers(getInvolvedUsers(obj))
+	if mention != "" {
+		mention = "cc " + mention + "\n"
+	}
+
+	closeDate := time.Now().Add(closeIn).Format("Jan 2, 2006")
+
 	obj.WriteComment(fmt.Sprintf(
 		warningComment,
 		durationToDays(inactiveFor),
-		durationToDays(closeIn)))
+		durationToDays(closeIn),
+		closeDate,
+		mention,
+	))
 }
 
 func checkAndWarn(obj *github.MungeObject, inactiveFor time.Duration, closeIn time.Duration) {
@@ -280,11 +322,15 @@ func (CloseStalePR) Munge(obj *github.MungeObject) {
 	} else if closeIn <= startWarning {
 		checkAndWarn(obj, inactiveFor, closeIn)
 	} else {
-		// Pull-request is active. Do nothing
+		// Pull-request is active. Remove previous potential warning
+		comment := findLatestWarningComment(obj)
+		if comment != nil {
+			obj.DeleteComment(comment)
+		}
 	}
 }
 
-func (CloseStalePR) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+func (CloseStalePR) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
@@ -297,6 +343,6 @@ func (CloseStalePR) isStaleComment(obj *github.MungeObject, comment githubapi.Is
 }
 
 // StaleComments returns a slice of stale comments
-func (s CloseStalePR) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+func (s CloseStalePR) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
 	return forEachCommentTest(obj, comments, s.isStaleComment)
 }

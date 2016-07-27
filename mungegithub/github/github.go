@@ -200,6 +200,7 @@ type analytics struct {
 	ListIssueEvents    analytic
 	ListCommits        analytic
 	GetCommit          analytic
+	ListFiles          analytic
 	GetCombinedStatus  analytic
 	SetStatus          analytic
 	GetPR              analytic
@@ -233,6 +234,7 @@ func (a analytics) print() {
 	fmt.Fprintf(w, "ListIssueEvents\t%d\t\n", a.ListIssueEvents.Count)
 	fmt.Fprintf(w, "ListCommits\t%d\t\n", a.ListCommits.Count)
 	fmt.Fprintf(w, "GetCommit\t%d\t\n", a.GetCommit.Count)
+	fmt.Fprintf(w, "ListFiles\t%d\t\n", a.ListFiles.Count)
 	fmt.Fprintf(w, "GetCombinedStatus\t%d\t\n", a.GetCombinedStatus.Count)
 	fmt.Fprintf(w, "SetStatus\t%d\t\n", a.SetStatus.Count)
 	fmt.Fprintf(w, "GetPR\t%d\t\n", a.GetPR.Count)
@@ -258,10 +260,11 @@ type MungeObject struct {
 	config      *Config
 	Issue       *github.Issue
 	pr          *github.PullRequest
-	commits     []github.RepositoryCommit
-	events      []github.IssueEvent
-	comments    []github.IssueComment
-	prComments  []github.PullRequestComment
+	commits     []*github.RepositoryCommit
+	events      []*github.IssueEvent
+	comments    []*github.IssueComment
+	prComments  []*github.PullRequestComment
+	commitFiles []*github.CommitFile
 	Annotations map[string]string //annotations are things you can set yourself.
 }
 
@@ -280,7 +283,7 @@ type DebugStats struct {
 // TestObject should NEVER be used outside of _test.go code. It creates a
 // MungeObject with the given fields. Normally these should be filled in lazily
 // as needed
-func TestObject(config *Config, issue *github.Issue, pr *github.PullRequest, commits []github.RepositoryCommit, events []github.IssueEvent) *MungeObject {
+func TestObject(config *Config, issue *github.Issue, pr *github.PullRequest, commits []*github.RepositoryCommit, events []*github.IssueEvent) *MungeObject {
 	return &MungeObject{
 		config:      config,
 		Issue:       issue,
@@ -298,9 +301,9 @@ func (config *Config) AddRootFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().IntVar(&config.MinPRNumber, "min-pr-number", 0, "The minimum PR to start with")
 	cmd.PersistentFlags().IntVar(&config.MaxPRNumber, "max-pr-number", maxInt, "The maximum PR to start with")
 	cmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", true, "If true, don't actually merge anything")
-	cmd.PersistentFlags().StringVar(&config.Org, "organization", "kubernetes", "The github organization to scan")
-	cmd.PersistentFlags().StringVar(&config.Project, "project", "kubernetes", "The github project to scan")
-	cmd.PersistentFlags().StringVar(&config.state, "state", "open", "State of PRs to process: 'open', 'all', etc")
+	cmd.PersistentFlags().StringVar(&config.Org, "organization", "", "The github organization to scan")
+	cmd.PersistentFlags().StringVar(&config.Project, "project", "", "The github project to scan")
+	cmd.PersistentFlags().StringVar(&config.state, "state", "", "State of PRs to process: 'open', 'all', etc")
 	cmd.PersistentFlags().StringSliceVar(&config.labels, "labels", []string{}, "CSV list of label which should be set on processed PRs. Unset is all labels.")
 	cmd.PersistentFlags().StringVar(&config.Address, "address", ":8080", "The address to listen on for HTTP Status")
 	cmd.PersistentFlags().StringVar(&config.WWWRoot, "www", "www", "Path to static web files to serve from the webserver")
@@ -312,6 +315,20 @@ func (config *Config) AddRootFlags(cmd *cobra.Command) {
 // PreExecute will initialize the Config. It MUST be run before the config
 // may be used to get information from Github
 func (config *Config) PreExecute() error {
+	glog.Infof("token: %#v\n", config.Token)
+	glog.Infof("token-file: %#v\n", config.TokenFile)
+	glog.Infof("min-pr-number: %#v\n", config.MinPRNumber)
+	glog.Infof("max-pr-number: %#v\n", config.MaxPRNumber)
+	glog.Infof("dry-run: %#v\n", config.DryRun)
+	glog.Infof("organization: %#v\n", config.Org)
+	glog.Infof("project: %#v\n", config.Project)
+	glog.Infof("state: %#v\n", config.state)
+	glog.Infof("labels: %#v\n", config.labels)
+	glog.Infof("address: %#v\n", config.Address)
+	glog.Infof("www: %#v\n", config.WWWRoot)
+	glog.Infof("http-cache-dir: %#v\n", config.HTTPCacheDir)
+	glog.Infof("http-cache-size: %#v\n", config.HTTPCacheSize)
+
 	if len(config.Org) == 0 {
 		glog.Fatalf("--organization is required.")
 	}
@@ -480,7 +497,7 @@ func (obj *MungeObject) Refresh() error {
 }
 
 // ListMilestones will return all milestones of the given `state`
-func (config *Config) ListMilestones(state string) []github.Milestone {
+func (config *Config) ListMilestones(state string) []*github.Milestone {
 	listopts := github.MilestoneListOptions{
 		State: state,
 	}
@@ -583,10 +600,10 @@ func (obj *MungeObject) LastModifiedTime() *time.Time {
 // labelEvent returns the most recent event where the given label was added to an issue
 func (obj *MungeObject) labelEvent(label string) *github.IssueEvent {
 	var labelTime *time.Time
-	var out github.IssueEvent
+	var out *github.IssueEvent
 	events, err := obj.GetEvents()
 	if err != nil {
-		return &out
+		return out
 	}
 	index := 0
 	for i, event := range events {
@@ -600,7 +617,7 @@ func (obj *MungeObject) labelEvent(label string) *github.IssueEvent {
 	}
 	// Want this information next time we hit the bug where it can't find the most recent LGTM label.
 	glog.Infof("%v labelEvent: searched %v events for label %v, found at index %v", *obj.Issue.Number, len(events), label, index)
-	return &out
+	return out
 }
 
 // LabelTime returns the last time the request label was added to an issue.
@@ -770,7 +787,7 @@ func (obj *MungeObject) SetMilestone(title string) error {
 			continue
 		}
 		if *m.Title == title {
-			milestone = &m
+			milestone = m
 			break
 		}
 	}
@@ -860,9 +877,9 @@ func (obj *MungeObject) Priority() int {
 // MungeFunction is the type that must be implemented and passed to ForEachIssueDo
 type MungeFunction func(*MungeObject) error
 
-func (config *Config) fetchAllCollaborators() ([]github.User, error) {
+func (config *Config) fetchAllCollaborators() ([]*github.User, error) {
 	page := 1
-	var result []github.User
+	var result []*github.User
 	for {
 		glog.V(4).Infof("Fetching page %d of all users", page)
 		listOpts := &github.ListOptions{PerPage: 100, Page: page}
@@ -884,9 +901,9 @@ func (config *Config) fetchAllCollaborators() ([]github.User, error) {
 // access. The second set is the specific set of user with pull access. If the
 // repo is public all users will have pull access, but some with have it
 // explicitly
-func (config *Config) UsersWithAccess() ([]github.User, []github.User, error) {
-	pushUsers := []github.User{}
-	pullUsers := []github.User{}
+func (config *Config) UsersWithAccess() ([]*github.User, []*github.User, error) {
+	pushUsers := []*github.User{}
+	pullUsers := []*github.User{}
 
 	users, err := config.fetchAllCollaborators()
 	if err != nil {
@@ -934,10 +951,10 @@ func (obj *MungeObject) IsPR() bool {
 }
 
 // GetEvents returns a list of all events for a given pr.
-func (obj *MungeObject) GetEvents() ([]github.IssueEvent, error) {
+func (obj *MungeObject) GetEvents() ([]*github.IssueEvent, error) {
 	config := obj.config
 	prNum := *obj.Issue.Number
-	events := []github.IssueEvent{}
+	events := []*github.IssueEvent{}
 	page := 1
 	// Try to work around not finding events--suspect some cache invalidation bug when the number of pages changes.
 	tryNextPageAnyway := false
@@ -1175,12 +1192,12 @@ func (obj *MungeObject) WaitForNotPending(requiredContexts []string) error {
 }
 
 // GetCommits returns all of the commits for a given PR
-func (obj *MungeObject) GetCommits() ([]github.RepositoryCommit, error) {
+func (obj *MungeObject) GetCommits() ([]*github.RepositoryCommit, error) {
 	if obj.commits != nil {
 		return obj.commits, nil
 	}
 	config := obj.config
-	commits := []github.RepositoryCommit{}
+	commits := []*github.RepositoryCommit{}
 	page := 0
 	for {
 		commitsPage, response, err := config.client.PullRequests.ListCommits(config.Org, config.Project, *obj.Issue.Number, &github.ListOptions{PerPage: 100, Page: page})
@@ -1196,7 +1213,7 @@ func (obj *MungeObject) GetCommits() ([]github.RepositoryCommit, error) {
 		page++
 	}
 
-	filledCommits := []github.RepositoryCommit{}
+	filledCommits := []*github.RepositoryCommit{}
 	for _, c := range commits {
 		if c.SHA == nil {
 			glog.Errorf("Invalid Repository Commit: %v", c)
@@ -1208,10 +1225,46 @@ func (obj *MungeObject) GetCommits() ([]github.RepositoryCommit, error) {
 			glog.Errorf("Can't load commit %s %s %s: %v", config.Org, config.Project, *c.SHA, err)
 			continue
 		}
-		filledCommits = append(filledCommits, *commit)
+		filledCommits = append(filledCommits, commit)
 	}
 	obj.commits = filledCommits
 	return filledCommits, nil
+}
+
+// ListFiles returns all changed files in a pull-request
+func (obj *MungeObject) ListFiles() ([]*github.CommitFile, error) {
+	if obj.commitFiles != nil {
+		return obj.commitFiles, nil
+	}
+
+	pr, err := obj.GetPR()
+	if err != nil {
+		return nil, err
+	}
+
+	prNum := *pr.Number
+	allFiles := []*github.CommitFile{}
+
+	listOpts := &github.ListOptions{}
+
+	config := obj.config
+	page := 1
+	for {
+		listOpts.Page = page
+		glog.V(8).Infof("Fetching page %d of changed files for issue %d", page, prNum)
+		files, response, err := obj.config.client.PullRequests.ListFiles(config.Org, config.Project, prNum, listOpts)
+		config.analytics.ListFiles.Call(config, response)
+		if err != nil {
+			return nil, err
+		}
+		allFiles = append(allFiles, files...)
+		if response.LastPage == 0 || response.LastPage <= page {
+			break
+		}
+		page++
+	}
+	obj.commitFiles = allFiles
+	return allFiles, nil
 }
 
 // GetPR will return the PR of the object.
@@ -1404,7 +1457,7 @@ func (obj *MungeObject) MergePR(who string) error {
 		mergeBody = fmt.Sprintf("%s\n\n%s", mergeBody, issueBody)
 	}
 
-	_, _, err := config.client.PullRequests.Merge(config.Org, config.Project, prNum, mergeBody)
+	_, _, err := config.client.PullRequests.Merge(config.Org, config.Project, prNum, mergeBody, nil)
 
 	// The github API https://developer.github.com/v3/pulls/#merge-a-pull-request-merge-button indicates
 	// we will only get the bellow error if we provided a particular sha to merge PUT. We aren't doing that
@@ -1414,7 +1467,7 @@ func (obj *MungeObject) MergePR(who string) error {
 	// then merge this PR, so try again.
 	if err != nil && strings.Contains(err.Error(), "branch was modified. Review and try the merge again.") {
 		if mergeable, _ := obj.IsMergeable(); mergeable {
-			_, _, err = config.client.PullRequests.Merge(config.Org, config.Project, prNum, mergeBody)
+			_, _, err = config.client.PullRequests.Merge(config.Org, config.Project, prNum, mergeBody, nil)
 		}
 	}
 	if err != nil {
@@ -1445,7 +1498,7 @@ func (obj *MungeObject) GetPRFixesList() []int {
 }
 
 // ListReviewComments returns all review (diff) comments for the PR in question
-func (obj *MungeObject) ListReviewComments() ([]github.PullRequestComment, error) {
+func (obj *MungeObject) ListReviewComments() ([]*github.PullRequestComment, error) {
 	if obj.prComments != nil {
 		return obj.prComments, nil
 	}
@@ -1455,7 +1508,7 @@ func (obj *MungeObject) ListReviewComments() ([]github.PullRequestComment, error
 		return nil, err
 	}
 	prNum := *pr.Number
-	allComments := []github.PullRequestComment{}
+	allComments := []*github.PullRequestComment{}
 
 	listOpts := &github.PullRequestListCommentsOptions{}
 
@@ -1480,10 +1533,10 @@ func (obj *MungeObject) ListReviewComments() ([]github.PullRequestComment, error
 }
 
 // ListComments returns all comments for the issue/PR in question
-func (obj *MungeObject) ListComments() ([]github.IssueComment, error) {
+func (obj *MungeObject) ListComments() ([]*github.IssueComment, error) {
 	config := obj.config
 	issueNum := *obj.Issue.Number
-	allComments := []github.IssueComment{}
+	allComments := []*github.IssueComment{}
 
 	if obj.comments != nil {
 		return obj.comments, nil
@@ -1546,7 +1599,7 @@ func (obj *MungeObject) DeleteComment(comment *github.IssueComment) error {
 	if which != -1 {
 		// We do this crazy delete since users might be iterating over `range obj.comments`
 		// Make a completely new copy and leave their ranging alone.
-		temp := make([]github.IssueComment, len(obj.comments)-1)
+		temp := make([]*github.IssueComment, len(obj.comments)-1)
 		copy(temp, obj.comments[:which])
 		copy(temp[which:], obj.comments[which+1:])
 		obj.comments = temp
@@ -1653,7 +1706,7 @@ func (config *Config) ForEachIssueDo(fn MungeFunction) error {
 			return err
 		}
 		for i := range issues {
-			issue := &issues[i]
+			issue := issues[i]
 			if issue.Number == nil {
 				glog.Infof("Skipping issue with no number, very strange")
 				continue
@@ -1704,7 +1757,7 @@ func (config *Config) ListAllIssues(listOpts *github.IssueListByRepoOptions) ([]
 			return nil, err
 		}
 		for i := range issues {
-			issue := &issues[i]
+			issue := issues[i]
 			if issue.Number == nil {
 				glog.Infof("Skipping issue with no number, very strange")
 				continue

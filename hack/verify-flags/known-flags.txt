@@ -6,6 +6,7 @@ block-path-config
 blunderbuss-config
 blunderbuss-reassign
 change-permissions
+chart-url
 cloud-config
 cloud-provider
 cluster-uid
@@ -35,9 +36,11 @@ fixes-issue-reassign
 forward-services
 gcs-bucket
 gcs-logs-dir
+gcm-endpoint
 generated-files-config
 health-check-path
 healthz-port
+history-url
 http-cache-dir
 http-cache-size
 http-port
@@ -47,7 +50,6 @@ issue-mungers
 issue-reports
 jenkins-host
 jenkins-jobs
-kubernetes-dir
 last-release-pr
 left-build-number
 max-pr-number
@@ -69,6 +71,7 @@ pull-logs-dir
 rate-limit
 rate-limit-burst
 relnote-filter
+repo-dir
 required-contexts
 right-build-number
 running-in-cluster
@@ -113,3 +116,6 @@ whitelist-override-label
 config-file-path
 required-retest-contexts
 retest-body
+default-ssl-certificate
+housekeeping-interval
+system-namespace

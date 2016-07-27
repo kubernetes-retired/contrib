@@ -63,6 +63,8 @@ func (SizeMunger) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
 func (s *SizeMunger) Initialize(config *github.Config, features *features.Features) error {
+	glog.Infof("generated-files-config: %#v\n", s.generatedFilesFile)
+
 	return nil
 }
 
@@ -71,7 +73,7 @@ func (SizeMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (s *SizeMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringVar(&s.generatedFilesFile, "generated-files-config", "generated-files.txt", "file containing the pathname to label mappings")
+	cmd.Flags().StringVar(&s.generatedFilesFile, "generated-files-config", "", "file containing the pathname to label mappings")
 }
 
 // getGeneratedFiles returns a list of all automatically generated files in the repo. These include
@@ -169,25 +171,23 @@ func (s *SizeMunger) Munge(obj *github.MungeObject) {
 	}
 	dels := *pr.Deletions
 
-	commits, err := obj.GetCommits()
+	files, err := obj.ListFiles()
 	if err != nil {
 		return
 	}
 
-	for _, c := range commits {
-		for _, f := range c.Files {
-			for _, p := range genPrefixes {
-				if strings.HasPrefix(*f.Filename, p) {
-					adds = adds - *f.Additions
-					dels = dels - *f.Deletions
-					continue
-				}
-			}
-			if genFiles.Has(*f.Filename) {
+	for _, f := range files {
+		for _, p := range genPrefixes {
+			if strings.HasPrefix(*f.Filename, p) {
 				adds = adds - *f.Additions
 				dels = dels - *f.Deletions
 				continue
 			}
+		}
+		if genFiles.Has(*f.Filename) {
+			adds = adds - *f.Additions
+			dels = dels - *f.Deletions
+			continue
 		}
 	}
 
@@ -242,7 +242,7 @@ func calculateSize(adds, dels int) string {
 	return sizeXXL
 }
 
-func (s *SizeMunger) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+func (s *SizeMunger) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
@@ -254,6 +254,6 @@ func (s *SizeMunger) isStaleComment(obj *github.MungeObject, comment githubapi.I
 }
 
 // StaleComments returns a slice of stale comments
-func (s *SizeMunger) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+func (s *SizeMunger) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
 	return forEachCommentTest(obj, comments, s.isStaleComment)
 }

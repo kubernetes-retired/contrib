@@ -46,17 +46,13 @@ import (
 )
 
 const (
-	lgtmLabel              = "lgtm"
-	retestNotRequiredLabel = "retest-not-required"
-	doNotMergeLabel        = "do-not-merge"
-	claYesLabel            = "cla: yes"
-	claHumanLabel          = "cla: human-approved"
-
-	jenkinsE2EContext    = "Jenkins GCE e2e"
-	jenkinsUnitContext   = "Jenkins unit/integration"
-	jenkinsVerifyContext = "Jenkins verification"
-	jenkinsNodeContext   = "Jenkins GCE Node e2e"
-	sqContext            = "Submit Queue"
+	lgtmLabel                      = "lgtm"
+	retestNotRequiredLabel         = "retest-not-required"
+	retestNotRequiredDocsOnlyLabel = "retest-not-required-docs-only"
+	doNotMergeLabel                = "do-not-merge"
+	claYesLabel                    = "cla: yes"
+	claHumanLabel                  = "cla: human-approved"
+	sqContext                      = "Submit Queue"
 
 	retestNotRequiredMergePriority = -1 // used for retestNotRequiredLabel
 	defaultMergePriority           = 3  // when an issue is unlabeled
@@ -68,13 +64,6 @@ var (
 	_ = fmt.Print
 	// This MUST cause a RETEST of everything in the sq.RequiredRetestContexts
 	retestBody = fmt.Sprintf("@%s test this [submit-queue is verifying that this PR is safe to merge]", jenkinsBotName)
-
-	requiredContexts = []string{
-		jenkinsUnitContext,
-		jenkinsE2EContext,
-		jenkinsNodeContext,
-		jenkinsVerifyContext,
-	}
 )
 
 type submitStatus struct {
@@ -146,6 +135,16 @@ type submitQueueInterruptedObject struct {
 	interruptedMergeBaseSHA string
 }
 
+// Contains metadata about this instance of the submit queue such as URLs.
+// Consumed by the template system.
+type submitQueueMetadata struct {
+	ProjectName string
+
+	ChartUrl    string
+	HistoryUrl  string
+	RepoPullUrl string
+}
+
 // SubmitQueue will merge PR which meet a set of requirements.
 //  PR must have LGTM after the last commit
 //  PR must have passed all github CI checks
@@ -195,6 +194,7 @@ type SubmitQueue struct {
 	retestsAvoided int32 // Increments whenever we skip due to head not changing.
 
 	health        submitQueueHealth
+	metadata      submitQueueMetadata
 	healthHistory []healthRecord
 
 	emergencyMergeStopFlag int32
@@ -222,7 +222,9 @@ func init() {
 func (sq *SubmitQueue) Name() string { return "submit-queue" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (sq *SubmitQueue) RequiredFeatures() []string { return []string{features.GCSFeature} }
+func (sq *SubmitQueue) RequiredFeatures() []string {
+	return []string{features.GCSFeature, features.TestOptionsFeature}
+}
 
 func (sq *SubmitQueue) emergencyMergeStop() bool {
 	return atomic.LoadInt32(&sq.emergencyMergeStopFlag) != 0
@@ -357,6 +359,7 @@ func cleanStringSlice(in []string) []string {
 // Initialize will initialize the munger
 func (sq *SubmitQueue) Initialize(config *github.Config, features *features.Features) error {
 	sq.features = features
+	sq.RequiredRetestContexts = features.TestOptions.RequiredRetestContexts
 	return sq.internalInitialize(config, features, "")
 }
 
@@ -375,6 +378,21 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 	sq.RequiredRetestContexts = cleanStringSlice(sq.RequiredRetestContexts)
 	sq.doNotMergeMilestones = cleanStringSlice(sq.doNotMergeMilestones)
 
+	glog.Infof("jenkins-jobs: %#v\n", sq.BlockingJobNames)
+	glog.Infof("nonblocking-jenkins-jobs: %#v\n", sq.NonBlockingJobNames)
+	glog.Infof("presubmit-jobs: %#v\n", sq.PresubmitJobNames)
+	glog.Infof("weak-stable-jobs: %#v\n", sq.WeakStableJobNames)
+	glog.Infof("required-contexts: %#v\n", sq.RequiredStatusContexts)
+	glog.Infof("required-retest-contexts: %#v\n", sq.RequiredRetestContexts)
+	glog.Infof("do-not-merge-milestones: %#v\n", sq.doNotMergeMilestones)
+	glog.Infof("admin-port: %#v\n", sq.adminPort)
+	glog.Infof("retest-body: %#v\n", sq.retestBody)
+	glog.Infof("fake-e2e: %#v\n", sq.FakeE2E)
+	glog.Infof("chart-url: %#v\n", sq.metadata.ChartUrl)
+	glog.Infof("history-url: %#v\n", sq.metadata.HistoryUrl)
+
+	sq.metadata.RepoPullUrl = fmt.Sprintf("https://github.com/%s/%s/pulls/", config.Org, config.Project)
+	sq.metadata.ProjectName = strings.Title(config.Project)
 	sq.githubConfig = config
 
 	// TODO: This is not how injection for tests should work.
@@ -417,6 +435,7 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 		http.Handle("/health.svg", gziphandler.GzipHandler(http.HandlerFunc(sq.serveHealthSVG)))
 		http.Handle("/sq-stats", gziphandler.GzipHandler(http.HandlerFunc(sq.serveSQStats)))
 		http.Handle("/flakes", gziphandler.GzipHandler(http.HandlerFunc(sq.serveFlakes)))
+		http.Handle("/metadata", gziphandler.GzipHandler(http.HandlerFunc(sq.serveMetadata)))
 		config.ServeDebugStats("/stats")
 		go http.ListenAndServe(config.Address, nil)
 	}
@@ -464,42 +483,20 @@ func (sq *SubmitQueue) EachLoop() error {
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringSliceVar(&sq.NonBlockingJobNames, "nonblocking-jenkins-jobs", []string{
-		"kubernetes-e2e-gke-staging",
-		"kubernetes-e2e-gke-staging-parallel",
-		"kubernetes-e2e-gce-serial",
-		"kubernetes-e2e-gke-serial",
-		"kubernetes-e2e-gke-test",
-		"kubernetes-e2e-gce-examples",
-		"kubernetes-e2e-gce-federation",
-		"kubernetes-e2e-gce-scalability",
-		"kubernetes-soak-continuous-e2e-gce",
-		"kubernetes-soak-continuous-e2e-gke",
-	}, "Comma separated list of jobs that don't block merges, but will have status reported and issues filed.")
-	cmd.Flags().StringSliceVar(&sq.BlockingJobNames, "jenkins-jobs", []string{
-		"kubelet-gce-e2e-ci",
-		"kubernetes-build",
-		"kubernetes-test-go",
-		"kubernetes-verify-master",
-		"kubernetes-e2e-gce",
-		"kubernetes-e2e-gce-slow",
-		"kubernetes-e2e-gke",
-		"kubernetes-e2e-gke-slow",
-		"kubernetes-kubemark-5-gce",
-	}, "Comma separated list of jobs in Jenkins that should block merges if failing.")
-	cmd.Flags().StringSliceVar(&sq.PresubmitJobNames, "presubmit-jobs", []string{
-		"kubernetes-pull-build-test-e2e-gce",
-	}, "Comma separated list of jobs in Jenkins that run presubmit and should have issues filed for flakes.")
+	cmd.Flags().StringSliceVar(&sq.NonBlockingJobNames, "nonblocking-jenkins-jobs", []string{}, "Comma separated list of jobs that don't block merges, but will have status reported and issues filed.")
+	cmd.Flags().StringSliceVar(&sq.BlockingJobNames, "jenkins-jobs", []string{}, "Comma separated list of jobs in Jenkins that should block merges if failing.")
+	cmd.Flags().StringSliceVar(&sq.PresubmitJobNames, "presubmit-jobs", []string{""}, "Comma separated list of jobs in Jenkins that run presubmit and should have issues filed for flakes.")
 	cmd.Flags().StringSliceVar(&sq.WeakStableJobNames, "weak-stable-jobs",
 		[]string{},
 		"Comma separated list of jobs in Jenkins to use for stability testing that needs only weak success")
 	cmd.Flags().StringSliceVar(&sq.RequiredStatusContexts, "required-contexts", []string{}, "Comma separate list of status contexts required for a PR to be considered ok to merge")
-	cmd.Flags().StringSliceVar(&sq.RequiredRetestContexts, "required-retest-contexts", requiredContexts, "Comma separate list of statuses which will be retested and which must come back green after the `retest-body` comment is posted to a PR")
 	cmd.Flags().StringVar(&sq.retestBody, "retest-body", retestBody, "message which, when posted to the PR, will cause ALL `required-retest-contexts` to be re-tested")
 	cmd.Flags().BoolVar(&sq.FakeE2E, "fake-e2e", false, "Whether to use a fake for testing E2E stability.")
 	cmd.Flags().StringSliceVar(&sq.doNotMergeMilestones, "do-not-merge-milestones", []string{}, "List of milestones which, when applied, will cause the PR to not be merged")
 	cmd.Flags().IntVar(&sq.adminPort, "admin-port", 9999, "If non-zero, will serve administrative actions on this port.")
 	// If you create a StringSliceVar you may wish to check out 'cleanStringSliceVar()'
+	cmd.Flags().StringVar(&sq.metadata.HistoryUrl, "history-url", "", "URL to access the submit-queue instance's health history.")
+	cmd.Flags().StringVar(&sq.metadata.ChartUrl, "chart-url", "", "URL to access the submit-queue instance's health charts.")
 }
 
 // Hold the lock
@@ -792,6 +789,12 @@ func (sq *SubmitQueue) getHealth() []byte {
 	return sq.marshal(sq.health)
 }
 
+func (sq *SubmitQueue) getMetaData() []byte {
+	sq.Lock()
+	defer sq.Unlock()
+	return sq.marshal(sq.metadata)
+}
+
 const (
 	unknown                 = "unknown failure"
 	noCLA                   = "PR does not have " + claYesLabel + " or " + claHumanLabel
@@ -969,7 +972,7 @@ func (sq *SubmitQueue) cleanupOldE2E(obj *github.MungeObject, reason string) {
 
 func priority(obj *github.MungeObject) int {
 	// jump to the front of the queue if you don't need retested
-	if obj.HasLabel(retestNotRequiredLabel) {
+	if obj.HasLabel(retestNotRequiredLabel) || obj.HasLabel(retestNotRequiredDocsOnlyLabel) {
 		return retestNotRequiredMergePriority
 	}
 
@@ -1131,7 +1134,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 		return true
 	}
 
-	if obj.HasLabel(retestNotRequiredLabel) {
+	if obj.HasLabel(retestNotRequiredLabel) || obj.HasLabel(retestNotRequiredDocsOnlyLabel) {
 		atomic.AddInt32(&sq.instantMerges, 1)
 		sq.mergePullRequest(obj)
 		return true
@@ -1246,6 +1249,11 @@ func (sq *SubmitQueue) serveFlakes(res http.ResponseWriter, req *http.Request) {
 	sq.serve(sq.prettyMarshal(data), res, req)
 }
 
+func (sq *SubmitQueue) serveMetadata(res http.ResponseWriter, req *http.Request) {
+	data := sq.getMetaData()
+	sq.serve(data, res, req)
+}
+
 func (sq *SubmitQueue) serveMergeInfo(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-type", "text/plain")
 	res.WriteHeader(http.StatusOK)
@@ -1280,7 +1288,7 @@ func (sq *SubmitQueue) serveMergeInfo(res http.ResponseWriter, req *http.Request
 			out.WriteString(fmt.Sprintf("<li>%s</li>", context))
 		}
 		out.WriteString("</ul>")
-		out.WriteString(fmt.Sprintf("Unless the %q label is present</li>", retestNotRequiredLabel))
+		out.WriteString(fmt.Sprintf("Unless the %q or %q label is present</li>", retestNotRequiredLabel, retestNotRequiredDocsOnlyLabel))
 	}
 	out.WriteString("</ol>")
 	out.WriteString("And then the PR will be merged!!")
@@ -1297,7 +1305,7 @@ func (sq *SubmitQueue) servePriorityInfo(res http.ResponseWriter, req *http.Requ
       <li>Determined by a label of the form 'priority/pX'
       <li>P0 -&gt; P1 -&gt; P2</li>
       <li>A PR with no priority label is considered equal to a P3</li>
-      <li>A PR with the '` + retestNotRequiredLabel + `' label will come first, before even P0</li>
+      <li>A PR with the '` + retestNotRequiredLabel + `' or '` + retestNotRequiredDocsOnlyLabel + `' label will come first, before even P0</li>
     </ul>
   </li>
   <li>Release milestone due date
@@ -1346,14 +1354,14 @@ func (sq *SubmitQueue) serveHealthSVG(res http.ResponseWriter, req *http.Request
 	res.Write(sq.getHealthSVG())
 }
 
-func (sq *SubmitQueue) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+func (sq *SubmitQueue) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
 	if *comment.Body != retestBody {
 		return false
 	}
-	stale := commentBeforeLastCI(obj, comment)
+	stale := commentBeforeLastCI(obj, comment, sq.RequiredRetestContexts)
 	if stale {
 		glog.V(6).Infof("Found stale SubmitQueue safe to merge comment")
 	}
@@ -1361,6 +1369,6 @@ func (sq *SubmitQueue) isStaleComment(obj *github.MungeObject, comment githubapi
 }
 
 // StaleComments returns a slice of stale comments
-func (sq *SubmitQueue) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+func (sq *SubmitQueue) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
 	return forEachCommentTest(obj, comments, sq.isStaleComment)
 }

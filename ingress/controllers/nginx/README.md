@@ -9,6 +9,7 @@ This is a nginx Ingress controller that uses [ConfigMap](https://github.com/kube
 * [Deployment](#deployment)
 * [HTTP](#http)
 * [HTTPS](#https)
+  * [Default SSL Certificate](#default-ssl-certificate)
   * [HTTPS enforcement](#server-side-https-enforcement)
   * [HSTS](#http-strict-transport-security)
   * [Kube-Lego](#automated-certificate-management-with-kube-lego)
@@ -17,6 +18,7 @@ This is a nginx Ingress controller that uses [ConfigMap](https://github.com/kube
 * [Proxy Protocol](#proxy-protocol)
 * [NGINX customization](configuration.md)
 * [NGINX status page](#nginx-status-page)
+* [Disabling NGINX ingress controller](#disabling-nginx-ingress-controller)
 * [Debug & Troubleshooting](#troubleshooting)
 * [Limitations](#limitations)
 * [NGINX Notes](#nginx-notes)
@@ -134,6 +136,110 @@ Please follow [test.sh](https://github.com/bprashanth/Ingress/blob/master/exampl
 
 Check the [example](examples/tls/README.md)
 
+### Default SSL Certificate
+
+NGINX provides the option serve rname [_](http://nginx.org/en/docs/http/server_names.html) as a catch-all in case of requests that do not match one of the configured server names. This configuration works without issues for HTTP traffic. In case of HTTPS NGINX requires a certificate. For this reason the Ingress controller provides the flag `--default-ssl-certificate`. The secret behind this flag contains the default certificate to be used in the mentioned case.
+If this flag is not provided NGINX will use a self signed certificate.
+
+Running without the flag `--default-ssl-certificate`:
+
+```
+$ curl -v https://10.2.78.7:443 -k
+* Rebuilt URL to: https://10.2.78.7:443/
+*   Trying 10.2.78.4...
+* Connected to 10.2.78.7 (10.2.78.7) port 443 (#0)
+* ALPN, offering http/1.1
+* Cipher selection: ALL:!EXPORT:!EXPORT40:!EXPORT56:!aNULL:!LOW:!RC4:@STRENGTH
+* successfully set certificate verify locations:
+*   CAfile: /etc/ssl/certs/ca-certificates.crt
+  CApath: /etc/ssl/certs
+* TLSv1.2 (OUT), TLS header, Certificate Status (22):
+* TLSv1.2 (OUT), TLS handshake, Client hello (1):
+* TLSv1.2 (IN), TLS handshake, Server hello (2):
+* TLSv1.2 (IN), TLS handshake, Certificate (11):
+* TLSv1.2 (IN), TLS handshake, Server key exchange (12):
+* TLSv1.2 (IN), TLS handshake, Server finished (14):
+* TLSv1.2 (OUT), TLS handshake, Client key exchange (16):
+* TLSv1.2 (OUT), TLS change cipher, Client hello (1):
+* TLSv1.2 (OUT), TLS handshake, Finished (20):
+* TLSv1.2 (IN), TLS change cipher, Client hello (1):
+* TLSv1.2 (IN), TLS handshake, Finished (20):
+* SSL connection using TLSv1.2 / ECDHE-RSA-AES128-GCM-SHA256
+* ALPN, server accepted to use http/1.1
+* Server certificate:
+*    subject: CN=foo.bar.com
+*    start date: Apr 13 00:50:56 2016 GMT
+*    expire date: Apr 13 00:50:56 2017 GMT
+*    issuer: CN=foo.bar.com
+*    SSL certificate verify result: self signed certificate (18), continuing anyway.
+> GET / HTTP/1.1
+> Host: 10.2.78.7
+> User-Agent: curl/7.47.1
+> Accept: */*
+>
+< HTTP/1.1 404 Not Found
+< Server: nginx/1.11.1
+< Date: Thu, 21 Jul 2016 15:38:46 GMT
+< Content-Type: text/html
+< Transfer-Encoding: chunked
+< Connection: keep-alive
+< Strict-Transport-Security: max-age=15724800; includeSubDomains; preload
+<
+<span>The page you're looking for could not be found.</span>
+
+* Connection #0 to host 10.2.78.7 left intact
+```
+
+Specifyng `--default-ssl-certificate=default/foo-tls`:
+
+```
+core@localhost ~ $ curl -v https://10.2.78.7:443 -k
+* Rebuilt URL to: https://10.2.78.7:443/
+*   Trying 10.2.78.7...
+* Connected to 10.2.78.7 (10.2.78.7) port 443 (#0)
+* ALPN, offering http/1.1
+* Cipher selection: ALL:!EXPORT:!EXPORT40:!EXPORT56:!aNULL:!LOW:!RC4:@STRENGTH
+* successfully set certificate verify locations:
+*   CAfile: /etc/ssl/certs/ca-certificates.crt
+  CApath: /etc/ssl/certs
+* TLSv1.2 (OUT), TLS header, Certificate Status (22):
+* TLSv1.2 (OUT), TLS handshake, Client hello (1):
+* TLSv1.2 (IN), TLS handshake, Server hello (2):
+* TLSv1.2 (IN), TLS handshake, Certificate (11):
+* TLSv1.2 (IN), TLS handshake, Server key exchange (12):
+* TLSv1.2 (IN), TLS handshake, Server finished (14):
+* TLSv1.2 (OUT), TLS handshake, Client key exchange (16):
+* TLSv1.2 (OUT), TLS change cipher, Client hello (1):
+* TLSv1.2 (OUT), TLS handshake, Finished (20):
+* TLSv1.2 (IN), TLS change cipher, Client hello (1):
+* TLSv1.2 (IN), TLS handshake, Finished (20):
+* SSL connection using TLSv1.2 / ECDHE-RSA-AES128-GCM-SHA256
+* ALPN, server accepted to use http/1.1
+* Server certificate:
+*    subject: CN=foo.bar.com
+*    start date: Apr 13 00:50:56 2016 GMT
+*    expire date: Apr 13 00:50:56 2017 GMT
+*    issuer: CN=foo.bar.com
+*    SSL certificate verify result: self signed certificate (18), continuing anyway.
+> GET / HTTP/1.1
+> Host: 10.2.78.7
+> User-Agent: curl/7.47.1
+> Accept: */*
+>
+< HTTP/1.1 404 Not Found
+< Server: nginx/1.11.1
+< Date: Mon, 18 Jul 2016 21:02:59 GMT
+< Content-Type: text/html
+< Transfer-Encoding: chunked
+< Connection: keep-alive
+< Strict-Transport-Security: max-age=15724800; includeSubDomains; preload
+<
+<span>The page you're looking for could not be found.</span>
+
+* Connection #0 to host 10.2.78.7 left intact
+```
+
+
 ### Server-side HTTPS enforcement
 
 By default the controller redirects (301) to HTTPS if TLS is enabled for that ingress . If you want to disable that behaviour globally, you can use `ssl-redirect: "false"` in the NGINX config map.
@@ -232,6 +338,10 @@ Please check the example `example/rc-default.yaml`
 ![nginx-module-vts screenshot](https://cloud.githubusercontent.com/assets/3648408/10876811/77a67b70-8183-11e5-9924-6a6d0c5dc73a.png "screenshot with filter")
 
 To extract the information in JSON format the module provides a custom URL: `/nginx_status/format/json`
+
+### Disabling NGINX ingress controller
+
+Setting the annotation `kubernetes.io/ingress.class` to any value other than "nginx" or the empty string, will force the NGINX Ingress controller to ignore your Ingress. Do this if you wish to use one of the other Ingress controllers at the same time as the NGINX controller.
 
 
 ### Debug & Troubleshooting

@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -283,7 +283,8 @@ type PersistentVolumeClaimVolumeSource struct {
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
-// +genclient=true,nonNamespaced=true
+// +genclient=true
+// +nonNamespaced=true
 
 type PersistentVolume struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -306,6 +307,8 @@ type PersistentVolumeSpec struct {
 	// ClaimRef is part of a bi-directional binding between PersistentVolume and PersistentVolumeClaim.
 	// ClaimRef is expected to be non-nil when bound.
 	// claim.VolumeName is the authoritative bind between PV and PVC.
+	// When set to non-nil value, PVC.Spec.Selector of the referenced PVC is
+	// ignored, i.e. labels of this PV do not need to match PVC selector.
 	ClaimRef *ObjectReference `json:"claimRef,omitempty"`
 	// Optional: what happens to a persistent volume when released from its claim.
 	PersistentVolumeReclaimPolicy PersistentVolumeReclaimPolicy `json:"persistentVolumeReclaimPolicy,omitempty"`
@@ -366,11 +369,13 @@ type PersistentVolumeClaimList struct {
 type PersistentVolumeClaimSpec struct {
 	// Contains the types of access modes required
 	AccessModes []PersistentVolumeAccessMode `json:"accessModes,omitempty"`
-	// A label query over volumes to consider for binding
+	// A label query over volumes to consider for binding. This selector is
+	// ignored when VolumeName is set
 	Selector *unversioned.LabelSelector `json:"selector,omitempty"`
 	// Resources represents the minimum resources required
 	Resources ResourceRequirements `json:"resources,omitempty"`
-	// VolumeName is the binding reference to the PersistentVolume backing this claim
+	// VolumeName is the binding reference to the PersistentVolume backing this
+	// claim. When set to non-empty value Selector is not evaluated
 	VolumeName string `json:"volumeName,omitempty"`
 }
 
@@ -436,7 +441,7 @@ type HostPathVolumeSource struct {
 type EmptyDirVolumeSource struct {
 	// TODO: Longer term we want to represent the selection of underlying
 	// media more like a scheduling problem - user says what traits they
-	// need, we give them a backing store that satisifies that.  For now
+	// need, we give them a backing store that satisfies that.  For now
 	// this will cover the most common needs.
 	// Optional: what type of storage medium should back this directory.
 	// The default is "" which means to use the node's default medium.
@@ -645,13 +650,13 @@ type RBDVolumeSource struct {
 	// TODO: how do we prevent errors in the filesystem from compromising the machine
 	FSType string `json:"fsType,omitempty"`
 	// Optional: RadosPool is the rados pool name,default is rbd
-	RBDPool string `json:"pool"`
+	RBDPool string `json:"pool,omitempty"`
 	// Optional: RBDUser is the rados user name, default is admin
-	RadosUser string `json:"user"`
+	RadosUser string `json:"user,omitempty"`
 	// Optional: Keyring is the path to key ring for RBDUser, default is /etc/ceph/keyring
-	Keyring string `json:"keyring"`
-	// Optional: SecretRef is name of the authentication secret for RBDUser, default is empty.
-	SecretRef *LocalObjectReference `json:"secretRef"`
+	Keyring string `json:"keyring,omitempty"`
+	// Optional: SecretRef is name of the authentication secret for RBDUser, default is nil.
+	SecretRef *LocalObjectReference `json:"secretRef,omitempty"`
 	// Optional: Defaults to false (read/write). ReadOnly here will force
 	// the ReadOnly setting in VolumeMounts.
 	ReadOnly bool `json:"readOnly,omitempty"`
@@ -1474,12 +1479,15 @@ type PodSecurityContext struct {
 	// Use the host's network namespace.  If this option is set, the ports that will be
 	// used must be specified.
 	// Optional: Default to false
+	// +k8s:conversion-gen=false
 	HostNetwork bool `json:"hostNetwork,omitempty"`
 	// Use the host's pid namespace.
 	// Optional: Default to false.
+	// +k8s:conversion-gen=false
 	HostPID bool `json:"hostPID,omitempty"`
 	// Use the host's ipc namespace.
 	// Optional: Default to false.
+	// +k8s:conversion-gen=false
 	HostIPC bool `json:"hostIPC,omitempty"`
 	// The SELinux context to be applied to all containers.
 	// If unspecified, the container runtime will allocate a random SELinux context for each
@@ -1983,11 +1991,50 @@ type NodeStatus struct {
 	NodeInfo NodeSystemInfo `json:"nodeInfo,omitempty"`
 	// List of container images on this node
 	Images []ContainerImage `json:"images,omitempty"`
-	// List of attachable volume devices in use (mounted) by the node.
-	VolumesInUse []UniqueDeviceName `json:"volumesInUse,omitempty"`
+	// List of attachable volumes in use (mounted) by the node.
+	VolumesInUse []UniqueVolumeName `json:"volumesInUse,omitempty"`
+	// List of volumes that are attached to the node.
+	VolumesAttached []AttachedVolume `json:"volumesAttached,omitempty"`
 }
 
-type UniqueDeviceName string
+type UniqueVolumeName string
+
+// AttachedVolume describes a volume attached to a node
+type AttachedVolume struct {
+	// Name of the attached volume
+	Name UniqueVolumeName `json:"name"`
+
+	// DevicePath represents the device path where the volume should be available
+	DevicePath string `json:"devicePath"`
+}
+
+// AvoidPods describes pods that should avoid this node. This is the value for a
+// Node annotation with key scheduler.alpha.kubernetes.io/preferAvoidPods and
+// will eventually become a field of NodeStatus.
+type AvoidPods struct {
+	// Bounded-sized list of signatures of pods that should avoid this node, sorted
+	// in timestamp order from oldest to newest. Size of the slice is unspecified.
+	PreferAvoidPods []PreferAvoidPodsEntry `json:"preferAvoidPods,omitempty"`
+}
+
+// Describes a class of pods that should avoid this node.
+type PreferAvoidPodsEntry struct {
+	// The class of pods.
+	PodSignature PodSignature `json:"podSignature"`
+	// Time at which this entry was added to the list.
+	EvictionTime unversioned.Time `json:"evictionTime,omitempty"`
+	// (brief) reason why this entry was added to the list.
+	Reason string `json:"reason,omitempty"`
+	// Human readable message indicating why this entry was added to the list.
+	Message string `json:"message,omitempty"`
+}
+
+// Describes the class of pods that should avoid this node.
+// Exactly one field should be set.
+type PodSignature struct {
+	// Reference to controller whose pods should avoid this node.
+	PodController *OwnerReference `json:"podController,omitempty"`
+}
 
 // Describe a container image
 type ContainerImage struct {
@@ -2081,7 +2128,8 @@ const (
 // ResourceList is a set of (resource name, quantity) pairs.
 type ResourceList map[ResourceName]resource.Quantity
 
-// +genclient=true,nonNamespaced=true
+// +genclient=true
+// +nonNamespaced=true
 
 // Node is a worker node in Kubernetes
 // The name of the node according to etcd is in ObjectMeta.Name.
@@ -2134,7 +2182,8 @@ const (
 	NamespaceTerminating NamespacePhase = "Terminating"
 )
 
-// +genclient=true,nonNamespaced=true
+// +genclient=true
+// +nonNamespaced=true
 
 // A namespace provides a scope for Names.
 // Use of multiple namespaces is optional
@@ -2211,7 +2260,11 @@ type ListOptions struct {
 	FieldSelector fields.Selector
 	// If true, watch for changes to this list
 	Watch bool
-	// The resource version to watch (no effect on list yet)
+	// For watch, it's the resource version to watch.
+	// For list,
+	// - if unset, then the result is returned from remote storage based on quorum-read flag;
+	// - if it's 0, then we simply return what we currently have in cache, no guarantee;
+	// - if set to non zero, then the result is as fresh as given rv.
 	ResourceVersion string
 	// Timeout for the list/watch call.
 	TimeoutSeconds *int64
@@ -2671,7 +2724,7 @@ const (
 	// TODO: Consider supporting different formats, specifying CA/destinationCA.
 	SecretTypeTLS SecretType = "kubernetes.io/tls"
 
-	// TLSCertKey is the key for tls certificates in a TLS secert.
+	// TLSCertKey is the key for tls certificates in a TLS secret.
 	TLSCertKey = "tls.crt"
 	// TLSPrivateKeyKey is the key for the private key field in a TLS secret.
 	TLSPrivateKeyKey = "tls.key"
@@ -2736,6 +2789,8 @@ const (
 	StreamTypeData = "data"
 	// Value for streamType header for error stream
 	StreamTypeError = "error"
+	// Value for streamType header for terminal resize stream
+	StreamTypeResize = "resize"
 
 	// Name of header that specifies the port being forwarded
 	PortHeader = "port"
@@ -2770,7 +2825,8 @@ type ComponentCondition struct {
 	Error   string                 `json:"error,omitempty"`
 }
 
-// +genclient=true,nonNamespaced=true
+// +genclient=true
+// +nonNamespaced=true
 
 // ComponentStatus (and ComponentStatusList) holds the cluster validation info.
 type ComponentStatus struct {

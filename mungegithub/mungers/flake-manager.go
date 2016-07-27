@@ -28,10 +28,11 @@ import (
 	"k8s.io/contrib/mungegithub/mungers/testowner"
 	"k8s.io/contrib/test-utils/utils"
 
+	"time"
+
 	"github.com/golang/glog"
 	libgithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
-	"time"
 )
 
 // failedStr is for comment matching during auto prioritization
@@ -74,6 +75,8 @@ func (p *FlakeManager) RequiredFeatures() []string { return []string{features.GC
 
 // Initialize will initialize the munger
 func (p *FlakeManager) Initialize(config *github.Config, features *features.Features) error {
+	glog.Infof("test-owners-csv: %#v\n", p.ownerPath)
+
 	// TODO: don't get the mungers from the global list, they should be passed in...
 	for _, m := range GetAllMungers() {
 		if m.Name() == "issue-cacher" {
@@ -315,7 +318,7 @@ func (p *brokenJobSource) Priority(obj *github.MungeObject) (sync.Priority, erro
 }
 
 // autoPrioritize prioritize flake issue based on the number of flakes
-func autoPrioritize(comments []libgithub.IssueComment, issueCreatedAt *time.Time) sync.Priority {
+func autoPrioritize(comments []*libgithub.IssueComment, issueCreatedAt *time.Time) sync.Priority {
 	occurence := []*time.Time{issueCreatedAt}
 	lastMonth := time.Now().Add(-1 * 30 * 24 * time.Hour)
 	lastWeek := time.Now().Add(-1 * 7 * 24 * time.Hour)

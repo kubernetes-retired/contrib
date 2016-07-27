@@ -14,11 +14,15 @@ spec:
         command:
         - /mungegithub
         - --token-file=/etc/secret-volume/token
+        - --organization=kubernetes
+        - --project=kubernetes
         - --pr-mungers=cherrypick-must-have-milestone,cherrypick-clear-after-merge,cherrypick-queue
         - --state=all
         - --labels=cherrypick-candidate
+        - --http-cache-dir=/cache/httpcache
         - --dry-run=true
-        - --kubernetes-dir=/gitrepo/kubernetes
+        - --admin-port=9999
+        - --repo-dir=/gitrepo
         - --period=3m
         image: docker.io/eparis/cherrypick:2016-03-14-7fb1dae
         ports:
@@ -33,12 +37,10 @@ spec:
         - mountPath: /etc/secret-volume
           name: cherrypick-secret-volume
         - mountPath: /gitrepo
-          name: kubernetes-repo
+          name: repo
       volumes:
       - name: cherrypick-secret-volume
         secret:
           secretName: cherrypick-secret-volume
-      - name: kubernetes-repo
-        gitRepo:
-          repository: "https://github.com/kubernetes/kubernetes.git"
-          revision: "master"
+      - name: repo
+        emptyDir: {}

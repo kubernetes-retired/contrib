@@ -22,7 +22,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -41,7 +43,11 @@ import (
 
 const (
 	reloadQPS    = 10.0
-	resyncPeriod = 10 * time.Second
+	resyncPeriod = 60 * time.Second
+)
+
+var (
+	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
 )
 
 type service struct {
@@ -109,6 +115,15 @@ type ipvsControllerController struct {
 	configMapName     string
 	ruCfg             []vip
 	ruMD5             string
+
+	// stopLock is used to enforce only a single call to Stop is active.
+	// Needed because we allow stopping through an http endpoint and
+	// allowing concurrent stoppers leads to stack traces.
+	stopLock sync.Mutex
+
+	shutdown  bool
+	syncQueue *taskQueue
+	stopCh    chan struct{}
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -151,19 +166,8 @@ func (ipvsc *ipvsControllerController) getEndpoints(
 }
 
 // getServices returns a list of services and their endpoints.
-func (ipvsc *ipvsControllerController) getServices() []vip {
+func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip {
 	svcs := []vip{}
-
-	ns, name, err := parseNsName(ipvsc.configMapName)
-	if err != nil {
-		glog.Warningf("%v", err)
-		return []vip{}
-	}
-	cfgMap, err := ipvsc.getConfigMap(ns, name)
-	if err != nil {
-		glog.Warningf("%v", err)
-		return []vip{}
-	}
 
 	// k -> IP to use
 	// v -> <namespace>/<service name>:<lvs method>
@@ -218,26 +222,36 @@ func (ipvsc *ipvsControllerController) getConfigMap(ns, name string) (*api.Confi
 }
 
 // sync all services with the
-func (ipvsc *ipvsControllerController) sync() {
+func (ipvsc *ipvsControllerController) sync(key string) error {
 	ipvsc.reloadRateLimiter.Accept()
 
 	if !ipvsc.epController.HasSynced() || !ipvsc.svcController.HasSynced() {
 		time.Sleep(100 * time.Millisecond)
-		return
+		return fmt.Errorf("deferring sync till endpoints controller has synced")
 	}
 
-	svc := ipvsc.getServices()
+	ns, name, err := parseNsName(ipvsc.configMapName)
+	if err != nil {
+		glog.Warningf("%v", err)
+		return err
+	}
+	cfgMap, err := ipvsc.getConfigMap(ns, name)
+	if err != nil {
+		return fmt.Errorf("unexpected error searching configmap %v: %v", ipvsc.configMapName, err)
+	}
+
+	svc := ipvsc.getServices(cfgMap)
 	ipvsc.ruCfg = svc
 
-	err := ipvsc.keepalived.WriteCfg(svc)
+	err = ipvsc.keepalived.WriteCfg(svc)
 	if err != nil {
-		return
+		return err
 	}
 	glog.V(2).Infof("services: %v", svc)
 
 	md5, err := checksum(keepalivedCfg)
 	if err == nil && md5 == ipvsc.ruMD5 {
-		return
+		return nil
 	}
 
 	ipvsc.ruMD5 = md5
@@ -245,6 +259,29 @@ func (ipvsc *ipvsControllerController) sync() {
 	if err != nil {
 		glog.Errorf("error reloading keepalived: %v", err)
 	}
+
+	return nil
+}
+
+// Stop stops the loadbalancer controller.
+func (ipvsc *ipvsControllerController) Stop() error {
+	ipvsc.stopLock.Lock()
+	defer ipvsc.stopLock.Unlock()
+
+	// Only try draining the workqueue if we haven't already.
+	if !ipvsc.shutdown {
+		ipvsc.shutdown = true
+		close(ipvsc.stopCh)
+
+		glog.Infof("Shutting down controller queue")
+		ipvsc.syncQueue.shutdown()
+
+		ipvsc.keepalived.Stop()
+
+		return nil
+	}
+
+	return fmt.Errorf("shutdown already in progress")
 }
 
 // newIPVSController creates a new controller from the given config.
@@ -254,6 +291,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
 		ruCfg:             []vip{},
 		configMapName:     configMapName,
+		stopCh:            make(chan struct{}),
 	}
 
 	podInfo, err := getPodDetails(kubeClient)
@@ -291,12 +329,26 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		ipt:        iptInterface,
 	}
 
+	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)
+
 	err = ipvsc.keepalived.loadTemplate()
 	if err != nil {
 		glog.Fatalf("Error loading keepalived template: %v", err)
 	}
 
-	eventHandlers := framework.ResourceEventHandlerFuncs{}
+	eventHandlers := framework.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			ipvsc.syncQueue.enqueue(obj)
+		},
+		DeleteFunc: func(obj interface{}) {
+			ipvsc.syncQueue.enqueue(obj)
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			if !reflect.DeepEqual(old, cur) {
+				ipvsc.syncQueue.enqueue(cur)
+			}
+		},
+	}
 
 	ipvsc.svcLister.Store, ipvsc.svcController = framework.NewInformer(
 		cache.NewListWatchFromClient(

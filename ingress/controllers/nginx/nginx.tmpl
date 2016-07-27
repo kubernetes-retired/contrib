@@ -225,6 +225,7 @@ http {
             auth_digest "{{ $location.Auth.Realm }}";
             auth_digest_user_file {{ $location.Auth.File }};
             {{ end }}
+            proxy_set_header Authorization "";
             {{- end }}
 
             proxy_set_header Host                   $host;
@@ -240,6 +241,10 @@ http {
             proxy_set_header X-Forwarded-Host       $host;
             proxy_set_header X-Forwarded-Port       $server_port;
             proxy_set_header X-Forwarded-Proto      $pass_access_scheme;
+
+            # mitigate HTTPoxy Vulnerability
+            # https://www.nginx.com/blog/mitigating-the-httpoxy-vulnerability-with-nginx/
+            proxy_set_header Proxy                  "";
 
             proxy_connect_timeout                   {{ $cfg.proxyConnectTimeout }}s;
             proxy_send_timeout                      {{ $cfg.proxySendTimeout }}s;
@@ -274,9 +279,12 @@ http {
     }
     {{ end }}
 
-    # default server, including healthcheck
+    # default server, used for NGINX healthcheck and access to nginx stats
     server {
-        listen 8080 default_server reuseport backlog={{ .backlogSize }};
+        # Use the port 18080 (random value just to avoid known ports) as default port for nginx.
+        # Changing this value requires a change in:
+        # https://github.com/kubernetes/contrib/blob/master/ingress/controllers/nginx/nginx/command.go#L104
+        listen 18080 default_server reuseport backlog={{ .backlogSize }};
 
         location /healthz {
             access_log off;
