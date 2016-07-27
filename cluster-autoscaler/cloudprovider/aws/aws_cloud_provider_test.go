@@ -76,9 +76,9 @@ func TestAwsRefFromProviderId(t *testing.T) {
 	_, err = AwsRefFromProviderId("aws://test-az/test-instance-id")
 	assert.Error(t, err)
 
-	awsRef, err := AwsRefFromProviderId("aws:///test-az/test-instance-id")
+	awsRef, err := AwsRefFromProviderId("aws:///us-east-1a/i-260942b3")
 	assert.NoError(t, err)
-	assert.Equal(t, awsRef, &AwsRef{Name: "test-instance-id"})
+	assert.Equal(t, awsRef, &AwsRef{Name: "i-260942b3"})
 }
 
 func TestMaxSize(t *testing.T) {
