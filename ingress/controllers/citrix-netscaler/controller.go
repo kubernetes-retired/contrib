@@ -24,15 +24,29 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/chiradeep/contrib/ingress/controllers/citrix-netscaler/netscaler"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/client/cache"
 	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/controller/framework"
+	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/watch"
+	"netscaler"
 )
+
+type StoreToIngressLister struct {
+	cache.Store
+}
+
+var priority = 10
+var knownEndpoints = make(map[string]map[string]string)
+var svcname_refcount = make(map[string]int)                // Reference count of NS full service name
+var ing_svcname_refcount = make(map[string]map[string]int) // Reference count of ingresses per kubernetes service
+var lbNameMap = make(map[string]int)
 
 func ingressRuleToPolicyName(namespace string, rule extensions.IngressRule) []string {
 	resultPolicyNames := []string{}
@@ -48,7 +62,7 @@ func ingressRuleToPolicyName(namespace string, rule extensions.IngressRule) []st
 	return resultPolicyNames
 }
 
-func ingressToPolicyNames(ingress extensions.Ingress) []string {
+func ingressToPolicyNames(ingress *extensions.Ingress) []string {
 	resultPolicyNames := []string{}
 	namespace := ingress.Namespace
 	for _, rule := range ingress.Spec.Rules {
@@ -80,13 +94,15 @@ func formatEndpoints(endpoints *api.Endpoints, ports sets.String) string {
 	return ret
 }
 
-func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, ingress extensions.Ingress, priority int,
-	knownEndpoints map[string]map[string]string) int {
+func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, ingress *extensions.Ingress, priority int,
+	knownEndpoints map[string]map[string]string, svcname_refcount map[string]int,
+	ing_svcname_refcount map[string]map[string]int) int {
 
 	for _, rule := range ingress.Spec.Rules {
 		host := rule.Host
 		namespace := ingress.Namespace
 		thisIngEndpoints := make(map[string]string)
+		var lbName string
 		for _, path := range rule.HTTP.Paths {
 			path_ := path.Path
 			serviceName := path.Backend.ServiceName
@@ -120,17 +136,20 @@ func ingressToNetscalerConfig(kubeClient *client.Client, csvserverName string, i
 				thisIngEndpoints[ep] = serviceName_mod
 
 				log.Printf("Configure Netscaler: policy: %s Ingress Host: %s, path: %s, serviceName: %s, serviceIp: %s servicePort: %d priority %d", policyName, host, path_, serviceName, serviceIp, servicePort, priority)
-				netscaler.ConfigureContentVServer(namespace, csvserverName, host, path_, serviceIp, serviceName_mod, servicePort, priority)
+				lbName = netscaler.ConfigureContentVServer(namespace, csvserverName, host, path_, serviceIp, serviceName_mod, servicePort, priority, svcname_refcount)
+				lbNameMap[lbName] = 1
 			}
 			priority += 10
+			knownEndpoints[serviceName] = thisIngEndpoints
+			ing_svcname_refcount[serviceName] = lbNameMap
 		}
-		ingName := ingress.Name + "_" + host + "_" + namespace
-		knownEndpoints[ingName] = thisIngEndpoints
 	}
+
+	//fmt.Println("DBG knownEndpoints map : ", knownEndpoints, svcname_refcount, ing_svcname_refcount, lbNameMap)
 	return priority
 }
 
-func createContentVserverForIngress(ing extensions.Ingress) (string, error) {
+func createContentVserverForIngress(ing *extensions.Ingress) (string, error) {
 	csvserverName := netscaler.GenerateCsVserverName(ing.Namespace, ing.Name)
 	if netscaler.FindContentVserver(csvserverName) {
 		return csvserverName, nil
@@ -165,158 +184,232 @@ func createContentVserverForIngress(ing extensions.Ingress) (string, error) {
  * whether the endpoint is newly seen or a previous endpoint is no longer
  * avaialble.
  */
-func endpointsCheck(kubeClient *client.Client, ingList *extensions.IngressList,
-	knownEndpoints map[string]map[string]string) map[string]map[string]string {
-	newEndpoints := make(map[string]map[string]string)
+func updateEndpoints(knownEndpoints map[string]string,
+	thisIngKnownEndpoints map[string]string,
+	ingServiceName string,
+	svcname_refcount map[string]int) {
+	// Find the items in known and not in new - Delete services
+	for knownEpIP, sname := range knownEndpoints {
+		_, prs := thisIngKnownEndpoints[knownEpIP]
+		if prs == false {
+			//Delete the Netscaler Services
+			netscaler.DeleteService(sname)
+			serviceName_mod := "svc_" + ingServiceName + "_" + strings.Replace(knownEpIP, ".", "_", -1)
+			serviceName_mod = strings.Replace(serviceName_mod, ":", "_", -1)
+			_, present := svcname_refcount[serviceName_mod]
+			if present {
+				delete(svcname_refcount, serviceName_mod)
+			}
+		}
+	}
 
-	for _, ingress := range ingList.Items {
-		thisIngEndpoints := make(map[string]string)
-		for _, rule := range ingress.Spec.Rules {
-			host := rule.Host
-			namespace := ingress.Namespace
-			for _, path := range rule.HTTP.Paths {
-				serviceName := path.Backend.ServiceName
-				//servicePort := path.Backend.ServicePort.IntValue()
-
-				// Find endpoints
-				endpoints, err := kubeClient.Endpoints(api.NamespaceDefault).Get(serviceName)
-				if err != nil {
-					log.Printf("Failed to retrieve endpoints for service %s", serviceName)
-					continue
+	// Find the items in new and not in known - Add services
+	for newEpIP, sname := range thisIngKnownEndpoints {
+		_, prs := knownEndpoints[newEpIP]
+		if prs == false {
+			//Add Netscaler Service
+			lbNames_map := ing_svcname_refcount[ingServiceName]
+			for lbName, _ := range lbNames_map {
+				netscaler.AddAndBindService(lbName, sname, newEpIP)
+				serviceName_mod := "svc_" + ingServiceName + "_" + strings.Replace(newEpIP, ".", "_", -1)
+				serviceName_mod = strings.Replace(serviceName_mod, ":", "_", -1)
+				_, present := svcname_refcount[serviceName_mod]
+				if present {
+					svcname_refcount[serviceName_mod]++
+				} else {
+					svcname_refcount[serviceName_mod] = 1
 				}
-				endpoints_all := formatEndpoints(endpoints, nil)
+			}
+		}
+	}
+}
 
+func addIngress(kubeClient *client.Client, ing *extensions.Ingress) {
+	log.Printf("inner loop: current priority: %d", priority)
+	csvserverName, err := createContentVserverForIngress(ing)
+	if err != nil {
+		log.Printf("Unable to create / retrieve content vserver for ingress %s; skipping", ing.Name)
+		return
+	}
+
+	_, priorities := netscaler.ListBoundPolicies(csvserverName)
+	if len(priorities) > 0 {
+		priority = priorities[len(priorities)-1] + 10
+	}
+	priority = ingressToNetscalerConfig(kubeClient, csvserverName, ing, priority, knownEndpoints, svcname_refcount, ing_svcname_refcount)
+	//fmt.Println("DBG svcref map ADD  : ", knownEndpoints, svcname_refcount, ing_svcname_refcount, lbNameMap)
+}
+
+func delIngress(kubeClient *client.Client, ing *extensions.Ingress) {
+	csvserverName := netscaler.GenerateCsVserverName(ing.Namespace, ing.Name)
+	for _, rule := range ing.Spec.Rules {
+		for _, path := range rule.HTTP.Paths {
+			serviceName := path.Backend.ServiceName
+			netscaler.DeleteContentVServer(csvserverName, svcname_refcount, ing_svcname_refcount[serviceName])
+			lbName_map := ing_svcname_refcount[serviceName]
+			lbNameMap = lbName_map
+			if len(lbName_map) == 0 {
+				delete(ing_svcname_refcount, serviceName)
+				delete(knownEndpoints, serviceName)
+			}
+		}
+	}
+	//fmt.Println("DBG svcref map DEL  : ", knownEndpoints, svcname_refcount, ing_svcname_refcount, lbNameMap)
+}
+
+func ingressListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
+	return func(opts api.ListOptions) (runtime.Object, error) {
+		return c.Extensions().Ingress(ns).List(opts)
+	}
+}
+
+func ingressWatchFunc(c *client.Client, ns string) func(options api.ListOptions) (watch.Interface, error) {
+	return func(options api.ListOptions) (watch.Interface, error) {
+		return c.Extensions().Ingress(ns).Watch(options)
+	}
+}
+
+func epListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
+	return func(opts api.ListOptions) (runtime.Object, error) {
+		return c.Endpoints(ns).List(opts)
+	}
+}
+
+func epWatchFunc(c *client.Client, ns string) func(options api.ListOptions) (watch.Interface, error) {
+	return func(options api.ListOptions) (watch.Interface, error) {
+		return c.Endpoints(ns).Watch(options)
+	}
+}
+
+func startControllers(kubeClient *client.Client) {
+	var ingController *framework.Controller
+	var epController *framework.Controller
+	var ingLister StoreToIngressLister
+	var epLister cache.StoreToEndpointsLister
+	resyncPeriod := 10 * time.Second
+
+	ingHandlers := framework.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			addIng := obj.(*extensions.Ingress)
+			addIngress(kubeClient, addIng)
+		},
+		DeleteFunc: func(obj interface{}) {
+			delIng := obj.(*extensions.Ingress)
+			delIngress(kubeClient, delIng)
+		},
+	}
+
+	epHandlers := framework.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			addEP := obj.(*api.Endpoints)
+			endpoints_all := formatEndpoints(addEP, nil)
+			_, found := ing_svcname_refcount[addEP.Name]
+			if found {
+				thisIngEndpoints := make(map[string]string)
 				endpoints_split := strings.Split(endpoints_all, ",")
 				for _, ep := range endpoints_split {
 					ep_ip_port := strings.Split(ep, ":")
 					serviceIp := ep_ip_port[0]
-					if err != nil {
-						log.Printf("Failed to convert endpoint port to integer %s", ep_ip_port[1])
-						continue
-					}
-					serviceName_mod := "svc_" + serviceName + "_" + strings.Replace(serviceIp, ".", "_", -1) + "_" + ep_ip_port[1]
+					serviceName_mod := "svc_" + addEP.Name + "_" + strings.Replace(serviceIp, ".", "_", -1) + "_" + ep_ip_port[1]
 					thisIngEndpoints[ep] = serviceName_mod
 				}
+				knownEndpoints[addEP.Name] = thisIngEndpoints
 			}
-			ingName := ingress.Name + "_" + host + "_" + namespace
-			newEndpoints[ingName] = thisIngEndpoints
-
-			knownThisIngEndpoints := knownEndpoints[ingName]
-			if reflect.DeepEqual(knownThisIngEndpoints, thisIngEndpoints) {
-				continue
-			}
-
-			// Find the items in known and not in new - Delete services
-			for knownEpIP, sname := range knownThisIngEndpoints {
-				_, prs := thisIngEndpoints[knownEpIP]
-				if prs == false {
-					//Delete the Netscaler Services
-					netscaler.DeleteService(sname)
+			//fmt.Println("DBG knownEndpoints map : ", knownEndpoints, svcname_refcount, ing_svcname_refcount, lbNameMap)
+		},
+		DeleteFunc: func(obj interface{}) {
+			delEP := obj.(*api.Endpoints)
+			endpoints_all := formatEndpoints(delEP, nil)
+			_, found := ing_svcname_refcount[delEP.Name]
+			if found {
+				if endpoints_all == "<none>" {
+					delete(knownEndpoints, delEP.Name)
+				} else {
+					thisIngEndpoints := make(map[string]string)
+					endpoints_split := strings.Split(endpoints_all, ",")
+					for _, ep := range endpoints_split {
+						ep_ip_port := strings.Split(ep, ":")
+						serviceIp := ep_ip_port[0]
+						serviceName_mod := "svc_" + delEP.Name + "_" + strings.Replace(serviceIp, ".", "_", -1) + "_" + ep_ip_port[1]
+						thisIngEndpoints[ep] = serviceName_mod
+					}
+					knownEndpoints[delEP.Name] = thisIngEndpoints
 				}
 			}
-
-			// Find the items in new and not in known - Add services
-			for newEpIP, sname := range thisIngEndpoints {
-				_, prs := knownThisIngEndpoints[newEpIP]
-				if prs == false {
-					//Add Netscaler Service
-					// Find lb name from ingress name to use when adding/binding service
-					lbName := netscaler.GenerateLbName(namespace, host)
-					netscaler.AddAndBindService(lbName, sname, newEpIP)
+			//fmt.Println("DBG knownEndpoints map : ", knownEndpoints, svcname_refcount, ing_svcname_refcount, lbNameMap)
+		},
+		UpdateFunc: func(old, cur interface{}) {
+			if !reflect.DeepEqual(old, cur) {
+				upEP := cur.(*api.Endpoints)
+				endpoints_all := formatEndpoints(upEP, nil)
+				_, found := ing_svcname_refcount[upEP.Name]
+				if found {
+					thisIngEndpoints := make(map[string]string)
+					if endpoints_all != "<none>" {
+						endpoints_split := strings.Split(endpoints_all, ",")
+						for _, ep := range endpoints_split {
+							ep_ip_port := strings.Split(ep, ":")
+							serviceIp := ep_ip_port[0]
+							serviceName_mod := "svc_" + upEP.Name + "_" + strings.Replace(serviceIp, ".", "_", -1) + "_" + ep_ip_port[1]
+							thisIngEndpoints[ep] = serviceName_mod
+						}
+					}
+					updateEndpoints(knownEndpoints[upEP.Name], thisIngEndpoints, upEP.Name, svcname_refcount)
+					knownEndpoints[upEP.Name] = thisIngEndpoints
 				}
+				//fmt.Println("DBG knownEndpoints map : ", knownEndpoints, svcname_refcount, ing_svcname_refcount, lbNameMap)
 			}
-
-		}
+		},
 	}
 
-	//fmt.Println("  **** DBG newEndpoints map   : ", newEndpoints)
-	//fmt.Println("  **** DBG knownEndpoints map : ", knownEndpoints)
+	ingLister.Store, ingController = framework.NewInformer(
+		&cache.ListWatch{
+			ListFunc:  ingressListFunc(kubeClient, api.NamespaceAll),
+			WatchFunc: ingressWatchFunc(kubeClient, api.NamespaceAll),
+		},
+		&extensions.Ingress{}, resyncPeriod, ingHandlers)
 
-	return newEndpoints
-}
+	epLister.Store, epController = framework.NewInformer(
+		&cache.ListWatch{
+			ListFunc:  epListFunc(kubeClient, api.NamespaceAll),
+			WatchFunc: epWatchFunc(kubeClient, api.NamespaceAll),
+		},
+		&api.Endpoints{}, resyncPeriod, epHandlers)
 
-func loop(kubeClient *client.Client) {
-	var ingClient client.IngressInterface
-	ingClient = kubeClient.Extensions().Ingress(api.NamespaceAll)
-	rateLimiter := util.NewTokenBucketRateLimiter(0.1, 1)
-	known := &extensions.IngressList{}
-	knownEndpoints := make(map[string]map[string]string)
-
-	// Controller loop
-	for {
-		rateLimiter.Accept()
-		ingresses, err := ingClient.List(api.ListOptions{})
-
-		if err != nil {
-			log.Printf("Error retrieving ingresses: %v", err)
-			continue
-		}
-
-		if reflect.DeepEqual(ingresses.Items, known.Items) {
-			// Ingress and known items are equal. Check if endpoints have changed.
-			// Returns list of new known endpoints
-			knownEndpoints = endpointsCheck(kubeClient, ingresses, knownEndpoints)
-			continue
-		}
-
-		known = ingresses
-		var existingCsVservers = sets.NewString()
-		existingCsVservers.Insert(netscaler.ListContentVservers()...)
-
-		for _, ing := range ingresses.Items {
-			var newOrExistingPolicyNames = sets.NewString()
-			var priority = 10
-
-			log.Printf("inner loop: current priority: %d", priority)
-			csvserverName, err := createContentVserverForIngress(ing)
-			if err != nil {
-				log.Printf("Unable to create / retrieve content vserver for ingress %s; skipping", ing.Name)
-				continue
-			}
-
-			_, priorities := netscaler.ListBoundPolicies(csvserverName)
-			if len(priorities) > 0 {
-				priority = priorities[len(priorities)-1] + 10
-			}
-			priority = ingressToNetscalerConfig(kubeClient, csvserverName, ing, priority, knownEndpoints)
-
-			policyNames := ingressToPolicyNames(ing)
-			newOrExistingPolicyNames.Insert(policyNames...)
-			log.Printf("New or Existing Ingress: %v", newOrExistingPolicyNames.List())
-
-			var lbPolicyNames = sets.NewString()
-			policyNames, _ = netscaler.ListBoundPolicies(csvserverName)
-			lbPolicyNames.Insert(policyNames...)
-			log.Printf("Existing Ingress policy on LB: %v", lbPolicyNames.List())
-
-			toDelete := lbPolicyNames.Difference(newOrExistingPolicyNames)
-			log.Printf("Need to delete: %v", toDelete.List())
-			netscaler.DeleteCsPolicies(csvserverName, toDelete.List())
-			existingCsVservers.Delete(csvserverName)
-		}
-
-		for _, csvserver := range existingCsVservers.List() {
-			netscaler.DeleteContentVServer(csvserver)
-		}
-
-		// Check if endpoints have changed.
-		knownEndpoints = endpointsCheck(kubeClient, ingresses, knownEndpoints)
-	}
+	stop := make(chan struct{})
+	go ingController.Run(stop)
+	go epController.Run(stop)
+	<-stop
+	log.Printf("ABK Exiting")
 }
 
 func main() {
+	// Prefer environment variables and otherwise try accessing APIserver directly
+	var kubeClient *client.Client
+	var err error
 	kube_apiserver_addr := os.Getenv("KUBERNETES_APISERVER_ADDR")
 	kube_apiserver_port := os.Getenv("KUBERNETES_APISERVER_PORT")
-	kube_apiserver_host := fmt.Sprintf("http://%s:%s", kube_apiserver_addr, kube_apiserver_port)
-	config := restclient.Config{
-		//Host:     "https://127.0.0.1:6443",
-		//Host:     "http://10.217.129.67:8080",
-		Host:     kube_apiserver_host,
-		Insecure: true,
+	if (kube_apiserver_addr != "") && (kube_apiserver_port != "") {
+		kube_apiserver_host := fmt.Sprintf("http://%s:%s", kube_apiserver_addr, kube_apiserver_port)
+		config := restclient.Config{
+			Host:     kube_apiserver_host,
+			Insecure: true,
+		}
+		kubeClient, err = client.New(&config)
+	} else {
+		kubeClient, err = client.NewInCluster()
 	}
-	kubeClient, err := client.New(&config)
 	if err != nil {
 		log.Fatalln("Can't connect to Kubernetes API:", err)
 	}
-	loop(kubeClient)
+
+	// Performing cleanup - start with a clean NS config. Handle situations where
+	// k8s cluster has changed while NS has stale configuration.
+	var existingCsVservers = sets.NewString()
+	existingCsVservers.Insert(netscaler.ListContentVservers()...)
+	for _, csvserver := range existingCsVservers.List() {
+		netscaler.DeleteContentVServer(csvserver, svcname_refcount, nil)
+	}
+
+	startControllers(kubeClient)
 }

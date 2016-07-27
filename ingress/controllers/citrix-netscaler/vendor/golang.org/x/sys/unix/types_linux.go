@@ -98,8 +98,6 @@ typedef struct user_regs PtraceRegs;
 typedef struct user_pt_regs PtraceRegs;
 #elif defined(__powerpc64__)
 typedef struct pt_regs PtraceRegs;
-#elif defined(__mips__)
-typedef struct user PtraceRegs;
 #else
 typedef struct user_regs_struct PtraceRegs;
 #endif
@@ -400,7 +398,6 @@ type EpollEvent C.struct_my_epoll_event
 const (
 	AT_FDCWD            = C.AT_FDCWD
 	AT_REMOVEDIR        = C.AT_REMOVEDIR
-	AT_SYMLINK_FOLLOW   = C.AT_SYMLINK_FOLLOW
 	AT_SYMLINK_NOFOLLOW = C.AT_SYMLINK_NOFOLLOW
 )
 

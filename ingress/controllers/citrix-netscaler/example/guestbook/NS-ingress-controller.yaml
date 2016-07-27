@@ -29,7 +29,7 @@ spec:
             secretKeyRef:
               name: ns-login-secret
               key: password
-        - name: KUBERNETES_APISERVER_ADDR
-          value: 10.11.50.10
-        - name: KUBERNETES_APISERVER_PORT
-          value: "8080"
+        #- name: KUBERNETES_APISERVER_ADDR
+        #  value: 10.11.50.10
+        #- name: KUBERNETES_APISERVER_PORT
+        #  value: "8080"

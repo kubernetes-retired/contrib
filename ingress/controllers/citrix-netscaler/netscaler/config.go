@@ -138,7 +138,8 @@ func AddAndBindService(lbName string, sname string, IpPort string) {
 	}
 }
 
-func ConfigureContentVServer(namespace string, csvserverName string, domainName string, path string, serviceIp string, serviceName string, servicePort int, priority int) {
+func ConfigureContentVServer(namespace string, csvserverName string, domainName string, path string, serviceIp string,
+	serviceName string, servicePort int, priority int, svcname_refcount map[string]int) string {
 	lbName := GenerateLbName(namespace, domainName)
 	policyName := GeneratePolicyName(namespace, domainName, path)
 	actionName := GenerateActionName(namespace, domainName, path)
@@ -152,16 +153,23 @@ func ConfigureContentVServer(namespace string, csvserverName string, domainName 
 		resourceJson, err := json.Marshal(nsService)
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Failed to marshal service %s err=", serviceName, err))
-			return
+			return ""
 		}
 		log.Println(string(resourceJson))
 
 		body, err := createResource(resourceType, resourceJson)
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Failed to create service %s err=%s", serviceName, err))
-			return
+			return ""
 		}
 		_ = body
+	}
+
+	_, present := svcname_refcount[serviceName]
+	if present {
+		svcname_refcount[serviceName]++
+	} else {
+		svcname_refcount[serviceName] = 1
 	}
 
 	//create a Netscaler "lbvserver" to front the service
@@ -176,7 +184,7 @@ func ConfigureContentVServer(namespace string, csvserverName string, domainName 
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Failed to create lb %s, err=%s", lbName, err))
 			//TODO roll back
-			return
+			return ""
 		}
 		_ = body
 	}
@@ -196,7 +204,7 @@ func ConfigureContentVServer(namespace string, csvserverName string, domainName 
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Failed to bind lb %s to service %s, err=%s", lbName, serviceName, err))
 			//TODO roll back
-			return
+			return ""
 		}
 		_ = body
 	}
@@ -213,7 +221,7 @@ func ConfigureContentVServer(namespace string, csvserverName string, domainName 
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Failed to create Content Switching Action %s to LB %s err=%s", actionName, lbName, err))
 			//TODO roll back
-			return
+			return ""
 		}
 		_ = body
 	}
@@ -236,7 +244,7 @@ func ConfigureContentVServer(namespace string, csvserverName string, domainName 
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Failed to create Content Switching Policy %s, err=%s", policyName, err))
 			//TODO roll back
-			return
+			return ""
 		}
 		_ = body
 	}
@@ -255,10 +263,12 @@ func ConfigureContentVServer(namespace string, csvserverName string, domainName 
 		body, err := createResource(resourceType, resourceJson)
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Failed to bind Content Switching Policy %s to Content Switching VServer %s, err=%s", policyName, csvserverName, err))
-			return
+			return ""
 		}
 		_ = body
 	}
+
+	return lbName
 }
 
 func CreateContentVServer(csvserverName string, vserverIp string, vserverPort int, protocol string) error {
@@ -279,7 +289,7 @@ func CreateContentVServer(csvserverName string, vserverIp string, vserverPort in
 	return nil
 }
 
-func DeleteContentVServer(csvserverName string) {
+func DeleteContentVServer(csvserverName string, svcname_refcount map[string]int, lbName_map map[string]int) {
 	policyNames, _ := ListBoundPolicies(csvserverName)
 
 	for _, policyName := range policyNames {
@@ -346,15 +356,27 @@ func DeleteContentVServer(csvserverName string) {
 			continue
 		}
 
+		if lbName_map != nil {
+			delete(lbName_map, lbName)
+		}
+
 		//Delete the Netscaler Services
 		for _, sname := range serviceNames {
 
 			resourceType = "service"
 
-			_, err = deleteResource(resourceType, sname)
-			if err != nil {
-				log.Println(fmt.Sprintf("Failed to delete service %s err=%s", sname, err))
-				continue
+			_, present := svcname_refcount[sname]
+			if present {
+				svcname_refcount[sname]--
+			}
+
+			if svcname_refcount[sname] == 0 {
+				delete(svcname_refcount, sname)
+				_, err = deleteResource(resourceType, sname)
+				if err != nil {
+					log.Println(fmt.Sprintf("Failed to delete service %s err=%s", sname, err))
+					continue
+				}
 			}
 		}
 	}
