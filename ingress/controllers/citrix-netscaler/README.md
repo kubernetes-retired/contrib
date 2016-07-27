@@ -1,18 +1,12 @@
-HOWTO - Kubernetes with NetScaler Load Balancer
-===============================================
+# Kubernetes Ingress with Citrix NetScaler Load Balancer
 
-------------
-Introduction
-------------
+-----
+## Ingress Controller for Citrix NetScaler
 
-Kubernetes is an open source container cluster manager. This article describes how you can use a NetScaler specific ingress controller for Kubernetes to configure a NetScaler instance as a load balancer within the cluster.
 
-A typical Kubernetes cluster deployment consists of Kube-master node and Kube-worker nodes. Before you begin configuring NetScaler MPX/VPX, the expectation is to have a Kubernetes cluster configured and running. 
+This Ingress controller uses a Citrix NetScaler VPX/MPX to provide Ingress Load Balancing to Kubernetes Services. Before you begin configuring NetScaler MPX/VPX, the expectation is to have a Kubernetes cluster configured and running. The configuration has been tested on baremetal and is not expected to work for Cloud hosted cluster (GKE / AWS)
 
-Ensure that the following entities are available in the cluster along with Kubernetes: 
-- Docker    (For containers)
-- Flannel   (For networking)
-- Etcd      (For configuration management)
+We assume that Flannel is used to provide VxLAN - based overlay to the Kubernetes cluster
 
 In an up and running cluster, you can now configure the NetScaler MPX/VPX instance as a load balancer. The configuration of the MPX/VPX instance will be dynamic on the basis of the number of ingress entities configured, the services they belong to, and the endpoints serving the services. 
 
@@ -20,7 +14,7 @@ The NetScaler MPX/VPX instance acts as a load balancer by directly identifying t
 
 
 ----------------
-Getting the Code
+## Getting the Code
 ----------------
 
 The code can be obtained from the following git repository:
@@ -40,9 +34,7 @@ Compilation should be perfomed in the citrix-netscaler area using the command:
 `# godep go build`
 
 
----------------------------------
-Sample application load balancing
----------------------------------
+## Sample application load balancing
 
 The sample application described here makes use of the guestbook example which has a web frontend based on php and backend based on redis. The configuration files and additional inforamtion is available here in the tree:
 `contrib/ingress/controllers/citrix-netscaler/example/guestbook`
@@ -53,7 +45,7 @@ The example shown here has one Kubernetes master node and two worker nodes. The 
 - Etcd          2.0.9-1
 - Docker        1.9.1-41
 - OS            CentOS Linux release 7.2.1511 (Core)
-- Netscaler     VPX NS11.1
+- NetScaler     VPX NS11.1
 
 Each node is connected to the management subnet and an internal subnet. Flannel running on each node utilizes a separate subnet. The management subnet is used for external access to the nodes. The internal subnet is used for internal traffic between nodes and flannel subnet is self-managed by flannel and the containers get assigned addresses from within this subnet.
 
@@ -62,15 +54,15 @@ As part of this example the following network address ranges are in use:
 - Internal Subnet   : 10.11.50.0/24
 - Flannel Subnet    : 10.254.0.0/16
 
-Please have a running instance of NetScaler MPX/VPX available and configured with a management IP address before running the steps below.
+Please have a running instance of NetScaler MPX/VPX available and configured with a management IP address before running the steps below. Note that you need TWO SNIP configured on NetScaler. The first is a physical address (`10.11.50.13`) used as the tunnel endpoint (VTEP). The second is a SNIP belonging to the VxLAN subnet (`10.254.10.20`) chosen in step 2 below. In addition you need a VIP available that will be specified in step  6 (`public IP`)
 
-### Step 1: 
-The initial configuration required is for the NetScaler to be able to communicate with all the worker nodes ovr VXLAN. Flannel supports multiple kinds of networks but Netscaler supports VXLAN. The VNI is identified from the flannel configuration stored in etcd and configured on the NetScaler. 
+### Step 1: Configure the VxLAN tunnel in NetScaler
+The initial configuration required is for the NetScaler to be able to communicate with all the worker nodes over VXLAN. The VNI is first identified from the flannel configuration stored in etcd and then configured on the NetScaler. 
 
-A python script is made available that configures NetScaler with the VXLAN configuration and creates tunnels between it and each worker node. The tunnel endpoints reside on the internal subnet. Please note that the python sdk for Nitro is a prequisite for running the python sctip. The python script should be run from the kube-master node. 
+A python script is made available that configures NetScaler with the VXLAN configuration and creates tunnels between it and each worker node. The tunnel endpoints reside on the internal subnet. Please note that the python sdk for Nitro is a prequisite for running the python script. The python script should be run from the kube-master node. 
 
 - python pip is required for sdk installation
-- Obtain sdk from NS GUI: `http://<NSIP>/menu/dw` -> NITRO API SDK for Python
+- Obtain sdk from NS GUI: `http://<NSIP>/menu/dw` -> NITRO API SDK for Python or via scp: `scp nsroot@<NSIP>:/var/netscaler/nitro/ns-11.0-66.11-nitro-python.tgz .`
 - untar python sdk
 - python setup.py install
 
@@ -89,25 +81,51 @@ To establish dynamic ARP exchange between the endpoints/pods running on each Kub
 
 `# sysctl -w net.ipv4.ip_forward=1`
 
-### Step 2:
-The next configuration is to provide the presence of NetScaler to etcd so that it can be managed. We will allocate a subnet in the range controlled by flannel. This is done so that an address range is available to NetScaler to communicate with peers over flannel subnet and for flannel not to allocate that subnet to any other worker nodes that it manages resulting in address conflicts. 
+### Step 2: Attach the NetScaler to the VxLAN overlay
+The next configuration is to provide the VxLAN subnet allocation to the  NetScaler in etcd so that the worker nodes can resolve the NetScaler SNIP. We will allocate a subnet in the range controlled by flannel. This is done so that an address range is available to NetScaler to communicate with peers over flannel subnet and for flannel not to allocate that subnet to any other worker nodes that it manages resulting in address conflicts. 
 
 The NetScaler subnet for Flannel can be chosen between the the range SubnetMin and SubnetMax obtainable from key `/flannel/network/config` in etcd. 
 
 `# etcdctl --no-sync --peers http://<etcdIP>:<Port> get /flannel/network/config`
 
-It is required that the interface of NetScaler connected to internal subnet be used for configuration here and the MAC address associated with the internal interface be provided. Any subnet subnet can be chosen for configuration as long as it is managed by flannel. 
+Depending on the flannel version, the key may be located at `/coreos.com/network/config`
 
-Different flag in the previously stated python script provides this functionality:
+It is required that the interface of NetScaler connected to internal subnet be used for configuration here and the MAC address associated with the internal interface be provided. Any subnet can be chosen for configuration as long as it is managed by flannel and does not conflict with a subnet allocated to a worker node
+
 
 `# python NSK8sConfig.py addmac <KUBE_MASTER_IP> <NS_TUNNEL_ENDPOINT_IP> <NS_MAC> <NS_FLANNEL_SUBNET> <NS_FLANNEL_SUBNET_MASK>`
 
 `# python NSK8sConfig.py addmac 10.11.50.10 10.11.50.13 d2:15:53:cd:46:60 10.254.51.0 24`
 
-### Step 3:
+The MAC of the SNIP can be obtained on the NetScaler via:
+
+`show interface`
+
+
+### Step 3: Create a secret with the NetScaler credentials
+Next step is to configure the NetScaler credentials using Kubernetes secret. The secured data will be made available to the pod utilizing the secret via environment variables.
+
+The secret required is username and password for NetScaler that should be encoded in base64 and provided in yaml file.
+
+To encode to base64 the following can be done: 
+`# echo -n <credential> | base64`
+
+To decode from base64 the following can be done: 
+`# echo <encoded-credential> | base64 -d`
+
+`# kubectl create -f NS-login-secret.yaml`
+
+### Step 4:Deploy the Ingress Controller
+The next steps is to deploy the ingress controller. This controller is the custom controller provided by Citrix. It will be listening for addition and removal of ingresses as well as any changes to the endpoints associated with services for which ingresses are created. The ingress controller runs as a pod within the cluster. 
+
+Before the deployment of ingress controller, the spec file associated with it should be modified. Specifically the NetScaler management address must be provided withing the spec. There are two ways in which the ingress controller can talk to Kubernetes API server. One is via the default service account. In case this is not available or configured, environment variables for API server address and port can be configured. 
+
+`# kubectl create -f NS-ingress-controller.yaml`
+
+### Step 5: Run the example
 The guestbook replication controllers and services should be started now. This can be done via the consolidated spec made available:
 
-`# kubectl create -f guestbook-allinone.yaml`
+`# kubectl create -f example/guestbook/guestbook-allinone.yaml`
 
 This will create one instance of redis-master, 2 instances of redis-slave and 3 instances of frontend by default. 
 
@@ -148,27 +166,8 @@ Now is a good time to examine the state of the cluster.
 
 ----
 
-### Step 4:
-Next step is to configure the NetScaler credentials using Kubernetes secret. The secured data will be made available to the pod utilizing the secret via environment variables.
 
-The secret required is username and password for NetScaler that should be encoded in base64 and provided in yaml file.
-
-To encode to base64 the following can be done: 
-`# echo -n <credential> | base64`
-
-To decode from base64 the following can be done: 
-`# echo <encoded-credential> | base64 -d`
-
-`# kubectl create -f NS-login-secret.yaml`
-
-### Step 5:
-The next steps is to deploy the ingress controller. This controller is the custom controller provided by Citrix. It will be listening for addition and removal of ingresses as well as any changes to the endpoints associated with services for which ingresses are created. The ingress controller runs as a pod within the cluster. 
-
-Before the deployment of ingress controller, the spec file associated with it should be modified. Specifically the NetScaler management address must be provided withing the spec. There are two ways in which the ingress controller can talk to Kubernetes API server. One is via the default service account. In case this is not available or configured, environment variables for API server address and port can be configured. 
-
-`# kubectl create -f NS-ingress-controller.yaml`
-
-### Step 6:
+### Step 6: Create an Ingress object for the example app
 As a final step we would create the ingress for the frontend service. The VIP for the service on NetScaler should be configured as an annotation in this spec. In addition the hostname association for content switching should also be provided as part of this spec.
 
     # cat frontend-ingress.yaml
@@ -256,9 +255,9 @@ In addition to the configuration on the Kubernetes cluster, the following comman
 
 ----
 
-Appendix 1: Theory of operation
+# Theory of operation
 -----------
-A typical Kubernetes cluster deployment consists of one Kube-master node and multiple Kube-worker nodes. A NetScaler will reside outside of the cluster and direct traffic towards it. The NetScaler works in conjunction with an ingress controller that provides configuration updates and manages the NetScaler based on the events happening inside the Kubernetes cluster.  
+A NetScaler provides the entry point for traffic entering from outside the Kubernetes Cluster. The NetScaler works in conjunction with an ingress controller that provides configuration updates and manages the NetScaler based on the events happening inside the Kubernetes cluster.  
 
 The current implementation of ingress controller for NetScaler provides the following functionality: 
 - It looks for additions and removals of ingresses in Kubernetes cluster.
@@ -293,7 +292,7 @@ On identifying that a previously seen endpoint is no longer present, the service
 
 ----
 
-Appendix 2: Create container of ingress controller
+## Appendix 1: Create container of ingress controller
 -----------
 The ingress controller once compiled needs to be deployed as a container within the Kubernetes cluster. The following steps can be used for creating this container using the Dockerfile made available. The container will contain the compiled ingress controller with the default action of the container being to run the ingress controller. 
 
@@ -303,7 +302,7 @@ The container should be made available at a location where it can be retrieved a
 
 ----
 
-Appendix 3: Scaling pods
+## Appendix 2: Scaling pods
 -----------
 The scaling of pods/endpoints associated with service managed by ingress controller is taken care of by the ingress controller. In case of scaling up, the netscaler services  are increased to match the number of pods and on scale down again the number of pods and services are matched. 
 
