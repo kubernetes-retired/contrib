@@ -90,7 +90,7 @@ type AwsRef struct {
 // AwsRefFromProviderId creates InstanceConfig object from provider id which
 // must be in format: aws:///zone/name
 func AwsRefFromProviderId(id string) (*AwsRef, error) {
-	validIdRegex := regexp.MustCompile(`^aws\:\/\/\/[-a-z]*\/[-a-z]*$`)
+	validIdRegex := regexp.MustCompile(`^aws\:\/\/\/[-0-9a-z]*\/[-0-9a-z]*$`)
 	if validIdRegex.FindStringSubmatch(id) == nil {
 		return nil, fmt.Errorf("Wrong id: expected format aws:///<zone>/<name>, got %v", id)
 	}
