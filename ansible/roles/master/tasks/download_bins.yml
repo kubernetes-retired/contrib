@@ -5,6 +5,15 @@
 - name: Create directory for current Kubernetes release
   file: path={{ kube_current_release_directory }} state=directory
 
+- name: Set a list of kube master binaries to download
+  set_fact:
+    kube_binaries: "{{ kube_master_binaries }}"
+
+- name: Extend the list of kube master binaries with kubelet
+  set_fact:
+    kube_binaries: "{{ kube_master_binaries }} kubelet"
+  when: networking == 'opencontrail'
+
 - name: Download Kubernetes binaries
   get_url:
     url: "{{ kube_download_url_base }}/{{ item }}"

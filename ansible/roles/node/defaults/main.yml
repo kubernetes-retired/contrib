@@ -5,3 +5,9 @@ open_cadvisor_port: false
 services_enabled: true
 kubelet_modified: false
 proxy_modified: false
+
+# List of Kubernetes node binaries to download and install.
+kube_node_binaries:
+  - kube-proxy
+  - kubelet
+

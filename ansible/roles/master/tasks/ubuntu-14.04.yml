@@ -1,8 +1,4 @@
 ---
-- name: Ubuntu | Force source_type to github
-  set_fact:
-    source_type: "github-release"
-
 - name: Ubuntu | Get Upstart Config Files from Kubernetes repository
   get_url:
     url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/ubuntu/master/init_conf/{{ item }}.conf
