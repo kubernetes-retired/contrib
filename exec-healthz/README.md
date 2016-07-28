@@ -116,6 +116,21 @@ pod.json example file in this directory does exactly that. If you create the pod
 example, the kubelet on the node will periodically perform a health check similar to what you did manually and restart the container
 when it fails. Explore [liveness probes](../../examples/liveness/README.md).
 
+## Debugging
+
+You can run exechealthz locally, to poke and prod at it:
+```console
+$ go build exechealthz.go
+$ ./exechealthz -cmd="nslookup google.com > /dev/null" -period=10ms
+```
+
+The container exposes pprof handlers on the same port it exposes /healthz (8080 by default). You can get runtime stats as [documented here](https://golang.org/pkg/net/http/pprof/), i.e curl the various pprof handlers:
+```console
+$ curl http://localhost:8080/debug/pprof/
+$ http://localhost:8080/debug/pprof/goroutine?debug=1
+$ http://localhost:8080/debug/pprof/heap?debug=1
+```
+
 ## Limitations:
 * Doesn't handle sigterm, which means docker stop on this container can take longer than it needs to.
 * Doesn't sanity check the probe command. You should set the -period and -latency parameters of exechealthz appropriately.
