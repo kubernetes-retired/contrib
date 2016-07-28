@@ -1,4 +1,7 @@
 ---
+- name: Create bin dir
+  file: path={{ bin_dir }} state=directory
+
 - name: Create directory for current Kubernetes release
   file: path={{ kube_current_release_directory }} state=directory
 
