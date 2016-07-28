@@ -87,10 +87,3 @@
   roles:
     - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
 
-# install runtime dependencies
-- hosts: nodes
-  become: yes
-  roles:
-  - epilogue
-  tags:
-  - epilogue
