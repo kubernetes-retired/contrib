@@ -4,10 +4,11 @@ nginx 1.11.x base image using [ubuntu-slim](https://github.com/kubernetes/contri
 nginx [engine x] is an HTTP and reverse proxy server, a mail proxy server, and a generic TCP proxy server.
 
 This custom nginx image contains:
-- http2 instead of spdy
+- SPDY support in addition to HTTP/2
 - [lua](https://github.com/openresty/lua-nginx-module) support
 - [stream](http://nginx.org/en/docs/stream/ngx_stream_core_module.html) tcp support for upstreams
 - nginx stats [nginx-module-vts](https://github.com/vozlt/nginx-module-vts)
+- [Dynamic TLS record sizing](https://blog.cloudflare.com/optimizing-tls-over-tcp-to-reduce-latency/)
 
 
 **How to use this image:**
