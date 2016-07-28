@@ -69,6 +69,11 @@ func (LabelUnapprovedPicks) Munge(obj *github.MungeObject) {
 		return
 	}
 
+	if _, err := obj.GetPR(); err != nil {
+		glog.Errorf("Failed to retrieve PR: %s", err)
+		return
+	}
+
 	if obj.IsForBranch("master") {
 		return
 	}
