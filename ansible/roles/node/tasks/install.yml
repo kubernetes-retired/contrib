@@ -1,4 +1,5 @@
 ---
+# Install OS specific files
 - include: coreos.yml
   when: is_coreos
 
@@ -9,13 +10,24 @@
   selinux: state=permissive policy={{ ansible_selinux.type }}
   when: ansible_selinux is defined and ansible_selinux.status == "enabled"
 
+- name: Retrieve systemd files for github-release kube_source_type type
+  include: retrieve-systemd-files.yml
+  when: kube_source_type == "github-release"
+
+# Change default value of kube_source_type
+- name: Force kube_source_type to github
+  set_fact:
+    kube_source_type: "github-release"
+  when: is_coreos or (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15)
+
+# Install kubernetes node components
 - include: packageManagerInstall.yml
-  when: source_type == "packageManager"
+  when: kube_source_type == "packageManager"
   tags:
     - binary-update
 
 - include: localBuildInstall.yml
-  when: source_type == "localBuild"
+  when: kube_source_type == "localBuild"
   tags:
     - binary-update
 

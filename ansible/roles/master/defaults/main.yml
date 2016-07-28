@@ -12,3 +12,10 @@ apiserver_modified: false
 controller_manager_modified: false
 scheduler_modified: false
 kubelet_modified: false
+
+# List of Kubernetes binaries to download and install.
+kube_master_binaries:
+  - kube-apiserver
+  - kube-controller-manager
+  - kube-scheduler
+  - kubectl
