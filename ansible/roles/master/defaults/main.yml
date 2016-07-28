@@ -5,3 +5,10 @@ localBuildOutput: ../../../_output/local/go/bin
 admission_controllers: NamespaceLifecycle,NamespaceExists,LimitRanger,ServiceAccount,ResourceQuota
 
 kube_apiserver_bind_address: "0.0.0.0"
+
+services_enabled: true
+apiserver_modified: false
+controller_manager_modified: false
+scheduler_modified: false
+kubelet_modified: false
+
