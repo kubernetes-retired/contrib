@@ -16,6 +16,7 @@
 FROM gcr.io/google_containers/ubuntu-slim:0.3
 
 COPY build.sh /tmp
+COPY nginx-sticky-module-ng.patch /tmp
 
 RUN /tmp/build.sh
 
