@@ -31,3 +31,8 @@
   when: kube_source_type == "github-release"
   tags:
     - binary-update
+
+- include: install_rpms.yml
+  when: kube_source_type == "distribution-rpm"
+  tags:
+    - binary-update

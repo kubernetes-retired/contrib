@@ -11,3 +11,6 @@ kube_node_binaries:
   - kube-proxy
   - kubelet
 
+kube_node_rpms:
+  - kubernetes-client
+  - kubernetes-node
