@@ -19,3 +19,7 @@ kube_master_binaries:
   - kube-controller-manager
   - kube-scheduler
   - kubectl
+
+kube_master_rpms:
+  - kubernetes-client
+  - kubernetes-master

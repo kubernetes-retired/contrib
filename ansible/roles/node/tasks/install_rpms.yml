@@ -1,0 +1,6 @@
+---
+- name: Install kubernetes distribution rpms
+  yum: name={{ kube_rpm_url_base }}/{{ item }}-{{ kube_rpm_url_sufix }}
+  with_items:
+    - "{{ kube_node_rpms }}"
+ 
