@@ -66,6 +66,41 @@ You can just setup certain parts instead of doing it all.
 
 `$ ./deploy-cluster.sh --tags=nodes`
 
+### Component sources
+
+Each component can be installed from various sources. For instance:
+
+* distribution packages
+* github release
+* kubernetes built from local source codes
+
+By default, every component (etcd, docker, kubernetes, etc.) is installed via distribution package manager.
+Currently, the following component types are supported:
+
+* `etcd_source_type`: for `etcd` role
+* `flannel_source_type`: for `flannel` role
+* `kube_source_type`: for `master` and `node` roles
+* `source_type`: for other roles (and components)
+
+To see a full list of available types, see corresponding role's default variables.
+
+#### Kubernetes source type
+
+Available types (see `kube_source_type` under `roles/kubernetes/defaults/main.yml`):
+
+* `packageManager`
+* `localBuild`
+* `github-release`
+* `distribution-rpm`
+
+In a case of a package manager, `kube-apiserver` binary is shipped with `cap_net_bind_service=ep` capability set.
+The capability allows the apiserver to listen on `443` port.
+In a case of `localBuild` and `github-release`, the capability is not set.
+In order for apiserver to listen on a secure port, change the port (see `kube_master_api_port` under `roles/kubernetes/defaults/main.yml`). For instance to listen on `6443`.
+
+In order to apply `distribution-rpm` type, location of an rpm must be specified.
+See `kube_rpm_url_base` and `kube_rpm_url_sufix` variables under `roles/kubernetes/defaults/main.yml`.
+
 ### Network Service
 
 By changing the `networking` variable in the `inventory/group_vars/all.yml` file, you can choose the network-service to use.  The default is flannel.
@@ -74,6 +109,6 @@ By changing the `networking` variable in the `inventory/group_vars/all.yml` file
 
 ### Troubleshooting
 
-* When updating flannel to version ``0.5.5-7`` or higher on Fedora, ``/etc/sysconfig/flannel`` configuration file (if changed) must be updated to reflect renamed systemd environment variables.
+* When updating flannel to version `0.5.5-7` or higher on Fedora, `/etc/sysconfig/flannel` configuration file (if changed) must be updated to reflect renamed systemd environment variables.
 
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/ansible/README.md?pixel)]()
