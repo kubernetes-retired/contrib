@@ -46,6 +46,8 @@ var flMaxSyncFailures = flag.Int("max-sync-failures", envInt("GIT_SYNC_MAX_SYNC_
 var flUsername = flag.String("username", envString("GIT_SYNC_USERNAME", ""), "username")
 var flPassword = flag.String("password", envString("GIT_SYNC_PASSWORD", ""), "password")
 
+var flSSH = flag.Bool("ssh", envBool("GIT_SYNC_SSH", false), "use SSH protocol")
+
 var flChmod = flag.Int("change-permissions", envInt("GIT_SYNC_PERMISSIONS", 0), `If set it will change the permissions of the directory 
 		that contains the git repository. Example: 744`)
 
@@ -80,7 +82,7 @@ func envInt(key string, def int) int {
 	return def
 }
 
-const usage = "usage: GIT_SYNC_REPO= GIT_SYNC_DEST= [GIT_SYNC_BRANCH= GIT_SYNC_WAIT= GIT_SYNC_DEPTH= GIT_SYNC_USERNAME= GIT_SYNC_PASSWORD= GIT_SYNC_ONE_TIME= GIT_SYNC_MAX_SYNC_FAILURES=] git-sync -repo GIT_REPO_URL -dest PATH [-branch -wait -username -password -depth -one-time -max-sync-failures]"
+const usage = "usage: GIT_SYNC_REPO= GIT_SYNC_DEST= [GIT_SYNC_BRANCH= GIT_SYNC_WAIT= GIT_SYNC_DEPTH= GIT_SYNC_USERNAME= GIT_SYNC_PASSWORD= GIT_SYNC_SSH= GIT_SYNC_ONE_TIME= GIT_SYNC_MAX_SYNC_FAILURES=] git-sync -repo GIT_REPO_URL -dest PATH [-branch -wait -username -password -ssh -depth -one-time -max-sync-failures]"
 
 func main() {
 	flag.Parse()
@@ -95,6 +97,12 @@ func main() {
 	if *flUsername != "" && *flPassword != "" {
 		if err := setupGitAuth(*flUsername, *flPassword, *flRepo); err != nil {
 			log.Fatalf("error creating .netrc file: %v", err)
+		}
+	}
+
+	if *flSSH {
+		if err := setupGitSSH(); err != nil {
+			log.Fatalf("error configuring SSH: %v", err)
 		}
 	}
 
@@ -209,6 +217,25 @@ func setupGitAuth(username, password, gitURL string) error {
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error setting up git credentials %v: %s", err, string(output))
+	}
+
+	return nil
+}
+
+func setupGitSSH() error {
+	log.Println("setting up git SSH credentials")
+
+	if _, err := os.Stat("/etc/git-secret/ssh"); err != nil {
+		return fmt.Errorf("error: could not find SSH key Secret: %v", err)
+	}
+
+	// Kubernetes mounts Secret as 0444 by default, which is not restrictive enough to use as an SSH key.
+	// TODO: Remove this command once Kubernetes allows for specifying permissions for a Secret Volume.
+	// See https://github.com/kubernetes/kubernetes/pull/28936.
+	if err := os.Chmod("/etc/git-secret/ssh", 0400); err != nil {
+
+		// If the Secret Volume is mounted as readOnly, the read-only filesystem nature prevents the necessary chmod.
+		return fmt.Errorf("error running chmod on Secret (make sure Secret Volume is NOT mounted with readOnly=true): %v", err)
 	}
 
 	return nil
