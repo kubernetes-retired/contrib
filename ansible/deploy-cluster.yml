@@ -1,10 +1,10 @@
 ---
-# This playbook deploys a kubernetes cluster 
+# This playbook deploys a kubernetes cluster
 # with the default addons.
 
 - hosts: all
   gather_facts: false
-  sudo: yes
+  become: yes
   roles:
     - pre-ansible
   tags:
@@ -12,7 +12,7 @@
 
 # Install etcd
 - hosts: etcd
-  sudo: yes
+  become: yes
   roles:
     - etcd
   tags:
@@ -20,7 +20,7 @@
 
 # Install docker
 - hosts: all
-  sudo: yes
+  become: yes
   roles:
     - common
     - docker
@@ -31,7 +31,7 @@
 - hosts:
     - masters
     - nodes
-  sudo: yes
+  become: yes
   roles:
     - { role: flannel, when: networking == 'flannel' }
   tags:
@@ -39,7 +39,7 @@
 
 # install opencontrail
 - hosts: all
-  sudo: yes
+  become: yes
   roles:
     - { role: opencontrail, when: networking == 'opencontrail'}
   tags:
@@ -47,13 +47,13 @@
 
 # install contiv netmaster
 - hosts: masters
-  sudo: yes
+  become: yes
   roles:
     - { role: contiv, contiv_role: netmaster, when: networking == 'contiv' }
 
 # install kube master services
 - hosts: masters
-  sudo: yes
+  become: yes
   roles:
     - master
   tags:
@@ -61,7 +61,7 @@
 
 # launch addons, like dns
 - hosts: masters
-  sudo: yes
+  become: yes
   roles:
     - kubernetes-addons
   tags:
@@ -70,7 +70,7 @@
 
 # install kubernetes on the nodes
 - hosts: nodes
-  sudo: yes
+  become: yes
   roles:
     - node
   tags:
@@ -80,7 +80,7 @@
 - hosts:
     - masters[0]
     - nodes
-  sudo: yes
+  become: yes
   roles:
     - { role: opencontrail-provision, when: networking == 'opencontrail' }
   tags:
@@ -88,13 +88,13 @@
 
 # install contiv netplugin
 - hosts: nodes
-  sudo: yes
+  become: yes
   roles:
     - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
 
 # install runtime dependencies
 - hosts: nodes
-  sudo: yes
+  become: yes
   roles:
   - epilogue
   tags:

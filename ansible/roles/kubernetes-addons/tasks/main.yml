@@ -9,7 +9,7 @@
   local_action: file
     path={{ local_temp_addon_dir }}
     state=directory
-  sudo: no
+  become: no
 
 - name: Make sure the system services namespace exists
   copy:
