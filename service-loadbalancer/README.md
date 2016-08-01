@@ -152,7 +152,7 @@ metadata:
     - name: secret-volume
       secret:
         secretName: my-secret
-       
+
 ```
 
 - Add your SSL configuration to loadbalancer pod
@@ -166,7 +166,7 @@ metadata:
 
 ##### Custom ACL
  - Adding the aclMatch annotation will allow you to serve the service on a specific path although URLs will not be rewritten back to root. The following will cause your service to be available at /test and your web service will be passed the url with /test on the front.
- 
+
 ```yaml
  metadata:
    name: myservice
@@ -361,7 +361,7 @@ Europe
 
 #### Advanced features
 
-* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L155).
+* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L155), see https://gist.github.com/bprashanth/50355c25f4e2245d623f for an example of use.
 * __Name based virtual hosting__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L148).
 * __Configurable algorithms__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L153).
 
