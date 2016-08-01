@@ -173,7 +173,14 @@ func updateSymlink(link, newDir string) error {
 		return fmt.Errorf("error accessing symlink: %v", err)
 	}
 
-	if _, err := runCommand("ln", volMount, []string{"-snf", newDir, "tmp-link"}); err != nil {
+	// newDir is /git/git-data-..., we need to change it to relative path.
+	// Volume in other container may not be mounted at /git, so the symlink can't point to /git.
+	newDirRelative, err := filepath.Rel(volMount, newDir)
+	if err != nil {
+		return fmt.Errorf("error converting to relative path: %v", err)
+	}
+
+	if _, err := runCommand("ln", volMount, []string{"-snf", newDirRelative, "tmp-link"}); err != nil {
 		return fmt.Errorf("error creating symlink: %v", err)
 	}
 
@@ -211,7 +218,7 @@ func initRepo(repo, dest, branch, rev string, depth int) error {
 	if err := gitPullIntoDir(tmpTarget, branch, rev); err != nil {
 		return err;
 	}
-	if err := updateSymlink(path.Join(volMount, dest), tmpTarget); err != nil {
+	if err := updateSymlink(dest, tmpTarget); err != nil {
 		return err;
 	}
 	return nil
