@@ -361,7 +361,7 @@ Europe
 
 #### Advanced features
 
-* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L155), see https://gist.github.com/bprashanth/50355c25f4e2245d623f for an example of use.
+* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L155), see https://gist.github.com/bprashanth/50355c25f4e2245d623f for an example of use. The stick-table configuration can also be configured through a `serviceloadbalancer/lb.stick-table-params` annotation.
 * __Name based virtual hosting__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L148).
 * __Configurable algorithms__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L153).
 
