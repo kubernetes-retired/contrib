@@ -51,6 +51,7 @@ issue-mungers
 issue-reports
 jenkins-host
 jenkins-jobs
+label-file
 last-release-pr
 left-build-number
 max-pr-number
