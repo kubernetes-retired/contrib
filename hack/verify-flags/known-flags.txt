@@ -23,6 +23,7 @@ dry-run
 dump-nginx-configuration
 e2e-status-context
 election-namespace
+enable-md-yaml
 enable-output-coloring
 error-page
 etcd-prefix
