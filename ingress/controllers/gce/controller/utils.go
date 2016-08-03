@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -27,7 +28,9 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/intstr"
+	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 
@@ -35,8 +38,29 @@ import (
 )
 
 const (
-	allowHTTPKey    = "kubernetes.io/ingress.allow-http"
+	// allowHTTPKey tells the Ingress controller to allow/block HTTP access.
+	// If either unset or set to true, the controller will create a
+	// forwarding-rule for port 80, and any additional rules based on the TLS
+	// section of the Ingress. If set to false, the controller will only create
+	// rules for port 443 based on the TLS section.
+	allowHTTPKey = "kubernetes.io/ingress.allow-http"
+
+	// staticIPNameKey tells the Ingress controller to use a specific GCE
+	// static ip for its forwarding rules. If specified, the Ingress controller
+	// assigns the static ip by this name to the forwarding rules of the given
+	// Ingress. The controller *does not* manage this ip, it is the users
+	// responsibility to create/delete it.
 	staticIPNameKey = "kubernetes.io/ingress.global-static-ip-name"
+
+	// ingressClassKey picks a specific "class" for the Ingress. The controller
+	// only processes Ingresses with this annotation either unset, or set
+	// to either gceIngessClass or the empty string.
+	ingressClassKey = "kubernetes.io/ingress.class"
+	gceIngressClass = "gce"
+
+	// Label key to denote which GCE zone a Kubernetes node is in.
+	zoneKey     = "failure-domain.beta.kubernetes.io/zone"
+	defaultZone = ""
 )
 
 // ingAnnotations represents Ingress annotations.
@@ -63,6 +87,21 @@ func (ing ingAnnotations) staticIPName() string {
 	return val
 }
 
+func (ing ingAnnotations) ingressClass() string {
+	val, ok := ing[ingressClassKey]
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+// isGCEIngress returns true if the given Ingress either doesn't specify the
+// ingress.class annotation, or it's set to "gce".
+func isGCEIngress(ing *extensions.Ingress) bool {
+	class := ingAnnotations(ing.ObjectMeta.Annotations).ingressClass()
+	return class == "" || class == gceIngressClass
+}
+
 // errorNodePortNotFound is an implementation of error.
 type errorNodePortNotFound struct {
 	backend extensions.IngressBackend
@@ -78,9 +117,9 @@ func (e errorNodePortNotFound) Error() string {
 // invokes the given sync function for every work item inserted.
 type taskQueue struct {
 	// queue is the work queue the worker polls
-	queue *workqueue.Type
+	queue workqueue.RateLimitingInterface
 	// sync is called for each item in the queue
-	sync func(string)
+	sync func(string) error
 	// workerDone is closed when the worker exits
 	workerDone chan struct{}
 }
@@ -99,11 +138,6 @@ func (t *taskQueue) enqueue(obj interface{}) {
 	t.queue.Add(key)
 }
 
-func (t *taskQueue) requeue(key string, err error) {
-	glog.Errorf("Requeuing %v, err %v", key, err)
-	t.queue.Add(key)
-}
-
 // worker processes work in the queue through sync.
 func (t *taskQueue) worker() {
 	for {
@@ -113,7 +147,12 @@ func (t *taskQueue) worker() {
 			return
 		}
 		glog.V(3).Infof("Syncing %v", key)
-		t.sync(key.(string))
+		if err := t.sync(key.(string)); err != nil {
+			glog.Errorf("Requeuing %v, err %v", key, err)
+			t.queue.AddRateLimited(key)
+		} else {
+			t.queue.Forget(key)
+		}
 		t.queue.Done(key)
 	}
 }
@@ -126,9 +165,9 @@ func (t *taskQueue) shutdown() {
 
 // NewTaskQueue creates a new task queue with the given sync function.
 // The sync function is called for every element inserted into the queue.
-func NewTaskQueue(syncFn func(string)) *taskQueue {
+func NewTaskQueue(syncFn func(string) error) *taskQueue {
 	return &taskQueue{
-		queue:      workqueue.New(),
+		queue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
 	}
@@ -314,4 +353,151 @@ func (t *GCETranslator) toNodePorts(ings *extensions.IngressList) []int64 {
 		}
 	}
 	return knownPorts
+}
+
+func getZone(n api.Node) string {
+	zone, ok := n.Labels[zoneKey]
+	if !ok {
+		return defaultZone
+	}
+	return zone
+}
+
+// GetZoneForNode returns the zone for a given node by looking up its zone label.
+func (t *GCETranslator) GetZoneForNode(name string) (string, error) {
+	nodes, err := t.nodeLister.NodeCondition(getNodeReadyPredicate()).List()
+	if err != nil {
+		return "", err
+	}
+	for _, n := range nodes.Items {
+		if n.Name == name {
+			// TODO: Make this more resilient to label changes by listing
+			// cloud nodes and figuring out zone.
+			return getZone(n), nil
+		}
+	}
+	return "", fmt.Errorf("Node not found %v", name)
+}
+
+// ListZones returns a list of zones this Kubernetes cluster spans.
+func (t *GCETranslator) ListZones() ([]string, error) {
+	zones := sets.String{}
+	readyNodes, err := t.nodeLister.NodeCondition(getNodeReadyPredicate()).List()
+	if err != nil {
+		return zones.List(), err
+	}
+	for _, n := range readyNodes.Items {
+		zones.Insert(getZone(n))
+	}
+	return zones.List(), nil
+}
+
+// isPortEqual compares the given IntOrString ports
+func isPortEqual(port, targetPort intstr.IntOrString) bool {
+	if targetPort.Type == intstr.Int {
+		return port.IntVal == targetPort.IntVal
+	}
+	return port.StrVal == targetPort.StrVal
+}
+
+// geHTTPProbe returns the http readiness probe from the first container
+// that matches targetPort, from the set of pods matching the given labels.
+func (t *GCETranslator) getHTTPProbe(l map[string]string, targetPort intstr.IntOrString) (*api.Probe, error) {
+	// Lookup any container with a matching targetPort from the set of pods
+	// with a matching label selector.
+	pl, err := t.podLister.List(labels.SelectorFromSet(labels.Set(l)))
+	if err != nil {
+		return nil, err
+	}
+
+	// If multiple endpoints have different health checks, take the first
+	sort.Sort(PodsByCreationTimestamp(pl))
+
+	for _, pod := range pl {
+		logStr := fmt.Sprintf("Pod %v matching service selectors %v (targetport %+v)", pod.Name, l, targetPort)
+		for _, c := range pod.Spec.Containers {
+			if !isSimpleHTTPProbe(c.ReadinessProbe) {
+				continue
+			}
+			for _, p := range c.Ports {
+				cPort := intstr.IntOrString{IntVal: p.ContainerPort, StrVal: p.Name}
+				if isPortEqual(cPort, targetPort) {
+					if isPortEqual(c.ReadinessProbe.Handler.HTTPGet.Port, targetPort) {
+						return c.ReadinessProbe, nil
+					}
+					glog.Infof("%v: found matching targetPort on container %v, but not on readinessProbe (%+v)",
+						logStr, c.Name, c.ReadinessProbe.Handler.HTTPGet.Port)
+				}
+			}
+		}
+		glog.V(4).Infof("%v: lacks a matching HTTP probe for use in health checks.", logStr)
+	}
+	return nil, nil
+}
+
+// isSimpleHTTPProbe returns true if the given Probe is:
+// - an HTTPGet probe, as opposed to a tcp or exec probe
+// - has a scheme of HTTP, as opposed to HTTPS
+// - has no special host or headers fields
+func isSimpleHTTPProbe(probe *api.Probe) bool {
+	return (probe != nil && probe.Handler.HTTPGet != nil && probe.Handler.HTTPGet.Host == "" &&
+		probe.Handler.HTTPGet.Scheme == api.URISchemeHTTP && len(probe.Handler.HTTPGet.HTTPHeaders) == 0)
+}
+
+// HealthCheck returns the http readiness probe for the endpoint backing the
+// given nodePort. If no probe is found it returns a health check with "" as
+// the request path, callers are responsible for swapping this out for the
+// appropriate default.
+func (t *GCETranslator) HealthCheck(port int64) (*compute.HttpHealthCheck, error) {
+	sl, err := t.svcLister.List()
+	if err != nil {
+		return nil, err
+	}
+	// Find the label and target port of the one service with the given nodePort
+	for _, s := range sl.Items {
+		for _, p := range s.Spec.Ports {
+			if int32(port) == p.NodePort {
+				rp, err := t.getHTTPProbe(s.Spec.Selector, p.TargetPort)
+				if err != nil {
+					return nil, err
+				}
+				if rp == nil {
+					glog.Infof("No pod in service %v with node port %v has declared a matching readiness probe for health checks.", s.Name, port)
+					break
+				}
+				healthPath := rp.Handler.HTTPGet.Path
+				// GCE requires a leading "/" for health check urls.
+				if string(healthPath[0]) != "/" {
+					healthPath = fmt.Sprintf("/%v", healthPath)
+				}
+				host := rp.Handler.HTTPGet.Host
+				glog.Infof("Found custom health check for Service %v nodeport %v: %v%v", s.Name, port, host, healthPath)
+				return &compute.HttpHealthCheck{
+					Port:               port,
+					RequestPath:        healthPath,
+					Host:               host,
+					Description:        "kubernetes L7 health check from readiness probe.",
+					CheckIntervalSec:   int64(rp.PeriodSeconds),
+					TimeoutSec:         int64(rp.TimeoutSeconds),
+					HealthyThreshold:   int64(rp.SuccessThreshold),
+					UnhealthyThreshold: int64(rp.FailureThreshold),
+					// TODO: include headers after updating compute godep.
+				}, nil
+			}
+		}
+	}
+	return utils.DefaultHealthCheckTemplate(port), nil
+}
+
+// PodsByCreationTimestamp sorts a list of Pods by creation timestamp, using their names as a tie breaker.
+type PodsByCreationTimestamp []*api.Pod
+
+func (o PodsByCreationTimestamp) Len() int      { return len(o) }
+func (o PodsByCreationTimestamp) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
+
+func (o PodsByCreationTimestamp) Less(i, j int) bool {
+	if o[i].CreationTimestamp.Equal(o[j].CreationTimestamp) {
+		return o[i].Name < o[j].Name
+	}
+	return o[i].CreationTimestamp.Before(o[j].CreationTimestamp)
 }

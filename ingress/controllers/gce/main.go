@@ -58,7 +58,7 @@ const (
 	alphaNumericChar = "0"
 
 	// Current docker image version. Only used in debug logging.
-	imageVersion = "glbc:0.6.3"
+	imageVersion = "glbc:0.7.1"
 
 	// Key used to persist UIDs to configmaps.
 	uidConfigMapName = "ingress-uid"
@@ -220,6 +220,7 @@ func main() {
 	if clusterManager.ClusterNamer.ClusterName != "" {
 		glog.V(3).Infof("Cluster name %+v", clusterManager.ClusterNamer.ClusterName)
 	}
+	clusterManager.Init(&controller.GCETranslator{lbc})
 	go registerHandlers(lbc)
 	go handleSigterm(lbc, *deleteAllOnQuit)
 
@@ -247,7 +248,7 @@ func getClusterUID(kubeClient *client.Client, name string) (string, error) {
 
 	existingUID, found, err := cfgVault.Get()
 	if found {
-		glog.Infof("Using saved cluster uid %q", name)
+		glog.Infof("Using saved cluster uid %q", existingUID)
 		return existingUID, nil
 	} else if err != nil {
 		// This can fail because of:

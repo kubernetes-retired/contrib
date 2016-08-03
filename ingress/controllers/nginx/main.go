@@ -43,7 +43,7 @@ const (
 
 var (
 	// value overwritten during build. This can be used to resolve issues.
-	version = "0.6"
+	version = "0.8.2"
 	gitRepo = "https://github.com/kubernetes/contrib"
 
 	flags = pflag.NewFlagSet("", pflag.ExitOnError)
@@ -85,6 +85,9 @@ var (
 		This can be used as a guide to create a custom configuration.`)
 
 	profiling = flags.Bool("profiling", true, `Enable profiling via web interface host:port/debug/pprof/`)
+
+	defSSLCertificate = flags.String("default-ssl-certificate", "", `Name of the secret that contains a SSL 
+		certificate to be used as default for a HTTPS catch-all server`)
 )
 
 func main() {
@@ -130,7 +133,16 @@ func main() {
 	}
 	glog.Infof("Validated %v as the default backend", *defaultSvc)
 
-	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName, *udpConfigMapName, runtimePodInfo)
+	if *nxgConfigMap != "" {
+		_, _, err := parseNsName(*nxgConfigMap)
+		if err != nil {
+			glog.Fatalf("configmap error: %v", err)
+		}
+	}
+
+	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod,
+		*defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName,
+		*udpConfigMapName, *defSSLCertificate, runtimePodInfo)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}

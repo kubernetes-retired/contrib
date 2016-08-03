@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,11 +31,11 @@ import (
 const (
 	kubectlAnnotationPrefix = "kubectl.kubernetes.io/"
 	// TODO: auto-generate this
-	PossibleResourceTypes = `Possible resource types include (case insensitive): pods (po), services (svc), deployments,
-replicasets (rs), replicationcontrollers (rc), nodes (no), events (ev), limitranges (limits),
-persistentvolumes (pv), persistentvolumeclaims (pvc), resourcequotas (quota), namespaces (ns),
-serviceaccounts (sa), ingresses (ing), horizontalpodautoscalers (hpa), daemonsets (ds), configmaps,
-componentstatuses (cs), endpoints (ep), and secrets.`
+	PossibleResourceTypes = `Possible resource types include (case insensitive): pods (aka 'po'), services (aka 'svc'), deployments,
+replicasets (aka 'rs'), replicationcontrollers (aka 'rc'), nodes (aka 'no'), events (aka 'ev'), limitranges (aka 'limits'),
+persistentvolumes (aka 'pv'), persistentvolumeclaims (aka 'pvc'), resourcequotas (aka 'quota'), namespaces (aka 'ns'),
+serviceaccounts (aka 'sa'), ingresses (aka 'ing'), horizontalpodautoscalers (aka 'hpa'), daemonsets (aka 'ds'), configmaps,
+componentstatuses (aka 'cs), endpoints (aka 'ep'), petsets (alpha feature, may be unstable) and secrets.`
 )
 
 type NamespaceInfo struct {
@@ -43,7 +43,7 @@ type NamespaceInfo struct {
 }
 
 func listOfImages(spec *api.PodSpec) []string {
-	var images []string
+	images := make([]string, 0, len(spec.Containers))
 	for _, container := range spec.Containers {
 		images = append(images, container.Image)
 	}
@@ -64,7 +64,7 @@ func NewThirdPartyResourceMapper(gvs []unversioned.GroupVersion, gvks []unversio
 				}, nil
 			}
 		}
-		groupVersions := []string{}
+		groupVersions := make([]string, 0, len(gvs))
 		for ix := range gvs {
 			groupVersions = append(groupVersions, gvs[ix].String())
 		}
@@ -162,6 +162,19 @@ var shortForms = map[string]string{
 	"rs":     "replicasets",
 	"sa":     "serviceaccounts",
 	"svc":    "services",
+}
+
+// Look-up for resource short forms by value
+func ResourceShortFormFor(resource string) (string, bool) {
+	var alias string
+	exists := false
+	for k, val := range shortForms {
+		if val == resource {
+			alias = k
+			exists = true
+		}
+	}
+	return alias, exists
 }
 
 // expandResourceShortcut will return the expanded version of resource

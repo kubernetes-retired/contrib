@@ -31,11 +31,18 @@ const (
 \* \[Build Log\]\([^)]+\)
 \* \[Test Artifacts\]\([^)]+\)
 \* \[Internal Jenkins Results\]\([^)]+\)`
+	commentRegexpStrUpdated = `GCE e2e( test)? build/test \*\*(passed|failed)\*\* for commit [[:xdigit:]]+\.
+\* \[Test Results\]\([^)]+\)
+\* \[Build Log\]\([^)]+\)
+\* \[Test Artifacts\]\([^)]+\)
+\* \[Internal Jenkins Results\]\([^)]+\)`
 )
 
 var (
-	_             = glog.Infof
-	commentRegexp = regexp.MustCompile(commentRegexpStr)
+	_ = glog.Infof
+	//Changed so that this variable is true if it compiles old or updated
+	commentRegexp        = regexp.MustCompile(commentRegexpStr)
+	updatedCommentRegexp = regexp.MustCompile(commentRegexpStrUpdated)
 )
 
 // CommentDeleterJenkins looks for jenkins comments which are no longer useful
@@ -48,12 +55,12 @@ func init() {
 }
 
 func isJenkinsTestComment(body string) bool {
-	return commentRegexp.MatchString(body)
+	return updatedCommentRegexp.MatchString(body) || commentRegexp.MatchString(body)
 }
 
 // StaleComments returns a slice of comments which are stale
-func (CommentDeleterJenkins) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
-	out := []githubapi.IssueComment{}
+func (CommentDeleterJenkins) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
+	out := []*githubapi.IssueComment{}
 	var last *githubapi.IssueComment
 
 	for i := range comments {
@@ -66,9 +73,9 @@ func (CommentDeleterJenkins) StaleComments(obj *github.MungeObject, comments []g
 			continue
 		}
 		if last != nil {
-			out = append(out, *last)
+			out = append(out, last)
 		}
-		last = &comment
+		last = comment
 	}
 	return out
 }

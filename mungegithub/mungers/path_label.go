@@ -65,6 +65,8 @@ func (p *PathLabelMunger) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
 func (p *PathLabelMunger) Initialize(config *github.Config, features *features.Features) error {
+	glog.Infof("path-label-config: %#v\n", p.pathLabelFile)
+
 	allLabels := sets.NewString()
 	out := []labelMap{}
 	file := p.pathLabelFile
@@ -115,7 +117,7 @@ func (p *PathLabelMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (p *PathLabelMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringVar(&p.pathLabelFile, "path-label-config", "path-label.txt", "file containing the pathname to label mappings")
+	cmd.Flags().StringVar(&p.pathLabelFile, "path-label-config", "", "file containing the pathname to label mappings")
 }
 
 // Munge is the workhorse the will actually make updates to the PR
@@ -124,18 +126,16 @@ func (p *PathLabelMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	commits, err := obj.GetCommits()
+	files, err := obj.ListFiles()
 	if err != nil {
 		return
 	}
 
 	needsLabels := sets.NewString()
-	for _, c := range commits {
-		for _, f := range c.Files {
-			for _, lm := range p.labelMap {
-				if lm.regexp.MatchString(*f.Filename) {
-					needsLabels.Insert(lm.label)
-				}
+	for _, f := range files {
+		for _, lm := range p.labelMap {
+			if lm.regexp.MatchString(*f.Filename) {
+				needsLabels.Insert(lm.label)
 			}
 		}
 	}

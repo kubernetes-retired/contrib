@@ -19,6 +19,8 @@ package main
 import (
 	"flag"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/golang/glog"
@@ -114,8 +116,26 @@ func main() {
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 
-	go wait.Until(ipvsc.sync, 10*time.Second, wait.NeverStop)
+	go ipvsc.syncQueue.run(time.Second, ipvsc.stopCh)
+
+	go handleSigterm(ipvsc)
 
 	glog.Info("starting keepalived to announce VIPs")
 	ipvsc.keepalived.Start()
+}
+
+func handleSigterm(ipvsc *ipvsControllerController) {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGTERM)
+	<-signalChan
+	glog.Infof("Received SIGTERM, shutting down")
+
+	exitCode := 0
+	if err := ipvsc.Stop(); err != nil {
+		glog.Infof("Error during shutdown %v", err)
+		exitCode = 1
+	}
+
+	glog.Infof("Exiting with %v", exitCode)
+	os.Exit(exitCode)
 }

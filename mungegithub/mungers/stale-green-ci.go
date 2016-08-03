@@ -35,40 +35,45 @@ const (
 Tests are more than %d hours old. Re-running tests.`
 )
 
-var (
-	greenMsgBody     = fmt.Sprintf(greenMsgFormat, staleGreenCIHours)
-	requiredContexts = []string{jenkinsUnitContext, jenkinsE2EContext}
-)
+var greenMsgBody = fmt.Sprintf(greenMsgFormat, staleGreenCIHours)
 
-// StaleGreenCI will remove the LGTM flag from an PR which has been
-// updated since the reviewer added LGTM
-type StaleGreenCI struct{}
+// StaleGreenCI will re-run passed tests for LGTM PRs if they are more than
+// 96 hours old.
+type StaleGreenCI struct {
+	getRetestContexts func() []string
+	features          *features.Features
+}
 
 func init() {
-	s := StaleGreenCI{}
+	s := &StaleGreenCI{}
 	RegisterMungerOrDie(s)
 	RegisterStaleComments(s)
 }
 
 // Name is the name usable in --pr-mungers
-func (StaleGreenCI) Name() string { return "stale-green-ci" }
+func (s *StaleGreenCI) Name() string { return "stale-green-ci" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (StaleGreenCI) RequiredFeatures() []string { return []string{} }
+func (s *StaleGreenCI) RequiredFeatures() []string { return []string{features.TestOptionsFeature} }
 
 // Initialize will initialize the munger
-func (StaleGreenCI) Initialize(config *github.Config, features *features.Features) error {
+func (s *StaleGreenCI) Initialize(config *github.Config, features *features.Features) error {
+	s.features = features
+	s.getRetestContexts = func() []string {
+		return s.features.TestOptions.RequiredRetestContexts
+	}
 	return nil
 }
 
 // EachLoop is called at the start of every munge loop
-func (StaleGreenCI) EachLoop() error { return nil }
+func (s *StaleGreenCI) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (StaleGreenCI) AddFlags(cmd *cobra.Command, config *github.Config) {}
+func (s *StaleGreenCI) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
 // Munge is the workhorse the will actually make updates to the PR
-func (StaleGreenCI) Munge(obj *github.MungeObject) {
+func (s *StaleGreenCI) Munge(obj *github.MungeObject) {
+	requiredContexts := s.getRetestContexts()
 	if !obj.IsPR() {
 		return
 	}
@@ -102,14 +107,14 @@ func (StaleGreenCI) Munge(obj *github.MungeObject) {
 	}
 }
 
-func (StaleGreenCI) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+func (s *StaleGreenCI) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
 	if *comment.Body != greenMsgBody {
 		return false
 	}
-	stale := commentBeforeLastCI(obj, comment)
+	stale := commentBeforeLastCI(obj, comment, s.features.TestOptions.RequiredRetestContexts)
 	if stale {
 		glog.V(6).Infof("Found stale StaleGreenCI comment")
 	}
@@ -117,11 +122,11 @@ func (StaleGreenCI) isStaleComment(obj *github.MungeObject, comment githubapi.Is
 }
 
 // StaleComments returns a slice of stale comments
-func (s StaleGreenCI) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+func (s *StaleGreenCI) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
 	return forEachCommentTest(obj, comments, s.isStaleComment)
 }
 
-func commentBeforeLastCI(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+func commentBeforeLastCI(obj *github.MungeObject, comment *githubapi.IssueComment, requiredContexts []string) bool {
 	if !obj.IsStatusSuccess(requiredContexts) {
 		return false
 	}

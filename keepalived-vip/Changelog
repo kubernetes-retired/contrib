@@ -1,3 +1,11 @@
+## 0.7
+- Update keepalived to 1.2.23
+- Use delayed queue
+- Avoid sync without a reachable master
+
+## 0.6
+- Update keepalived to 1.2.21
+
 ## 0.5
 - Respect nodeSelector to build the list of peer nodes when --use-unicast is true 
 - Add support for UDP services

@@ -26,7 +26,7 @@ import (
 	"k8s.io/contrib/addon-resizer/nanny"
 	resource "k8s.io/kubernetes/pkg/api/resource"
 
-	"k8s.io/kubernetes/pkg/client/clientset_generated/release_1_2"
+	client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_3"
 	"k8s.io/kubernetes/pkg/client/restclient"
 )
 
@@ -48,6 +48,7 @@ var (
 	containerName = flag.String("container", "pod-nanny", "The name of the container to watch. This defaults to the nanny itself.")
 	// Flags to control runtime behavior.
 	pollPeriod = time.Millisecond * time.Duration(*flag.Int("poll-period", 10000, "The time, in milliseconds, to poll the dependent container."))
+	estimator  = flag.String("estimator", "linear", "The estimator to use. Currently supported: linear, exponential")
 )
 
 func main() {
@@ -73,7 +74,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	clientset, err := release_1_2.NewForConfig(config)
+	clientset, err := client.NewForConfig(config)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -106,9 +107,20 @@ func main() {
 		})
 	}
 
-	log.Infof("Resources: %v", resources)
-	est := nanny.LinearEstimator{
-		Resources: resources,
+	log.Infof("Resources: %+v", resources)
+
+	var est nanny.ResourceEstimator
+	if *estimator == "linear" {
+		est = nanny.LinearEstimator{
+			Resources: resources,
+		}
+	} else if *estimator == "exponential" {
+		est = nanny.ExponentialEstimator{
+			Resources:   resources,
+			ScaleFactor: 1.5,
+		}
+	} else {
+		log.Fatalf("Estimator %s not supported", *estimator)
 	}
 
 	// Begin nannying.

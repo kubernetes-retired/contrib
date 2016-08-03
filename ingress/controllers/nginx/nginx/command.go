@@ -25,6 +25,8 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/kubernetes/pkg/healthz"
+
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 )
 
 // Start starts a nginx (master process) and waits. If the process ends
@@ -54,7 +56,7 @@ func (ngx *Manager) Start() {
 // shut down, stop accepting new connections and continue to service current requests
 // until all such requests are serviced. After that, the old worker processes exit.
 // http://nginx.org/en/docs/beginners_guide.html#control
-func (ngx *Manager) CheckAndReload(cfg Configuration, ingressCfg IngressConfig) {
+func (ngx *Manager) CheckAndReload(cfg config.Configuration, ingressCfg IngressConfig) error {
 	ngx.reloadRateLimiter.Accept()
 
 	ngx.reloadLock.Lock()
@@ -63,15 +65,18 @@ func (ngx *Manager) CheckAndReload(cfg Configuration, ingressCfg IngressConfig) 
 	newCfg, err := ngx.writeCfg(cfg, ingressCfg)
 
 	if err != nil {
-		glog.Errorf("failed to write new nginx configuration. Avoiding reload: %v", err)
-		return
+		return fmt.Errorf("failed to write new nginx configuration. Avoiding reload: %v", err)
 	}
 
 	if newCfg {
-		if err := ngx.shellOut("nginx -s reload"); err == nil {
-			glog.Info("change in configuration detected. Reloading...")
+		if err := ngx.shellOut("nginx -s reload"); err != nil {
+			return fmt.Errorf("error reloading nginx: %v", err)
 		}
+
+		glog.Info("change in configuration detected. Reloading...")
 	}
+
+	return nil
 }
 
 // shellOut executes a command and returns its combined standard output and standard
@@ -96,7 +101,7 @@ func (ngx Manager) Name() string {
 
 // Check returns if the nginx healthz endpoint is returning ok (status code 200)
 func (ngx Manager) Check(_ *http.Request) error {
-	res, err := http.Get("http://127.0.0.1:8080/healthz")
+	res, err := http.Get("http://127.0.0.1:18080/healthz")
 	if err != nil {
 		return err
 	}

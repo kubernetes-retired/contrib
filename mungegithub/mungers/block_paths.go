@@ -66,6 +66,8 @@ func (b *BlockPath) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
 func (b *BlockPath) Initialize(config *github.Config, features *features.Features) error {
+	glog.Infof("block-path-config: %#v\n", b.path)
+
 	if len(b.path) == 0 {
 		glog.Fatalf("--block-path-config is required with the block-path munger")
 	}
@@ -105,7 +107,7 @@ func (b *BlockPath) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (b *BlockPath) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringVar(&b.path, "block-path-config", "block-path.yaml", "file containing the pathnames to block or not block")
+	cmd.Flags().StringVar(&b.path, "block-path-config", "", "file containing the pathnames to block or not block")
 }
 
 func matchesAny(path string, regs []regexp.Regexp) bool {
@@ -127,26 +129,24 @@ func (b *BlockPath) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	commits, err := obj.GetCommits()
+	files, err := obj.ListFiles()
 	if err != nil {
 		return
 	}
 
-	for _, c := range commits {
-		for _, f := range c.Files {
-			if matchesAny(*f.Filename, b.blockRegexp) {
-				if matchesAny(*f.Filename, b.doNotBlockRegexp) {
-					continue
-				}
-				obj.WriteComment(blockPathBody)
-				obj.AddLabels([]string{doNotMergeLabel})
-				return
+	for _, f := range files {
+		if matchesAny(*f.Filename, b.blockRegexp) {
+			if matchesAny(*f.Filename, b.doNotBlockRegexp) {
+				continue
 			}
+			obj.WriteComment(blockPathBody)
+			obj.AddLabels([]string{doNotMergeLabel})
+			return
 		}
 	}
 }
 
-func (b *BlockPath) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+func (b *BlockPath) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
@@ -161,6 +161,6 @@ func (b *BlockPath) isStaleComment(obj *github.MungeObject, comment githubapi.Is
 }
 
 // StaleComments returns a slice of stale comments
-func (b *BlockPath) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+func (b *BlockPath) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
 	return forEachCommentTest(obj, comments, b.isStaleComment)
 }

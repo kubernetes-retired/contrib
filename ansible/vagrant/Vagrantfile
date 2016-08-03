@@ -10,6 +10,7 @@ require 'vagrant-openstack-provider'
 require 'vagrant-aws'
 
 $num_nodes = (ENV['NUM_NODES'] || 2).to_i
+$num_masters = (ENV['NUM_MASTERS'] || 1).to_i
 $ansible_tags = ENV['ANSIBLE_TAGS']
 # OS image to use. Currently supported:
 # - "centos7" on openstack, libvirt, virtualbox
@@ -202,7 +203,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     set_common_ansible_options(ansible)
 
     # This sets up both flannel and kube.
-    ansible.playbook = "../cluster.yml"
+    ansible.playbook = "../deploy-cluster.yml"
 
     if provider == :virtualbox
       master_ip = VBOX_STATIC_IP_TEMPLATE % 0
@@ -245,6 +246,17 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
+  masters = Array.new()
+  $num_masters.times do |i|
+    # multi vm config
+    name = "kube-master-#{i+1}"
+    masters.push(name)
+    config.vm.define "#{name}" do |n|
+      n.vm.hostname = name
+      set_provider(n, i )
+    end
+  end
+
   nodes = Array.new()
   $num_nodes.times do |i|
     # multi vm config
@@ -252,41 +264,37 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     nodes.push(name)
     config.vm.define "#{name}" do |n|
       n.vm.hostname = name
-      set_provider(n, i + 1)
-    end
-  end
+      set_provider(n, i + $num_masters)
+      if i == $num_nodes-1
+        # GROUP CONFIGURATION
+        # This is how we create the ansible inventory, see it in .vagrant
+        # if you want to debug, run 'VAGRANT_LOG=info vagrant up'
+        # and you'll see exactly how the cluster comes up via ansible inv.
+        $groups = {
+          "etcd:children" => ["masters"],
+          "masters" => masters,
+          "nodes" => nodes,
+          "all_groups:children" => ["etcd","masters","nodes"],
+        }
+        if $os_image == :coreos
+          # Vagrant prior version 1.8.0 doesn't write group variables into inventory file:
+          # <https://github.com/mitchellh/vagrant/commit/dd4ae1a51cfb246d561bced89d3b34ee90a0a38f>
+          Vagrant.require_version ">= 1.8.0"
 
-  # This is how we create the ansible inventory, see it in .vagrant
-  # if you want to debug, run 'VAGRANT_LOG=info vagrant up'
-  # and you'll see exactly how the cluster comes up via ansible inv.
-  $groups = {
-     "etcd" => ["kube-master"],
-     "masters" => ["kube-master"],
-     "nodes" => nodes,
-     "all_groups:children" => ["etcd","masters","nodes"],
-  }
-  if $os_image == :coreos
-    # Vagrant prior version 1.8.0 doesn't write group variables into inventory file:
-    # <https://github.com/mitchellh/vagrant/commit/dd4ae1a51cfb246d561bced89d3b34ee90a0a38f>
-    Vagrant.require_version ">= 1.8.0"
+          # On CoreOS we use custom Python in Ansible.
+          $groups["all_groups:vars"] = ['ansible_python_interpreter="PATH=/opt/bin:$PATH python"']
+        end
+        # PROVISIONING
+        if $ansible_tags.nil?
+          run_ansible_provision n do |ansible, provider|
+            vagrant_ansible_provision(ansible, provider)
+          end
+        end
 
-    # On CoreOS we use custom Python in Ansible.
-    $groups["all_groups:vars"] = ['ansible_python_interpreter="PATH=/opt/bin:$PATH python"']
-  end
-
-  config.vm.define "kube-master" do |n|
-    name = "kube-master"
-    n.vm.hostname = name
-    set_provider(n, 0)
-
-    if $ansible_tags.nil?
-      run_ansible_provision n do |ansible, provider|
-        vagrant_ansible_provision(ansible, provider)
+        run_ansible_provision n do |ansible, provider|
+          cluster_ansible_provision(ansible, provider)
+        end
       end
-    end
-
-    run_ansible_provision n do |ansible, provider|
-      cluster_ansible_provision(ansible, provider)
     end
   end
 end

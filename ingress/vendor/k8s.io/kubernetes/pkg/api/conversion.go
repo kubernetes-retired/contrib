@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -100,15 +100,12 @@ func Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(in, out *unversioned.T
 }
 
 func Convert_unversioned_ListMeta_To_unversioned_ListMeta(in, out *unversioned.ListMeta, s conversion.Scope) error {
-	out.ResourceVersion = in.ResourceVersion
-	out.SelfLink = in.SelfLink
+	*out = *in
 	return nil
 }
 
 func Convert_intstr_IntOrString_To_intstr_IntOrString(in, out *intstr.IntOrString, s conversion.Scope) error {
-	out.Type = in.Type
-	out.IntVal = in.IntVal
-	out.StrVal = in.StrVal
+	*out = *in
 	return nil
 }
 
@@ -158,7 +155,6 @@ func Convert_fields_Selector_To_string(in *fields.Selector, out *string, s conve
 	return nil
 }
 func Convert_resource_Quantity_To_resource_Quantity(in *resource.Quantity, out *resource.Quantity, s conversion.Scope) error {
-	// Cannot deep copy these, because inf.Dec has unexported fields.
-	*out = *in.Copy()
+	*out = *in
 	return nil
 }

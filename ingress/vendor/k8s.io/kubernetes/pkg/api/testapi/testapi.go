@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,10 @@ import (
 	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
+	"k8s.io/kubernetes/pkg/apis/certificates"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/apis/policy"
+	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer/recognizer"
 
@@ -41,19 +44,24 @@ import (
 	_ "k8s.io/kubernetes/pkg/apis/apps/install"
 	_ "k8s.io/kubernetes/pkg/apis/autoscaling/install"
 	_ "k8s.io/kubernetes/pkg/apis/batch/install"
+	_ "k8s.io/kubernetes/pkg/apis/certificates/install"
 	_ "k8s.io/kubernetes/pkg/apis/componentconfig/install"
 	_ "k8s.io/kubernetes/pkg/apis/extensions/install"
-	_ "k8s.io/kubernetes/pkg/apis/metrics/install"
+	_ "k8s.io/kubernetes/pkg/apis/policy/install"
+	_ "k8s.io/kubernetes/pkg/apis/rbac/install"
 )
 
 var (
-	Groups      = make(map[string]TestGroup)
-	Default     TestGroup
-	Autoscaling TestGroup
-	Batch       TestGroup
-	Extensions  TestGroup
-	Apps        TestGroup
-	Federation  TestGroup
+	Groups       = make(map[string]TestGroup)
+	Default      TestGroup
+	Autoscaling  TestGroup
+	Batch        TestGroup
+	Extensions   TestGroup
+	Apps         TestGroup
+	Policy       TestGroup
+	Federation   TestGroup
+	Rbac         TestGroup
+	Certificates TestGroup
 
 	serializer        runtime.SerializerInfo
 	storageSerializer runtime.SerializerInfo
@@ -153,8 +161,8 @@ func init() {
 	if _, ok := Groups[batch.GroupName]; !ok {
 		Groups[batch.GroupName] = TestGroup{
 			externalGroupVersion: unversioned.GroupVersion{Group: batch.GroupName, Version: registered.GroupOrDie(batch.GroupName).GroupVersion.Version},
-			internalGroupVersion: extensions.SchemeGroupVersion,
-			internalTypes:        api.Scheme.KnownTypes(extensions.SchemeGroupVersion),
+			internalGroupVersion: batch.SchemeGroupVersion,
+			internalTypes:        api.Scheme.KnownTypes(batch.SchemeGroupVersion),
 		}
 	}
 	if _, ok := Groups[apps.GroupName]; !ok {
@@ -164,6 +172,13 @@ func init() {
 			internalTypes:        api.Scheme.KnownTypes(extensions.SchemeGroupVersion),
 		}
 	}
+	if _, ok := Groups[policy.GroupName]; !ok {
+		Groups[policy.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: policy.GroupName, Version: registered.GroupOrDie(policy.GroupName).GroupVersion.Version},
+			internalGroupVersion: policy.SchemeGroupVersion,
+			internalTypes:        api.Scheme.KnownTypes(policy.SchemeGroupVersion),
+		}
+	}
 	if _, ok := Groups[federation.GroupName]; !ok {
 		Groups[federation.GroupName] = TestGroup{
 			externalGroupVersion: unversioned.GroupVersion{Group: federation.GroupName, Version: registered.GroupOrDie(federation.GroupName).GroupVersion.Version},
@@ -171,13 +186,30 @@ func init() {
 			internalTypes:        api.Scheme.KnownTypes(federation.SchemeGroupVersion),
 		}
 	}
+	if _, ok := Groups[rbac.GroupName]; !ok {
+		Groups[rbac.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: rbac.GroupName, Version: registered.GroupOrDie(rbac.GroupName).GroupVersion.Version},
+			internalGroupVersion: rbac.SchemeGroupVersion,
+			internalTypes:        api.Scheme.KnownTypes(rbac.SchemeGroupVersion),
+		}
+	}
+	if _, ok := Groups[certificates.GroupName]; !ok {
+		Groups[certificates.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: certificates.GroupName, Version: registered.GroupOrDie(certificates.GroupName).GroupVersion.Version},
+			internalGroupVersion: certificates.SchemeGroupVersion,
+			internalTypes:        api.Scheme.KnownTypes(certificates.SchemeGroupVersion),
+		}
+	}
 
 	Default = Groups[api.GroupName]
 	Autoscaling = Groups[autoscaling.GroupName]
 	Batch = Groups[batch.GroupName]
 	Apps = Groups[apps.GroupName]
+	Policy = Groups[policy.GroupName]
+	Certificates = Groups[certificates.GroupName]
 	Extensions = Groups[extensions.GroupName]
 	Federation = Groups[federation.GroupName]
+	Rbac = Groups[rbac.GroupName]
 }
 
 func (g TestGroup) ContentConfig() (string, *unversioned.GroupVersion, runtime.Codec) {
@@ -329,10 +361,11 @@ func ExternalGroupVersions() []unversioned.GroupVersion {
 
 // Get codec based on runtime.Object
 func GetCodecForObject(obj runtime.Object) (runtime.Codec, error) {
-	kind, err := api.Scheme.ObjectKind(obj)
+	kinds, _, err := api.Scheme.ObjectKinds(obj)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected encoding error: %v", err)
 	}
+	kind := kinds[0]
 
 	for _, group := range Groups {
 		if group.GroupVersion().Group != kind.Group {

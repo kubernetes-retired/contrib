@@ -42,7 +42,9 @@ import (
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/auth"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/healthcheck"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/ipwhitelist"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ratelimit"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/rewrite"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/secureupstream"
@@ -86,23 +88,24 @@ func (npm namedPortMapping) getPortMappings() map[string]string {
 // loadBalancerController watches the kubernetes api and adds/removes services
 // from the loadbalancer
 type loadBalancerController struct {
-	client         *client.Client
-	ingController  *framework.Controller
-	endpController *framework.Controller
-	svcController  *framework.Controller
-	secrController *framework.Controller
-	mapController  *framework.Controller
-	ingLister      StoreToIngressLister
-	svcLister      cache.StoreToServiceLister
-	endpLister     cache.StoreToEndpointsLister
-	secrLister     StoreToSecretsLister
-	mapLister      StoreToConfigmapLister
-	nginx          *nginx.Manager
-	podInfo        *podInfo
-	defaultSvc     string
-	nxgConfigMap   string
-	tcpConfigMap   string
-	udpConfigMap   string
+	client            *client.Client
+	ingController     *framework.Controller
+	endpController    *framework.Controller
+	svcController     *framework.Controller
+	secrController    *framework.Controller
+	mapController     *framework.Controller
+	ingLister         StoreToIngressLister
+	svcLister         cache.StoreToServiceLister
+	endpLister        cache.StoreToEndpointsLister
+	secrLister        StoreToSecretsLister
+	mapLister         StoreToConfigmapLister
+	nginx             *nginx.Manager
+	podInfo           *podInfo
+	defaultSvc        string
+	nxgConfigMap      string
+	tcpConfigMap      string
+	udpConfigMap      string
+	defSSLCertificate string
 
 	recorder record.EventRecorder
 
@@ -121,22 +124,24 @@ type loadBalancerController struct {
 }
 
 // newLoadBalancerController creates a controller for nginx loadbalancer
-func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration, defaultSvc,
-	namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName string, runtimeInfo *podInfo) (*loadBalancerController, error) {
+func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Duration,
+	defaultSvc, namespace, nxgConfigMapName, tcpConfigMapName, udpConfigMapName,
+	defSSLCertificate string, runtimeInfo *podInfo) (*loadBalancerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(kubeClient.Events(namespace))
 
 	lbc := loadBalancerController{
-		client:       kubeClient,
-		stopCh:       make(chan struct{}),
-		podInfo:      runtimeInfo,
-		nginx:        nginx.NewManager(kubeClient),
-		nxgConfigMap: nxgConfigMapName,
-		tcpConfigMap: tcpConfigMapName,
-		udpConfigMap: udpConfigMapName,
-		defaultSvc:   defaultSvc,
+		client:            kubeClient,
+		stopCh:            make(chan struct{}),
+		podInfo:           runtimeInfo,
+		nginx:             nginx.NewManager(kubeClient),
+		nxgConfigMap:      nxgConfigMapName,
+		tcpConfigMap:      tcpConfigMapName,
+		udpConfigMap:      udpConfigMapName,
+		defSSLCertificate: defSSLCertificate,
+		defaultSvc:        defaultSvc,
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{
 			Component: "nginx-ingress-controller",
 		}),
@@ -148,16 +153,28 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 	ingEventHandler := framework.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			addIng := obj.(*extensions.Ingress)
+			if !isNGINXIngress(addIng) {
+				glog.Infof("Ignoring add for ingress %v based on annotation %v", addIng.Name, ingressClassKey)
+				return
+			}
 			lbc.recorder.Eventf(addIng, api.EventTypeNormal, "CREATE", fmt.Sprintf("%s/%s", addIng.Namespace, addIng.Name))
 			lbc.ingQueue.enqueue(obj)
 			lbc.syncQueue.enqueue(obj)
 		},
 		DeleteFunc: func(obj interface{}) {
-			upIng := obj.(*extensions.Ingress)
-			lbc.recorder.Eventf(upIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
+			delIng := obj.(*extensions.Ingress)
+			if !isNGINXIngress(delIng) {
+				glog.Infof("Ignoring add for ingress %v based on annotation %v", delIng.Name, ingressClassKey)
+				return
+			}
+			lbc.recorder.Eventf(delIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", delIng.Namespace, delIng.Name))
 			lbc.syncQueue.enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
+			curIng := cur.(*extensions.Ingress)
+			if !isNGINXIngress(curIng) {
+				return
+			}
 			if !reflect.DeepEqual(old, cur) {
 				upIng := cur.(*extensions.Ingress)
 				lbc.recorder.Eventf(upIng, api.EventTypeNormal, "UPDATE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
@@ -412,20 +429,23 @@ func (lbc *loadBalancerController) checkSvcForUpdate(svc *api.Service) (map[stri
 	return namedPorts, nil
 }
 
-func (lbc *loadBalancerController) sync(key string) {
+func (lbc *loadBalancerController) sync(key string) error {
 	if !lbc.controllersInSync() {
 		time.Sleep(podStoreSyncedPollPeriod)
-		lbc.syncQueue.requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
-		return
+		return fmt.Errorf("deferring sync till endpoints controller has synced")
 	}
 
-	var cfg *api.ConfigMap
+	// by default no custom configuration configmap
+	cfg := &api.ConfigMap{}
 
-	ns, name, _ := parseNsName(lbc.nxgConfigMap)
-	cfg, err := lbc.getConfigMap(ns, name)
-	if err != nil {
-		glog.V(3).Infof("unexpected error searching configmap %v: %v", lbc.nxgConfigMap, err)
-		cfg = &api.ConfigMap{}
+	if lbc.nxgConfigMap != "" {
+		// Search for custom configmap (defined in main args)
+		var err error
+		ns, name, _ := parseNsName(lbc.nxgConfigMap)
+		cfg, err = lbc.getConfigMap(ns, name)
+		if err != nil {
+			return fmt.Errorf("unexpected error searching configmap %v: %v", lbc.nxgConfigMap, err)
+		}
 	}
 
 	ngxConfig := lbc.nginx.ReadConfig(cfg)
@@ -433,7 +453,7 @@ func (lbc *loadBalancerController) sync(key string) {
 	ings := lbc.ingLister.Store.List()
 	upstreams, servers := lbc.getUpstreamServers(ngxConfig, ings)
 
-	lbc.nginx.CheckAndReload(ngxConfig, nginx.IngressConfig{
+	return lbc.nginx.CheckAndReload(ngxConfig, nginx.IngressConfig{
 		Upstreams:    upstreams,
 		Servers:      servers,
 		TCPUpstreams: lbc.getTCPServices(),
@@ -441,21 +461,20 @@ func (lbc *loadBalancerController) sync(key string) {
 	})
 }
 
-func (lbc *loadBalancerController) updateIngressStatus(key string) {
+func (lbc *loadBalancerController) updateIngressStatus(key string) error {
 	if !lbc.controllersInSync() {
 		time.Sleep(podStoreSyncedPollPeriod)
-		lbc.ingQueue.requeue(key, fmt.Errorf("deferring sync till endpoints controller has synced"))
-		return
+		return fmt.Errorf("deferring sync till endpoints controller has synced")
 	}
 
 	obj, ingExists, err := lbc.ingLister.Store.GetByKey(key)
 	if err != nil {
-		lbc.ingQueue.requeue(key, err)
-		return
+		return err
 	}
 
 	if !ingExists {
-		return
+		// TODO: what's the correct behavior here?
+		return nil
 	}
 
 	ing := obj.(*extensions.Ingress)
@@ -464,8 +483,7 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 
 	currIng, err := ingClient.Get(ing.Name)
 	if err != nil {
-		glog.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
-		return
+		return fmt.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
 	}
 
 	lbIPs := ing.Status.LoadBalancer.Ingress
@@ -476,11 +494,13 @@ func (lbc *loadBalancerController) updateIngressStatus(key string) {
 		})
 		if _, err := ingClient.UpdateStatus(currIng); err != nil {
 			lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
-			return
+			return err
 		}
 
 		lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", lbc.podInfo.NodeIP)
 	}
+
+	return nil
 }
 
 func (lbc *loadBalancerController) isStatusIPDefined(lbings []api.LoadBalancerIngress) bool {
@@ -600,7 +620,7 @@ func (lbc *loadBalancerController) getStreamServices(data map[string]string, pro
 		// tcp upstreams cannot contain empty upstreams and there is no
 		// default backend equivalent for TCP
 		if len(endps) == 0 {
-			glog.Warningf("service %v/%v does no have any active endpoints", svcNs, svcName)
+			glog.Warningf("service %v/%v does not have any active endpoints", svcNs, svcName)
 			continue
 		}
 
@@ -629,7 +649,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 	}
 
 	if !svcExists {
-		glog.Warningf("service %v does no exists", svcKey)
+		glog.Warningf("service %v does not exists", svcKey)
 		upstream.Backends = append(upstream.Backends, nginx.NewDefaultServer())
 		return upstream
 	}
@@ -638,7 +658,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 
 	endps := lbc.getEndpoints(svc, svc.Spec.Ports[0].TargetPort, api.ProtocolTCP, &healthcheck.Upstream{})
 	if len(endps) == 0 {
-		glog.Warningf("service %v does no have any active endpoints", svcKey)
+		glog.Warningf("service %v does not have any active endpoints", svcKey)
 		upstream.Backends = append(upstream.Backends, nginx.NewDefaultServer())
 	} else {
 		upstream.Backends = append(upstream.Backends, endps...)
@@ -647,7 +667,7 @@ func (lbc *loadBalancerController) getDefaultUpstream() *nginx.Upstream {
 	return upstream
 }
 
-func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration, data []interface{}) ([]*nginx.Upstream, []*nginx.Server) {
+func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuration, data []interface{}) ([]*nginx.Upstream, []*nginx.Server) {
 	upstreams := lbc.createUpstreams(ngxCfg, data)
 	upstreams[defUpstreamName] = lbc.getDefaultUpstream()
 
@@ -691,6 +711,17 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 				glog.V(3).Infof("error reading secure upstream in Ingress %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
 			}
 
+			locRew, err := rewrite.ParseAnnotations(ngxCfg, ing)
+			if err != nil {
+				glog.V(3).Infof("error parsing rewrite annotations for Ingress rule %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
+			}
+
+			wl, err := ipwhitelist.ParseAnnotations(ngxCfg.WhitelistSourceRange, ing)
+			glog.V(3).Infof("nginx white list %v", wl)
+			if err != nil {
+				glog.V(3).Infof("error reading white list annotation in Ingress %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
+			}
+
 			host := rule.Host
 			if host == "" {
 				host = defServerName
@@ -720,13 +751,9 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 						loc.Upstream = *ups
 						loc.Auth = *nginxAuth
 						loc.RateLimit = *rl
-						loc.SecureUpstream = secUpstream
-
-						locRew, err := rewrite.ParseAnnotations(ing)
-						if err != nil {
-							glog.V(3).Infof("error parsing rewrite annotations for Ingress rule %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
-						}
 						loc.Redirect = *locRew
+						loc.SecureUpstream = secUpstream
+						loc.Whitelist = *wl
 
 						addLoc = false
 						continue
@@ -741,10 +768,6 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 				}
 
 				if addLoc {
-					locRew, err := rewrite.ParseAnnotations(ing)
-					if err != nil {
-						glog.V(3).Infof("error parsing rewrite annotations for Ingress rule %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
-					}
 
 					server.Locations = append(server.Locations, &nginx.Location{
 						Path:           nginxPath,
@@ -753,6 +776,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 						RateLimit:      *rl,
 						Redirect:       *locRew,
 						SecureUpstream: secUpstream,
+						Whitelist:      *wl,
 					})
 				}
 			}
@@ -765,7 +789,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 	aUpstreams := make([]*nginx.Upstream, 0, len(upstreams))
 	for _, value := range upstreams {
 		if len(value.Backends) == 0 {
-			glog.Warningf("upstream %v does no have any active endpoints. Using default backend", value.Name)
+			glog.Warningf("upstream %v does not have any active endpoints. Using default backend", value.Name)
 			value.Backends = append(value.Backends, nginx.NewDefaultServer())
 		}
 		sort.Sort(nginx.UpstreamServerByAddrPort(value.Backends))
@@ -785,7 +809,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg nginx.Configuration
 
 // createUpstreams creates the NGINX upstreams for each service referenced in
 // Ingress rules. The servers inside the upstream are endpoints.
-func (lbc *loadBalancerController) createUpstreams(ngxCfg nginx.Configuration, data []interface{}) map[string]*nginx.Upstream {
+func (lbc *loadBalancerController) createUpstreams(ngxCfg config.Configuration, data []interface{}) map[string]*nginx.Upstream {
 	upstreams := make(map[string]*nginx.Upstream)
 
 	for _, ingIf := range data {
@@ -816,7 +840,7 @@ func (lbc *loadBalancerController) createUpstreams(ngxCfg nginx.Configuration, d
 				}
 
 				if !svcExists {
-					glog.Warningf("service %v does no exists", svcKey)
+					glog.Warningf("service %v does not exists", svcKey)
 					continue
 				}
 
@@ -828,7 +852,7 @@ func (lbc *loadBalancerController) createUpstreams(ngxCfg nginx.Configuration, d
 					if strconv.Itoa(int(servicePort.Port)) == bp || servicePort.TargetPort.String() == bp || servicePort.Name == bp {
 						endps := lbc.getEndpoints(svc, servicePort.TargetPort, api.ProtocolTCP, hz)
 						if len(endps) == 0 {
-							glog.Warningf("service %v does no have any active endpoints", svcKey)
+							glog.Warningf("service %v does not have any active endpoints", svcKey)
 						}
 
 						upstreams[name].Backends = append(upstreams[name].Backends, endps...)
@@ -846,6 +870,23 @@ func (lbc *loadBalancerController) createServers(data []interface{}) map[string]
 	servers := make(map[string]*nginx.Server)
 
 	pems := lbc.getPemsFromIngress(data)
+
+	var ngxCert nginx.SSLCert
+	var err error
+
+	if lbc.defSSLCertificate == "" {
+		// use system certificated generated at image build time
+		cert, key := getFakeSSLCert()
+		ngxCert, err = lbc.nginx.AddOrUpdateCertAndKey("system-snake-oil-certificate", cert, key)
+	} else {
+		ngxCert, err = lbc.getPemCertificate(lbc.defSSLCertificate)
+	}
+
+	if err == nil {
+		pems["_"] = ngxCert
+	} else {
+		glog.Warningf("%v", err)
+	}
 
 	for _, ingIf := range data {
 		ing := ingIf.(*extensions.Ingress)
@@ -887,41 +928,10 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 		for _, tls := range ing.Spec.TLS {
 			secretName := tls.SecretName
 			secretKey := fmt.Sprintf("%s/%s", ing.Namespace, secretName)
-			secretInterface, exists, err := lbc.secrLister.Store.GetByKey(secretKey)
+
+			ngxCert, err := lbc.getPemCertificate(secretKey)
 			if err != nil {
-				glog.Warningf("Error retriveing secret %v for ing %v: %v", secretName, ing.Name, err)
-				continue
-			}
-			if !exists {
-				glog.Warningf("Secret %v is not existing", secretKey)
-				continue
-			}
-			secret := secretInterface.(*api.Secret)
-			cert, ok := secret.Data[api.TLSCertKey]
-			if !ok {
-				glog.Warningf("Secret %v has no private key", secretName)
-				continue
-			}
-			key, ok := secret.Data[api.TLSPrivateKeyKey]
-			if !ok {
-				glog.Warningf("Secret %v has no cert", secretName)
-				continue
-			}
-
-			ngxCert, err := lbc.nginx.AddOrUpdateCertAndKey(fmt.Sprintf("%v-%v", ing.Namespace, secretName), string(cert), string(key))
-			if err != nil {
-				glog.Errorf("No valid SSL certificate found in secret %v: %v", secretName, err)
-				continue
-			}
-
-			if len(tls.Hosts) == 0 {
-				if _, ok := pems["_"]; ok {
-					glog.Warningf("It is not possible to use %v secret for default SSL certificate because there is one already defined", secretName)
-					continue
-				}
-
-				pems["_"] = ngxCert
-				glog.Infof("Using the secret %v as source for the default SSL certificate", secretName)
+				glog.Warningf("%v", err)
 				continue
 			}
 
@@ -936,6 +946,29 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 	}
 
 	return pems
+}
+
+func (lbc *loadBalancerController) getPemCertificate(secretName string) (nginx.SSLCert, error) {
+	secretInterface, exists, err := lbc.secrLister.Store.GetByKey(secretName)
+	if err != nil {
+		return nginx.SSLCert{}, fmt.Errorf("Error retriveing secret %v: %v", secretName, err)
+	}
+	if !exists {
+		return nginx.SSLCert{}, fmt.Errorf("Secret %v does not exists", secretName)
+	}
+
+	secret := secretInterface.(*api.Secret)
+	cert, ok := secret.Data[api.TLSCertKey]
+	if !ok {
+		return nginx.SSLCert{}, fmt.Errorf("Secret %v has no private key", secretName)
+	}
+	key, ok := secret.Data[api.TLSPrivateKeyKey]
+	if !ok {
+		return nginx.SSLCert{}, fmt.Errorf("Secret %v has no cert", secretName)
+	}
+
+	nsSecName := strings.Replace(secretName, "/", "-", -1)
+	return lbc.nginx.AddOrUpdateCertAndKey(nsSecName, string(cert), string(key))
 }
 
 // check if secret is referenced in this controller's config

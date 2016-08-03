@@ -18,16 +18,30 @@ package mungers
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 	cache "k8s.io/contrib/mungegithub/mungers/flakesync"
 	"k8s.io/contrib/mungegithub/mungers/sync"
+	"k8s.io/contrib/mungegithub/mungers/testowner"
 	"k8s.io/contrib/test-utils/utils"
 
-	// "github.com/golang/glog"
+	"time"
+
+	"github.com/golang/glog"
+	libgithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
+)
+
+// failedStr is for comment matching during auto prioritization
+const failedStr = "Failed: "
+
+var (
+	// pullRE is a regexp that will extract the PR# from a path to a flake
+	// that happened on a PR.
+	pullRE = regexp.MustCompile("pull/([0-9]+)/")
 )
 
 // issueFinder finds an issue for a given key.
@@ -44,7 +58,9 @@ type FlakeManager struct {
 	config               *github.Config
 	googleGCSBucketUtils *utils.Utils
 
-	syncer *sync.IssueSyncer
+	syncer    *sync.IssueSyncer
+	ownerPath string
+	features  *features.Features
 }
 
 func init() {
@@ -55,10 +71,12 @@ func init() {
 func (p *FlakeManager) Name() string { return "flake-manager" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (p *FlakeManager) RequiredFeatures() []string { return nil }
+func (p *FlakeManager) RequiredFeatures() []string { return []string{features.GCSFeature} }
 
 // Initialize will initialize the munger
 func (p *FlakeManager) Initialize(config *github.Config, features *features.Features) error {
+	glog.Infof("test-owners-csv: %#v\n", p.ownerPath)
+
 	// TODO: don't get the mungers from the global list, they should be passed in...
 	for _, m := range GetAllMungers() {
 		if m.Name() == "issue-cacher" {
@@ -75,8 +93,20 @@ func (p *FlakeManager) Initialize(config *github.Config, features *features.Feat
 		return fmt.Errorf("submit-queue not found")
 	}
 	p.config = config
-	p.googleGCSBucketUtils = utils.NewUtils(utils.KubekinsBucket, utils.LogDir)
-	p.syncer = sync.NewIssueSyncer(config, p.finder)
+	p.googleGCSBucketUtils = utils.NewWithPresubmitDetection(
+		features.GCSInfo.BucketName, features.GCSInfo.LogDir,
+		features.GCSInfo.PullKey, features.GCSInfo.PullLogDir,
+	)
+
+	var owner sync.OwnerMapper
+	var err error
+	if p.ownerPath != "" {
+		owner, err = testowner.NewReloadingOwnerList(p.ownerPath)
+		if err != nil {
+			return err
+		}
+	}
+	p.syncer = sync.NewIssueSyncer(config, p.finder, owner)
 	return nil
 }
 
@@ -86,6 +116,7 @@ func (p *FlakeManager) EachLoop() error {
 		return fmt.Errorf("submit queue not initialized yet")
 	}
 	if !p.finder.Synced() {
+		glog.V(3).Infof("issue-cache is not synced. flake-manager is skipping this run.")
 		return nil
 	}
 	p.sq.e2e.GCSBasedStable()
@@ -96,7 +127,9 @@ func (p *FlakeManager) EachLoop() error {
 }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (p *FlakeManager) AddFlags(cmd *cobra.Command, config *github.Config) {}
+func (p *FlakeManager) AddFlags(cmd *cobra.Command, config *github.Config) {
+	cmd.Flags().StringVar(&p.ownerPath, "test-owners-csv", "", "file containing a CSV-exported test-owners spreadsheet")
+}
 
 // Munge is unused by this munger.
 func (p *FlakeManager) Munge(obj *github.MungeObject) {}
@@ -124,7 +157,23 @@ func (p *FlakeManager) isIndividualFlake(f cache.Flake) bool {
 		return false
 	}
 
+	if len(f.Result.Flakes) > 0 {
+		// If this flake really represents an entire suite failure,
+		// this key will be present.
+		if _, ok := f.Result.Flakes[cache.RunBrokenTestName]; ok {
+			return false
+		}
+	}
+
 	return true
+}
+
+func (p *FlakeManager) listPreviousIssues(title string) []string {
+	s := []string{}
+	for _, i := range p.finder.AllIssuesForKey(title) {
+		s = append(s, fmt.Sprintf("#%v", i))
+	}
+	return s
 }
 
 // makeGubernatorLink returns a URL to view the build results in a GCS path.
@@ -162,20 +211,19 @@ func (p *individualFlakeSource) ID() string {
 
 // Body implements IssueSource
 func (p *individualFlakeSource) Body(newIssue bool) string {
-	testName := string(p.flake.Test)
-	extraInfo := fmt.Sprintf("Failed: %v\n\n```\n%v\n```\n\n", testName, p.flake.Reason)
-	body := makeGubernatorLink(p.ID()) + "\n" + extraInfo
+	id := p.ID()
+	extraInfo := fmt.Sprintf(failedStr+"%v\n\n```\n%v\n```\n\n", p.Title(), p.flake.Reason)
+	if parts := pullRE.FindStringSubmatch(id); len(parts) > 1 {
+		extraInfo += fmt.Sprintf("Happened on a presubmit run in #%v.\n\n", parts[1])
+	}
+	body := makeGubernatorLink(id) + "\n" + extraInfo
 
 	if !newIssue {
 		return body
 	}
 
 	// If we're filing a new issue, reference previous issues if we know of any.
-	if previousIssues := p.fm.finder.AllIssuesForKey(testName); len(previousIssues) > 0 {
-		s := []string{}
-		for _, i := range previousIssues {
-			s = append(s, fmt.Sprintf("#%v", i))
-		}
+	if s := p.fm.listPreviousIssues(p.Title()); len(s) > 0 {
 		body = body + fmt.Sprintf("\nPrevious issues for this test: %v\n", strings.Join(s, " "))
 	}
 	return body
@@ -183,7 +231,17 @@ func (p *individualFlakeSource) Body(newIssue bool) string {
 
 // Labels implements IssueSource
 func (p *individualFlakeSource) Labels() []string {
-	return []string{"kind/flake"}
+	return []string{"kind/flake", sync.PriorityP2.String()}
+}
+
+// Priority implements IssueSource
+func (p *individualFlakeSource) Priority(obj *github.MungeObject) (sync.Priority, error) {
+	comments, err := obj.ListComments()
+	if err != nil {
+		return sync.PriorityP2, fmt.Errorf("Failed to list comment of issue: %v", err)
+	}
+	// Different IssueSource's Priority calculation may differ
+	return autoPrioritize(comments, obj.Issue.CreatedAt), nil
 }
 
 type brokenJobSource struct {
@@ -212,13 +270,13 @@ func (p *brokenJobSource) ID() string {
 func (p *brokenJobSource) Body(newIssue bool) string {
 	url := makeGubernatorLink(p.ID())
 	if p.result.Status == cache.ResultFailed {
-		return fmt.Sprintf("%v\nRun so broken it didn't make JUnit output!", url)
+		return fmt.Sprintf(failedStr+"%v\nRun so broken it didn't make JUnit output!", url)
 	}
 	body := fmt.Sprintf("%v\nMultiple broken tests:\n\n", url)
 
 	sections := []string{}
 	for testName, reason := range p.result.Flakes {
-		text := fmt.Sprintf("Failed: %v\n\n```\n%v\n```\n", testName, reason)
+		text := fmt.Sprintf(failedStr+"%v\n\n```\n%v\n```\n", testName, reason)
 		// Reference previous issues if we know of any.
 		// (key must batch individualFlakeSource.Title()!)
 		if previousIssues := p.fm.finder.AllIssuesForKey(string(testName)); len(previousIssues) > 0 {
@@ -230,10 +288,72 @@ func (p *brokenJobSource) Body(newIssue bool) string {
 		}
 		sections = append(sections, text)
 	}
-	return body + strings.Join(sections, "\n\n")
+
+	body = body + strings.Join(sections, "\n\n")
+
+	if !newIssue {
+		return body
+	}
+
+	// If we're filing a new issue, reference previous issues if we know of any.
+	if s := p.fm.listPreviousIssues(p.Title()); len(s) > 0 {
+		body = body + fmt.Sprintf("\nPrevious issues for this suite: %v\n", strings.Join(s, " "))
+	}
+	return body
 }
 
 // Labels implements IssueSource
 func (p *brokenJobSource) Labels() []string {
-	return []string{"kind/flake", "team/test-infra"}
+	return []string{"kind/flake", "team/test-infra", sync.PriorityP2.String()}
+}
+
+// Priority implements IssueSource
+func (p *brokenJobSource) Priority(obj *github.MungeObject) (sync.Priority, error) {
+	comments, err := obj.ListComments()
+	if err != nil {
+		return sync.PriorityP2, fmt.Errorf("Failed to list comment of issue: %v", err)
+	}
+	// Different IssueSource's Priority calculation may differ
+	return autoPrioritize(comments, obj.Issue.CreatedAt), nil
+}
+
+// autoPrioritize prioritize flake issue based on the number of flakes
+func autoPrioritize(comments []*libgithub.IssueComment, issueCreatedAt *time.Time) sync.Priority {
+	occurence := []*time.Time{issueCreatedAt}
+	lastMonth := time.Now().Add(-1 * 30 * 24 * time.Hour)
+	lastWeek := time.Now().Add(-1 * 7 * 24 * time.Hour)
+	// number of flakes happened in this month
+	monthCount := 0
+	// number of flakes happened in this week
+	weekCount := 0
+
+	for _, c := range comments {
+		// TODO: think of a better way to identify flake comments
+		// "Failed: " is a special string contained in flake issue filed by flake-manager
+		// Please make sure it matches the body generated by IssueSource.Body()
+		if !sync.RobotUser.Has(*c.User.Login) || !strings.Contains(*c.Body, failedStr) {
+			continue
+		}
+		occurence = append(occurence, c.CreatedAt)
+	}
+
+	for _, o := range occurence {
+		if lastMonth.Before(*o) {
+			monthCount += 1
+		}
+		if lastWeek.Before(*o) {
+			weekCount += 1
+		}
+	}
+
+	// P2: By default
+	// P1: Flake happens more than once in last month.
+	// P0: Flake happens more than twice in last week.
+	p := sync.PriorityP2
+	if weekCount >= 3 {
+		p = sync.PriorityP0
+	} else if monthCount >= 2 {
+		p = sync.PriorityP1
+	}
+	return p
 }

@@ -33,6 +33,24 @@ sudo pip install netaddr
 
 Reference the [python-netaddr documentation](https://pythonhosted.org/netaddr/installation.html) for additional installation instructions.
 
+### Fedora
+
+When running the ``vagrant`` on Fedora (tested on F24) don't forget to install necessary dependencies:
+
+```
+dnf install -y ruby-devel gcc redhat-rpm-config
+```
+
+When provisioning VMs with libvirt provider, don't forget to install ``vagrant-libvirt``:
+
+```
+dnf install -y vagrant-libvirt
+```
+
+If you hit the ``Error while creating domain: Error saving the server: Call to virDomainDefineXML failed: invalid argument: could not find capabilities for domaintype=kvm `` error message, enable virtualization in BIOS [1], [2].
+
+[1] https://github.com/vagrant-libvirt/vagrant-libvirt/issues/539  
+[2] https://bugzilla.redhat.com/show_bug.cgi?id=1326561  
 
 ## Caveats
 
@@ -69,6 +87,7 @@ Supported images:
 
 * `centos7` (default) - CentOS 7 supported on OpenStack, VirtualBox, Libvirt providers.
 * `coreos` - [CoreOS](https://coreos.com/) supported on VirtualBox provider.
+* `fedora` - supported at least on Libvirt provider
 
 ### Start your cluster
 
@@ -121,6 +140,9 @@ vagrant up --provider=virtualbox
 
 # openstack provider
 vagrant up --provider=openstack
+
+# libvirt provider
+vagrant up --provider=libvirt
 ```
 
 ### OpenStack

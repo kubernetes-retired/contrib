@@ -33,7 +33,8 @@ import (
 // RebuildMunger looks for situations where a someone has asked for an e2e rebuild, but hasn't provided
 // an issue
 type RebuildMunger struct {
-	robots sets.String
+	robots   sets.String
+	features *features.Features
 }
 
 const (
@@ -64,11 +65,12 @@ func init() {
 func (r *RebuildMunger) Name() string { return "rebuild-request" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (r *RebuildMunger) RequiredFeatures() []string { return []string{} }
+func (r *RebuildMunger) RequiredFeatures() []string { return []string{features.TestOptionsFeature} }
 
 // Initialize will initialize the munger
 func (r *RebuildMunger) Initialize(config *github.Config, features *features.Features) error {
 	r.robots = sets.NewString("googlebot", jenkinsBotName, botName)
+	r.features = features
 	return nil
 }
 
@@ -90,7 +92,7 @@ func (r *RebuildMunger) Munge(obj *github.MungeObject) {
 	}
 
 	for ix := range comments {
-		comment := &comments[ix]
+		comment := comments[ix]
 		// Skip all robot comments
 		if r.robots.Has(*comment.User.Login) {
 			glog.V(4).Infof("Skipping comment by robot %s: %s", *comment.User.Login, *comment.Body)
@@ -124,14 +126,14 @@ func rebuildCommentMissingIssueNumber(comment *githubapi.IssueComment) bool {
 	return !issueMatcher.MatchString(*comment.Body)
 }
 
-func (r *RebuildMunger) isStaleComment(obj *github.MungeObject, comment githubapi.IssueComment) bool {
+func (r *RebuildMunger) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
 	if !mergeBotComment(comment) {
 		return false
 	}
 	if !rebuildCommentRE.MatchString(*comment.Body) {
 		return false
 	}
-	stale := commentBeforeLastCI(obj, comment)
+	stale := commentBeforeLastCI(obj, comment, r.features.TestOptions.RequiredRetestContexts)
 	if stale {
 		glog.V(6).Infof("Found stale RebuildMunger comment")
 	}
@@ -139,6 +141,6 @@ func (r *RebuildMunger) isStaleComment(obj *github.MungeObject, comment githubap
 }
 
 // StaleComments returns a slice of stale comments
-func (r *RebuildMunger) StaleComments(obj *github.MungeObject, comments []githubapi.IssueComment) []githubapi.IssueComment {
+func (r *RebuildMunger) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
 	return forEachCommentTest(obj, comments, r.isStaleComment)
 }

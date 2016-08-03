@@ -17,7 +17,6 @@ limitations under the License.
 package nanny
 
 import (
-	"reflect"
 	"testing"
 
 	resource "k8s.io/kubernetes/pkg/api/resource"
@@ -86,8 +85,48 @@ var (
 			},
 		},
 	}
+	lessThanMilliEstimator = LinearEstimator{
+		Resources: []Resource{
+			{
+				Base:         resource.MustParse("0.3"),
+				ExtraPerNode: resource.MustParse("0.5m"),
+				Name:         "cpu",
+			},
+		},
+	}
 	emptyEstimator = LinearEstimator{
 		Resources: []Resource{},
+	}
+
+	exponentialEstimator = ExponentialEstimator{
+		Resources: []Resource{
+			{
+				Base:         resource.MustParse("0.3"),
+				ExtraPerNode: resource.MustParse("1"),
+				Name:         "cpu",
+			},
+			{
+				Base:         resource.MustParse("30Mi"),
+				ExtraPerNode: resource.MustParse("1Mi"),
+				Name:         "memory",
+			},
+			{
+				Base:         resource.MustParse("30Gi"),
+				ExtraPerNode: resource.MustParse("1Gi"),
+				Name:         "storage",
+			},
+		},
+		ScaleFactor: 1.5,
+	}
+	exponentialLessThanMilliEstimator = ExponentialEstimator{
+		Resources: []Resource{
+			{
+				Base:         resource.MustParse("0.3"),
+				ExtraPerNode: resource.MustParse("0.5m"),
+				Name:         "cpu",
+			},
+		},
+		ScaleFactor: 1.5,
 	}
 
 	baseResources = api.ResourceList{
@@ -125,8 +164,40 @@ var (
 		"cpu":    resource.MustParse("3.3"),
 		"memory": resource.MustParse("33Mi"),
 	}
+	threeNodeLessThanMilliResources = api.ResourceList{
+		"cpu": resource.MustParse("0.3015"),
+	}
+	threeNodeLessThanMilliExpResources = api.ResourceList{
+		"cpu": resource.MustParse("0.308"),
+	}
 	noResources = api.ResourceList{}
+
+	sixteenNodeResources = api.ResourceList{
+		"cpu":     resource.MustParse("16.3"),
+		"memory":  resource.MustParse("46Mi"),
+		"storage": resource.MustParse("46Gi"),
+	}
+	twentyFourNodeResources = api.ResourceList{
+		"cpu":     resource.MustParse("24.3"),
+		"memory":  resource.MustParse("54Mi"),
+		"storage": resource.MustParse("54Gi"),
+	}
 )
+
+func verifyResources(t *testing.T, kind string, got, want api.ResourceList) {
+	if len(got) != len(want) {
+		t.Errorf("%s not equal got: %+v want: %+v", kind, got, want)
+	}
+	for res, val := range want {
+		actVal, ok := got[res]
+		if !ok {
+			t.Errorf("missing resource %s in %s", res, kind)
+		}
+		if val.Cmp(actVal) != 0 {
+			t.Errorf("not equal resource %s in %s, got: %+v, want: %+v", res, kind, actVal, val)
+		}
+	}
+}
 
 func TestEstimateResources(t *testing.T) {
 	testCases := []struct {
@@ -137,24 +208,34 @@ func TestEstimateResources(t *testing.T) {
 	}{
 		{fullEstimator, 0, baseResources, baseResources},
 		{fullEstimator, 3, threeNodeResources, threeNodeResources},
+		{fullEstimator, 16, sixteenNodeResources, sixteenNodeResources},
+		{fullEstimator, 24, twentyFourNodeResources, twentyFourNodeResources},
 		{noCPUEstimator, 0, noCPUBaseResources, noCPUBaseResources},
 		{noCPUEstimator, 3, threeNodeNoCPUResources, threeNodeNoCPUResources},
 		{noMemoryEstimator, 0, noMemoryBaseResources, noMemoryBaseResources},
 		{noMemoryEstimator, 3, threeNodeNoMemoryResources, threeNodeNoMemoryResources},
 		{noStorageEstimator, 0, noStorageBaseResources, noStorageBaseResources},
 		{noStorageEstimator, 3, threeNodeNoStorageResources, threeNodeNoStorageResources},
+		{lessThanMilliEstimator, 3, threeNodeLessThanMilliResources, threeNodeLessThanMilliResources},
 		{emptyEstimator, 0, noResources, noResources},
 		{emptyEstimator, 3, noResources, noResources},
+		{exponentialEstimator, 0, sixteenNodeResources, sixteenNodeResources},
+		{exponentialEstimator, 3, sixteenNodeResources, sixteenNodeResources},
+		{exponentialEstimator, 10, sixteenNodeResources, sixteenNodeResources},
+		{exponentialEstimator, 16, sixteenNodeResources, sixteenNodeResources},
+		{exponentialEstimator, 17, twentyFourNodeResources, twentyFourNodeResources},
+		{exponentialEstimator, 20, twentyFourNodeResources, twentyFourNodeResources},
+		{exponentialEstimator, 24, twentyFourNodeResources, twentyFourNodeResources},
+		{exponentialLessThanMilliEstimator, 3, threeNodeLessThanMilliExpResources, threeNodeLessThanMilliExpResources},
 	}
 
-	for i, tc := range testCases {
+	for _, tc := range testCases {
 		got := tc.e.scaleWithNodes(tc.numNodes)
 		want := &api.ResourceRequirements{
 			Limits:   tc.limits,
 			Requests: tc.requests,
 		}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("scaleWithNodes got %v, want %v in test case %d", got, want, i)
-		}
+		verifyResources(t, "limits", got.Limits, want.Limits)
+		verifyResources(t, "requests", got.Requests, want.Limits)
 	}
 }

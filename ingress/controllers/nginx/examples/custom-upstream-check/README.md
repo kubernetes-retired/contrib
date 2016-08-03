@@ -1,13 +1,13 @@
-
 This example shows how is possible to create a custom configuration for a particular upstream associated with an Ingress rule.
 
+```
 echo "
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   name: echoheaders
   annotations:
-    ingress-nginx.kubernetes.io/upstream-fail-timeout: "30"
+    ingress.kubernetes.io/upstream-fail-timeout: "30"
 spec:
   rules:
   - host: foo.bar.com
@@ -18,12 +18,12 @@ spec:
           serviceName: echoheaders
           servicePort: 80
 " | kubectl create -f -
-
+```
 
 Check the annotation is present in the Ingress rule:
 ```
 kubectl get ingress echoheaders -o yaml
-``
+```
 
 Check the NGINX configuration is updated using kubectl or the status page:
 

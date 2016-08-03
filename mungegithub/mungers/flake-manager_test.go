@@ -20,6 +20,10 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
+	"github.com/google/go-github/github"
+	github_testing "k8s.io/contrib/mungegithub/github/testing"
 	cache "k8s.io/contrib/mungegithub/mungers/flakesync"
 	"k8s.io/contrib/mungegithub/mungers/sync"
 	"k8s.io/contrib/test-utils/utils"
@@ -81,4 +85,90 @@ func TestBrokenJobSource(t *testing.T) {
 	source := brokenJobSource{&result, fm}
 	expect(t, source.Title(), "e2e-gce: broken test run")
 	checkCommon(t, &source)
+}
+
+func flakecomment(id int, createdAt time.Time) *github.IssueComment {
+	return github_testing.Comment(id, "k8s-bot", createdAt, "Failed: something failed")
+}
+
+func TestAutoPrioritize(t *testing.T) {
+	testcases := []struct {
+		comments       []*github.IssueComment
+		issueCreatedAt time.Time
+		expectPriority int
+	}{
+		// New flake issue
+		{
+			comments:       []*github.IssueComment{},
+			issueCreatedAt: time.Now(),
+			expectPriority: 2,
+		},
+		{
+			comments: []*github.IssueComment{
+				flakecomment(1, time.Now()),
+			},
+			issueCreatedAt: time.Now().Add(-1 * 29 * 24 * time.Hour),
+			expectPriority: 1,
+		},
+		{
+			comments: []*github.IssueComment{
+				flakecomment(1, time.Now()),
+				flakecomment(1, time.Now().Add(-1*3*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-1*6*24*time.Hour)),
+			},
+			issueCreatedAt: time.Now().Add(-1 * 30 * 24 * time.Hour),
+			expectPriority: 0,
+		},
+		{
+			comments: []*github.IssueComment{
+				flakecomment(1, time.Now()),
+				flakecomment(1, time.Now().Add(-8*24*time.Hour)),
+			},
+			issueCreatedAt: time.Now().Add(-1 * 29 * 24 * time.Hour),
+			expectPriority: 1,
+		},
+		{
+			comments: []*github.IssueComment{
+				flakecomment(1, time.Now()),
+				flakecomment(1, time.Now().Add(-8*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-15*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-20*24*time.Hour)),
+			},
+			issueCreatedAt: time.Now().Add(-1 * 29 * 24 * time.Hour),
+			expectPriority: 1,
+		},
+		{
+			comments: []*github.IssueComment{
+				flakecomment(1, time.Now()),
+				flakecomment(1, time.Now().Add(-1*3*24*time.Hour)),
+			},
+			issueCreatedAt: time.Now().Add(-1 * 6 * 24 * time.Hour),
+			expectPriority: 0,
+		},
+	}
+	for _, tc := range testcases {
+		p := autoPrioritize(tc.comments, &tc.issueCreatedAt)
+		if p.Priority() != tc.expectPriority {
+			t.Errorf("Expected priority: %d, But got: %d", tc.expectPriority, p.Priority())
+		}
+	}
+}
+
+func TestPullRE(t *testing.T) {
+	table := []struct {
+		path   string
+		expect string
+	}{
+		{"/kubernetes-jenkins/pr-logs/pull/27898/kubernetes-pull-build-test-e2e-gce/47123/", "27898"},
+		{"kubernetes-jenkins/logs/kubernetes-e2e-gke-test/13095/", ""},
+	}
+	for _, tt := range table {
+		got := ""
+		if parts := pullRE.FindStringSubmatch(tt.path); len(parts) > 1 {
+			got = parts[1]
+		}
+		if got != tt.expect {
+			t.Errorf("Expected %v, got %v", tt.expect, got)
+		}
+	}
 }

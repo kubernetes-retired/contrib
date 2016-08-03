@@ -17,11 +17,15 @@ limitations under the License.
 package nanny
 
 import (
+	"fmt"
+
 	api "k8s.io/kubernetes/pkg/api/v1"
 
 	"k8s.io/kubernetes/pkg/api/resource"
+)
 
-	inf "speter.net/go/exp/math/dec/inf"
+const (
+	eps = float64(0.01)
 )
 
 // Resource defines the name of a resource, the quantity, and the marginal value.
@@ -36,20 +40,41 @@ type LinearEstimator struct {
 }
 
 func (e LinearEstimator) scaleWithNodes(numNodes uint64) *api.ResourceRequirements {
+	return calculateResources(numNodes, e.Resources)
+}
+
+// ExponentialEstimator estimates the amount of resources in the way that
+// prevents from frequent updates but may end up with larger resource usage
+// than actually needed (though no more than ScaleFactor).
+type ExponentialEstimator struct {
+	Resources   []Resource
+	ScaleFactor float64
+}
+
+func (e ExponentialEstimator) scaleWithNodes(numNodes uint64) *api.ResourceRequirements {
+	n := uint64(16)
+	for n < numNodes {
+		n = uint64(float64(n)*e.ScaleFactor + eps)
+	}
+	return calculateResources(n, e.Resources)
+}
+
+func calculateResources(numNodes uint64, resources []Resource) *api.ResourceRequirements {
 	limits := make(api.ResourceList)
 	requests := make(api.ResourceList)
-	for _, r := range e.Resources {
-		num := inf.NewDec(int64(numNodes), 0)
-		num.Mul(num, r.ExtraPerNode.Amount)
-		num.Add(num, r.Base.Amount)
-		limits[r.Name] = resource.Quantity{
-			Amount: num,
-			Format: r.Base.Format,
-		}
-		requests[r.Name] = resource.Quantity{
-			Amount: num,
-			Format: r.Base.Format,
-		}
+	for _, r := range resources {
+		// Since we want to enable passing values smaller than e.g. 1 millicore per node,
+		// we need to have some more hacky solution here than operating on MilliValues.
+		perNodeString := r.ExtraPerNode.String()
+		var perNode float64
+		read, _ := fmt.Sscanf(perNodeString, "%f", &perNode)
+		overhead := resource.MustParse(fmt.Sprintf("%f%s", perNode*float64(numNodes), perNodeString[read:]))
+
+		newRes := r.Base
+		newRes.Add(overhead)
+
+		limits[r.Name] = newRes
+		requests[r.Name] = newRes
 	}
 	return &api.ResourceRequirements{
 		Limits:   limits,

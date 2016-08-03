@@ -26,13 +26,16 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-
 	"github.com/mitchellh/mapstructure"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/util/sysctl"
+
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 )
 
 const (
-	customHTTPErrors = "custom-http-errors"
+	customHTTPErrors  = "custom-http-errors"
+	skipAccessLogUrls = "skip-access-log-urls"
 )
 
 // getDNSServers returns the list of nameservers located in the file /etc/resolv.conf
@@ -67,7 +70,7 @@ func getDNSServers() []string {
 // getConfigKeyToStructKeyMap returns a map with the ConfigMapKey as key and the StructName as value.
 func getConfigKeyToStructKeyMap() map[string]string {
 	keyMap := map[string]string{}
-	n := &Configuration{}
+	n := &config.Configuration{}
 	val := reflect.Indirect(reflect.ValueOf(n))
 	for i := 0; i < val.Type().NumField(); i++ {
 		fieldSt := val.Type().Field(i)
@@ -79,13 +82,13 @@ func getConfigKeyToStructKeyMap() map[string]string {
 }
 
 // ReadConfig obtains the configuration defined by the user merged with the defaults.
-func (ngx *Manager) ReadConfig(config *api.ConfigMap) Configuration {
-	if len(config.Data) == 0 {
-		return newDefaultNginxCfg()
+func (ngx *Manager) ReadConfig(conf *api.ConfigMap) config.Configuration {
+	if len(conf.Data) == 0 {
+		return config.NewDefault()
 	}
 
-	cfgCM := Configuration{}
-	cfgDefault := newDefaultNginxCfg()
+	cfgCM := config.Configuration{}
+	cfgDefault := config.NewDefault()
 
 	metadata := &mapstructure.Metadata{}
 
@@ -97,8 +100,8 @@ func (ngx *Manager) ReadConfig(config *api.ConfigMap) Configuration {
 	})
 
 	cErrors := make([]int, 0)
-	if val, ok := config.Data[customHTTPErrors]; ok {
-		delete(config.Data, customHTTPErrors)
+	if val, ok := conf.Data[customHTTPErrors]; ok {
+		delete(conf.Data, customHTTPErrors)
 		for _, i := range strings.Split(val, ",") {
 			j, err := strconv.Atoi(i)
 			if err != nil {
@@ -109,7 +112,13 @@ func (ngx *Manager) ReadConfig(config *api.ConfigMap) Configuration {
 		}
 	}
 
-	err = decoder.Decode(config.Data)
+	cSkipUrls := make([]string, 0)
+	if val, ok := conf.Data[skipAccessLogUrls]; ok {
+		delete(conf.Data, skipAccessLogUrls)
+		cSkipUrls = strings.Split(val, ",")
+	}
+
+	err = decoder.Decode(conf.Data)
 	if err != nil {
 		glog.Infof("%v", err)
 	}
@@ -134,6 +143,7 @@ func (ngx *Manager) ReadConfig(config *api.ConfigMap) Configuration {
 	}
 
 	cfgDefault.CustomHTTPErrors = ngx.filterErrors(cErrors)
+	cfgDefault.SkipAccessLogURLs = cSkipUrls
 	return cfgDefault
 }
 
@@ -210,4 +220,17 @@ func diff(b1, b2 []byte) (data []byte, err error) {
 		err = nil
 	}
 	return
+}
+
+// sysctlSomaxconn returns the value of net.core.somaxconn, i.e.
+// maximum number of connections that can be queued for acceptance
+// http://nginx.org/en/docs/http/ngx_http_core_module.html#listen
+func sysctlSomaxconn() int {
+	maxConns, err := sysctl.GetSysctl("net/core/somaxconn")
+	if err != nil || maxConns < 512 {
+		glog.Warningf("system net.core.somaxconn=%v. Using NGINX default (511)", maxConns)
+		return 511
+	}
+
+	return maxConns
 }

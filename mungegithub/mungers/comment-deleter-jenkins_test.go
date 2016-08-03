@@ -40,6 +40,17 @@ Please reference the [list of currently known flakes](https://github.com/kuberne
 * [Build Log](https://storage.cloud.google.com/kubernetes-jenkins/pr-logs/pull/13006/kubernetes-pull-build-test-e2e-gce/26147/build-log.txt)
 * [Test Artifacts](https://console.developers.google.com/storage/browser/kubernetes-jenkins/pr-logs/pull/13006/kubernetes-pull-build-test-e2e-gce/26147/artifacts/)
 * [Internal Jenkins Results](http://goto.google.com/prkubekins/job/kubernetes-pull-build-test-e2e-gce//26147)`
+	updatedPassComment = `GCE e2e build/test **passed** for commit 4c92572bef90215de02be96436364ff06a7a5435.
+* [Test Results](https://k8s-gubernator.appspot.com/build/kubernetes-jenkins/pr-logs/pull/28636/kubernetes-pull-build-test-e2e-gce/48147)
+* [Build Log](http://pr-test.k8s.io/28636/kubernetes-pull-build-test-e2e-gce/48147/build-log.txt)
+* [Test Artifacts](https://console.developers.google.com/storage/browser/kubernetes-jenkins/pr-logs/pull/28636/kubernetes-pull-build-test-e2e-gce/48147/artifacts/)
+* [Internal Jenkins Results](http://goto.google.com/prkubekins/job/kubernetes-pull-build-test-e2e-gce//48147)`
+	//Updated fail comment's links are the same as updated pass's
+	updatedFailComment = `GCE e2e build/test **failed** for commit 4c92572bef90215de02be96436364ff06a7a5435.
+* [Test Results](https://k8s-gubernator.appspot.com/build/kubernetes-jenkins/pr-logs/pull/28636/kubernetes-pull-build-test-e2e-gce/48147)
+* [Build Log](http://pr-test.k8s.io/28636/kubernetes-pull-build-test-e2e-gce/48147/build-log.txt)
+* [Test Artifacts](https://console.developers.google.com/storage/browser/kubernetes-jenkins/pr-logs/pull/28636/kubernetes-pull-build-test-e2e-gce/48147/artifacts/)
+* [Internal Jenkins Results](http://goto.google.com/prkubekins/job/kubernetes-pull-build-test-e2e-gce//48147)`
 )
 
 func TestIsJenkinsTestComment(t *testing.T) {
@@ -50,7 +61,17 @@ func TestIsJenkinsTestComment(t *testing.T) {
 	}{
 		{
 			name:      "success comment",
+			value:     updatedPassComment,
+			isJenkins: true,
+		},
+		{
+			name:      "success comment",
 			value:     passComment,
+			isJenkins: true,
+		},
+		{
+			name:      "fail comment",
+			value:     updatedFailComment,
 			isJenkins: true,
 		},
 		{
@@ -81,7 +102,7 @@ func TestIsJenkinsTestComment(t *testing.T) {
 	}
 }
 
-func comment(id int, body string) githubapi.IssueComment {
+func comment(id int, body string) *githubapi.IssueComment {
 	return github_test.Comment(id, jenkinsBotName, time.Now(), passComment)
 }
 
@@ -90,33 +111,33 @@ func TestJenkinsStaleComments(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		comments []githubapi.IssueComment
-		expected []githubapi.IssueComment
+		comments []*githubapi.IssueComment
+		expected []*githubapi.IssueComment
 	}{
 		{
 			name: "single pass",
-			comments: []githubapi.IssueComment{
+			comments: []*githubapi.IssueComment{
 				comment(1, passComment),
 			},
 		},
 		{
 			name: "double pass",
-			comments: []githubapi.IssueComment{
+			comments: []*githubapi.IssueComment{
 				comment(1, passComment),
 				comment(2, passComment),
 			},
-			expected: []githubapi.IssueComment{
+			expected: []*githubapi.IssueComment{
 				comment(1, passComment),
 			},
 		},
 		{
 			name: "pass fail pass",
-			comments: []githubapi.IssueComment{
+			comments: []*githubapi.IssueComment{
 				comment(1, passComment),
 				comment(2, failComment),
 				comment(3, passComment),
 			},
-			expected: []githubapi.IssueComment{
+			expected: []*githubapi.IssueComment{
 				comment(1, passComment),
 				comment(2, failComment),
 			},

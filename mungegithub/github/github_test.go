@@ -181,7 +181,7 @@ func TestForEachIssueDo(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		client, server, mux := github_test.InitServer(t, nil, nil, nil, nil, nil, nil)
+		client, server, mux := github_test.InitServer(t, nil, nil, nil, nil, nil, nil, nil)
 		config := &Config{
 			client:      client,
 			Org:         "foo",
@@ -352,7 +352,7 @@ func TestComputeStatus(t *testing.T) {
 
 func TestGetLastModified(t *testing.T) {
 	tests := []struct {
-		commits      []github.RepositoryCommit
+		commits      []*github.RepositoryCommit
 		expectedTime *time.Time
 	}{
 		{
@@ -371,7 +371,7 @@ func TestGetLastModified(t *testing.T) {
 		},
 		{
 			//  We can't represent the same time in 2 commits using github_test.Commits()
-			commits: []github.RepositoryCommit{
+			commits: []*github.RepositoryCommit{
 				{
 					SHA: stringPtr("mysha1"),
 					Commit: &github.Commit{
@@ -404,7 +404,7 @@ func TestGetLastModified(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		client, server, _ := github_test.InitServer(t, nil, nil, nil, test.commits, nil, nil)
+		client, server, _ := github_test.InitServer(t, nil, nil, nil, test.commits, nil, nil, nil)
 		config := &Config{}
 		config.Org = "o"
 		config.Project = "r"
@@ -450,7 +450,7 @@ func TestRemoveLabel(t *testing.T) {
 		},
 	}
 	for testNum, test := range tests {
-		client, server, mux := github_test.InitServer(t, test.issue, nil, nil, nil, nil, nil)
+		client, server, mux := github_test.InitServer(t, test.issue, nil, nil, nil, nil, nil, nil)
 		config := &Config{}
 		config.Org = "o"
 		config.Project = "r"
@@ -511,7 +511,7 @@ this pr Fixes #23 and FIXES #45 but not fixxx #99`,
 		},
 	}
 	for testNum, test := range tests {
-		client, server, _ := github_test.InitServer(t, test.issue, nil, nil, nil, nil, nil)
+		client, server, _ := github_test.InitServer(t, test.issue, nil, nil, nil, nil, nil, nil)
 		config := &Config{}
 		config.Org = "o"
 		config.Project = "r"

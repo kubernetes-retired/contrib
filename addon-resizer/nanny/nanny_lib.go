@@ -24,8 +24,8 @@ import (
 	"time"
 
 	log "github.com/golang/glog"
+	inf "gopkg.in/inf.v0"
 	api "k8s.io/kubernetes/pkg/api/v1"
-	inf "speter.net/go/exp/math/dec/inf"
 )
 
 // checkResource determines whether a specific resource needs to be over-written.
@@ -38,7 +38,7 @@ func checkResource(threshold int64, actual, expected api.ResourceList, res api.R
 	if !ok && !expOk {
 		return false
 	}
-	q := new(inf.Dec).QuoRound(val.Amount, expVal.Amount, 2, inf.RoundDown)
+	q := new(inf.Dec).QuoRound(val.AsDec(), expVal.AsDec(), 2, inf.RoundDown)
 	lower := inf.NewDec(100-threshold, 2)
 	upper := inf.NewDec(100+threshold, 2)
 	if q.Cmp(lower) == -1 || q.Cmp(upper) == 1 {
@@ -92,14 +92,14 @@ func PollAPIServer(k8s KubernetesClient, est ResourceEstimator, contName string,
 		// Query the apiserver for this pod's information.
 		resources, err := k8s.ContainerResources()
 		if err != nil {
-			log.Error(err)
+			log.Errorf("Error while querying apiserver for resources: %v", err)
 			continue
 		}
-		log.Infof("The container resources are %v", resources)
+		log.Infof("The container resources are %+v", *resources)
 
 		// Get the expected resource limits.
 		expResources := est.scaleWithNodes(num)
-		log.Infof("The expected resources are %v", expResources)
+		log.Infof("The expected resources are %+v", *expResources)
 
 		// If there's a difference, go ahead and set the new values.
 		if !shouldOverwriteResources(int64(threshold), resources.Limits, resources.Requests, expResources.Limits, expResources.Requests) {

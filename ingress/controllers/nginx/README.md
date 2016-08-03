@@ -2,19 +2,37 @@
 
 This is a nginx Ingress controller that uses [ConfigMap](https://github.com/kubernetes/kubernetes/blob/master/docs/proposals/configmap.md) to store the nginx configuration. See [Ingress controller documentation](../README.md) for details on how it works.
 
+## Contents
+* [Conventions](#conventions)
+* [Requirements](#what-it-provides)
+* [Dry running](#dry-running-the-ingress-controller)
+* [Deployment](#deployment)
+* [HTTP](#http)
+* [HTTPS](#https)
+  * [Default SSL Certificate](#default-ssl-certificate)
+  * [HTTPS enforcement](#server-side-https-enforcement)
+  * [HSTS](#http-strict-transport-security)
+  * [Kube-Lego](#automated-certificate-management-with-kube-lego)
+* [TCP Services](#exposing-tcp-services)
+* [UDP Services](#exposing-udp-services)
+* [Proxy Protocol](#proxy-protocol)
+* [NGINX customization](configuration.md)
+* [NGINX status page](#nginx-status-page)
+* [Disabling NGINX ingress controller](#disabling-nginx-ingress-controller)
+* [Debug & Troubleshooting](#troubleshooting)
+* [Limitations](#limitations)
+* [NGINX Notes](#nginx-notes)
 
-## What it provides?
+## Conventions
 
-- Ingress controller
-- nginx 1.9.x with
-- SSL support
-- custom ssl_dhparam (optional). Just mount a secret with a file named `dhparam.pem`.
-- support for TCP services (flag `--tcp-services-configmap`)
-- custom nginx configuration using [ConfigMap](https://github.com/kubernetes/kubernetes/blob/master/docs/proposals/configmap.md)
+Anytime we reference a tls secret, we mean (x509, pem encoded, RSA 2048, etc). You can generate such a certificate with: 
+`openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout $(KEY) -out $(CERT) -subj "/CN=$(HOST)/O=$(HOST)"`
+and creat the secret via `kubectl create secret tls --key file --cert file`
+
 
 
 ## Requirements
-- default backend [404-server](https://github.com/kubernetes/contrib/tree/master/404-server)
+- Default backend [404-server](https://github.com/kubernetes/contrib/tree/master/404-server)
 
 
 ## Dry running the Ingress controller
@@ -27,8 +45,7 @@ $ mkdir /etc/nginx-ssl
 $ ./nginx-ingress-controller --running-in-cluster=false --default-backend-service=kube-system/default-http-backend
 ```
 
-
-## Deploy the Ingress controller
+## Deployment
 
 First create a default backend:
 ```
@@ -85,7 +102,7 @@ $ LBIP=$(kubectl get node `kubectl get po -l name=nginx-ingress-lb --template '{
 $ curl $LBIP/foo -H 'Host: foo.bar.com'
 ```
 
-## TLS
+## HTTPS
 
 You can secure an Ingress by specifying a secret that contains a TLS private key and certificate. Currently the Ingress only supports a single TLS port, 443, and assumes TLS termination. This controller supports SNI. The TLS secret must contain keys named tls.crt and tls.key that contain the certificate and private key to use for TLS, eg:
 
@@ -119,31 +136,146 @@ Please follow [test.sh](https://github.com/bprashanth/Ingress/blob/master/exampl
 
 Check the [example](examples/tls/README.md)
 
+### Default SSL Certificate
+
+NGINX provides the option serve rname [_](http://nginx.org/en/docs/http/server_names.html) as a catch-all in case of requests that do not match one of the configured server names. This configuration works without issues for HTTP traffic. In case of HTTPS NGINX requires a certificate. For this reason the Ingress controller provides the flag `--default-ssl-certificate`. The secret behind this flag contains the default certificate to be used in the mentioned case.
+If this flag is not provided NGINX will use a self signed certificate.
+
+Running without the flag `--default-ssl-certificate`:
+
+```
+$ curl -v https://10.2.78.7:443 -k
+* Rebuilt URL to: https://10.2.78.7:443/
+*   Trying 10.2.78.4...
+* Connected to 10.2.78.7 (10.2.78.7) port 443 (#0)
+* ALPN, offering http/1.1
+* Cipher selection: ALL:!EXPORT:!EXPORT40:!EXPORT56:!aNULL:!LOW:!RC4:@STRENGTH
+* successfully set certificate verify locations:
+*   CAfile: /etc/ssl/certs/ca-certificates.crt
+  CApath: /etc/ssl/certs
+* TLSv1.2 (OUT), TLS header, Certificate Status (22):
+* TLSv1.2 (OUT), TLS handshake, Client hello (1):
+* TLSv1.2 (IN), TLS handshake, Server hello (2):
+* TLSv1.2 (IN), TLS handshake, Certificate (11):
+* TLSv1.2 (IN), TLS handshake, Server key exchange (12):
+* TLSv1.2 (IN), TLS handshake, Server finished (14):
+* TLSv1.2 (OUT), TLS handshake, Client key exchange (16):
+* TLSv1.2 (OUT), TLS change cipher, Client hello (1):
+* TLSv1.2 (OUT), TLS handshake, Finished (20):
+* TLSv1.2 (IN), TLS change cipher, Client hello (1):
+* TLSv1.2 (IN), TLS handshake, Finished (20):
+* SSL connection using TLSv1.2 / ECDHE-RSA-AES128-GCM-SHA256
+* ALPN, server accepted to use http/1.1
+* Server certificate:
+*    subject: CN=foo.bar.com
+*    start date: Apr 13 00:50:56 2016 GMT
+*    expire date: Apr 13 00:50:56 2017 GMT
+*    issuer: CN=foo.bar.com
+*    SSL certificate verify result: self signed certificate (18), continuing anyway.
+> GET / HTTP/1.1
+> Host: 10.2.78.7
+> User-Agent: curl/7.47.1
+> Accept: */*
+>
+< HTTP/1.1 404 Not Found
+< Server: nginx/1.11.1
+< Date: Thu, 21 Jul 2016 15:38:46 GMT
+< Content-Type: text/html
+< Transfer-Encoding: chunked
+< Connection: keep-alive
+< Strict-Transport-Security: max-age=15724800; includeSubDomains; preload
+<
+<span>The page you're looking for could not be found.</span>
+
+* Connection #0 to host 10.2.78.7 left intact
+```
+
+Specifyng `--default-ssl-certificate=default/foo-tls`:
+
+```
+core@localhost ~ $ curl -v https://10.2.78.7:443 -k
+* Rebuilt URL to: https://10.2.78.7:443/
+*   Trying 10.2.78.7...
+* Connected to 10.2.78.7 (10.2.78.7) port 443 (#0)
+* ALPN, offering http/1.1
+* Cipher selection: ALL:!EXPORT:!EXPORT40:!EXPORT56:!aNULL:!LOW:!RC4:@STRENGTH
+* successfully set certificate verify locations:
+*   CAfile: /etc/ssl/certs/ca-certificates.crt
+  CApath: /etc/ssl/certs
+* TLSv1.2 (OUT), TLS header, Certificate Status (22):
+* TLSv1.2 (OUT), TLS handshake, Client hello (1):
+* TLSv1.2 (IN), TLS handshake, Server hello (2):
+* TLSv1.2 (IN), TLS handshake, Certificate (11):
+* TLSv1.2 (IN), TLS handshake, Server key exchange (12):
+* TLSv1.2 (IN), TLS handshake, Server finished (14):
+* TLSv1.2 (OUT), TLS handshake, Client key exchange (16):
+* TLSv1.2 (OUT), TLS change cipher, Client hello (1):
+* TLSv1.2 (OUT), TLS handshake, Finished (20):
+* TLSv1.2 (IN), TLS change cipher, Client hello (1):
+* TLSv1.2 (IN), TLS handshake, Finished (20):
+* SSL connection using TLSv1.2 / ECDHE-RSA-AES128-GCM-SHA256
+* ALPN, server accepted to use http/1.1
+* Server certificate:
+*    subject: CN=foo.bar.com
+*    start date: Apr 13 00:50:56 2016 GMT
+*    expire date: Apr 13 00:50:56 2017 GMT
+*    issuer: CN=foo.bar.com
+*    SSL certificate verify result: self signed certificate (18), continuing anyway.
+> GET / HTTP/1.1
+> Host: 10.2.78.7
+> User-Agent: curl/7.47.1
+> Accept: */*
+>
+< HTTP/1.1 404 Not Found
+< Server: nginx/1.11.1
+< Date: Mon, 18 Jul 2016 21:02:59 GMT
+< Content-Type: text/html
+< Transfer-Encoding: chunked
+< Connection: keep-alive
+< Strict-Transport-Security: max-age=15724800; includeSubDomains; preload
+<
+<span>The page you're looking for could not be found.</span>
+
+* Connection #0 to host 10.2.78.7 left intact
+```
+
+
+### Server-side HTTPS enforcement
+
+By default the controller redirects (301) to HTTPS if TLS is enabled for that ingress . If you want to disable that behaviour globally, you can use `ssl-redirect: "false"` in the NGINX config map.
+
+To configure this feature for specfic ingress resources, you can use the `ingress.kubernetes.io/ssl-redirect: "false"` annotation in theparticular resource.
+
+
 ### HTTP Strict Transport Security
 
 HTTP Strict Transport Security (HSTS) is an opt-in security enhancement specified through the use of a special response header. Once a supported browser receives this header that browser will prevent any communications from being sent over HTTP to the specified domain and will instead send all communications over HTTPS.
 
 By default the controller redirects (301) to HTTPS if there is a TLS Ingress rule. 
 
-To disable this behavior use `hsts=false` in the NGINX ConfigMap.
-
-#### Optimizing TLS Time To First Byte (TTTFB)
-
-NGINX provides the configuration option [ssl_buffer_size](http://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_buffer_size) to allow the optimization of the TLS record size. This improves the [Time To First Byte](https://www.igvita.com/2013/12/16/optimizing-nginx-tls-time-to-first-byte/) (TTTFB). The default value in the Ingress controller is `4k` (nginx default is `16k`);
+To disable this behavior use `hsts=false` in the NGINX config map.
 
 
-## Proxy Protocol
+### Automated Certificate Management with Kube-Lego
 
-If you are using a L4 proxy to forward the traffic to the NGINX pods and terminate HTTP/HTTPS there, you will lose the remote endpoint's IP addresses. To prevent this you could use the [Proxy Protocol](http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt) for forwarding traffic, this will send the connection details before forwarding the acutal TCP connection itself.
+[Kube-Lego] automatically requests missing certificates or expired from
+[Let's Encrypt] by monitoring ingress resources and its referenced secrets. To
+enable this for an ingress resource you have to add an annotation:
 
-Amongst others [ELBs in AWS](http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/enable-proxy-protocol.html) and [HAProxy](http://www.haproxy.org/) support Proxy Protocol.
+```
+kubectl annotate ing ingress-demo kubernetes.io/tls-acme="true"
+```
 
-Please check the [proxy-protocol](examples/proxy-protocol/) example
+To setup Kube-Lego you can take a look at this [full example]. The first
+version to fully support Kube-Lego is nginx Ingress controller 0.8.
+
+[full example]:https://github.com/jetstack/kube-lego/tree/master/examples
+[Kube-Lego]:https://github.com/jetstack/kube-lego
+[Let's Encrypt]:https://letsencrypt.org
 
 ## Exposing TCP services
 
-Ingress does not support TCP services (yet). For this reason this Ingress controller uses a ConfigMap where the key is the external port to use and the value is
-`<namespace/service name>:<service port>`
+Ingress does not support TCP services (yet). For this reason this Ingress controller uses the flag `--tcp-services-configmap` to point to an existing config map where the key is the external port to use and the value is `<namespace/service name>:<service port>`
 It is possible to use a number or the name of the port.
 
 The next example shows how to expose the service `example-go` running in the namespace `default` in the port `8080` using the port `9000`
@@ -163,8 +295,7 @@ Please check the [tcp services](examples/tcp/README.md) example
 
 Since 1.9.13 NGINX provides [UDP Load Balancing](https://www.nginx.com/blog/announcing-udp-load-balancing/).
 
-Ingress does not support UDP services (yet). For this reason this Ingress controller uses a ConfigMap where the key is the external port to use and the value is
-`<namespace/service name>:<service port>`
+Ingress does not support UDP services (yet). For this reason this Ingress controller uses the flag `--udp-services-configmap` to point to an existing config map where the key is the external port to use and the value is `<namespace/service name>:<service port>`
 It is possible to use a number or the name of the port.
 
 The next example shows how to expose the service `kube-dns` running in the namespace `kube-system` in the port `53` using the port `53`
@@ -180,73 +311,13 @@ data:
 
 Please check the [udp services](examples/udp/README.md) example
 
+## Proxy Protocol
 
-## Custom NGINX configuration
+If you are using a L4 proxy to forward the traffic to the NGINX pods and terminate HTTP/HTTPS there, you will lose the remote endpoint's IP addresses. To prevent this you could use the [Proxy Protocol](http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt) for forwarding traffic, this will send the connection details before forwarding the acutal TCP connection itself.
 
-Using a ConfigMap it is possible to customize the defaults in nginx.
+Amongst others [ELBs in AWS](http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/enable-proxy-protocol.html) and [HAProxy](http://www.haproxy.org/) support Proxy Protocol.
 
-Please check the [tcp services](examples/custom-configuration/README.md) example
-
-
-## Custom NGINX template
-
-The NGINX template is located in the file `/etc/nginx/template/nginx.tmpl`. Mounting a volume is possible to use a custom version.
-Use the [custom-template](examples/custom-template/README.md) example as a guide
-
-**Please note the template is tied to the go code. Be sure to no change names in the variable `$cfg`**
-
-
-### Custom NGINX upstream checks
-
-NGINX exposes some flags in the [upstream configuration](http://nginx.org/en/docs/http/ngx_http_upstream_module.html#upstream) that enabled configuration of each server in the upstream. The ingress controller allows custom `max_fails` and `fail_timeout` parameters in a global context using `upstream-max-fails` or `upstream-fail-timeout` in the NGINX Configmap or in a particular Ingress rule. By default this values are 0. This means NGINX will respect the `livenessProbe`, if is defined. If there is no probe, NGINX will not mark a server inside an upstream down.
-
-To use custom values in an Ingress rule define this annotations:
-
-`ingress-nginx.kubernetes.io/upstream-max-fails`: number of unsuccessful attempts to communicate with the server that should happen in the duration set by the fail_timeout parameter to consider the server unavailable
-
-`ingress-nginx.kubernetes.io/upstream-fail-timeout`: time in seconds during which the specified number of unsuccessful attempts to communicate with the server should happen to consider the server unavailable. Also the period of time the server will be considered unavailable.
-
-**Important:** 
-The upstreams are shared. i.e. Ingress rule using the same service will use the same upstream. 
-This means only one of the rules should define annotations to configure the upstream servers
-
-
-Please check the [auth](examples/custom-upstream-check/README.md) example
-
- ### Authentication
- 
- Is possible to add authentication adding additional annotations in the Ingress rule. The source of the authentication is a secret that contains usernames and passwords inside the the key `auth`
- 
- The annotations are:
- 
- ```
- ingress-nginx.kubernetes.io/auth-type:[basic|digest]
- ```
- 
- Indicates the [HTTP Authentication Type: Basic or Digest Access Authentication](https://tools.ietf.org/html/rfc2617).
- 
- ```
- ingress-nginx.kubernetes.io/auth-secret:secretName
- ```
- 
- Name of the secret that contains the usernames and passwords with access to the `path/s` defined in the Ingress Rule.
- The secret must be created in the same namespace than the Ingress rule
- 
- ```
- ingress-nginx.kubernetes.io/auth-realm:"realm string"
- ```
-
-
-### NGINX status page
-
-The ngx_http_stub_status_module module provides access to basic status information. This is the default module active in the url `/nginx_status`.
-This controller provides an alternitive to this module using [nginx-module-vts](https://github.com/vozlt/nginx-module-vts) third party module.
-To use this module just provide a ConfigMap with the key `enable-vts-status=true`. The URL is exposed in the port 8080.
-Please check the example `example/rc-default.yaml`
-
-![nginx-module-vts screenshot](https://cloud.githubusercontent.com/assets/3648408/10876811/77a67b70-8183-11e5-9924-6a6d0c5dc73a.png "screenshot with filter")
-
-To extract the information in JSON format the module provides a custom URL: `/nginx_status/format/json`
+Please check the [proxy-protocol](examples/proxy-protocol/) example
 
 
 ### Custom errors
@@ -257,14 +328,23 @@ In case of an error in a request the body of the response is obtained from the `
 
 Using this two headers is possible to use a custom backend service like [this one](https://github.com/aledbf/contrib/tree/nginx-debug-server/Ingress/images/nginx-error-server) that inspect each request and returns a custom error page with the format expected by the client. Please check the example [custom-errors](examples/custom-errors/README.md)
 
+### NGINX status page
 
-## Troubleshooting
+The ngx_http_stub_status_module module provides access to basic status information. This is the default module active in the url `/nginx_status`.
+This controller provides an alternitive to this module using [nginx-module-vts](https://github.com/vozlt/nginx-module-vts) third party module.
+To use this module just provide a config map with the key `enable-vts-status=true`. The URL is exposed in the port 8080.
+Please check the example `example/rc-default.yaml`
 
-Problems encountered during [1.2.0-alpha7 deployment](https://github.com/kubernetes/kubernetes/blob/master/docs/getting-started-guides/docker.md):
-* make setup-files.sh file in hypercube does not provide 10.0.0.1 IP to make-ca-certs, resulting in CA certs that are issued to the external cluster IP address rather then 10.0.0.1 -> this results in nginx-third-party-lb appearing to get stuck at "Utils.go:177 - Waiting for default/default-http-backend" in the docker logs.  Kubernetes will eventually kill the container before nginx-third-party-lb times out with a message indicating that the CA certificate issuer is invalid (wrong ip), to verify this add zeros to the end of initialDelaySeconds and timeoutSeconds and reload the RC, and docker will log this error before kubernetes kills the container.
-  * To fix the above, setup-files.sh must be patched before the cluster is inited (refer to https://github.com/kubernetes/kubernetes/pull/21504)
+![nginx-module-vts screenshot](https://cloud.githubusercontent.com/assets/3648408/10876811/77a67b70-8183-11e5-9924-6a6d0c5dc73a.png "screenshot with filter")
 
-### Debug
+To extract the information in JSON format the module provides a custom URL: `/nginx_status/format/json`
+
+### Disabling NGINX ingress controller
+
+Setting the annotation `kubernetes.io/ingress.class` to any value other than "nginx" or the empty string, will force the NGINX Ingress controller to ignore your Ingress. Do this if you wish to use one of the other Ingress controllers at the same time as the NGINX controller.
+
+
+### Debug & Troubleshooting
 
 Using the flag `--v=XX` it is possible to increase the level of logging.
 In particular:
@@ -290,13 +370,29 @@ I0316 12:24:37.610073       1 command.go:69] change in configuration detected. R
 
 
 
-### Retries in no idempotent methods
+*These issues were encountered in past versions of Kubernetes:*
 
-Since 1.9.13 NGINX will not retry non-idempotent requests (POST, LOCK, PATCH) in case of an error.
-The previous behavior can be restored using `retry-non-idempotent=true` in the configuration ConfigMap
+[1.2.0-alpha7 deployment](https://github.com/kubernetes/kubernetes/blob/master/docs/getting-started-guides/docker.md):
+
+* make setup-files.sh file in hypercube does not provide 10.0.0.1 IP to make-ca-certs, resulting in CA certs that are issued to the external cluster IP address rather then 10.0.0.1 -> this results in nginx-third-party-lb appearing to get stuck at "Utils.go:177 - Waiting for default/default-http-backend" in the docker logs.  Kubernetes will eventually kill the container before nginx-third-party-lb times out with a message indicating that the CA certificate issuer is invalid (wrong ip), to verify this add zeros to the end of initialDelaySeconds and timeoutSeconds and reload the RC, and docker will log this error before kubernetes kills the container.
+  * To fix the above, setup-files.sh must be patched before the cluster is inited (refer to https://github.com/kubernetes/kubernetes/pull/21504)
 
 
 ## Limitations
 
 - Ingress rules for TLS require the definition of the field `host`
-- The IP address in the status of loadBalancer could contain old values
+
+
+## NGINX notes
+
+Since `gcr.io/google_containers/nginx-slim:0.8` NGINX contains the next patches:
+- Dynamic TLS record size [nginx__dynamic_tls_records.patch](https://blog.cloudflare.com/optimizing-tls-over-tcp-to-reduce-latency/)
+NGINX provides the parameter `ssl_buffer_size` to adjust the size of the buffer. Default value in NGINX is 16KB. The ingress controller changes the default to 4KB. This improves the [TLS Time To First Byte (TTTFB)](https://www.igvita.com/2013/12/16/optimizing-nginx-tls-time-to-first-byte/) but the size is fixed. This patches adapts the size of the buffer to the content is being served helping to improve the perceived latency.
+
+- Add SPDY support back to Nginx with HTTP/2 [nginx_1_9_15_http2_spdy.patch](https://github.com/cloudflare/sslconfig/pull/36)
+At the same NGINX introduced HTTP/2 support for SPDY was removed. This patch add support for SPDY wichout compromising HTTP/2 support using the Application-Layer Protocol Negotiation (ALPN) or Next Protocol Negotiation (NPN) Transport Layer Security (TLS) extension to negotiate what protocol the server and client support
+```
+openssl s_client -servername www.my-site.com -connect www.my-site.com:443 -nextprotoneg ''
+CONNECTED(00000003)
+Protocols advertised by server: h2, spdy/3.1, http/1.1
+```

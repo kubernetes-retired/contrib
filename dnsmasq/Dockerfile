@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.3
-MAINTAINER Abhishek Shah <abshah@google.com>
+FROM alpine:3.4
+MAINTAINER Girish Kalele <gkalele@google.com>
 RUN apk --no-cache add dnsmasq
-ADD dnsmasq.conf /etc/dnsmasq.conf
-ENTRYPOINT ["dnsmasq", "--keep-in-foreground"]
+COPY dnsmasq.conf /etc/dnsmasq.conf
+ENTRYPOINT ["/usr/sbin/dnsmasq", "--keep-in-foreground"]

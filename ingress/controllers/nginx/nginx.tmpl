@@ -16,18 +16,30 @@ events {
 }
 
 http {
+    {{/* we use the value of the header X-Forwarded-For to be able to use the geo_ip module */}}
+    {{ if $cfg.useProxyProtocol -}}
+    set_real_ip_from    {{ $cfg.proxyRealIpCidr }};
+    real_ip_header      proxy_protocol;
+    {{ else }}
+    real_ip_header      X-Forwarded-For;
+    set_real_ip_from    0.0.0.0/0;
+    {{ end -}}
+    
+    real_ip_recursive   on;
+
     {{/* databases used to determine the country depending on the client IP address */}}
     {{/* http://nginx.org/en/docs/http/ngx_http_geoip_module.html */}}
     {{/* this is require to calculate traffic for individual country using GeoIP in the status page */}}
     geoip_country       /etc/nginx/GeoIP.dat;
     geoip_city          /etc/nginx/GeoLiteCity.dat;
+    geoip_proxy_recursive on;
 
     {{- if $cfg.enableVtsStatus }}
     vhost_traffic_status_zone shared:vhost_traffic_status:{{ $cfg.vtsStatusZoneSize }};
     vhost_traffic_status_filter_by_set_key $geoip_country_code country::*;
     {{ end -}}
 
-    # lus sectrion to return proper error codes when custom pages are used
+    # lua section to return proper error codes when custom pages are used
     lua_package_path '.?.lua;./etc/nginx/lua/?.lua;/etc/nginx/lua/vendor/lua-resty-http/lib/?.lua;';
     init_by_lua_block {        
         require("error_page")
@@ -61,16 +73,19 @@ http {
 
     client_max_body_size "{{ $cfg.bodySize }}";
 
-    {{ if $cfg.useProxyProtocol -}}
-    set_real_ip_from    {{ $cfg.proxyRealIpCidr }};
-    real_ip_header      proxy_protocol;
-    {{ end -}}
-
     log_format upstreaminfo '{{ if $cfg.useProxyProtocol }}$proxy_protocol_addr{{ else }}$remote_addr{{ end }} - '
         '[$proxy_add_x_forwarded_for] - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" '
         '$request_length $request_time $upstream_addr $upstream_response_length $upstream_response_time $upstream_status';
 
-    access_log /var/log/nginx/access.log upstreaminfo;
+    {{/* map urls that should not appear in access.log */}}
+    {{/* http://nginx.org/en/docs/http/ngx_http_log_module.html#access_log */}}
+    map $request $loggable {
+        {{- range $reqUri := $cfg.skipAccessLogUrls }}
+        {{ $reqUri }} 0;{{ end }}
+        default 1;
+    }
+
+    access_log /var/log/nginx/access.log upstreaminfo if=$loggable;
     error_log  /var/log/nginx/error.log {{ $cfg.errorLogLevel }};
 
     {{ if not (empty .defResolver) }}# Custom dns resolver.
@@ -131,6 +146,10 @@ http {
     ssl_dhparam {{ .sslDHParam }};
     {{ end }}
 
+    {{- if not $cfg.enableDynamicTlsRecords }}
+    ssl_dyn_rec_size_lo 0;
+    {{ end }}
+
     {{- if .customErrors }}
     # Custom error pages
     proxy_intercept_errors on;
@@ -164,7 +183,7 @@ http {
     server {
         server_name {{ $server.Name }};
         listen 80{{ if $cfg.useProxyProtocol }} proxy_protocol{{ end }};
-        {{ if $server.SSL }}listen 443 {{ if $cfg.useProxyProtocol }}proxy_protocol{{ end }} ssl {{ if $cfg.useHttp2 }}http2{{ end }};
+        {{ if $server.SSL }}listen 443 {{ if $cfg.useProxyProtocol }}proxy_protocol{{ end }} ssl {{ if $cfg.enableSpdy }}spdy{{ end }} {{ if $cfg.useHttp2 }}http2{{ end }};
         {{/* comment PEM sha is required to detect changes in the generated configuration and force a reload */}}
         # PEM sha: {{ $server.SSLPemChecksum }}        
         ssl_certificate {{ $server.SSLCertificate }};
@@ -172,10 +191,6 @@ http {
         {{- end }}
 
         {{ if (and $server.SSL $cfg.hsts) -}}
-        if ($scheme = http) {
-            return 301 https://$host$request_uri;
-        }
-
         more_set_headers                            "Strict-Transport-Security: max-age={{ $cfg.hstsMaxAge }}{{ if $cfg.hstsIncludeSubdomains }}; includeSubDomains{{ end }}; preload";
         {{- end }}
 
@@ -184,6 +199,18 @@ http {
         {{- range $location := $server.Locations }}
         {{ $path := buildLocation $location }}
         location {{ $path }} {
+            {{ if gt (len $location.Whitelist.CIDR) 0 }}
+            {{- range $ip := $location.Whitelist.CIDR }}
+            allow {{ $ip }};{{ end }}
+            deny all;
+            {{ end -}}
+
+            {{ if (and $server.SSL $location.Redirect.SSLRedirect) -}}
+            # enforce ssl on server side
+            if ($scheme = http) {
+                return 301 https://$host$request_uri;
+            }
+            {{- end }}
             {{/* if the location contains a rate limit annotation, create one */}}
             {{ $limits := buildRateLimit $location }}
             {{- range $limit := $limits }}
@@ -198,6 +225,7 @@ http {
             auth_digest "{{ $location.Auth.Realm }}";
             auth_digest_user_file {{ $location.Auth.File }};
             {{ end }}
+            proxy_set_header Authorization "";
             {{- end }}
 
             proxy_set_header Host                   $host;
@@ -213,6 +241,10 @@ http {
             proxy_set_header X-Forwarded-Host       $host;
             proxy_set_header X-Forwarded-Port       $server_port;
             proxy_set_header X-Forwarded-Proto      $pass_access_scheme;
+
+            # mitigate HTTPoxy Vulnerability
+            # https://www.nginx.com/blog/mitigating-the-httpoxy-vulnerability-with-nginx/
+            proxy_set_header Proxy                  "";
 
             proxy_connect_timeout                   {{ $cfg.proxyConnectTimeout }}s;
             proxy_send_timeout                      {{ $cfg.proxySendTimeout }}s;
@@ -247,9 +279,12 @@ http {
     }
     {{ end }}
 
-    # default server, including healthcheck
+    # default server, used for NGINX healthcheck and access to nginx stats
     server {
-        listen 8080 default_server reuseport;
+        # Use the port 18080 (random value just to avoid known ports) as default port for nginx.
+        # Changing this value requires a change in:
+        # https://github.com/kubernetes/contrib/blob/master/ingress/controllers/nginx/nginx/command.go#L104
+        listen 18080 default_server reuseport backlog={{ .backlogSize }};
 
         location /healthz {
             access_log off;

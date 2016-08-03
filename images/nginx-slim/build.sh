@@ -21,7 +21,7 @@ export NGINX_VERSION=1.11.1
 export NDK_VERSION=0.3.0
 export VTS_VERSION=0.1.9
 export SETMISC_VERSION=0.30
-export LUA_VERSION=0.10.3
+export LUA_VERSION=0.10.5
 export STICKY_SESSIONS_VERSION=c78b7dd79d0d
 export LUA_CJSON_VERSION=2.1.0.4
 export LUA_RESTY_HTTP_VERSION=0.07
@@ -82,7 +82,7 @@ get_src 59920dd3f92c2be32627121605751b52eae32b5884be09f2e4c53fb2fae8aabc \
 get_src ddd297a5f894d966cae19f112c79f99ec9fa13612c3d324c19533247c4953980 \
         "https://github.com/vozlt/nginx-module-vts/archive/v$VTS_VERSION.tar.gz"
 
-get_src a69504c25de67bce968242d331d2e433c021405a6dba7bca0306e6e0b040bb50 \
+get_src 4f0292c37ab3d7cb980c994825040be1bda2c769cbd800e79c43eb37458347d4 \
         "https://github.com/openresty/lua-nginx-module/archive/v$LUA_VERSION.tar.gz"
 
 get_src 5417991b6db4d46383da2d18f2fd46b93fafcebfe87ba87f7cfeac4c9bcb0224 \
@@ -109,8 +109,21 @@ get_src 618de9d87cbb4e6ad21cc4a1a178bbfdabddba9ad07ddee4c1190d23c12887ee \
 get_src 8eabbcd5950fdcc718bb0ef9165206c2ed60f67cd9da553d7bc3e6fe4e338461 \
         "https://github.com/yaoweibin/ngx_http_substitutions_filter_module/archive/$NGINX_SUBSTITUTIONS.tar.gz"
 
+
+#https://blog.cloudflare.com/optimizing-tls-over-tcp-to-reduce-latency/
+curl -sSL -o nginx__dynamic_tls_records.patch https://raw.githubusercontent.com/cloudflare/sslconfig/master/patches/nginx__dynamic_tls_records.patch
+
+# Add SPDY support back to Nginx with HTTP/2
+# https://github.com/cloudflare/sslconfig
+curl -sSL -o nginx_1_9_15_http2_spdy.patch https://raw.githubusercontent.com/felixbuenemann/sslconfig/7c23d2791857f0b07e3008ba745bcf48d8d6b170/patches/nginx_1_9_15_http2_spdy.patch
+
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
+
+echo "Applying tls nginx patches..."
+patch -p1 < $BUILD_PATH/nginx__dynamic_tls_records.patch
+patch -p1 < $BUILD_PATH/nginx_1_9_15_http2_spdy.patch 
+
 
 ./configure \
   --prefix=/usr/share/nginx \
@@ -137,6 +150,7 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
   --with-http_gzip_static_module \
   --with-http_sub_module \
   --with-http_v2_module \
+  --with-http_spdy_module \
   --with-stream \
   --with-stream_ssl_module \
   --with-threads \
@@ -212,3 +226,9 @@ rm -Rf /usr/share/man /usr/share/doc
 rm -rf /tmp/* /var/tmp/*
 rm -rf /var/lib/apt/lists/*
 rm -rf /var/cache/apt/archives/*
+
+# Download of GeoIP databases
+curl -sSL -o /etc/nginx/GeoIP.dat.gz http://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz \
+  && curl -sSL -o /etc/nginx/GeoLiteCity.dat.gz http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz \
+  && gunzip /etc/nginx/GeoIP.dat.gz \
+  && gunzip /etc/nginx/GeoLiteCity.dat.gz
