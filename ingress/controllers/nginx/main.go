@@ -53,7 +53,7 @@ var (
     namespace/name. The controller uses the first node port of this Service for
     the default backend.`)
 
-	publishService = flags.String("publish-service", "",
+	publishSvc = flags.String("publish-service", "",
 		`Service fronting the ingress controllers. Takes the form
 		namespace/name. The controller will set the endpoint records on the
 		ingress objects to reflect those on the service.`)
@@ -126,17 +126,17 @@ func main() {
 	publishIngress := api.LoadBalancerIngress{IP: "127.0.0.1"}
 	unpublish := true
 	if *inCluster {
-		if *publishService != "" {
-			svc, err := findService(kubeClient, *publishService)
+		if *publishSvc != "" {
+			svc, err := findService(kubeClient, *publishSvc)
 			if err != nil {
-				glog.Fatalf("no service with name %v found: %v", *publishService, err)
+				glog.Fatalf("no service with name %v found: %v", *publishSvc, err)
 			}
 			if len(svc.Status.LoadBalancer.Ingress) == 0 {
 				// We could poll here, but we instead just exit and rely on k8s to restart us
-				glog.Fatalf("service %s does not (yet) have ingress points", *publishService)
+				glog.Fatalf("service %s does not (yet) have ingress points", *publishSvc)
 			}
 			if len(svc.Status.LoadBalancer.Ingress) != 1 {
-				glog.Warningf("service %s has multiple ingress points; only considering the first", *publishService)
+				glog.Warningf("service %s has multiple ingress points; only considering the first", *publishSvc)
 			}
 			publishIngress = svc.Status.LoadBalancer.Ingress[0]
 			unpublish = false
