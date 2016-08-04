@@ -51,7 +51,7 @@ spec:
             exec:
               command:
                 - "/bin/sh"
-                - "-c"
+                - "-ec"
                 - |
                   EPS=""
                   for i in $(seq 0 $((${INITIAL_CLUSTER_SIZE} - 1))); do
@@ -73,7 +73,7 @@ spec:
                   fi
         command:
           - "/bin/sh"
-          - "-c"
+          - "-ec"
           - |
             HOSTNAME=$(hostname)
 
@@ -95,17 +95,6 @@ spec:
             member_hash() {
                 etcdctl member list | grep http://${HOSTNAME}.${PETSET_NAME}:2380 | cut -d':' -f1 | cut -d'[' -f1
             }
-
-            cleanup() {
-                export ETCDCTL_ENDPOINT=$(eps)
-
-                echo "Removing ${HOSTNAME} from etcd cluster"
-                etcdctl member remove $(member_hash)
-                exit 0
-            }
-
-            # Remove the member from the cluster before the container is terminated
-            trap cleanup TERM
 
             # re-joining after failure?
             if [ -e /var/run/etcd/default.etcd ]; then
