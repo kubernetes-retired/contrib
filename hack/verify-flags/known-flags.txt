@@ -56,6 +56,7 @@ last-release-pr
 left-build-number
 max-pr-number
 max-sync-failures
+max-nodes-total
 min-pr-number
 network-config
 nonblocking-jenkins-jobs
