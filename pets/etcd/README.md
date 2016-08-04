@@ -77,10 +77,10 @@ Updated member with ID 7fd61f3f79d97779 in cluster
 
 1. provision one node cluster
 1. build HEAD of master branch
-1. run ``hack/local-cluster-up.sh`` with ``ENABLE_HOSTPATH_PROVISIONER`` set to ``true``:
+1. run ``hack/local-cluster-up.sh`` with both ``ENABLE_HOSTPATH_PROVISIONER`` and ``KUBE_ENABLE_CLUSTER_DNS`` to ``true``:
 
    ```shell
-   ENABLE_HOSTPATH_PROVISIONER=true ./hack/local-up-cluster.sh
+   KUBE_ENABLE_CLUSTER_DNS=true ENABLE_HOSTPATH_PROVISIONER=true ./hack/local-up-cluster.sh
    ```
 
 1. run skydns
@@ -88,8 +88,43 @@ Updated member with ID 7fd61f3f79d97779 in cluster
 
 ## Scaling
 
-TODO
+The etcd cluster can be scale up by running ``kubectl patch`` or ``kubectl edit``. For instance,
 
-## Limitations
+```sh
+$ kubectl get pods -l "app=etcd"
+NAME      READY     STATUS    RESTARTS   AGE
+etcd-0    1/1       Running   0          7m
+etcd-1    1/1       Running   0          7m
+etcd-2    1/1       Running   0          6m
 
-* no scaling
+$ kubectl patch petset/etcd -p '{"spec":{"replicas": 5}}'
+"etcd" patched
+
+$ kubectl get pods -l "app=etcd"
+NAME      READY     STATUS    RESTARTS   AGE
+etcd-0    1/1       Running   0          8m
+etcd-1    1/1       Running   0          8m
+etcd-2    1/1       Running   0          8m
+etcd-3    1/1       Running   0          4s
+etcd-4    1/1       Running   0          1s
+```
+
+Scaling-down is similar. For instance, changing the number of pets to ``4``:
+
+```sh
+$ kubectl edit petset/etcd
+petset "etcd" edited
+
+$ kubectl get pods -l "app=etcd"
+NAME      READY     STATUS    RESTARTS   AGE
+etcd-0    1/1       Running   0          8m
+etcd-1    1/1       Running   0          8m
+etcd-2    1/1       Running   0          8m
+etcd-3    1/1       Running   0          4s
+```
+
+Once a pet is terminated (either by running ``kubectl delete pod etcd-ID`` or scaling down),
+content of ``/var/run/etcd/`` directory is cleaned up.
+If any of the etcd pets restarts (e.g. caused by etcd failure or any other),
+the directory is kept untouched so the pet can recover from the failure.
+
