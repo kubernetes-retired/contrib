@@ -167,6 +167,8 @@ type Config struct {
 	// When we clear analytics we store the last values here
 	lastAnalytics analytics
 	analytics     analytics
+
+	prMap map[int]*github.PullRequest
 }
 
 type analytic struct {
@@ -206,6 +208,7 @@ type analytics struct {
 	GetCombinedStatus    analytic
 	SetStatus            analytic
 	GetPR                analytic
+	GetPRList            analytic
 	AssignPR             analytic
 	ClosePR              analytic
 	OpenPR               analytic
@@ -242,6 +245,7 @@ func (a analytics) print() {
 	fmt.Fprintf(w, "GetCombinedStatus\t%d\t\n", a.GetCombinedStatus.Count)
 	fmt.Fprintf(w, "SetStatus\t%d\t\n", a.SetStatus.Count)
 	fmt.Fprintf(w, "GetPR\t%d\t\n", a.GetPR.Count)
+	fmt.Fprintf(w, "GetPRList\t%d\t\n", a.GetPRList.Count)
 	fmt.Fprintf(w, "AssignPR\t%d\t\n", a.AssignPR.Count)
 	fmt.Fprintf(w, "ClosePR\t%d\t\n", a.ClosePR.Count)
 	fmt.Fprintf(w, "OpenPR\t%d\t\n", a.OpenPR.Count)
@@ -265,6 +269,7 @@ type MungeObject struct {
 	Issue       *github.Issue
 	pr          *github.PullRequest
 	commits     []*github.RepositoryCommit
+	prList      []*github.PullRequest
 	events      []*github.IssueEvent
 	comments    []*github.IssueComment
 	prComments  []*github.PullRequestComment
@@ -398,6 +403,22 @@ func (config *Config) PreExecute() error {
 	}
 	config.client = github.NewClient(client)
 	config.ResetAPICount()
+
+	return nil
+}
+
+// EachLoop updates the config structure in every loop.
+func (config *Config) EachLoop() error {
+	prList, err := config.getAllPRs()
+	if err != nil {
+		return fmt.Errorf("Error getting PR List %v", err)
+	}
+
+	config.prMap = map[int]*github.PullRequest{}
+	for _, pr := range prList {
+		config.prMap[*pr.Number] = pr
+	}
+	glog.Infof("Fetched PR list with %d entries", len(config.prMap))
 	return nil
 }
 
@@ -461,6 +482,10 @@ func (config *Config) SetClient(client *github.Client) {
 }
 
 func (config *Config) getPR(num int) (*github.PullRequest, error) {
+	if val, ok := config.prMap[num]; ok {
+		return val, nil
+	}
+	glog.Warningf("Could not fetch PR# %d from cache", num)
 	pr, response, err := config.client.PullRequests.Get(config.Org, config.Project, num)
 	config.analytics.GetPR.Call(config, response)
 	if err != nil {
@@ -479,6 +504,12 @@ func (config *Config) getIssue(num int) (*github.Issue, error) {
 	}
 	return issue, nil
 }
+
+//// Refresh will refresh the Issue (and PR if this is a PR)
+//// (not the commits or events)
+//func (obj *MungeObject) Initialize() error {
+//	config, response, err := config.client.PullRequests.List(config.Org, config.Project)
+//}
 
 // Refresh will refresh the Issue (and PR if this is a PR)
 // (not the commits or events)
@@ -1825,4 +1856,45 @@ func (config *Config) AddLabel(label *github.Label) error {
 		return err
 	}
 	return nil
+}
+
+func (config *Config) getAllPRs() ([]*github.PullRequest, error) {
+	allPRs := []*github.PullRequest{}
+	listOpts := &github.PullRequestListOptions{}
+
+	page := 1
+	for {
+		glog.V(4).Infof("Fetching page %d of PRs", page)
+		listOpts.ListOptions = github.ListOptions{PerPage: 100, Page: page}
+		issues, response, err := config.client.PullRequests.List(config.Org, config.Project, listOpts)
+		config.analytics.GetPRList.Call(config, response)
+		if err != nil {
+			return nil, err
+		}
+		for i := range issues {
+			issue := issues[i]
+			if issue.Number == nil {
+				glog.Infof("Skipping issue with no number, very strange")
+				continue
+			}
+			if issue.User == nil || issue.User.Login == nil {
+				glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
+				continue
+			}
+			if *issue.Number < config.MinPRNumber {
+				glog.V(6).Infof("Dropping %d < %d", *issue.Number, config.MinPRNumber)
+				continue
+			}
+			if *issue.Number > config.MaxPRNumber {
+				glog.V(6).Infof("Dropping %d > %d", *issue.Number, config.MaxPRNumber)
+				continue
+			}
+			allPRs = append(allPRs, issue)
+		}
+		if response.LastPage == 0 || response.LastPage <= page {
+			break
+		}
+		page++
+	}
+	return allPRs, nil
 }

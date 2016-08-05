@@ -59,6 +59,7 @@ func doMungers(config *mungeConfig) error {
 		glog.Infof("Running mungers")
 		config.NextExpectedUpdate(nextRunStartTime)
 
+		config.Config.EachLoop()
 		config.Features.EachLoop()
 		mungers.EachLoop()
 
