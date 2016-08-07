@@ -25,12 +25,13 @@ import (
 	"k8s.io/contrib/mungegithub/features"
 	github_util "k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers"
+	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 	"k8s.io/contrib/mungegithub/reports"
 	utilflag "k8s.io/kubernetes/pkg/util/flag"
 
+	"github.com/foxish/viper"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
-	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 )
 
 var (
@@ -39,12 +40,14 @@ var (
 
 type mungeConfig struct {
 	github_util.Config
+	features.Features
+
 	MinIssueNumber   int
 	PRMungersList    []string
 	IssueReportsList []string
 	Once             bool
 	Period           time.Duration
-	features.Features
+	ConfigFile       string
 }
 
 func addMungeFlags(config *mungeConfig, cmd *cobra.Command) {
@@ -52,6 +55,7 @@ func addMungeFlags(config *mungeConfig, cmd *cobra.Command) {
 	cmd.Flags().StringSliceVar(&config.PRMungersList, "pr-mungers", []string{}, "A list of pull request mungers to run")
 	cmd.Flags().StringSliceVar(&config.IssueReportsList, "issue-reports", []string{}, "A list of issue reports to run. If set, will run the reports and exit.")
 	cmd.Flags().DurationVar(&config.Period, "period", 10*time.Minute, "The period for running mungers")
+	cmd.Flags().StringVar(&config.ConfigFile, "config-file", "", "The config file to be read in by mungegithub")
 }
 
 func doMungers(config *mungeConfig) error {
@@ -86,7 +90,22 @@ func main() {
 	root := &cobra.Command{
 		Use:   filepath.Base(os.Args[0]),
 		Short: "A program to add labels, check tests, and generally mess with outstanding PRs",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(root *cobra.Command, _ []string) error {
+			// Set flag values from config file if available.
+			if config.ConfigFile != "" {
+				viper.SetConfigFile(config.ConfigFile)
+				if err := viper.ReadInConfig(); err != nil {
+					glog.Fatalf("Cannot read configuration file: %v", err)
+				} else {
+					glog.Infof("Loaded configuration file: %v", viper.ConfigFileUsed())
+					for _, key := range viper.AllKeys() {
+						if err := root.Flag(key).Value.Set(viper.GetString(key)); err != nil {
+							glog.Fatalf("Error while setting flag %s from configuration file: %v", key, err)
+						}
+					}
+				}
+			}
+
 			glog.Info(mungerutil.PrettyString(config))
 			if err := config.PreExecute(); err != nil {
 				return err
@@ -100,10 +119,12 @@ func main() {
 			if err := mungers.RegisterMungers(config.PRMungersList); err != nil {
 				glog.Fatalf("unable to find requested mungers: %v", err)
 			}
+
 			requestedFeatures := mungers.RequestedFeatures()
 			if err := config.Features.Initialize(&config.Config, requestedFeatures); err != nil {
 				return err
 			}
+
 			if err := mungers.InitializeMungers(&config.Config, &config.Features); err != nil {
 				glog.Fatalf("unable to initialize mungers: %v", err)
 			}
