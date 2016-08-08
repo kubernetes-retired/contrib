@@ -175,10 +175,6 @@ spec:
                 --initial-cluster ${PEERS} \
                 --initial-cluster-state new \
                 --data-dir /var/run/etcd/default.etcd
-      volumes:
-      - name: datadir
-        persistentVolumeClaim:
-          claimName: datadir
   volumeClaimTemplates:
   - metadata:
       name: datadir
