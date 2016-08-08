@@ -42,12 +42,18 @@ type asgInformation struct {
 	basename string
 }
 
+type AutoScaling interface {
+	DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error)
+	SetDesiredCapacity(input *autoscaling.SetDesiredCapacityInput) (*autoscaling.SetDesiredCapacityOutput, error)
+	TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error)
+}
+
 // AwsManager is handles aws communication and data caching.
 type AwsManager struct {
 	asgs     []*asgInformation
 	asgCache map[AwsRef]*Asg
 
-	service    *autoscaling.AutoScaling
+	service    AutoScaling
 	cacheMutex sync.Mutex
 }
 
