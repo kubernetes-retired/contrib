@@ -32,7 +32,7 @@ spec:
         pod.alpha.kubernetes.io/init-containers: '[
             {
                 "name": "install",
-                "image": "gcr.io/google_containers/redis-install:0.2",
+                "image": "gcr.io/google_containers/redis-install:0.1",
                 "imagePullPolicy": "Always",
                 "args": ["--version=3.2.0", "--install-into=/opt", "--work-dir=/work-dir"],
                 "volumeMounts": [
