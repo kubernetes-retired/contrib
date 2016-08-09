@@ -1,3 +1,19 @@
+/*
+Copyright 2016 The Kubernetes Authors All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package lbaasv2
 
 import (
@@ -23,10 +39,10 @@ import (
 )
 
 const (
-	LOADBALANCER = "loadbalancer"
-	LISTENER     = "listener"
-	POOL         = "pool"
-	MONITOR      = "monitor"
+	loadBalancerResource = "loadbalancer"
+	listenerResource     = "listener"
+	poolResource         = "pool"
+	monitorResource      = "monitor"
 )
 
 var empty struct{}
@@ -144,7 +160,7 @@ func (lbaas *LBaaSController) Name() string {
 // GetBindIP returns the IP used by users to access their apps
 func (lbaas *LBaaSController) GetBindIP(name string) (string, error) {
 	// Find loadbalancer by name
-	lbName := utils.GetResourceName(LOADBALANCER, name)
+	lbName := utils.GetResourceName(loadBalancerResource, name)
 	opts := loadbalancers.ListOpts{Name: lbName}
 	pager := loadbalancers.List(lbaas.network, opts)
 	var bindIP string
@@ -178,7 +194,7 @@ func (lbaas *LBaaSController) GetBindIP(name string) (string, error) {
 // check if Loadbalancer already exists with the correct resources
 func (lbaas *LBaaSController) checkLoadbalancerExist(cmName string, serviceObj *api.Service) (bool, error) {
 
-	expectedLbName := utils.GetResourceName(LOADBALANCER, cmName)
+	expectedLbName := utils.GetResourceName(loadBalancerResource, cmName)
 	opts := loadbalancers.ListOpts{Name: expectedLbName}
 
 	//get all pages and check if the loadbalancer exist
@@ -219,11 +235,11 @@ func (lbaas *LBaaSController) checkLoadbalancerExist(cmName string, serviceObj *
 	// check for pool and members of respective listeners
 	for _, port := range serviceObj.Spec.Ports {
 		servicePortName := port.Name
-		expectedListenerName := utils.GetResourceName(LISTENER, cmName, servicePortName)
+		expectedListenerName := utils.GetResourceName(listenerResource, cmName, servicePortName)
 		expectedBindPort := int(port.Port)
 		expectedPoolProtocol := string(port.Protocol)
 		expectedNodePort := port.NodePort
-		expectedPoolName := utils.GetResourceName(POOL, cmName, servicePortName)
+		expectedPoolName := utils.GetResourceName(poolResource, cmName, servicePortName)
 
 		if listenerObj, ok := listenerMap[expectedListenerName]; ok {
 			if listenerObj.ProtocolPort != expectedBindPort {
@@ -271,16 +287,16 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) er
 	// check if the loadbalancer already exists
 	lbExists, err := lbaas.checkLoadbalancerExist(name, serviceObj)
 	if err != nil {
-		glog.Errorf("Error checking %v loadbalancer existence: %v", utils.GetResourceName(LOADBALANCER, name), err)
+		glog.Errorf("Error checking %v loadbalancer existence: %v", utils.GetResourceName(loadBalancerResource, name), err)
 	}
 	if lbExists {
-		glog.Infof("Loadbalancer %v already exist", utils.GetResourceName(LOADBALANCER, name))
+		glog.Infof("Loadbalancer %v already exist", utils.GetResourceName(loadBalancerResource, name))
 		return nil
 	}
 	// Delete current load balancer for this service if it exist
 	lbaas.HandleConfigMapDelete(configMap)
 
-	lbName := utils.GetResourceName(LOADBALANCER, name)
+	lbName := utils.GetResourceName(loadBalancerResource, name)
 	lb, err := loadbalancers.Create(lbaas.network, loadbalancers.CreateOpts{
 		Name:         lbName,
 		AdminStateUp: loadbalancers.Up,
@@ -303,7 +319,7 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) er
 		}
 
 		// Create a listener resource for the loadbalancer
-		listenerName := utils.GetResourceName(LISTENER, name, servicePortName)
+		listenerName := utils.GetResourceName(listenerResource, name, servicePortName)
 		bindPort := int(port.Port)
 		listener, err := listeners.Create(lbaas.network, listeners.CreateOpts{
 			Protocol:       listeners.Protocol(port.Protocol),
@@ -314,7 +330,7 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) er
 		}).Extract()
 		if err != nil {
 			err = fmt.Errorf("Could not create listener %v. %v", listenerName, err)
-			defer lbaas.deleteLBaaSResource(lb.ID, LOADBALANCER, lb.ID)
+			defer lbaas.deleteLBaaSResource(lb.ID, loadBalancerResource, lb.ID)
 			return err
 		}
 		glog.Infof("Created listener %v. ID: %v", listenerName, listener.ID)
@@ -323,7 +339,7 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) er
 		lbaas.waitLoadbalancerReady(lb.ID)
 
 		// Create a pool resource for the listener
-		poolName := utils.GetResourceName(POOL, name, servicePortName)
+		poolName := utils.GetResourceName(poolResource, name, servicePortName)
 		pool, err := pools.Create(lbaas.network, pools.CreateOpts{
 			LBMethod:   pools.LBMethodRoundRobin,
 			Protocol:   pools.Protocol(port.Protocol),
@@ -332,8 +348,8 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) er
 		}).Extract()
 		if err != nil {
 			err = fmt.Errorf("Could not create pool %v. %v", poolName, err)
-			defer lbaas.deleteLBaaSResource(lb.ID, LOADBALANCER, lb.ID)
-			defer lbaas.deleteLBaaSResource(lb.ID, LISTENER, listener.ID)
+			defer lbaas.deleteLBaaSResource(lb.ID, loadBalancerResource, lb.ID)
+			defer lbaas.deleteLBaaSResource(lb.ID, listenerResource, listener.ID)
 			return err
 		}
 		glog.Infof("Created pool %v. ID: %v", poolName, pool.ID)
@@ -350,9 +366,9 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) er
 			}).ExtractMember()
 			if err != nil {
 				err = fmt.Errorf("Could not create member for %v. %v", ip, err)
-				defer lbaas.deleteLBaaSResource(lb.ID, LOADBALANCER, lb.ID)
-				defer lbaas.deleteLBaaSResource(lb.ID, LISTENER, listener.ID)
-				defer lbaas.deleteLBaaSResource(lb.ID, POOL, pool.ID)
+				defer lbaas.deleteLBaaSResource(lb.ID, loadBalancerResource, lb.ID)
+				defer lbaas.deleteLBaaSResource(lb.ID, listenerResource, listener.ID)
+				defer lbaas.deleteLBaaSResource(lb.ID, poolResource, pool.ID)
 				return err
 			}
 			glog.Infof("Created member for %v. ID: %v", ip, member.ID)
@@ -370,9 +386,9 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) er
 		}).Extract()
 		if err != nil {
 			err = fmt.Errorf("Could not create health monitor for pool %v. %v", poolName, err)
-			defer lbaas.deleteLBaaSResource(lb.ID, LOADBALANCER, lb.ID)
-			defer lbaas.deleteLBaaSResource(lb.ID, LISTENER, listener.ID)
-			defer lbaas.deleteLBaaSResource(lb.ID, POOL, pool.ID)
+			defer lbaas.deleteLBaaSResource(lb.ID, loadBalancerResource, lb.ID)
+			defer lbaas.deleteLBaaSResource(lb.ID, listenerResource, listener.ID)
+			defer lbaas.deleteLBaaSResource(lb.ID, poolResource, pool.ID)
 			return err
 		}
 		glog.Infof("Created health monitor for pool %v. ID: %v", poolName, monitor.ID)
@@ -386,7 +402,7 @@ func (lbaas *LBaaSController) HandleConfigMapCreate(configMap *api.ConfigMap) er
 func (lbaas *LBaaSController) HandleConfigMapDelete(configMap *api.ConfigMap) {
 	name := configMap.Namespace + "-" + configMap.Name
 	// Find loadbalancer by name
-	lbName := utils.GetResourceName(LOADBALANCER, name)
+	lbName := utils.GetResourceName(loadBalancerResource, name)
 	opts := loadbalancers.ListOpts{Name: lbName}
 
 	//get all pages and check if the  loadbalancer doesnt exists
@@ -420,13 +436,13 @@ func (lbaas *LBaaSController) HandleConfigMapDelete(configMap *api.ConfigMap) {
 			if poolID != "" {
 				pool, _ := pools.Get(lbaas.network, poolID).Extract()
 				if pool.MonitorID != "" {
-					lbaas.deleteLBaaSResource(lbID, MONITOR, pool.MonitorID)
+					lbaas.deleteLBaaSResource(lbID, monitorResource, pool.MonitorID)
 				}
-				lbaas.deleteLBaaSResource(lbID, POOL, poolID)
+				lbaas.deleteLBaaSResource(lbID, poolResource, poolID)
 			}
-			lbaas.deleteLBaaSResource(lbID, LISTENER, listenerObj.ID)
+			lbaas.deleteLBaaSResource(lbID, listenerResource, listenerObj.ID)
 		}
-		lbaas.deleteLBaaSResource(lbID, LOADBALANCER, lbID)
+		lbaas.deleteLBaaSResource(lbID, loadBalancerResource, lbID)
 	}
 }
 
@@ -626,20 +642,20 @@ func (lbaas *LBaaSController) deleteLBaaSResource(lbID string, resourceType stri
 	glog.Errorf("Deleting %v %v.", resourceType, resourceID)
 	var err error
 	switch {
-	case resourceType == LOADBALANCER:
+	case resourceType == loadBalancerResource:
 		err = loadbalancers.Delete(lbaas.network, resourceID).Err
-	case resourceType == LISTENER:
+	case resourceType == listenerResource:
 		err = listeners.Delete(lbaas.network, resourceID).Err
-	case resourceType == POOL:
+	case resourceType == poolResource:
 		err = pools.Delete(lbaas.network, resourceID).Err
-	case resourceType == MONITOR:
+	case resourceType == monitorResource:
 		err = monitors.Delete(lbaas.network, resourceID).Err
 	}
 	if err != nil {
 		glog.Errorf("Could not delete %v %v. %v", resourceType, resourceID, err)
 		return
 	}
-	if resourceType != LOADBALANCER {
+	if resourceType != loadBalancerResource {
 		// Wait for load balancer resource to be ACTIVE state
 		lbaas.waitLoadbalancerReady(lbID)
 	} else {

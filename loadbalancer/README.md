@@ -8,15 +8,17 @@ of ingress does not support layer 4 routing.
 
 This controller is designed to easily integrate and create different load balancing backends. From software, hardware to cloud loadbalancer. Our initial featured backends are software loadbalacing (with keepalived and nginx), hardware loadbalancing with F5 and cloud loadbalancing with Openstack LBaaS v2 (Octavia).
 
-In the case for software loadbalacer, this controllers work with loadbalancer-controller daemons which are deployed across nodes which will servers as high available loadbalacers. These daemon controllers use keepalived and nginx to provide 
-the high availability loadbalancing via the use of VIPs. The loadbalance controller will communicate with the daemons via a configmap resource.
+In the case of software loadbalancer, this controller works with loadbalancer-controller daemons which are deployed across nodes and will server as high available loadbalancers. The loadbalancer controller will communicate with the daemons via a configmap resource.
+These daemon controllers use keepalived and nginx to provide the high availability loadbalancing via the use of VIPs. VIPS are allocated to every service that's being loadbalanced. This will allow multiple services that bind to the same ports to work.
+For F5 and Openstack LBaaS, the loadbalancer controllers talk to the appropriate servers via their APIs. So loadbalancer-controller daemons are not needed.
 
 **Note**: The daemon needs to run in priviledged mode and with `hostNetwork: true` so that it has access to the underlying node network. This is needed so that the VIP can be assigned to the node interfaces so that they are accessible externally.
 
 ## Difference between this and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx](https://github.com/kubernetes/contrib/tree/master/ingress/controllers/nginx).
 
-Service-loadbalancer is a great option but it is only tailored for software loadbalancer using HAProxy. The nginx ingress controller is only for nginx and only works for layer 7 applications. This project
-is intended to provide support for many different backends and work with all kubernetes applications (layer 7 and layer4).
+Service-loadbalancer is a great option but it is only tailored for software loadbalancer using HAProxy and it is not designed in a way that it can be easily decoupled. The nginx ingress controller is only for nginx and only works for layer 7 applications. This project is intended to provide support for many different backends and work with all kubernetes applications (layer 7 and layer4).
+
+Service-loadbalancer support for L4 is very limited. The binding-port needs to be open and specified as a hostPort during the controller creation. This forces the users to specify and open the ports at the beginning. This will also prevent two different services to loadbalance on the same port (ie running two mysql services). This projects uses VIPs to resolve this limitation.
 
 
 ## Examples

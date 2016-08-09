@@ -45,11 +45,13 @@ var (
 	defaultVirtualRouterID = "50"
 )
 
+// KeepalivedController is a object that manages the keepalived config
 type KeepalivedController struct {
 	keepalived *Keepalived
 	exitChan   chan struct{}
 }
 
+// Keepalived represents all the elements needed for constructing a keepalived conf
 type Keepalived struct {
 	Interface       string
 	Vips            sets.String

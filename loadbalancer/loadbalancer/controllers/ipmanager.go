@@ -33,11 +33,12 @@ const (
 	ipConfigMapName = "ip-manager-configmap"
 )
 
-var ErrIPRangeExhausted = errors.New("Exhausted given Virtual IP range")
+var errIPRangeExhausted = errors.New("Exhausted given Virtual IP range")
 
 var ipConfigMutex sync.Mutex
 var ipConfigMapMutex sync.Mutex
 
+// IPManager is used to track which IPs have been allocated for loadbalancing services
 type IPManager struct {
 	ConfigMapName string
 	namespace     string
@@ -51,6 +52,7 @@ type ipRange struct {
 	endIP   string
 }
 
+// NewIPManager creates an IPManager object that manage IPs allocated to services
 func NewIPManager(kubeClient *unversioned.Client, ipCmNamespace, userNamespace, configLabelKey, configLabelValue string) *IPManager {
 
 	startIP := os.Getenv("VIP_ALLOCATION_START")
@@ -127,6 +129,7 @@ func (ipManager *IPManager) checkConfigMap(cmName string) (bool, string) {
 	return false, ""
 }
 
+// GenerateVirtualIP gets a VIP for the configmap passed and allocates to be used for loadbalancer
 func (ipManager *IPManager) GenerateVirtualIP(configMap *api.ConfigMap) (string, error) {
 
 	// Block execution until the ip config map gets updated with the new virtual IP
@@ -159,6 +162,7 @@ func (ipManager *IPManager) GenerateVirtualIP(configMap *api.ConfigMap) (string,
 	return virtualIP, nil
 }
 
+// DeleteVirtualIP returns the allocated VIP for the configmap name to the available VIP pool
 func (ipManager *IPManager) DeleteVirtualIP(name string) error {
 	ipConfigMap := ipManager.getIPConfigMap()
 	ipConfigMapData := ipConfigMap.Data
@@ -224,7 +228,7 @@ func (ipManager *IPManager) getFreeVirtualIP() (string, error) {
 			return temp.String(), nil
 		}
 	}
-	return "", ErrIPRangeExhausted
+	return "", errIPRangeExhausted
 }
 
 // checks if IP is in the given range

@@ -1,7 +1,22 @@
+/*
+Copyright 2016 The Kubernetes Authors All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package backends
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -23,6 +38,7 @@ type BackendConfig struct {
 	TlsKey            string
 }
 
+// BackendController defines the functions needed to be implemented by every backend.
 type BackendController interface {
 	Name() string
 	AddConfig(name string, config BackendConfig)
@@ -35,6 +51,7 @@ type BackendControllerFactory func() (BackendController, error)
 
 var backendControllerFactories = make(map[string]BackendControllerFactory)
 
+// Register register a backend controller to the factory
 func Register(name string, factory BackendControllerFactory) {
 	if factory == nil {
 		glog.Errorf("Backend controller factory %s does not exist.", name)
@@ -46,6 +63,7 @@ func Register(name string, factory BackendControllerFactory) {
 	backendControllerFactories[name] = factory
 }
 
+// CreateBackendController returns a backend controller object based on the backendname
 func CreateBackendController(backendName string) (BackendController, error) {
 	// Query configuration for backend controller.
 	engineName := backendName
@@ -55,10 +73,10 @@ func CreateBackendController(backendName string) (BackendController, error) {
 		// Factory has not been registered.
 		// Make a list of all available backend controller factories for logging.
 		availableBackendControllers := make([]string, len(backendControllerFactories))
-		for k, _ := range backendControllerFactories {
+		for k := range backendControllerFactories {
 			availableBackendControllers = append(availableBackendControllers, k)
 		}
-		return nil, errors.New(fmt.Sprintf("Invalid backend controller name. Must be one of: %s", strings.Join(availableBackendControllers, ", ")))
+		return nil, fmt.Errorf(fmt.Sprintf("Invalid backend controller name. Must be one of: %s", strings.Join(availableBackendControllers, ", ")))
 	}
 
 	// Run the factory with the configuration.

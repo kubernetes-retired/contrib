@@ -34,7 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/watch"
 )
 
-// ConfigMapController watches Kubernetes API for ConfigMap changes
+// LoadBalancerController watches Kubernetes API for ConfigMap and node changes
 // and reconfigures backend when needed
 type LoadBalancerController struct {
 	client              *client.Client
