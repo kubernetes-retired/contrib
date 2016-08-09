@@ -23,6 +23,7 @@ dry-run
 dump-nginx-configuration
 e2e-status-context
 election-namespace
+enable-md-yaml
 enable-output-coloring
 error-page
 etcd-prefix
@@ -50,10 +51,12 @@ issue-mungers
 issue-reports
 jenkins-host
 jenkins-jobs
+label-file
 last-release-pr
 left-build-number
 max-pr-number
 max-sync-failures
+max-nodes-total
 min-pr-number
 network-config
 nonblocking-jenkins-jobs

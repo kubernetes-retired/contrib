@@ -20,7 +20,7 @@
 
 all: push
 
-TAG=1.1
+TAG=1.2
 PREFIX?=gcr.io/google_containers/defaultbackend
 ARCH?=amd64
 GOLANG_VERSION=1.6
