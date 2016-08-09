@@ -58,7 +58,7 @@ func (a *AutoScalingMock) TerminateInstanceInAutoScalingGroup(input *autoscaling
 	return args.Get(0).(*autoscaling.TerminateInstanceInAutoScalingGroupOutput), nil
 }
 
-var testAwsManager *AwsManager = &AwsManager{
+var testAwsManager = &AwsManager{
 	asgs:     make([]*asgInformation, 0),
 	service:  &AutoScalingMock{},
 	asgCache: make(map[AwsRef]*Asg),
