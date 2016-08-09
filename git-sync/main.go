@@ -24,14 +24,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-	"io/ioutil"
-	"path/filepath"
 )
 
 const volMount = "/git"
@@ -52,7 +52,7 @@ var flPassword = flag.String("password", envString("GIT_SYNC_PASSWORD", ""), "pa
 
 var flSSH = flag.Bool("ssh", envBool("GIT_SYNC_SSH", false), "use SSH protocol")
 
-var flChmod = flag.Int("change-permissions", envInt("GIT_SYNC_PERMISSIONS", 0), `If set it will change the permissions of the directory 
+var flChmod = flag.Int("change-permissions", envInt("GIT_SYNC_PERMISSIONS", 0), `If set it will change the permissions of the directory
 		that contains the git repository. Example: 744`)
 
 func envString(key, def string) string {
@@ -138,42 +138,15 @@ func main() {
 	}
 }
 
-func gitPullIntoDir(dir, branch, rev string) error {
-	// fetch branch
-	output, err := runCommand("git", dir, []string{"pull", "origin", branch})
-	if err != nil {
-		return err
-	}
-
-	log.Printf("fetch %q: %s", branch, string(output))
-
-	// reset working copy
-	output, err = runCommand("git", dir, []string{"reset", "--hard", rev})
-	if err != nil {
-		return err
-	}
-
-	log.Printf("reset %q: %v", rev, string(output))
-
-	if *flChmod != 0 {
-		// set file permissions
-		_, err = runCommand("chmod", "", []string{"-R", string(*flChmod), dir})
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// updateSymlink atomically swaps the symlink to point at the specified directory and deletes the previous target
+// updateSymlink atomically swaps the symlink to point at the specified directory and cleans up the previous worktree.
 func updateSymlink(link, newDir string) error {
 	// Get currently-linked repo directory (to be removed), unless it doesn't exist
-	currentDir, err := filepath.EvalSymlinks(link)
+	currentDir, err := filepath.EvalSymlinks(path.Join(volMount, link))
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("error accessing symlink: %v", err)
 	}
 
-	// newDir is /git/git-data-..., we need to change it to relative path.
+	// newDir is /git/rev-..., we need to change it to relative path.
 	// Volume in other container may not be mounted at /git, so the symlink can't point to /git.
 	newDirRelative, err := filepath.Rel(volMount, newDir)
 	if err != nil {
@@ -184,22 +157,73 @@ func updateSymlink(link, newDir string) error {
 		return fmt.Errorf("error creating symlink: %v", err)
 	}
 
+	log.Printf("create symlink %v->%v", "tmp-link", newDirRelative)
+
 	if _, err := runCommand("mv", volMount, []string{"-T", "tmp-link", link}); err != nil {
 		return fmt.Errorf("error replacing symlink: %v", err)
 	}
 
-	if err = os.RemoveAll(currentDir); err != nil {
-		return fmt.Errorf("error removing directory: %v", err)
+	log.Printf("rename symlink %v to %v", "tmp-link", link)
+
+	// Clean up previous worktree
+	if len(currentDir) > 0 {
+		if err = os.RemoveAll(currentDir); err != nil {
+			return fmt.Errorf("error removing directory: %v", err)
+		}
+
+		log.Printf("remove %v", currentDir)
+
+		output, err := runCommand("git", volMount, []string{"worktree", "prune"})
+		if err != nil {
+			return err
+		}
+
+		log.Printf("worktree prune %v", string(output))
 	}
+
 	return nil
 }
 
-func initRepo(repo, dest, branch, rev string, depth int) error {
-	tmpTarget, err := ioutil.TempDir(volMount, "git-data-")
+// addWorktreeAndSwap creates a new worktree and calls updateSymlink to swap the symlink to point to the new worktree
+func addWorktreeAndSwap(dest, branch, rev string) error {
+	// fetch branch
+	output, err := runCommand("git", volMount, []string{"fetch", "origin", branch})
 	if err != nil {
-		return fmt.Errorf("error creating tempdir: %v", err)
+		return err
 	}
 
+	log.Printf("fetch %q: %s", branch, string(output))
+
+	// add worktree in subdir
+	rand.Seed(time.Now().UnixNano())
+	worktreePath := path.Join(volMount, "rev-"+strconv.Itoa(rand.Int()))
+	output, err = runCommand("git", volMount, []string{"worktree", "add", worktreePath, "origin/" + branch})
+	if err != nil {
+		return err
+	}
+
+	log.Printf("add worktree origin/%q: %v", branch, string(output))
+
+	// reset working copy
+	output, err = runCommand("git", worktreePath, []string{"reset", "--hard", rev})
+	if err != nil {
+		return err
+	}
+
+	log.Printf("reset %q: %v", rev, string(output))
+
+	if *flChmod != 0 {
+		// set file permissions
+		_, err = runCommand("chmod", "", []string{"-R", string(*flChmod), worktreePath})
+		if err != nil {
+			return err
+		}
+	}
+
+	return updateSymlink(dest, worktreePath)
+}
+
+func initRepo(repo, dest, branch, rev string, depth int) error {
 	// clone repo
 	args := []string{"clone", "--no-checkout", "-b", branch}
 	if depth != 0 {
@@ -207,7 +231,7 @@ func initRepo(repo, dest, branch, rev string, depth int) error {
 		args = append(args, string(depth))
 	}
 	args = append(args, repo)
-	args = append(args, tmpTarget)
+	args = append(args, volMount)
 	output, err := runCommand("git", "", args)
 	if err != nil {
 		return err
@@ -215,12 +239,6 @@ func initRepo(repo, dest, branch, rev string, depth int) error {
 
 	log.Printf("clone %q: %s", repo, string(output))
 
-	if err := gitPullIntoDir(tmpTarget, branch, rev); err != nil {
-		return err;
-	}
-	if err := updateSymlink(dest, tmpTarget); err != nil {
-		return err;
-	}
 	return nil
 }
 
@@ -231,11 +249,14 @@ func syncRepo(repo, dest, branch, rev string, depth int) error {
 	_, err := os.Stat(gitRepoPath)
 	switch {
 	case os.IsNotExist(err):
-		return initRepo(repo, dest, branch, rev, depth)
+		err = initRepo(repo, target, branch, rev, depth)
+		if err != nil {
+			return err
+		}
 	case err != nil:
 		return fmt.Errorf("error checking if repo exist %q: %v", gitRepoPath, err)
 	default:
-		needUpdate, err := gitRemoteChanged(target)
+		needUpdate, err := gitRemoteChanged(target, branch)
 		if err != nil {
 			return err
 		}
@@ -245,24 +266,11 @@ func syncRepo(repo, dest, branch, rev string, depth int) error {
 		}
 	}
 
-	tmpTarget, err := ioutil.TempDir(volMount, "git-data-")
-	if err != nil {
-		return fmt.Errorf("error creating tempdir: %v", err)
-	}
-	if _, err := runCommand("cp", volMount, []string{"-R", target+"/.git", tmpTarget+"/"}); err != nil {
-		return fmt.Errorf("error copying %s to %s: %v", target, tmpTarget, err)
-	}
-	if err := gitPullIntoDir(tmpTarget, branch, rev); err != nil {
-		return err;
-	}
-	if err := updateSymlink(target, tmpTarget); err != nil {
-		return err;
-	}
-	return nil
+	return addWorktreeAndSwap(dest, branch, rev)
 }
 
 // gitRemoteChanged returns true if the remote HEAD is different from the local HEAD, false otherwise
-func gitRemoteChanged(localDir string) (bool, error) {
+func gitRemoteChanged(localDir, branch string) (bool, error) {
 	_, err := runCommand("git", localDir, []string{"remote", "update"})
 	if err != nil {
 		return false, err
@@ -271,7 +279,7 @@ func gitRemoteChanged(localDir string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	remoteHead, err := runCommand("git", localDir, []string{"rev-parse", "@{u}"})
+	remoteHead, err := runCommand("git", localDir, []string{"rev-parse", fmt.Sprintf("origin/%v", branch)})
 	if err != nil {
 		return false, err
 	}
