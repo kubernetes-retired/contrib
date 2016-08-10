@@ -178,5 +178,49 @@ func TestBackendPoolShutdown(t *testing.T) {
 	if _, err := f.GetBackendService(namer.BeName(80)); err == nil {
 		t.Fatalf("%v", err)
 	}
+}
 
+func TestBackendInstanceGroupClobbering(t *testing.T) {
+	f := NewFakeBackendServices()
+	fakeIGs := instances.NewFakeInstanceGroups(sets.NewString())
+	pool := newBackendPool(f, fakeIGs, false)
+	namer := utils.Namer{}
+
+	// This will add the instance group k8s-ig to the instance pool
+	pool.Add(80)
+
+	be, err := f.GetBackendService(namer.BeName(80))
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	// Simulate another controller updating the same backend service with
+	// a different instance group
+	newGroups := []*compute.Backend{
+		{Group: "k8s-ig-bar"},
+		{Group: "k8s-ig-foo"},
+	}
+	be.Backends = append(be.Backends, newGroups...)
+	if err := f.UpdateBackendService(be); err != nil {
+		t.Fatalf("Failed to update backend service %v", be.Name)
+	}
+
+	// Make sure repeated adds don't clobber the inserted instance group
+	pool.Add(80)
+	be, err = f.GetBackendService(namer.BeName(80))
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	gotGroups := sets.NewString()
+	for _, g := range be.Backends {
+		gotGroups.Insert(g.Group)
+	}
+
+	// seed expectedGroups with the first group native to this controller
+	expectedGroups := sets.NewString("k8s-ig")
+	for _, newGroup := range newGroups {
+		expectedGroups.Insert(newGroup.Group)
+	}
+	if !expectedGroups.Equal(gotGroups) {
+		t.Fatalf("Expected %v Got %v", expectedGroups, gotGroups)
+	}
 }
