@@ -35,19 +35,21 @@ b429c86e3cd4e077: name=etcd-2 peerURLs=http://etcd-2.etcd:2380 clientURLs=http:/
 ## Failover
 
 If any etcd member fails it gets re-joined eventually.
-You can test the scenario by deleting one of the pets:
+You can test the scenario by killing process of one of the pets:
 
 ```shell
-$ kubectl delete pod etcd-1
+$ ps aux | grep etcd-1
+$ kill -9 ETCD_1_PID
 ```
 
 ```shell
 $ kubectl get pods -l "app=etcd"
 NAME                 READY     STATUS        RESTARTS   AGE
 etcd-0               1/1       Running       0          54s
-etcd-1               1/1       Terminating   0          52s
 etcd-2               1/1       Running       0          51s
 ```
+
+After a while:
 
 ```shell
 $ kubectl get pods -l "app=etcd"
