@@ -97,6 +97,7 @@ source-file
 ssl-ca-cert
 ssl-cert
 start-from
+state-machine-enabled
 stats-port
 sync-period
 test-owners-csv
