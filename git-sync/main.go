@@ -24,18 +24,22 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
+const volMount = "/git"
+
 var flRepo = flag.String("repo", envString("GIT_SYNC_REPO", ""), "git repo url")
 var flBranch = flag.String("branch", envString("GIT_SYNC_BRANCH", "master"), "git branch")
 var flRev = flag.String("rev", envString("GIT_SYNC_REV", "HEAD"), "git rev")
-var flDest = flag.String("dest", envString("GIT_SYNC_DEST", ""), "destination path")
+var flDest = flag.String("dest", envString("GIT_SYNC_DEST", ""), "destination subdirectory path within volume")
 var flWait = flag.Int("wait", envInt("GIT_SYNC_WAIT", 0), "number of seconds to wait before next sync")
 var flOneTime = flag.Bool("one-time", envBool("GIT_SYNC_ONE_TIME", false), "exit after the initial checkout")
 var flDepth = flag.Int("depth", envInt("GIT_SYNC_DEPTH", 0), "shallow clone with a history truncated to the specified number of commits")
@@ -48,7 +52,7 @@ var flPassword = flag.String("password", envString("GIT_SYNC_PASSWORD", ""), "pa
 
 var flSSH = flag.Bool("ssh", envBool("GIT_SYNC_SSH", false), "use SSH protocol")
 
-var flChmod = flag.Int("change-permissions", envInt("GIT_SYNC_PERMISSIONS", 0), `If set it will change the permissions of the directory 
+var flChmod = flag.Int("change-permissions", envInt("GIT_SYNC_PERMISSIONS", 0), `If set it will change the permissions of the directory
 		that contains the git repository. Example: 744`)
 
 func envString(key, def string) string {
@@ -134,40 +138,74 @@ func main() {
 	}
 }
 
-// syncRepo syncs the branch of a given repository to the destination at the given rev.
-func syncRepo(repo, dest, branch, rev string, depth int) error {
-	gitRepoPath := path.Join(dest, ".git")
-	_, err := os.Stat(gitRepoPath)
-	switch {
-	case os.IsNotExist(err):
-		// clone repo
-		args := []string{"clone", "--no-checkout", "-b", branch}
-		if depth != 0 {
-			args = append(args, "-depth")
-			args = append(args, string(depth))
+// updateSymlink atomically swaps the symlink to point at the specified directory and cleans up the previous worktree.
+func updateSymlink(link, newDir string) error {
+	// Get currently-linked repo directory (to be removed), unless it doesn't exist
+	currentDir, err := filepath.EvalSymlinks(path.Join(volMount, link))
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error accessing symlink: %v", err)
+	}
+
+	// newDir is /git/rev-..., we need to change it to relative path.
+	// Volume in other container may not be mounted at /git, so the symlink can't point to /git.
+	newDirRelative, err := filepath.Rel(volMount, newDir)
+	if err != nil {
+		return fmt.Errorf("error converting to relative path: %v", err)
+	}
+
+	if _, err := runCommand("ln", volMount, []string{"-snf", newDirRelative, "tmp-link"}); err != nil {
+		return fmt.Errorf("error creating symlink: %v", err)
+	}
+
+	log.Printf("create symlink %v->%v", "tmp-link", newDirRelative)
+
+	if _, err := runCommand("mv", volMount, []string{"-T", "tmp-link", link}); err != nil {
+		return fmt.Errorf("error replacing symlink: %v", err)
+	}
+
+	log.Printf("rename symlink %v to %v", "tmp-link", link)
+
+	// Clean up previous worktree
+	if len(currentDir) > 0 {
+		if err = os.RemoveAll(currentDir); err != nil {
+			return fmt.Errorf("error removing directory: %v", err)
 		}
-		args = append(args, repo)
-		args = append(args, dest)
-		output, err := runCommand("git", "", args)
+
+		log.Printf("remove %v", currentDir)
+
+		output, err := runCommand("git", volMount, []string{"worktree", "prune"})
 		if err != nil {
 			return err
 		}
 
-		log.Printf("clone %q: %s", repo, string(output))
-	case err != nil:
-		return fmt.Errorf("error checking if repo exist %q: %v", gitRepoPath, err)
+		log.Printf("worktree prune %v", string(output))
 	}
 
+	return nil
+}
+
+// addWorktreeAndSwap creates a new worktree and calls updateSymlink to swap the symlink to point to the new worktree
+func addWorktreeAndSwap(dest, branch, rev string) error {
 	// fetch branch
-	output, err := runCommand("git", dest, []string{"pull", "origin", branch})
+	output, err := runCommand("git", volMount, []string{"fetch", "origin", branch})
 	if err != nil {
 		return err
 	}
 
 	log.Printf("fetch %q: %s", branch, string(output))
 
+	// add worktree in subdir
+	rand.Seed(time.Now().UnixNano())
+	worktreePath := path.Join(volMount, "rev-"+strconv.Itoa(rand.Int()))
+	output, err = runCommand("git", volMount, []string{"worktree", "add", worktreePath, "origin/" + branch})
+	if err != nil {
+		return err
+	}
+
+	log.Printf("add worktree origin/%q: %v", branch, string(output))
+
 	// reset working copy
-	output, err = runCommand("git", dest, []string{"reset", "--hard", rev})
+	output, err = runCommand("git", worktreePath, []string{"reset", "--hard", rev})
 	if err != nil {
 		return err
 	}
@@ -176,13 +214,76 @@ func syncRepo(repo, dest, branch, rev string, depth int) error {
 
 	if *flChmod != 0 {
 		// set file permissions
-		_, err = runCommand("chmod", "", []string{"-R", string(*flChmod), dest})
+		_, err = runCommand("chmod", "", []string{"-R", string(*flChmod), worktreePath})
 		if err != nil {
 			return err
 		}
 	}
 
+	return updateSymlink(dest, worktreePath)
+}
+
+func initRepo(repo, dest, branch, rev string, depth int) error {
+	// clone repo
+	args := []string{"clone", "--no-checkout", "-b", branch}
+	if depth != 0 {
+		args = append(args, "-depth")
+		args = append(args, string(depth))
+	}
+	args = append(args, repo)
+	args = append(args, volMount)
+	output, err := runCommand("git", "", args)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("clone %q: %s", repo, string(output))
+
 	return nil
+}
+
+// syncRepo syncs the branch of a given repository to the destination at the given rev.
+func syncRepo(repo, dest, branch, rev string, depth int) error {
+	target := path.Join(volMount, dest)
+	gitRepoPath := path.Join(target, ".git")
+	_, err := os.Stat(gitRepoPath)
+	switch {
+	case os.IsNotExist(err):
+		err = initRepo(repo, target, branch, rev, depth)
+		if err != nil {
+			return err
+		}
+	case err != nil:
+		return fmt.Errorf("error checking if repo exist %q: %v", gitRepoPath, err)
+	default:
+		needUpdate, err := gitRemoteChanged(target, branch)
+		if err != nil {
+			return err
+		}
+		if !needUpdate {
+			log.Printf("No change")
+			return nil
+		}
+	}
+
+	return addWorktreeAndSwap(dest, branch, rev)
+}
+
+// gitRemoteChanged returns true if the remote HEAD is different from the local HEAD, false otherwise
+func gitRemoteChanged(localDir, branch string) (bool, error) {
+	_, err := runCommand("git", localDir, []string{"remote", "update"})
+	if err != nil {
+		return false, err
+	}
+	localHead, err := runCommand("git", localDir, []string{"rev-parse", "HEAD"})
+	if err != nil {
+		return false, err
+	}
+	remoteHead, err := runCommand("git", localDir, []string{"rev-parse", fmt.Sprintf("origin/%v", branch)})
+	if err != nil {
+		return false, err
+	}
+	return (strings.Compare(string(localHead), string(remoteHead)) != 0), nil
 }
 
 func runCommand(command, cwd string, args []string) ([]byte, error) {
