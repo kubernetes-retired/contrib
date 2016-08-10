@@ -1,0 +1,117 @@
+# A headless service to create DNS records
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  name: mongodb
+  labels:
+    app: mongodb
+spec:
+  ports:
+  - port: 27017
+    name: mongodb
+  # *.mongodb.default.svc.cluster.local
+  clusterIP: None
+  selector:
+    app: mongodb
+---
+apiVersion: apps/v1alpha1
+kind: PetSet
+metadata:
+  name: mongodb
+spec:
+  serviceName: "mongodb"
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: mongodb
+      annotations:
+        pod.alpha.kubernetes.io/initialized: "true"
+        pod.alpha.kubernetes.io/init-containers: '[
+            {
+                "name": "install",
+                "image": "docker.io/foxish/mongodb-install:0.1",
+                "args": ["--work-dir=/work-dir"],
+                "volumeMounts": [
+                    {
+                        "name": "workdir",
+                        "mountPath": "/work-dir"
+                    },
+                    {
+                        "name": "config",
+                        "mountPath": "/config"
+                    }
+                ]
+            },
+            {
+                "name": "bootstrap",
+                "image": "mongo:3.2",
+                "command": ["/work-dir/peer-finder"],
+                "args": ["-on-start=\"/work-dir/on-start.sh\"", "-service=mongodb"],
+                "env": [
+                  {
+                      "name": "POD_NAMESPACE",
+                      "valueFrom": {
+                          "fieldRef": {
+                              "apiVersion": "v1",
+                              "fieldPath": "metadata.namespace"
+                          }
+                      }
+                   }
+                ],
+                "volumeMounts": [
+                    {
+                        "name": "workdir",
+                        "mountPath": "/work-dir"
+                    },
+                    {
+                        "name": "config",
+                        "mountPath": "/config"
+                    },
+                    {
+                        "name": "datadir",
+                        "mountPath": "/data/db"
+                    }
+                ]
+            }
+        ]'
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:3.2
+        ports:
+        - containerPort: 27017
+          name: mongodb
+        command:
+        - /usr/bin/mongod
+        - --config=/config/mongod.conf
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "/usr/bin/mongo --eval 'printjson(db.serverStatus())'"
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: datadir
+          mountPath: /data/db
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        emptyDir: {}
+      - name: workdir
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+      annotations:
+        volume.alpha.kubernetes.io/storage-class: anything
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
