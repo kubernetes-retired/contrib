@@ -16,7 +16,10 @@ limitations under the License.
 
 package comment
 
-import "github.com/google/go-github/github"
+import (
+	"github.com/google/go-github/github"
+	"time"
+)
 
 // FilteredComments is a list of comments
 type FilteredComments []*github.IssueComment
@@ -32,4 +35,26 @@ func FilterComments(comments []*github.IssueComment, matcher Matcher) FilteredCo
 	}
 
 	return matches
+}
+
+// GetLast returns the last comment in a series of comments
+func (f FilteredComments) GetLast() *github.IssueComment {
+	if f.Empty() {
+		return nil
+	}
+	return f[len(f)-1]
+}
+
+// Empty Checks to see if the list of comments is empty
+func (f FilteredComments) Empty() bool {
+	return len(f) == 0
+}
+
+// LastComment returns the creation date of the last comment that matches. Or deflt if there is no such comment.
+func LastComment(comments []*github.IssueComment, matcher Matcher, deflt *time.Time) *time.Time {
+	matches := FilterComments(comments, matcher)
+	if matches.Empty() {
+		return deflt
+	}
+	return matches.GetLast().CreatedAt
 }

@@ -16,7 +16,9 @@ limitations under the License.
 
 package event
 
-import "github.com/google/go-github/github"
+import (
+	"github.com/google/go-github/github"
+)
 
 // FilteredEvents is a list of events
 type FilteredEvents []*github.IssueEvent
