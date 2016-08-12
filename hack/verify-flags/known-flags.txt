@@ -122,3 +122,5 @@ retest-body
 default-ssl-certificate
 housekeeping-interval
 system-namespace
+netrc-dir
+publish-command
