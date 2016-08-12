@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-CUR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. ./init.sh
 
-INVENTORY_DIR="${CUR_DIR}/../inventory"
-PLAYBOOKS_DIR="${CUR_DIR}/../playbooks"
+inventory=${INVENTORY:-${INVENTORY_DIR}/inventory}
+ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-etcd.yml --tags "restart" $@
