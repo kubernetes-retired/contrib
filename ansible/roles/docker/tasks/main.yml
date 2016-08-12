@@ -13,6 +13,9 @@
 - include: apt-docker-install.yml
   when: ansible_distribution == "Ubuntu"
 
+- include: use-docker-repos.yml
+  when: docker_provider == "docker"
+
 - include: generic-install.yml
   when: ansible_distribution != "Debian" and ansible_distribution != "Ubuntu" and not is_coreos
 

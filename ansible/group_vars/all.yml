@@ -6,6 +6,10 @@
 # packageManager - will install packages from your distribution using yum/dnf/apt
 source_type: packageManager
 
+# os - docker packages will come from the default OS repositories
+# docker - will put down docker repo files in yum.repos.d and install latest
+docker_provider: os
+
 # will be used as the Internal dns domain name if DNS is enabled. Services
 # will be discoverable under <service-name>.<namespace>.svc.<domainname>, e.g.
 # myservice.default.svc.cluster.local
