@@ -39,6 +39,12 @@ kube_cert_dir: "{{ kube_config_dir }}/certs"
 # The IP(s) for which the certificate will be valid
 kube_cert_ip: "{{ hostvars[inventory_hostname]['ansible_all_ipv4_addresses'] | join (',IP:') }}"
 
+# The internal name for the cluster
+kube_master_cluster_hostname: "{{ master_cluster_hostname | default('int-kubernetes') }}"
+
+# The public name for the cluster
+kube_master_cluster_public_hostname: "{{ master_cluster_public_hostname | default('public-kubernetes') }}"
+
 # This is where all of the bearer tokens will be stored
 kube_token_dir: "{{ kube_config_dir }}/tokens"
 
