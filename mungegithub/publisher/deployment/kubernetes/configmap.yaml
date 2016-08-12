@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubernetes-publisher-config
+data:
+  # basic config options.
+  # TODO: uncomment this before merge
+  #  config.organization: kubernetes
+  config.organization: caesarxuchao
+  config.project: kubernetes
+  config.pr-mungers: publisher
+  config.token-file: /etc/secret-volume/token
+
+  # munger specific options.
+  gitrepo.repo-dir: /gitrepos
+  config.period: "24h"
+  publisher.publisher-script: ./publisher.sh
