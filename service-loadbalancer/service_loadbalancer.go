@@ -54,6 +54,7 @@ const (
 	lbSslTerm                = "serviceloadbalancer/lb.sslTerm"
 	lbAclMatch               = "serviceloadbalancer/lb.aclMatch"
 	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
+	lbEnabledKey             = "serviceloadbalancer/lb.enabled"
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
 )
 
@@ -223,13 +224,21 @@ type staticPageHandler struct {
 
 type serviceAnnotations map[string]string
 
+func (s serviceAnnotations) isLbEnabled() (bool) {
+	if val, ok := s[lbEnabledKey]; ok {
+		return val == "true"
+	}
+	return false
+}
+
 func (s serviceAnnotations) getAlgorithm() (string, bool) {
 	val, ok := s[lbAlgorithmKey]
 	return val, ok
 }
 
-func (s serviceAnnotations) getHost() (string, bool) {
-	val, ok := s[lbHostKey]
+func (s serviceAnnotations) getHost(servicePortName string) (string, bool) {
+	index := lbHostKey + "." + servicePortName
+	val, ok := s[index]
 	return val, ok
 }
 
@@ -243,8 +252,9 @@ func (s serviceAnnotations) getSslTerm() (string, bool) {
 	return val, ok
 }
 
-func (s serviceAnnotations) getAclMatch() (string, bool) {
-	val, ok := s[lbAclMatch]
+func (s serviceAnnotations) getAclMatch(servicePortName string) (string, bool) {
+	index := lbAclMatch + "." + servicePortName
+	val, ok := s[index]
 	return val, ok
 }
 
@@ -408,12 +418,15 @@ func getServiceNameForLBRule(s *api.Service, servicePort int) string {
 }
 
 // getServices returns a list of services and their endpoints.
-func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSvc []service, tcpSvc []service) {
+func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSvc []service, tcpSvc []service, httpsSvc []service) {
 	ep := []string{}
 	services, _ := lbc.svcLister.List()
 	for _, s := range services.Items {
 		if s.Spec.Type == api.ServiceTypeLoadBalancer {
 			glog.Infof("Ignoring service %v, it already has a loadbalancer", s.Name)
+			continue
+		}
+		if !serviceAnnotations(s.ObjectMeta.Annotations).isLbEnabled() {
 			continue
 		}
 		for _, servicePort := range s.Spec.Ports {
@@ -442,7 +455,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				BackendPort: getTargetPort(&servicePort),
 			}
 
-			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(); ok {
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(servicePort.Name); ok {
 				newSvc.Host = val
 			}
 
@@ -472,7 +485,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				}
 			}
 
-			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getAclMatch(); ok {
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getAclMatch(servicePort.Name); ok {
 				newSvc.AclMatch = val
 			}
 
@@ -491,7 +504,11 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				if newSvc.SslTerm == true {
 					httpsTermSvc = append(httpsTermSvc, newSvc)
 				} else {
-					httpSvc = append(httpSvc, newSvc)
+					if (servicePort.Name == "synapse-https" || servicePort.Name == "servlet-https" || servicePort.Name == "https") {
+						httpsSvc = append(httpsSvc, newSvc)
+					} else if (servicePort.Name == "synapse-http" || servicePort.Name == "servlet-http" || servicePort.Name == "http") {
+						httpSvc = append(httpSvc, newSvc)
+					}
 				}
 			}
 			glog.Infof("Found service: %+v", newSvc)
@@ -499,6 +516,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 	}
 
 	sort.Sort(serviceByName(httpSvc))
+	sort.Sort(serviceByName(httpsSvc))
 	sort.Sort(serviceByName(httpsTermSvc))
 	sort.Sort(serviceByName(tcpSvc))
 
@@ -511,7 +529,7 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		time.Sleep(100 * time.Millisecond)
 		return errDeferredSync
 	}
-	httpSvc, httpsTermSvc, tcpSvc := lbc.getServices()
+	httpSvc, httpsTermSvc, tcpSvc, httpsSvc := lbc.getServices()
 	if len(httpSvc) == 0 && len(httpsTermSvc) == 0 && len(tcpSvc) == 0 {
 		return nil
 	}
@@ -520,6 +538,7 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 			"http":      httpSvc,
 			"httpsTerm": httpsTermSvc,
 			"tcp":       tcpSvc,
+			"https":     httpsSvc,
 		}, dryRun); err != nil {
 		return err
 	}

@@ -159,7 +159,7 @@ func TestGetServices(t *testing.T) {
 	flb.tcpServices = map[string]int{
 		svc1.Name: 20,
 	}
-	http, _, tcp := flb.getServices()
+	http, _, tcp, https := flb.getServices()
 	serviceURLEp := fmt.Sprintf("%v:%v", svc1.Name, 20)
 	if len(tcp) != 1 || tcp[0].Name != serviceURLEp || tcp[0].FrontendPort != 20 {
 		t.Fatalf("Unexpected tcp service %+v expected %+v", tcp, svc1.Name)
@@ -198,6 +198,20 @@ func TestGetServices(t *testing.T) {
 		}
 		if len(receivedEp) != len(expectedEps) && !receivedEp.IsSuperset(expectedEps) {
 			t.Fatalf("Expected %+v, got %+v", expectedEps, receivedEp)
+		}
+	}
+
+	for _, s := range https {
+		expectedEps, ok := expectedURLMapping[s.Name]
+		if !ok {
+			t.Fatalf("Expected https url endpoint %v, found %+v", s.Name, expectedURLMapping)
+		}
+		receivedEp := sets.NewString()
+		for i := range s.Ep {
+			receivedEp.Insert(s.Ep[i])
+		}
+		if len(receivedEp) != len(expectedEps) && !receivedEp.IsSuperset(expectedEps) {
+			t.Fatalf("Expected https %+v, got %+v", expectedEps, receivedEp)
 		}
 	}
 }
@@ -295,10 +309,11 @@ func compareCfgFiles(t *testing.T, orig, template string) {
 
 func TestDefaultAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
@@ -310,10 +325,11 @@ func TestDefaultAlgorithm(t *testing.T) {
 
 func TestDefaultCustomAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("leastconn")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -325,11 +341,12 @@ func TestDefaultCustomAlgorithm(t *testing.T) {
 
 func TestSyslog(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	flb.cfg.startSyslog = true
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -341,11 +358,12 @@ func TestSyslog(t *testing.T) {
 
 func TestSvcCustomAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	httpSvc[0].Algorithm = "leastconn"
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -357,11 +375,12 @@ func TestSvcCustomAlgorithm(t *testing.T) {
 
 func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("leastconn")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	httpSvc[0].Algorithm = "roundrobin"
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -373,11 +392,12 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 
 func TestServiceAffinity(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -389,12 +409,13 @@ func TestServiceAffinity(t *testing.T) {
 
 func TestServiceAffinityWithCookies(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
 	httpSvc[0].CookieStickySession = true
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
