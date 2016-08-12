@@ -17,4 +17,7 @@
 . ./init.sh
 
 inventory=${INVENTORY:-${INVENTORY_DIR}/inventory}
-ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-etcd.yml --tags "restart" --extra-vars "etcd_modified=true" $@
+ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-master.yml \
+		--tags "restart" \
+		--extra-vars "apiserver_modified=true controller_manager_modified=true scheduler_modified=true kubelet_modified=true" \
+		$@

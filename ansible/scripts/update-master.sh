@@ -17,4 +17,5 @@
 . ./init.sh
 
 inventory=${INVENTORY:-${INVENTORY_DIR}/inventory}
-ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-etcd.yml --tags "restart" --extra-vars "etcd_modified=true" $@
+# no configure tag as it will reset everything to defaults
+ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-master.yml --tags "install,restart" $@
