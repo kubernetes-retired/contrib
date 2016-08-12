@@ -1,0 +1,22 @@
+---
+- name: Copy haproxy and keepalived pod templates
+  template: src={{ item }}.j2 dest={{ kube_manifest_dir }}/{{ item }}
+  with_items:
+    - haproxy.yml
+    - keepalived.yml
+
+- name: Create haproxy and keepalived directories
+  file: name={{ item }} state=directory
+  with_items:
+    - "{{ haproxy_config_dir }}"
+    - "{{ keepalived_config_dir }}"
+
+- name: Write haproxy config file
+  template: src=haproxy.cfg.j2 dest={{ haproxy_config_dir }}/haproxy.cfg
+
+- name: Write keepalived config file
+  template: src=keepalived.conf.j2 dest={{ keepalived_config_dir }}/keepalived.conf
+
+- name: Enable non-local ip binding
+  sudo: yes
+  command: /bin/sh -c "/usr/sbin/sysctl -w net.ipv4.ip_nonlocal_bind=1"

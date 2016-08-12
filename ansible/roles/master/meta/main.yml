@@ -2,3 +2,4 @@
 dependencies:
     - { role: common }
     - { role: kubernetes }
+    - { role: load-balancer, when: "groups['masters']|length > 1" }

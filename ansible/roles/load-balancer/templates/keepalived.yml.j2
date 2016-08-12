@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: keepalived
+spec:
+  hostNetwork: true
+  containers:
+  - name: keepalived
+    securityContext:
+      privileged: True
+    image: bara/keepalived:latest # From https://hub.docker.com/r/bara/keepalived/
+    command: ["modprobe", "ip_vs"]
+    command: ["keepalived", "-f", "/etc/keepalived/keepalived.conf", "--dont-fork", "--log-console"]
+    ports:
+    volumeMounts:
+    - mountPath: /etc/keepalived
+      name: keepalivedconf
+      readOnly: true
+  volumes:
+  - hostPath:
+      path: {{ keepalived_config_dir }}
+    name: keepalivedconf

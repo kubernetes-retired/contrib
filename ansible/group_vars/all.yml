@@ -40,6 +40,10 @@ insecure_registrys:
 # The port that the Kubernetes apiserver component listens on.
 kube_master_api_port: 443
 
+# Routeable VIP for load balancing api servers.
+# This VIP must be unassigned and routeable from your cluster nodes
+#kube_apiserver_vip: 10.10.10.10
+
 # Kubernetes internal network for services.
 # Kubernetes services will get fake IP addresses from this range.
 # This range must not conflict with anything in your infrastructure. These
