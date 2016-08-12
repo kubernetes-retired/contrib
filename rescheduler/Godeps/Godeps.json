@@ -297,8 +297,8 @@
 		},
 		{
 			"ImportPath": "k8s.io/contrib/cluster-autoscaler/utils/kubernetes",
-			"Comment": "cluster-autoscaler-0.2.2-157-g46d47ba",
-			"Rev": "46d47ba1429782975aa98a5134540fe2cb0a7e88"
+			"Comment": "cluster-autoscaler-0.2.2-299-ge2f5096",
+			"Rev": "e2f50969eb4f0670e33b5d3802946fb265f1e1c4"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/federation/apis/federation",
