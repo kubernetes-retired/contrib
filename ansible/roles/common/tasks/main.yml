@@ -48,14 +48,3 @@
 
 - include: fedora-install.yml
   when: not is_atomic and ansible_distribution == "Fedora"
-
-# enable cpu and memory accounting for systemd services by default
-- name: Create systemd dropin directory
-  file: path=/etc/systemd/system/system.conf.d state=directory mode=0755
-  when: source_type == "localBuild"
-
-- name: Enable cpu and memory accounting for systemd services
-  copy: src=kubernetes-accounting.conf dest="/etc/systemd/system/system.conf.d/kubernetes-accounting.conf"
-  when: source_type == "localBuild"
-  notify:
-    - reload systemd

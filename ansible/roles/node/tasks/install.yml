@@ -51,3 +51,14 @@
   - tar
   - git
   when: (kube_source_type == "localBuild" or kube_source_type == "github-release") and (ansible_distribution == "Fedora" or ansible_distribution == "RedHat" or ansible_distribution == "CentOS")
+
+# enable cpu and memory accounting for systemd services by default
+- name: Create systemd dropin directory
+  file: path=/etc/systemd/system/system.conf.d state=directory mode=0755
+  when: (kube_source_type == "localBuild" or kube_source_type == "github-release") and (ansible_distribution == "Fedora" or ansible_distribution == "RedHat" or ansible_distribution == "CentOS")
+
+- name: Enable cpu and memory accounting for systemd services
+  copy: src=kubernetes-accounting.conf dest="/etc/systemd/system/system.conf.d/kubernetes-accounting.conf"
+  notify:
+    - reload systemd
+  when: (kube_source_type == "localBuild" or kube_source_type == "github-release") and (ansible_distribution == "Fedora" or ansible_distribution == "RedHat" or ansible_distribution == "CentOS")
