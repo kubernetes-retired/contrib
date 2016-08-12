@@ -1,14 +1,16 @@
 ---
-- include: install.yml
+- name: Install etcd
+  include: install.yml
+  tags: install
 
-- include: configure.yml
+- name: Configure etcd
+  include: configure.yml
+  tags: configure
 
-- include: start.yml
+- name: Start etcd
+  include: start.yml
 
-- name: Call restart etcd
-  include: etcd-restart.yml
-  when: etcd_modified == true and etcd_started.changed == false 
-
-- name: Call restart etcd2
-  include: etcd2-restart.yml
-  when: etcd2_modified == true and etcd2_started.changed == false
+- name: Restart etcd
+  include: restart.yml
+  when: etcd_modified is not defined or (etcd_modified is defined and etcd_started.changed == false)
+  tags: restart

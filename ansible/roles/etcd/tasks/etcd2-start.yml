@@ -5,4 +5,4 @@
 
 - name: CoreOS | Start etcd2
   service: name=etcd2 state=started
-  register: etcd2_started
+  register: etcd_started

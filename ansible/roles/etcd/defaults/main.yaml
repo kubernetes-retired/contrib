@@ -47,5 +47,3 @@ etcd_download_url_base: "https://github.com/coreos/etcd/releases/download/v{{ et
 etcd_download_url: "{{ etcd_download_url_base }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
 
 etcd_enable: true
-etcd_modified: false
-etcd2_modified: false
