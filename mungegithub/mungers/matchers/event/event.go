@@ -82,3 +82,22 @@ func (c CreatedBefore) Match(event *github.IssueEvent) bool {
 	}
 	return event.CreatedAt.Before(time.Time(c))
 }
+
+func MungeBotActor() Matcher {
+	return Actor("k8s-merge-robot")
+}
+
+func JenkinsBotActor() Matcher {
+	return Actor("k8s-bot")
+}
+
+func BotActor() Matcher {
+	return Or([]Matcher{
+		MungeBotActor(),
+		JenkinsBotActor(),
+	})
+}
+
+func HumanActor() Matcher {
+	return Not{BotActor()}
+}

@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/contrib/mungegithub/github"
-
+	"k8s.io/contrib/mungegithub/mungers/matchers/event"
 	"io/ioutil"
 
 	"github.com/golang/glog"
@@ -68,21 +68,15 @@ func (s *LabelMunger) Munge(obj *github.MungeObject) {
 	}
 
 	issue := obj.Issue
-
 	if obj.HasLabel("kind/flake") {
 		return
 	}
 
 	tLabels := github.GetLabelsWithPrefix(issue.Labels, "team/")
-
-	if len(tLabels) != 0 {
-		//already labeled
-		return
-	}
-
 	cLabels := github.GetLabelsWithPrefix(issue.Labels, "component/")
-	if len(cLabels) != 0 {
-		//already labeled
+
+	if len(tLabels) != 0 || len(cLabels) != 0 {
+		updateModel(obj)
 		return
 	}
 
@@ -102,4 +96,61 @@ func (s *LabelMunger) Munge(obj *github.MungeObject) {
 	}
 
 	obj.AddLabels(strings.Split(string(response), ","))
+}
+
+func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
+	myEvents, _ := obj.GetEvents()
+
+	botEvents := event.FilterEvents(myEvents, event.And([]event.Matcher{event.BotActor(), event.AddLabel{}, event.LabelPrefix(s)}))
+
+	if botEvents.Empty() {
+		glog.Infof("Found no bot %s labeling for issue %d ", s, obj.Issue.Number)
+		return nil
+	}
+
+	humanEventsAfter := event.FilterEvents(
+		myEvents,
+		event.And([]event.Matcher{
+			event.HumanActor(),
+			event.AddLabel{},
+			event.LabelPrefix(s),
+			event.CreatedAfter(*botEvents.GetLast().CreatedAt),
+		}),
+	)
+
+	if humanEventsAfter.Empty() {
+		glog.Infof("Found no human corrections of %s label for issue %d", s, obj.Issue.Number)
+		return nil
+	}
+	lastHumanLabel := humanEventsAfter.GetLast()
+
+	glog.Infof("Recopying human-added label: %s for PR %d", *lastHumanLabel.Label.Name, *obj.Issue.Number)
+	obj.RemoveLabel(*lastHumanLabel.Label.Name)
+	obj.AddLabel(*lastHumanLabel.Label.Name)
+	return lastHumanLabel.Label.Name
+}
+
+func updateModel(obj *github.MungeObject) {
+	newLabels := []string{}
+
+	newTeamLabel := getHumanCorrectedLabel(obj, "team")
+	if newTeamLabel != nil {
+		newLabels = append(newLabels, *newTeamLabel)
+	}
+
+	newComponentLabel := getHumanCorrectedLabel(obj, "component")
+	if newComponentLabel != nil {
+		newLabels = append(newLabels, *newComponentLabel)
+	}
+
+	if len(newLabels) != 0 {
+		glog.Infof("Updating the models on the server")
+		_, err := http.PostForm("http://issue-triager-service:5000",
+			url.Values{"titles": []string {*obj.Issue.Title},
+				"bodies": []string {*obj.Issue.Body},
+				"labels": newLabels})
+		if err != nil{
+			glog.Error(err)
+		}
+	}
 }
