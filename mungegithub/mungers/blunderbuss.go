@@ -17,11 +17,17 @@ limitations under the License.
 package mungers
 
 import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
 	"math"
 	"math/rand"
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/mungers/mungerutil"
+	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/yaml"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -38,9 +44,14 @@ type BlunderbussConfig struct {
 // BlunderbussMunger will assign issues to users based on the config file
 // provided by --blunderbuss-config.
 type BlunderbussMunger struct {
-	config              *BlunderbussConfig
-	features            *features.Features
 	BlunderbussReassign bool
+	AliasFile           string
+
+	aliasMap      map[string][]string
+	config        *BlunderbussConfig
+	features      *features.Features
+	prevHash      string
+	aliasReadFunc func() ([]byte, error)
 }
 
 func init() {
@@ -57,15 +68,41 @@ func (b *BlunderbussMunger) RequiredFeatures() []string { return []string{featur
 // Initialize will initialize the munger
 func (b *BlunderbussMunger) Initialize(config *github.Config, features *features.Features) error {
 	b.features = features
+	b.aliasReadFunc = func() ([]byte, error) {
+		return ioutil.ReadFile(b.AliasFile)
+	}
 	return nil
 }
 
 // EachLoop is called at the start of every munge loop
-func (b *BlunderbussMunger) EachLoop() error { return nil }
+func (b *BlunderbussMunger) EachLoop() error {
+	if b.AliasFile == "" {
+		// no alias file specified, exit immediately.
+		return nil
+	}
+
+	// read and check the alias-file.
+	fileContents, err := b.aliasReadFunc()
+	if err != nil {
+		return fmt.Errorf("Unable to read alias file: %v", err)
+	}
+
+	hash := mungerutil.GetHash(fileContents)
+	if b.prevHash != hash {
+		structuredYaml := map[string]map[string][]string{}
+		if err := yaml.NewYAMLToJSONDecoder(bytes.NewReader(fileContents)).Decode(&structuredYaml); err != nil {
+			return fmt.Errorf("Failed to decode the alias file: %v", err)
+		}
+		b.aliasMap = structuredYaml["aliases"]
+		b.prevHash = hash
+	}
+	return nil
+}
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (b *BlunderbussMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().BoolVar(&b.BlunderbussReassign, "blunderbuss-reassign", false, "Assign PRs even if they're already assigned; use with -dry-run to judge changes to the assignment algorithm")
+	cmd.Flags().StringVar(&b.AliasFile, "alias-file", "", "File wherein team members and aliases exist.")
 }
 
 func chance(val, total int64) float64 {
@@ -80,6 +117,30 @@ func printChance(owners weightMap, total int64) {
 	for name, weight := range owners {
 		glog.Infof("%s\t%02.2f%%", name, chance(weight, total))
 	}
+}
+
+// expandAliases takes aliases and expands them into owner lists.
+// It also handles recursive aliases.
+func (b *BlunderbussMunger) expandAliases(toExpand sets.String) sets.String {
+	finalExpanded := sets.String{}
+
+	for {
+		expanded := sets.String{}
+		for _, owner := range toExpand.List() {
+			if val, ok := b.aliasMap[owner]; ok {
+				expanded.Insert(val...)
+			} else {
+				expanded.Insert(owner)
+			}
+		}
+		if toExpand.Equal(expanded) {
+			// We did not add anything new in the last iteration.
+			finalExpanded = expanded
+			break
+		}
+		toExpand = expanded
+	}
+	return finalExpanded
 }
 
 // Munge is the workhorse the will actually make updates to the PR
@@ -114,6 +175,11 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 		if fileOwners.Len() == 0 {
 			glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
 		}
+
+		if len(b.aliasMap) > 0 {
+			fileOwners = b.expandAliases(fileOwners)
+		}
+
 		for _, owner := range fileOwners.List() {
 			if owner == *issue.User.Login {
 				continue
