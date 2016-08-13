@@ -1,4 +1,5 @@
 admin-port
+alias-file
 allowed-shame-domains
 api-token
 balance-algorithm
