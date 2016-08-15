@@ -19,7 +19,7 @@ set -o nounset
 set -o pipefail
 
 echo $@
-if [ ! $# -eq 5 ]; then
+if [ ! $# -eq 6 ]; then
     echo "usage: publisher source_dir destination_dir source_url destination_url token"
     exit 1
 fi
@@ -28,9 +28,11 @@ DST="${2}"
 SRCURL="${3}"
 DSTURL="${4}"
 TOKEN="${5}"
+NETRCDIR="${6}"
 # set up github token
+echo "machine github.com login ${TOKEN}" > "${NETRCDIR}"/.netrc
 rm -f ~/.netrc
-echo "machine github.com login ${TOKEN}" > ~/.netrc
+ln -s "${NETRCDIR}"/.netrc ~/.netrc
 # set up github user
 git config --global user.email "k8s-publish-robot@users.noreply.github.com"
 git config --global user.name "Kubernetes Publisher"
@@ -52,6 +54,7 @@ if git diff --cached --exit-code &>/dev/null; then
     exit 0
 fi
 git commit -m "published by bot, copied from ${SRCURL}, last commit is ${commit_hash}"
-git push -f origin master
+git push origin master
 popd > /dev/null
 rm -f ~/.netrc
+rm -f "${NETRCDIR}"/.netrc

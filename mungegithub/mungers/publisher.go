@@ -35,11 +35,13 @@ type Info struct {
 
 type PublisherMunger struct {
 	// base to all repos
-	baseDir      string
+	PublishCommand string
+	baseDir        string
+	// location to write the netrc file needed for github authentication
+	netrcDir     string
 	srcToDst     map[Info]Info
 	features     *features.Features
 	githubConfig *github.Config
-	script       string
 }
 
 func init() {
@@ -59,8 +61,8 @@ func (p *PublisherMunger) Initialize(config *github.Config, features *features.F
 	if len(p.baseDir) == 0 {
 		glog.Fatalf("--repo-dir is required with selected munger(s)")
 	}
-	if len(p.script) == 0 {
-		glog.Fatalf("--publisher-script is required with selected munger(s)")
+	if len(p.PublishCommand) == 0 {
+		glog.Fatalf("--publish-command is required with selected munger(s)")
 	}
 	p.srcToDst = make(map[Info]Info)
 	p.srcToDst[Info{Repo: config.Project, Dir: "staging/src/k8s.io/client-go"}] = Info{Repo: "client-go", Dir: ""}
@@ -78,7 +80,7 @@ func (p *PublisherMunger) EachLoop() error {
 		srcURL := fmt.Sprintf("https://github.com/%s/%s.git", p.githubConfig.Org, srcInfo.Repo)
 		dst := filepath.Join(p.baseDir, dstInfo.Repo, dstInfo.Dir)
 		dstURL := fmt.Sprintf("https://github.com/%s/%s.git", p.githubConfig.Org, dstInfo.Repo)
-		cmd := exec.Command(p.script, src, dst, srcURL, dstURL, p.githubConfig.Token)
+		cmd := exec.Command(p.PublishCommand, src, dst, srcURL, dstURL, p.githubConfig.Token(), p.netrcDir)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			glog.Errorf("Failed to publish %s to %s.\nOutput: %s\nError: %s", src, dst, output, err)
@@ -92,7 +94,8 @@ func (p *PublisherMunger) EachLoop() error {
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (p *PublisherMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringVar(&p.script, "publisher-script", "", "Script used to publish")
+	cmd.Flags().StringVar(&p.PublishCommand, "publish-command", "", "Command for the 'publisher' munger to periodically run.")
+	cmd.Flags().StringVar(&p.netrcDir, "netrc-dir", "", "Location to write the netrc file needed for github authentication.")
 }
 
 // Munge is the workhorse the will actually make updates to the PR

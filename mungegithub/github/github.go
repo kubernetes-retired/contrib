@@ -147,7 +147,8 @@ type Config struct {
 	State  string
 	Labels []string
 
-	Token     string
+	// token is private so it won't get printed in the logs.
+	token     string
 	TokenFile string
 
 	Address string // if a munger runs a web server, where it should live
@@ -301,8 +302,8 @@ func TestObject(config *Config, issue *github.Issue, pr *github.PullRequest, com
 
 // AddRootFlags will add all of the flags needed for the github config to the cobra command
 func (config *Config) AddRootFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&config.Token, "token", "", "The OAuth Token to use for requests.")
-	cmd.PersistentFlags().StringVar(&config.TokenFile, "token-file", "", "The file containing the OAuth Token to use for requests.")
+	cmd.PersistentFlags().StringVar(&config.token, "token", "", "The OAuth Token to use for requests.")
+	cmd.PersistentFlags().StringVar(&config.TokenFile, "token-file", "", "The file containing the OAuth token to use for requests.")
 	cmd.PersistentFlags().IntVar(&config.MinPRNumber, "min-pr-number", 0, "The minimum PR to start with")
 	cmd.PersistentFlags().IntVar(&config.MaxPRNumber, "max-pr-number", maxInt, "The maximum PR to start with")
 	cmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", true, "If true, don't actually merge anything")
@@ -317,6 +318,11 @@ func (config *Config) AddRootFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().AddGoFlagSet(goflag.CommandLine)
 }
 
+// Token returns the token
+func (config *Config) Token() string {
+	return config.token
+}
+
 // PreExecute will initialize the Config. It MUST be run before the config
 // may be used to get information from Github
 func (config *Config) PreExecute() error {
@@ -327,14 +333,14 @@ func (config *Config) PreExecute() error {
 		glog.Fatalf("--project is required.")
 	}
 
-	token := config.Token
+	token := config.token
 	if len(token) == 0 && len(config.TokenFile) != 0 {
 		data, err := ioutil.ReadFile(config.TokenFile)
 		if err != nil {
 			glog.Fatalf("error reading token file: %v", err)
 		}
 		token = strings.TrimSpace(string(data))
-		config.Token = token
+		config.token = token
 	}
 
 	// We need to get our Transport/RoundTripper in order based on arguments

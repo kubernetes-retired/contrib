@@ -21,15 +21,16 @@ spec:
         - --pr-mungers=$(PR_MUNGERS)
         - --token-file=$(TOKEN_FILE)
         - --repo-dir=$(REPO_DIR)
-        - --publisher-script=$(PUBLISHER_SCRIPT)
+        - --netrc-dir=$(NETRC_DIR)
+        - --publish-command=$(PUBLISH_COMMAND)
         image: gcr.io/google_containers/publisher:2016-05-24-86f86cd
         imagePullPolicy: Always
         env:
-          - name: PUBLISHER_SCRIPT
+          - name: PUBLISH_COMMAND
             valueFrom:
               configMapKeyRef:
                 name: @@-publisher-config
-                key: publisher.publisher-script
+                key: publisher.publish-command
           - name: PERIOD
             valueFrom:
               configMapKeyRef:
@@ -60,6 +61,11 @@ spec:
               configMapKeyRef:
                 name: @@-publisher-config
                 key: gitrepo.repo-dir
+          - name: NETRC_DIR
+            valueFrom:
+              configMapKeyRef:
+                name: @@-publisher-config
+                key: publisher.netrc-dir
         resources:
           requests:
             cpu: 100m
@@ -68,6 +74,8 @@ spec:
         volumeMounts:
         - mountPath: /etc/secret-volume
           name: secret-volume
+        - mountPath: /netrc
+          name: netrc
         - mountPath: /gitrepos
           name: repo
       volumes:
@@ -76,3 +84,6 @@ spec:
           secretName: @@-github-token
       - name: repo
         emptyDir: {}
+      - name: netrc
+        emptyDir:
+          medium: Memory
