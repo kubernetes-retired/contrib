@@ -13,8 +13,11 @@
 - include: apt-docker-install.yml
   when: ansible_distribution == "Ubuntu"
 
+- include: fedora-install.yml
+  when: ansible_distribution == "Fedora"
+
 - include: generic-install.yml
-  when: ansible_distribution != "Debian" and ansible_distribution != "Ubuntu" and not is_coreos
+  when: ansible_distribution != "Debian" and ansible_distribution != "Ubuntu" and not is_coreos and ansible_distribution != "Fedora"
 
 - include: coreos.yml
   when: is_coreos

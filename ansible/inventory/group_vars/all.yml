@@ -4,6 +4,7 @@
 #
 # localBuild - requires make release to have been run to build local binaries
 # packageManager - will install packages from your distribution using yum/dnf/apt
+#source_type: localBuild
 source_type: packageManager
 
 # will be used as the Internal dns domain name if DNS is enabled. Services
@@ -44,7 +45,8 @@ kube_master_api_port: 443
 # Kubernetes services will get fake IP addresses from this range.
 # This range must not conflict with anything in your infrastructure. These
 # addresses do not need to be routable and must just be an unused block of space.
-kube_service_addresses: 10.254.0.0/16
+#kube_service_addresses: 10.254.0.0/16
+kube_service_addresses: 172.19.0.0/16
 
 # Network implementation (flannel|opencontrail|contiv)
 networking: flannel
@@ -86,10 +88,10 @@ cluster_logging: true
 cluster_monitoring: true
 
 # Turn to false to disable the kube-ui addon for this cluster
-kube-ui: false
+kube-ui: true
 
 # Turn to false to disable the kube-dash addon for this cluster
-kube-dash: false
+kube-dash: true
 
 # Turn this varable to 'false' to disable whole DNS configuration.
 dns_setup: true
