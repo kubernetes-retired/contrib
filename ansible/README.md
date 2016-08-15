@@ -14,7 +14,9 @@ can be real hardware, VMs, things in a public cloud, etc. Anything that you can 
 
 ### Configure inventory
 
-Add the system information gathered above into the 'inventory' file, or create a new inventory file for the cluster.
+Add the system information gathered above into a file called `inventory`,
+or create a new one for the cluster.
+Place the `inventory` file into the `./inventory` directory.
 
 For example:
 
@@ -31,20 +33,19 @@ kube-minion-test-[1:2].example.com
 
 ### Configure Cluster options
 
-Look through all of the options in `group_vars/all.yml` and
+Look through all of the options in `inventory/group_vars/all.yml` and
 set the variables to reflect your needs. The options are described there
 in full detail.
 
 ## Running the playbook
 
-After going through the setup, run the setup script provided:
+After going through the setup, run the `deploy-cluster.sh` script from within the `scripts` directory:
 
-`$ ./setup.sh`
+`$ cd scripts/ && ./deploy-cluster.sh`
 
-You may override the inventory file by doing:
+You may override the inventory file by running:
 
-`INVENTORY=myinventory ./setup.sh`
-
+`INVENTORY=myinventory ./deploy-cluster.sh`
 
 In general this will work on very recent Fedora, rawhide or F21.  Future work to
 support RHEL7, CentOS, and possible other distros should be forthcoming.
@@ -53,23 +54,23 @@ support RHEL7, CentOS, and possible other distros should be forthcoming.
 
 You can just setup certain parts instead of doing it all.
 
-#### etcd
+#### Etcd
 
-`$ ./setup.sh --tags=etcd`
+`$ ./deploy-cluster.sh --tags=etcd`
 
 #### Kubernetes master
 
-`$ ./setup.sh --tags=masters`
+`$ ./deploy-cluster.sh --tags=masters`
 
-#### kubernetes nodes
+#### Kubernetes nodes
 
-`$ ./setup.sh --tags=nodes`
+`$ ./deploy-cluster.sh --tags=nodes`
 
 ### Network Service
 
-By changing the `networking` variable in the `group_vars/all.yml` file, you can choose the network-service to use.  The default is flannel.
+By changing the `networking` variable in the `inventory/group_vars/all.yml` file, you can choose the network-service to use.  The default is flannel.
 
-`$ ./setup.sh --tags=network-service-install`
+`$ ./deploy-cluster.sh --tags=network-service-install`
 
 ### Troubleshooting
 

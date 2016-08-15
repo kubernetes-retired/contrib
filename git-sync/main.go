@@ -23,6 +23,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
@@ -203,6 +204,17 @@ func addWorktreeAndSwap(dest, branch, rev string) error {
 	}
 
 	log.Printf("add worktree origin/%q: %v", branch, string(output))
+
+	// .git file in worktree directory holds a reference to /git/.git/worktrees/<worktree-dir-name>
+	// Replace it with a reference using relative paths, so that other containers can use a different volume mount name
+	worktreePathRelative, err := filepath.Rel(volMount, worktreePath)
+	if err != nil {
+		return err
+	}
+	gitDirRef := []byte(path.Join("gitdir: ../.git/worktrees", worktreePathRelative) + "\n")
+	if err = ioutil.WriteFile(path.Join(worktreePath, ".git"), gitDirRef, 0644); err != nil {
+		return err
+	}
 
 	// reset working copy
 	output, err = runCommand("git", worktreePath, []string{"reset", "--hard", rev})

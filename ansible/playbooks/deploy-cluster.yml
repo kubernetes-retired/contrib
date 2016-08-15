@@ -11,12 +11,7 @@
     - pre-ansible
 
 # Install etcd
-- hosts: etcd
-  become: yes
-  roles:
-    - etcd
-  tags:
-    - etcd
+- include: deploy-etcd.yml
 
 # Install docker
 - hosts: all
