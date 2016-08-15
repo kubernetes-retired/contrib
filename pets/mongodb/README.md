@@ -1,4 +1,4 @@
-# Zookeeper
+# MongoDB
 
 This example runs mongodb through a petset.
 
