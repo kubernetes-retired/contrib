@@ -10,6 +10,7 @@ This is a nginx Ingress controller that uses [ConfigMap](https://github.com/kube
 * [HTTP](#http)
 * [HTTPS](#https)
   * [Default SSL Certificate](#default-ssl-certificate)
+  * [Cross Namespace Permissions](#cross-namespace-permission)
   * [HTTPS enforcement](#server-side-https-enforcement)
   * [HSTS](#http-strict-transport-security)
   * [Kube-Lego](#automated-certificate-management-with-kube-lego)
@@ -239,6 +240,15 @@ core@localhost ~ $ curl -v https://10.2.78.7:443 -k
 * Connection #0 to host 10.2.78.7 left intact
 ```
 
+### Cross Namespace Permissions
+
+By default all references to TLS certificates via secretName are relative to the namespace of the ingress resource. It useful however to be able to host a certificate in one namespace
+and provide permission for others to use it; a use case for this would be wildcard certs. Using --cross-permitted you can specify a comma separate list of secrets which a ingress resource
+is able to consume.
+
+```shell
+--cross-permitted=ingress/wildcard,ingress/internal
+```
 
 ### Server-side HTTPS enforcement
 

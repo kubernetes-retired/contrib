@@ -11,6 +11,7 @@ cloud-config
 cloud-provider
 cluster-uid
 configuration-name
+cross-permitted
 current-release-pr
 custom-error-service
 default-backend-service

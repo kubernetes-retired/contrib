@@ -23,6 +23,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -59,6 +60,12 @@ var (
 	inCluster = flags.Bool("running-in-cluster", true,
 		`Optional, if this controller is running in a kubernetes cluster, use the
 		 pod secrets for creating a Kubernetes client.`)
+
+	crossPermitted = flags.String("cross-permitted", "",
+		`An optional comma seperate list of secrets which a ingress resource can request to serve upon,
+		allowing you to store tls certificate in one namespace are reuse them across others. One possible
+		use-case being sharing a wildcard certificate across the cluster. The format for this is
+		namespace/secretName`)
 
 	tcpConfigMapName = flags.String("tcp-services-configmap", "",
 		`Name of the ConfigMap that containes the definition of the TCP services to expose.
@@ -107,6 +114,16 @@ func main() {
 		glog.Fatalf("Please specify --default-backend-service")
 	}
 
+	var crossPermittedTLS []string
+	if *crossPermitted != "" {
+		for _, x := range strings.Split(*crossPermitted, ",") {
+			if len(strings.Split(x, "/")) != 2 {
+				glog.Fatalf("the permitted tls pair %s is invalid, must be in format namespace/secretName", x)
+			}
+			crossPermittedTLS = append(crossPermittedTLS, x)
+		}
+	}
+
 	var err error
 	if *inCluster {
 		kubeClient, err = unversioned.NewInCluster()
@@ -140,9 +157,8 @@ func main() {
 		}
 	}
 
-	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod,
-		*defaultSvc, *watchNamespace, *nxgConfigMap, *tcpConfigMapName,
-		*udpConfigMapName, *defSSLCertificate, runtimePodInfo)
+	lbc, err := newLoadBalancerController(kubeClient, *resyncPeriod, *defaultSvc, *watchNamespace, *nxgConfigMap,
+		*tcpConfigMapName, *udpConfigMapName, *defSSLCertificate, crossPermittedTLS, runtimePodInfo)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}

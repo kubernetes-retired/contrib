@@ -50,7 +50,7 @@ func (nginx *Manager) AddOrUpdateCertAndKey(name string, cert string, key string
 
 	temporaryPemFile, err := ioutil.TempFile("", temporaryPemFileName)
 	if err != nil {
-		return SSLCert{}, fmt.Errorf("Couldn't create temp pem file %v: %v", temporaryPemFile.Name(), err)
+		return SSLCert{}, fmt.Errorf("Couldn't create temp pem file %v: %v", temporaryPemFileName, err)
 	}
 
 	_, err = temporaryPemFile.WriteString(fmt.Sprintf("%v\n%v", cert, key))
