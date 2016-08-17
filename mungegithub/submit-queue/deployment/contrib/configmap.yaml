@@ -3,42 +3,41 @@ kind: ConfigMap
 metadata:
   name: contrib-sq-config
 data:
-  # basic config options.
-  config.http-cache-dir: /cache/httpcache
-  config.organization: kubernetes
-  config.project: contrib
-  config.pr-mungers: blunderbuss,lgtm-after-commit,submit-queue,check-labels
-  config.state: open
-  config.token-file: /etc/secret-volume/token
-  gitrepo.repo-dir: /gitrepos
-  gitrepo.enable-md-yaml: "false"
+  munge-config: |
+    # basic config options.
+    organization: kubernetes
+    project: contrib
+    pr-mungers: blunderbuss,lgtm-after-commit,submit-queue,check-labels
+    state: open
+    repo-dir: /gitrepos
+    enable-md-yaml: "false"
 
-  # test-options feature options.
-  test-options.required-retest-contexts: "\"\""
+    # test-options feature options.
+    required-retest-contexts: "\"\""
 
-  # submit-queue options.
-  submit-queue.required-contexts: "continuous-integration/travis-ci/pr"
-  submit-queue.nonblocking-jenkins-jobs: "\"\""
-  submit-queue.jenkins-jobs: "\"\""
-  submit-queue.presubmit-jobs: "\"\""
-  submit-queue.weak-stable-jobs: "\"\""
-  submit-queue.do-not-merge-milestones: "\"\""
-  submit-queue.admin-port: "9999"
-  submit-queue.chart-url: ""
-  submit-queue.history-url: ""
+    # submit-queue options.
+    required-contexts: "continuous-integration/travis-ci/pr"
+    nonblocking-jenkins-jobs: "\"\""
+    jenkins-jobs: "\"\""
+    presubmit-jobs: "\"\""
+    weak-stable-jobs: "\"\""
+    do-not-merge-milestones: "\"\""
+    admin-port: "9999"
+    chart-url: ""
+    history-url: ""
 
-  # options used by the GCS feature.
-  gcs.gcs-bucket: ""
-  gcs.gcs-logs-dir: ""
-  gcs.pull-logs-dir: ""
-  gcs.pull-key: ""
+    # options used by the GCS feature.
+    gcs-bucket: ""
+    gcs-logs-dir: ""
+    pull-logs-dir: ""
+    pull-key: ""
 
-  # munger specific options.
-  path-label.path-label-config: ""
-  block-path.block-path-config: ""
-  flake-manager.test-owners-csv: ""
-  old-test-getter.number-of-old-test-results: "0"
-  assign-fixes.fixes-issue-reassign: "false"
-  blunderbuss.blunderbuss-reassign: "false"
-  size.generated-files-config: ""
-  check-labels.label-file: "/gitrepos/contrib/labels.yaml"
+    # munger specific options.
+    path-label-config: ""
+    block-path-config: ""
+    test-owners-csv: ""
+    number-of-old-test-results: "0"
+    fixes-issue-reassign: "false"
+    blunderbuss-reassign: "false"
+    generated-files-config: ""
+    label-file: "/gitrepos/contrib/labels.yaml"
