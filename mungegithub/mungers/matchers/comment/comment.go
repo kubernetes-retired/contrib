@@ -17,6 +17,7 @@ limitations under the License.
 package comment
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/go-github/github"
@@ -47,4 +48,16 @@ func (c CreatedBefore) Match(comment *github.IssueComment) bool {
 		return false
 	}
 	return comment.CreatedAt.Before(time.Time(c))
+}
+
+// AuthorLogin matches comment made by this Author
+type AuthorLogin string
+
+// Match if the Author is a match (ignoring case)
+func (a AuthorLogin) Match(comment *github.IssueComment) bool {
+	if comment == nil || comment.User == nil || comment.User.Login == nil {
+		return false
+	}
+
+	return strings.ToLower(*comment.User.Login) == strings.ToLower(string(a))
 }
