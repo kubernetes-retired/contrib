@@ -17,7 +17,6 @@ limitations under the License.
 package comment
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -26,32 +25,66 @@ import (
 
 // Notification identifies comments with the following format:
 // [NEEDS-REBASE] Optional arguments
-type Notification string
+type NotificationName string
 
 // Match returns true if the comment is a notification
-func (b Notification) Match(comment *github.IssueComment) bool {
-	if comment.Body == nil {
+func (b NotificationName) Match(comment *github.IssueComment) bool {
+	notif := ParseNotification(comment)
+	if notif == nil {
 		return false
 	}
-	match, _ := regexp.MatchString(
-		fmt.Sprintf(`^\[%s\]`, strings.ToLower(string(b))),
-		strings.ToLower(*comment.Body),
-	)
-	return match
+
+	return strings.ToUpper(notif.Name) == strings.ToUpper(string(b))
 }
 
 // Command identifies messages sent to the bot, with the following format:
 // /COMMAND Optional arguments
-type Command string
+type CommandName string
 
 // Match will return true if the comment is indeed a command
-func (c Command) Match(comment *github.IssueComment) bool {
-	if comment.Body == nil {
+func (c CommandName) Match(comment *github.IssueComment) bool {
+	command := ParseCommand(comment)
+	if command == nil {
 		return false
 	}
-	match, _ := regexp.MatchString(
-		fmt.Sprintf("^/%s", strings.ToLower(string(c))),
-		strings.ToLower(*comment.Body),
-	)
-	return match
+	return strings.ToUpper(command.Name) == strings.ToUpper(string(c))
+}
+
+type CommandArguments regexp.Regexp
+
+func (c CommandArguments) Match(comment *github.IssueComment) bool {
+	command := ParseCommand(comment)
+	if command == nil {
+		return false
+	}
+	return (*regexp.Regexp)(&c).MatchString(command.Arguments)
+}
+
+func MungeBotAuthor() Matcher {
+	return AuthorLogin("k8s-merge-robot")
+}
+
+func JenkinsBotAuthor() Matcher {
+	return AuthorLogin("k8s-bot")
+}
+
+func BotAuthor() Matcher {
+	return Or([]Matcher{
+		MungeBotAuthor(),
+		JenkinsBotAuthor(),
+	})
+}
+
+func HumanActor() Matcher {
+	return And([]Matcher{
+		ValidAuthor{},
+		Not{BotAuthor()},
+	})
+}
+
+func MungerNotificationName(notif string) Matcher {
+	return And([]Matcher{
+		MungeBotAuthor(),
+		NotificationName(notif),
+	})
 }
