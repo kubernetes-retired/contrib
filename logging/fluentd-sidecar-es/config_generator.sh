@@ -21,7 +21,7 @@ fi
 
 for filepath in $FILES_TO_COLLECT
 do
-  filename=$(basename $filepath)
+  filename=`echo $filepath|sed -e "s/\//_/g"`
   cat > "/etc/td-agent/files/${filename}" << EndOfMessage
 <source>
   type tail
