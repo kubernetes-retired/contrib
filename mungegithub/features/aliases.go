@@ -57,6 +57,8 @@ type Aliases struct {
 	aliasReader aliasReader
 }
 
+var _ feature = &Aliases{}
+
 func init() {
 	RegisterFeature(&Aliases{})
 }
