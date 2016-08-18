@@ -780,6 +780,22 @@ func (obj *MungeObject) RemoveLabel(label string) error {
 	return nil
 }
 
+// AddLabelIfAbsent adds a single `label` to the issue, if it isn't present already.
+func (obj *MungeObject) AddLabelIfAbsent(label string) error {
+	if !obj.HasLabel(label) {
+		return obj.AddLabels([]string{label})
+	}
+	return nil
+}
+
+// RemoveLabelIfPresent removes a single `label` from the issue, if it is present.
+func (obj *MungeObject) RemoveLabelIfPresent(label string) error {
+	if obj.HasLabel(label) {
+		return obj.RemoveLabel(label)
+	}
+	return nil
+}
+
 // GetHeadAndBase returns the head SHA and the base ref, so that you can get
 // the base's sha in a second step. Purpose: if head and base SHA are the same
 // across two merge attempts, we don't need to rerun tests.
