@@ -17,18 +17,17 @@
 
 set -e
 
-export NGINX_VERSION=1.11.1
+export NGINX_VERSION=1.11.3
 export NDK_VERSION=0.3.0
-export VTS_VERSION=0.1.9
-export SETMISC_VERSION=0.30
-export LUA_VERSION=0.10.5
-export STICKY_SESSIONS_VERSION=c78b7dd79d0d
+export VTS_VERSION=0.1.10
+export SETMISC_VERSION=0.31
+export LUA_VERSION=0.10.6
+export STICKY_SESSIONS_VERSION=08a395c66e42                               
 export LUA_CJSON_VERSION=2.1.0.4
 export LUA_RESTY_HTTP_VERSION=0.07
-export LUA_UPSTREAM_VERSION=0.05
-export MORE_HEADERS_VERSION=0.30
-export NAXSI_VERSION=0.55rc1
-export NGINX_DIGEST_AUTH=f85f5d6fdcc06002ff879f5cbce930999c287011
+export LUA_UPSTREAM_VERSION=0.06
+export MORE_HEADERS_VERSION=0.31
+export NGINX_DIGEST_AUTH=cc61b4a11526637a5b363014947d3d4df91badb2
 export NGINX_SUBSTITUTIONS=bc58cb11844bc42735bbaef7085ea86ace46d05b
 
 export BUILD_PATH=/tmp/build
@@ -70,19 +69,19 @@ apt-get update && apt-get install --no-install-recommends -y \
   linux-headers-generic || exit 1
 
 # download, verify and extract the source files
-get_src 5d8dd0197e3ffeb427729c045382182fb28db8e045c635221b2e0e6722821ad0 \
+get_src 4a667f40f9f3917069db1dea1f2d5baa612f1fa19378aadf71502e846a424610 \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 88e05a99a8a7419066f5ae75966fb1efc409bad4522d14986da074554ae61619 \
         "https://github.com/simpl/ngx_devel_kit/archive/v$NDK_VERSION.tar.gz"
 
-get_src 59920dd3f92c2be32627121605751b52eae32b5884be09f2e4c53fb2fae8aabc \
+get_src 97946a68937b50ab8637e1a90a13198fe376d801dc3e7447052e43c28e9ee7de \
         "https://github.com/openresty/set-misc-nginx-module/archive/v$SETMISC_VERSION.tar.gz"
 
-get_src ddd297a5f894d966cae19f112c79f99ec9fa13612c3d324c19533247c4953980 \
+get_src c6f3733e9ff84bfcdc6bfb07e1baf59e72c4e272f06964dd0ed3a1bdc93fa0ca \
         "https://github.com/vozlt/nginx-module-vts/archive/v$VTS_VERSION.tar.gz"
 
-get_src 4f0292c37ab3d7cb980c994825040be1bda2c769cbd800e79c43eb37458347d4 \
+get_src b98c4f648589bbf3e2c3d5fd18664e7a7ef89ac083e96c8e984fa919e7a7c073 \
         "https://github.com/openresty/lua-nginx-module/archive/v$LUA_VERSION.tar.gz"
 
 get_src 5417991b6db4d46383da2d18f2fd46b93fafcebfe87ba87f7cfeac4c9bcb0224 \
@@ -91,19 +90,16 @@ get_src 5417991b6db4d46383da2d18f2fd46b93fafcebfe87ba87f7cfeac4c9bcb0224 \
 get_src 1c6aa06c9955397c94e9c3e0c0fba4e2704e85bee77b4512fb54ae7c25d58d86 \
         "https://github.com/pintsized/lua-resty-http/archive/v$LUA_RESTY_HTTP_VERSION.tar.gz"
 
-get_src 2aad309a9313c21c7c06ee4e71a39c99d4d829e31c8b3e7d76f8c964ea8047f5 \
+get_src b2e8162cce2d24861b1ed5bbb30fc51d5215e3f4bb9d01f53fc344904d5911e7 \
         "https://github.com/openresty/headers-more-nginx-module/archive/v$MORE_HEADERS_VERSION.tar.gz"
 
-get_src 0fdfb17083598e674680d8babe944f48a9ccd2af9f982eda030c446c93cfe72b \
+get_src 55475fe4f9e4b5220761269ccf0069ebb1ded61d7e7888f9c785c651cff3d141 \
         "https://github.com/openresty/lua-upstream-nginx-module/archive/v$LUA_UPSTREAM_VERSION.tar.gz"
 
-get_src 6353441ee53dca173689b63a78f1c9ac5408f3ed066ddaa3f43fd2795bd43cdd \
-        "https://github.com/nbs-system/naxsi/archive/$NAXSI_VERSION.tar.gz"
-
-get_src 8b1277e41407e893b5488bd953612f4e7bf9e241f9494faf71d93f1b1d5beefa \
+get_src 53e440737ed1aff1f09fae150219a45f16add0c8d6e84546cb7d80f73ebffd90 \
         "https://bitbucket.org/nginx-goodies/nginx-sticky-module-ng/get/$STICKY_SESSIONS_VERSION.tar.gz"
 
-get_src 618de9d87cbb4e6ad21cc4a1a178bbfdabddba9ad07ddee4c1190d23c12887ee \
+get_src 03a9505672d210027097ed4ba913a7cc8e59920c78016a63ae4e22130551b236 \
         "https://github.com/atomx/nginx-http-auth-digest/archive/$NGINX_DIGEST_AUTH.tar.gz"
 
 get_src 8eabbcd5950fdcc718bb0ef9165206c2ed60f67cd9da553d7bc3e6fe4e338461 \
@@ -123,7 +119,6 @@ cd "$BUILD_PATH/nginx-$NGINX_VERSION"
 echo "Applying tls nginx patches..."
 patch -p1 < $BUILD_PATH/nginx__dynamic_tls_records.patch
 patch -p1 < $BUILD_PATH/nginx_1_9_15_http2_spdy.patch 
-
 
 ./configure \
   --prefix=/usr/share/nginx \
