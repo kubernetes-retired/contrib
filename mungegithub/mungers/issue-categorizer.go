@@ -34,6 +34,7 @@ import (
 // It will exclude certain files in it's calculations based on the config
 // file provided in --generated-files-config
 type LabelMunger struct {
+	TriagerUrl string
 }
 
 // Initialize will initialize the munger
@@ -48,20 +49,20 @@ func (LabelMunger) Name() string { return "issue-triager" }
 func (LabelMunger) RequiredFeatures() []string { return []string{} }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (LabelMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
-
+func (lm *LabelMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
+	cmd.Flags().StringVar(&lm.TriagerUrl, "url", "", "Url on which ml web service is listening")
 }
 
 func init() {
-	s := &LabelMunger{}
-	RegisterMungerOrDie(s)
+	lm := &LabelMunger{}
+	RegisterMungerOrDie(lm)
 }
 
 // EachLoop is called at the start of every munge loop
 func (LabelMunger) EachLoop() error { return nil }
 
 // Munge is the workhorse the will actually make updates to the PR
-func (s *LabelMunger) Munge(obj *github.MungeObject) {
+func (lm *LabelMunger) Munge(obj *github.MungeObject) {
 	//this munger only works on issues
 	if obj.IsPR() {
 		return
@@ -76,11 +77,12 @@ func (s *LabelMunger) Munge(obj *github.MungeObject) {
 	cLabels := github.GetLabelsWithPrefix(issue.Labels, "component/")
 
 	if len(tLabels) != 0 || len(cLabels) != 0 {
-		updateModel(obj)
+		lm.updateModel(obj)
 		return
 	}
 
-	routingLabelsToApply, err := http.PostForm("http://issue-triager-service:5000",
+	glog.Infof("Asking the server for labels: %v", lm.TriagerUrl)
+	routingLabelsToApply, err := http.PostForm(lm.TriagerUrl,
 		url.Values{"title": {*issue.Title}, "body": {*issue.Body}})
 
 	if err != nil {
@@ -109,7 +111,7 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 	botEvents := event.FilterEvents(myEvents, event.And([]event.Matcher{event.BotActor(), event.AddLabel{}, event.LabelPrefix(s)}))
 
 	if botEvents.Empty() {
-		glog.Infof("Found no bot %s labeling for issue %d ", s, obj.Issue.Number)
+		glog.Infof("Found no bot %v labeling for issue %d ", s, *obj.Issue.Number)
 		return nil
 	}
 
@@ -124,7 +126,7 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 	)
 
 	if humanEventsAfter.Empty() {
-		glog.Infof("Found no human corrections of %s label for issue %d", s, obj.Issue.Number)
+		glog.Infof("Found no human corrections of %v label for issue %d", s, *obj.Issue.Number)
 		return nil
 	}
 	lastHumanLabel := humanEventsAfter.GetLast()
@@ -135,7 +137,7 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 	return lastHumanLabel.Label.Name
 }
 
-func updateModel(obj *github.MungeObject) {
+func (lm *LabelMunger)updateModel(obj *github.MungeObject) {
 	newLabels := []string{}
 
 	newTeamLabel := getHumanCorrectedLabel(obj, "team")
@@ -149,8 +151,8 @@ func updateModel(obj *github.MungeObject) {
 	}
 
 	if len(newLabels) != 0 {
-		glog.Infof("Updating the models on the server")
-		_, err := http.PostForm("http://issue-triager-service:5000",
+		glog.Infof("Updating the models on the server: %v", lm.TriagerUrl)
+		_, err := http.PostForm(lm.TriagerUrl,
 			url.Values{"titles": []string {*obj.Issue.Title},
 				"bodies": []string {*obj.Issue.Body},
 				"labels": newLabels})
