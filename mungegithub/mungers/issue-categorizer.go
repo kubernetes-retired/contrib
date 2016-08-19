@@ -104,7 +104,7 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 	botEvents := event.FilterEvents(myEvents, event.And([]event.Matcher{event.BotActor(), event.AddLabel{}, event.LabelPrefix(s)}))
 
 	if botEvents.Empty() {
-		glog.Infof("Found no human corrections for issue %d and %s prefix", obj.Issue.Number, s)
+		glog.Infof("Found no bot %s labeling for issue %d ", obj.Issue.Number, s)
 		return nil
 	}
 
@@ -119,6 +119,7 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 	)
 
 	if humanEventsAfter.Empty() {
+		glog.Infof("Found no human corrections of %s label for issue %d", obj.Issue.Number, s)
 		return nil
 	}
 	lastHumanLabel := humanEventsAfter.GetLast()
