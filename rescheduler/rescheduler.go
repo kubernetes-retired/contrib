@@ -53,12 +53,19 @@ var (
 
 	systemNamespace = flags.String("system-namespace", kube_api.NamespaceSystem,
 		`Namespace to watch for critical addons.`)
+
+	initialDelay = flags.Duration("initial-delay", 2*time.Minute,
+		`How long should rescheduler wait after start to make sure
+		 all critical addons had a chance to start.`)
 )
 
 func main() {
 	glog.Infof("Running Rescheduler")
 
 	flags.Parse(os.Args)
+
+	// TODO(piosz): figure our a better way of verifying cluster stabilization here.
+	time.Sleep(*initialDelay)
 
 	kubeClient, err := createKubeClient(flags, *inCluster)
 	if err != nil {
@@ -184,8 +191,13 @@ func releaseAllTaints(client *kube_client.Client, nodeLister *kube_utils.ReadyNo
 }
 
 // The caller of this function must remove the taint if this function returns error.
-func prepareNodeForPod(client *kube_client.Client, predicateChecker *ca_simulator.PredicateChecker, node *kube_api.Node, criticalPod *kube_api.Pod) error {
-	addTaint(client, node, podId(criticalPod))
+func prepareNodeForPod(client *kube_client.Client, predicateChecker *ca_simulator.PredicateChecker, originalNode *kube_api.Node, criticalPod *kube_api.Pod) error {
+	// Operate on a copy of the node to ensure pods running on the node will pass CheckPredicates below.
+	node, err := copyNode(originalNode)
+	if err != nil {
+		return fmt.Errorf("Error while copying node: %v", err)
+	}
+	addTaint(client, originalNode, podId(criticalPod))
 
 	requiredPods, otherPods, err := groupPods(client, node)
 	if err != nil {
@@ -205,7 +217,7 @@ func prepareNodeForPod(client *kube_client.Client, predicateChecker *ca_simulato
 
 	for _, p := range otherPods {
 		if err := predicateChecker.CheckPredicates(p, nodeInfo); err != nil {
-			glog.Infof("Pod %s will be deleted in order to schedule critical pods %s.", podId(p), podId(criticalPod))
+			glog.Infof("Pod %s will be deleted in order to schedule critical pod %s.", podId(p), podId(criticalPod))
 			// TODO(piosz): add better support of graceful deletion
 			delErr := client.Pods(p.Namespace).Delete(p.Name, kube_api.NewDeleteOptions(10))
 			if delErr != nil {
@@ -220,6 +232,18 @@ func prepareNodeForPod(client *kube_client.Client, predicateChecker *ca_simulato
 
 	// TODO(piosz): how to reset scheduler backoff?
 	return nil
+}
+
+func copyNode(node *kube_api.Node) (*kube_api.Node, error) {
+	objCopy, err := kube_api.Scheme.DeepCopy(node)
+	if err != nil {
+		return nil, err
+	}
+	copied, ok := objCopy.(*kube_api.Node)
+	if !ok {
+		return nil, fmt.Errorf("expected Node, got %#v", objCopy)
+	}
+	return copied, nil
 }
 
 func addTaint(client *kube_client.Client, node *kube_api.Node, value string) error {
@@ -294,14 +318,13 @@ func groupPods(client *kube_client.Client, node *kube_api.Node) ([]*kube_api.Pod
 	podsOnNode, err := client.Pods(kube_api.NamespaceAll).List(
 		kube_api.ListOptions{FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name})})
 	if err != nil {
-
 		return []*kube_api.Pod{}, []*kube_api.Pod{}, err
 	}
 
 	requiredPods := make([]*kube_api.Pod, 0)
 	otherPods := make([]*kube_api.Pod, 0)
-	for _, p := range podsOnNode.Items {
-		pod := &p
+	for i := range podsOnNode.Items {
+		pod := &podsOnNode.Items[i]
 
 		creatorRef, err := ca_simulator.CreatorRefKind(pod)
 		if err != nil {
