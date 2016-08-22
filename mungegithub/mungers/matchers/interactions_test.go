@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package comment
+package matchers
 
 import (
 	"regexp"
@@ -30,52 +30,52 @@ func makeCommentWithBody(body string) *github.IssueComment {
 }
 
 func TestNotificationName(t *testing.T) {
-	if NotificationName("MESSAGE").Match(&github.IssueComment{}) {
+	if NotificationName("MESSAGE").MatchComment(&github.IssueComment{}) {
 		t.Error("Shouldn't match nil body")
 	}
-	if NotificationName("MESSAGE").Match(makeCommentWithBody("MESSAGE WRONG FORMAT")) {
+	if NotificationName("MESSAGE").MatchComment(makeCommentWithBody("MESSAGE WRONG FORMAT")) {
 		t.Error("Shouldn't match invalid match")
 	}
-	if !NotificationName("MESSAGE").Match(makeCommentWithBody("[MESSAGE] Valid format")) {
+	if !NotificationName("MESSAGE").MatchComment(makeCommentWithBody("[MESSAGE] Valid format")) {
 		t.Error("Should match valid format")
 	}
-	if !NotificationName("MESSAGE").Match(makeCommentWithBody("[MESSAGE]")) {
+	if !NotificationName("MESSAGE").MatchComment(makeCommentWithBody("[MESSAGE]")) {
 		t.Error("Should match with no arguments")
 	}
-	if !NotificationName("MESSage").Match(makeCommentWithBody("[meSSAGE]")) {
+	if !NotificationName("MESSage").MatchComment(makeCommentWithBody("[meSSAGE]")) {
 		t.Error("Should match with different case")
 	}
 }
 
 func TestCommandName(t *testing.T) {
-	if CommandName("COMMAND").Match(&github.IssueComment{}) {
+	if CommandName("COMMAND").MatchComment(&github.IssueComment{}) {
 		t.Error("Shouldn't match nil body")
 	}
-	if CommandName("COMMAND").Match(makeCommentWithBody("COMMAND WRONG FORMAT")) {
+	if CommandName("COMMAND").MatchComment(makeCommentWithBody("COMMAND WRONG FORMAT")) {
 		t.Error("Shouldn't match invalid format")
 	}
-	if !CommandName("COMMAND").Match(makeCommentWithBody("/COMMAND Valid format")) {
+	if !CommandName("COMMAND").MatchComment(makeCommentWithBody("/COMMAND Valid format")) {
 		t.Error("Should match valid format")
 	}
-	if !CommandName("COMMAND").Match(makeCommentWithBody("/COMMAND")) {
+	if !CommandName("COMMAND").MatchComment(makeCommentWithBody("/COMMAND")) {
 		t.Error("Should match with no arguments")
 	}
-	if !CommandName("COMmand").Match(makeCommentWithBody("/ComMAND")) {
+	if !CommandName("COMmand").MatchComment(makeCommentWithBody("/ComMAND")) {
 		t.Error("Should match with different case")
 	}
 }
 
 func TestCommandArgmuents(t *testing.T) {
-	if CommandArguments(*regexp.MustCompile(".*")).Match(&github.IssueComment{}) {
+	if CommandArguments(*regexp.MustCompile(".*")).MatchComment(&github.IssueComment{}) {
 		t.Error("Shouldn't match nil body")
 	}
-	if CommandArguments(*regexp.MustCompile(".*")).Match(makeCommentWithBody("COMMAND WRONG FORMAT")) {
+	if CommandArguments(*regexp.MustCompile(".*")).MatchComment(makeCommentWithBody("COMMAND WRONG FORMAT")) {
 		t.Error("Shouldn't match non-command")
 	}
-	if !CommandArguments(*regexp.MustCompile("^carret")).Match(makeCommentWithBody("/command carret is the beginning of argument")) {
+	if !CommandArguments(*regexp.MustCompile("^carret")).MatchComment(makeCommentWithBody("/command carret is the beginning of argument")) {
 		t.Error("Should match from the beginning of arguments")
 	}
-	if CommandArguments(*regexp.MustCompile("command")).Match(makeCommentWithBody("/command name is not part of match")) {
+	if CommandArguments(*regexp.MustCompile("command")).MatchComment(makeCommentWithBody("/command name is not part of match")) {
 		t.Error("Shouldn't match command name")
 	}
 }

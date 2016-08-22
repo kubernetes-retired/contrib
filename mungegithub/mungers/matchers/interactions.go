@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package comment
+package matchers
 
 import (
 	"regexp"
@@ -26,8 +26,14 @@ import (
 // NotificationName identifies notifications by name
 type NotificationName string
 
+var _ Matcher = NotificationName("")
+
+func (b NotificationName) MatchEvent(event *github.IssueEvent) bool {
+	return false
+}
+
 // Match returns true if the comment is a notification with the given name
-func (b NotificationName) Match(comment *github.IssueComment) bool {
+func (b NotificationName) MatchComment(comment *github.IssueComment) bool {
 	notif := ParseNotification(comment)
 	if notif == nil {
 		return false
@@ -36,11 +42,21 @@ func (b NotificationName) Match(comment *github.IssueComment) bool {
 	return strings.ToUpper(notif.Name) == strings.ToUpper(string(b))
 }
 
+func (b NotificationName) MatchReviewComment(review *github.PullRequestComment) bool {
+	return false
+}
+
 // CommandName identifies commands by name
 type CommandName string
 
+var _ Matcher = CommandName("")
+
+func (c CommandName) MatchEvent(event *github.IssueEvent) bool {
+	return false
+}
+
 // Match will return true if the comment is a command with the given name
-func (c CommandName) Match(comment *github.IssueComment) bool {
+func (c CommandName) MatchComment(comment *github.IssueComment) bool {
 	command := ParseCommand(comment)
 	if command == nil {
 		return false
@@ -48,16 +64,30 @@ func (c CommandName) Match(comment *github.IssueComment) bool {
 	return strings.ToUpper(command.Name) == strings.ToUpper(string(c))
 }
 
+func (c CommandName) MatchReviewComment(review *github.PullRequestComment) bool {
+	return false
+}
+
 // CommandArguments identifies commands by arguments (with regex)
 type CommandArguments regexp.Regexp
 
+var _ Matcher = CommandArguments{}
+
+func (c CommandArguments) MatchEvent(event *github.IssueEvent) bool {
+	return false
+}
+
 // Match if the command arguments match the regexp
-func (c CommandArguments) Match(comment *github.IssueComment) bool {
+func (c CommandArguments) MatchComment(comment *github.IssueComment) bool {
 	command := ParseCommand(comment)
 	if command == nil {
 		return false
 	}
 	return (*regexp.Regexp)(&c).MatchString(command.Arguments)
+}
+
+func (c CommandArguments) MatchReviewComment(review *github.PullRequestComment) bool {
+	return false
 }
 
 // MungeBotAuthor creates a matcher to find mungebot comments
@@ -72,25 +102,25 @@ func JenkinsBotAuthor() Matcher {
 
 // BotAuthor creates a matcher to find any bot comments
 func BotAuthor() Matcher {
-	return Or([]Matcher{
+	return Or(
 		MungeBotAuthor(),
 		JenkinsBotAuthor(),
-	})
+	)
 }
 
 // HumanActor creates a matcher to find non-bot comments.
 // ValidAuthor is used because a comment that doesn't have "Author" is NOT made by a human
 func HumanActor() Matcher {
-	return And([]Matcher{
+	return And(
 		ValidAuthor{},
 		Not{BotAuthor()},
-	})
+	)
 }
 
 // MungerNotificationName finds notification posted by the munger, based on name
 func MungerNotificationName(notif string) Matcher {
-	return And([]Matcher{
+	return And(
 		MungeBotAuthor(),
 		NotificationName(notif),
-	})
+	)
 }

@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/contrib/mungegithub/features"
 	mgh "k8s.io/contrib/mungegithub/github"
-	c "k8s.io/contrib/mungegithub/mungers/matchers/comment"
+	"k8s.io/contrib/mungegithub/mungers/matchers"
 	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 )
 
@@ -34,7 +34,7 @@ const (
 )
 
 var (
-	pinger = c.NewPinger(flakeNagNotifName).
+	pinger = matchers.NewPinger(flakeNagNotifName).
 		SetDescription("This flaky-test issue would love to have more attention...")
 	// Only include priorities that you care about. Others won't be pinged
 	timePeriods = map[string]time.Duration{
@@ -111,7 +111,7 @@ func (NagFlakeIssues) Munge(obj *mgh.MungeObject) {
 	who := mungerutil.GetIssueUsers(obj.Issue).Assignees.Mention().Join()
 
 	// When does the pinger start
-	startDate := c.LastComment(comments, c.HumanActor(), obj.Issue.CreatedAt)
+	startDate := matchers.Items{}.AddComments(comments...).LastDate(matchers.HumanActor(), obj.Issue.CreatedAt)
 
 	// Get a notification if it's time to ping.
 	notif := pinger.SetTimePeriod(period).PingNotification(
@@ -126,9 +126,11 @@ func (NagFlakeIssues) Munge(obj *mgh.MungeObject) {
 
 // StaleComments returns a slice of stale comments
 func (NagFlakeIssues) StaleComments(obj *mgh.MungeObject, comments []*github.IssueComment) []*github.IssueComment {
+	items := matchers.Items{}.AddComments(comments...)
+
 	// Remove all pings written before the last human actor comment
-	return c.FilterComments(comments, c.And([]c.Matcher{
-		c.MungerNotificationName(flakeNagNotifName),
-		c.CreatedBefore(*c.LastComment(comments, c.HumanActor(), &time.Time{})),
-	}))
+	return items.
+		Filter(matchers.MungerNotificationName(flakeNagNotifName)).
+		Filter(matchers.CreatedBefore(*items.LastDate(matchers.HumanActor(), &time.Time{}))).
+		Comments()
 }

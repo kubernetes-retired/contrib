@@ -14,53 +14,65 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package comment
+package matchers
 
 import (
 	"regexp"
 	"strings"
 
 	"github.com/google/go-github/github"
+	mgh "k8s.io/contrib/mungegithub/github"
 )
 
-// Command is a way for human to interact with the bot
-type Command struct {
+// Notification is a message sent by the bot. Easy to find and create.
+type Notification struct {
 	Name      string
 	Arguments string
+	Context   string
 }
 
 var (
-	// Matches a command:
-	// - Line that starts with slash
-	// - followed by non-space characteres,
-	// - (optional) followed by space and arguments
-	commandRegex = regexp.MustCompile(`^/([^\s]+)\s?(.*)$`)
+	// Matches a notification: [NOTIFNAME] Arguments
+	notificationRegex = regexp.MustCompile(`^\[([^\]\s]+)\]\s?(.*)$`)
 )
 
-// ParseCommand attempts to read a command from a comment
-// Returns nil if the comment doesn't contain a command
-func ParseCommand(comment *github.IssueComment) *Command {
+// ParseNotification attempts to read a notification from a comment
+// Returns nil if the comment doesn't contain a notification
+// Also note that Context is not parsed from the notification
+func ParseNotification(comment *github.IssueComment) *Notification {
 	if comment == nil || comment.Body == nil {
 		return nil
 	}
 
-	match := commandRegex.FindStringSubmatch(*comment.Body)
+	match := notificationRegex.FindStringSubmatch(*comment.Body)
 	if match == nil {
 		return nil
 	}
 
-	return &Command{
+	return &Notification{
 		Name:      strings.ToUpper(match[1]),
 		Arguments: strings.TrimSpace(match[2]),
 	}
 }
 
-// String displays the command
-func (n *Command) String() string {
-	str := "/" + strings.ToUpper(n.Name)
+// String converts the notification
+func (n *Notification) String() string {
+	str := "[" + strings.ToUpper(n.Name) + "]"
+
 	args := strings.TrimSpace(n.Arguments)
 	if args != "" {
 		str += " " + args
 	}
+
+	context := strings.TrimSpace(n.Context)
+	if context != "" {
+		str += "\n\n" + context
+	}
+
 	return str
+}
+
+// Post a new notification on Github
+func (n Notification) Post(obj *mgh.MungeObject) error {
+	return obj.WriteComment(n.String())
 }

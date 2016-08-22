@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package comment
+package matchers
 
 import (
 	"time"
@@ -65,13 +65,7 @@ func (p *Pinger) PingNotification(comments []*github.IssueComment, who string, s
 		startDate = &time.Time{}
 	}
 
-	pings := FilterComments(
-		comments,
-		And([]Matcher{
-			CreatedAfter(*startDate),
-			MungerNotificationName(p.keyword),
-		}),
-	)
+	pings := p.getPings(comments, startDate)
 
 	// We have pinged too many times, it's time to try something else
 	if p.isMaxReached(pings) {
@@ -94,24 +88,25 @@ func (p *Pinger) IsMaxReached(comments []*github.IssueComment, startDate *time.T
 	if startDate == nil {
 		startDate = &time.Time{}
 	}
-	return p.isMaxReached(FilterComments(
-		comments,
-		And([]Matcher{
-			CreatedAfter(*startDate),
-			MungerNotificationName(p.keyword),
-		}),
-	))
+	return p.isMaxReached(p.getPings(comments, startDate))
 }
 
-func (p *Pinger) isMaxReached(pings FilteredComments) bool {
+func (p *Pinger) getPings(comments []*github.IssueComment, startDate *time.Time) Items {
+	return Items{}.
+		AddComments(comments...).
+		Filter(MungerNotificationName(p.keyword)).
+		Filter(CreatedAfter(*startDate))
+}
+
+func (p *Pinger) isMaxReached(pings Items) bool {
 	return p.maxCount != 0 && len(pings) >= p.maxCount
 }
 
-func (p *Pinger) shouldPingNow(pings FilteredComments, startDate *time.Time) bool {
+func (p *Pinger) shouldPingNow(pings Items, startDate *time.Time) bool {
 	lastEvent := startDate
 
 	if len(pings) != 0 {
-		lastEvent = pings[len(pings)-1].CreatedAt
+		lastEvent = pings[len(pings)-1].Date()
 	}
 
 	return time.Since(*lastEvent) > p.timePeriod

@@ -24,7 +24,7 @@ import (
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
-	"k8s.io/contrib/mungegithub/mungers/matchers/event"
+	"k8s.io/contrib/mungegithub/mungers/matchers"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -145,26 +145,19 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 		return nil
 	}
 
-	botEvents := event.FilterEvents(myEvents, event.And([]event.Matcher{event.BotActor(), event.AddLabel{}, event.LabelPrefix(s)}))
-
-	if botEvents.Empty() {
+	addedLabels := matchers.Items{}.AddEvents(myEvents...).Filter(matchers.And(matchers.AddLabel{}, matchers.LabelPrefix(s)))
+	lastBotEventDate := addedLabels.LastDate(matchers.BotAuthor(), nil)
+	if lastBotEventDate == nil {
 		return nil
 	}
+	humanEventsAfter := addedLabels.Filter(
+		matchers.And(matchers.HumanActor(), matchers.CreatedAfter(*lastBotEventDate)),
+	).Events()
 
-	humanEventsAfter := event.FilterEvents(
-		myEvents,
-		event.And([]event.Matcher{
-			event.HumanActor(),
-			event.AddLabel{},
-			event.LabelPrefix(s),
-			event.CreatedAfter(*botEvents.GetLast().CreatedAt),
-		}),
-	)
-
-	if humanEventsAfter.Empty() {
+	if len(humanEventsAfter) == 0 {
 		return nil
 	}
-	lastHumanLabel := humanEventsAfter.GetLast()
+	lastHumanLabel := humanEventsAfter[len(humanEventsAfter)-1]
 
 	glog.Infof("Recopying human-added label: %s for PR %d", *lastHumanLabel.Label.Name, *obj.Issue.Number)
 	obj.RemoveLabel(*lastHumanLabel.Label.Name)
