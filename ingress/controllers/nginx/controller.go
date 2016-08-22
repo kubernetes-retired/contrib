@@ -928,6 +928,10 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 		for _, tls := range ing.Spec.TLS {
 			secretName := tls.SecretName
 			secretKey := fmt.Sprintf("%s/%s", ing.Namespace, secretName)
+			if secretName == "" {
+				glog.Errorf("No secretName defined for hosts")
+				continue
+			}
 
 			ngxCert, err := lbc.getPemCertificate(secretKey)
 			if err != nil {
@@ -960,11 +964,11 @@ func (lbc *loadBalancerController) getPemCertificate(secretName string) (nginx.S
 	secret := secretInterface.(*api.Secret)
 	cert, ok := secret.Data[api.TLSCertKey]
 	if !ok {
-		return nginx.SSLCert{}, fmt.Errorf("Secret %v has no private key", secretName)
+		return nginx.SSLCert{}, fmt.Errorf("Secret named '%v' has no private key", secretName)
 	}
 	key, ok := secret.Data[api.TLSPrivateKeyKey]
 	if !ok {
-		return nginx.SSLCert{}, fmt.Errorf("Secret %v has no cert", secretName)
+		return nginx.SSLCert{}, fmt.Errorf("Secret named '%v' has no cert", secretName)
 	}
 
 	nsSecName := strings.Replace(secretName, "/", "-", -1)
