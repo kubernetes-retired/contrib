@@ -67,36 +67,76 @@ func (lm *LabelMunger) Munge(obj *github.MungeObject) {
 	if obj.IsPR() {
 		return
 	}
-
-	issue := obj.Issue
 	if obj.HasLabel("kind/flake") {
 		return
 	}
 
-	tLabels := github.GetLabelsWithPrefix(issue.Labels, "team/")
-	cLabels := github.GetLabelsWithPrefix(issue.Labels, "component/")
+	tLabels := github.GetLabelsWithPrefix(obj.Issue.Labels, "team/")
+	cLabels := github.GetLabelsWithPrefix(obj.Issue.Labels, "component/")
 
-	if len(tLabels) != 0 || len(cLabels) != 0 {
-		lm.updateModel(obj)
-		return
+	if len(tLabels) == 0 && len(cLabels) == 0 {
+		obj.AddLabels(getRoutingLabels(lm.TriagerUrl, obj.Issue.Title, obj.Issue.Body))
+	} else{
+		newLabels := needsUpdate(obj)
+		if len(newLabels) != 0 {
+			updateModel(lm.TriagerUrl, obj.Issue.Title, obj.Issue.Body, newLabels)
+		} else{
+			glog.Info(" no update; no human has corrected our bot!" );
+		}
+	}
+}
+
+func updateModel(triagerUrl string, title, body *string, newLabels []string) {
+	glog.Infof("Updating the models on the server: %v", triagerUrl)
+	_, err := http.PostForm(triagerUrl,
+		url.Values{"titles": []string {*title},
+			"bodies": []string {*body},
+			"labels": newLabels})
+	if err != nil{
+		glog.Error(err)
+	}
+}
+
+func needsUpdate(obj *github.MungeObject) []string {
+	newLabels := []string{}
+
+	newTeamLabel := getHumanCorrectedLabel(obj, "team")
+	if newTeamLabel != nil {
+		newLabels = append(newLabels, *newTeamLabel)
 	}
 
-	glog.Infof("Asking the server for labels: %v", lm.TriagerUrl)
-	routingLabelsToApply, err := http.PostForm(lm.TriagerUrl,
-		url.Values{"title": {*issue.Title}, "body": {*issue.Body}})
+	newComponentLabel := getHumanCorrectedLabel(obj, "component")
+	if newComponentLabel != nil {
+		newLabels = append(newLabels, *newComponentLabel)
+	}
+	return newLabels
+}
+
+func getRoutingLabels(triagerUrl string, title, body *string) []string {
+	glog.Infof("Asking the server for labels: %v", triagerUrl)
+
+	if title == nil || body == nil {
+		glog.Warning("Title or Body cannot be nil")
+		return []string{}
+	}
+	routingLabelsToApply, err := http.PostForm(triagerUrl,
+		url.Values{"title": {*title}, "body": {*body}})
 
 	if err != nil {
 		glog.Error(err)
-		return
+		return []string{}
 	}
 	defer routingLabelsToApply.Body.Close()
 	response, err := ioutil.ReadAll(routingLabelsToApply.Body)
+	if err != nil {
+		glog.Error(err)
+		return []string{}
+	}
 	if routingLabelsToApply.StatusCode != 200 {
 		glog.Errorf("%d: %s", routingLabelsToApply.StatusCode, response)
-		return
+		return []string{}
 	}
-
-	obj.AddLabels(strings.Split(string(response), ","))
+	return strings.Split(string(response), ",")
 }
 
 func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
@@ -110,7 +150,6 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 	botEvents := event.FilterEvents(myEvents, event.And([]event.Matcher{event.BotActor(), event.AddLabel{}, event.LabelPrefix(s)}))
 
 	if botEvents.Empty() {
-		glog.Infof("Found no bot %v labeling for issue %d ", s, *obj.Issue.Number)
 		return nil
 	}
 
@@ -125,7 +164,6 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 	)
 
 	if humanEventsAfter.Empty() {
-		glog.Infof("Found no human corrections of %v label for issue %d", s, *obj.Issue.Number)
 		return nil
 	}
 	lastHumanLabel := humanEventsAfter.GetLast()
@@ -136,27 +174,3 @@ func getHumanCorrectedLabel(obj *github.MungeObject, s string) *string {
 	return lastHumanLabel.Label.Name
 }
 
-func (lm *LabelMunger)updateModel(obj *github.MungeObject) {
-	newLabels := []string{}
-
-	newTeamLabel := getHumanCorrectedLabel(obj, "team")
-	if newTeamLabel != nil {
-		newLabels = append(newLabels, *newTeamLabel)
-	}
-
-	newComponentLabel := getHumanCorrectedLabel(obj, "component")
-	if newComponentLabel != nil {
-		newLabels = append(newLabels, *newComponentLabel)
-	}
-
-	if len(newLabels) != 0 {
-		glog.Infof("Updating the models on the server: %v", lm.TriagerUrl)
-		_, err := http.PostForm(lm.TriagerUrl,
-			url.Values{"titles": []string {*obj.Issue.Title},
-				"bodies": []string {*obj.Issue.Body},
-				"labels": newLabels})
-		if err != nil{
-			glog.Error(err)
-		}
-	}
-}
