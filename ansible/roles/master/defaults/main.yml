@@ -5,3 +5,4 @@ localBuildOutput: ../../../_output/local/go/bin
 admission_controllers: NamespaceLifecycle,NamespaceExists,LimitRanger,ServiceAccount,ResourceQuota
 
 kube_apiserver_bind_address: "0.0.0.0"
+kube_apiserver_insecure_bind_address: "127.0.0.1"
