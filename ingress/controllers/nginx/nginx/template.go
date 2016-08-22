@@ -64,6 +64,27 @@ func (ngx *Manager) loadTemplate() error {
 }
 
 func (ngx *Manager) writeCfg(cfg config.Configuration, ingressCfg IngressConfig) (bool, error) {
+	var longestName int
+	var serverNames int
+	for _, srv := range ingressCfg.Servers {
+		serverNames += len([]byte(srv.Name))
+		if longestName < len(srv.Name) {
+			longestName = len(srv.Name)
+		}
+	}
+
+	nameHashBucketSize := nextPowerOf2(longestName)
+	if nameHashBucketSize > cfg.ServerNameHashBucketSize {
+		glog.V(3).Infof("adjusting ServerNameHashBucketSize variable from %v to %v", cfg.ServerNameHashBucketSize, nameHashBucketSize)
+		cfg.ServerNameHashBucketSize = nameHashBucketSize
+	}
+
+	serverNameHashMaxSize := nextPowerOf2(serverNames)
+	if serverNameHashMaxSize > cfg.ServerNameHashMaxSize {
+		glog.V(3).Infof("adjusting ServerNameHashMaxSize variable from %v to %v", cfg.ServerNameHashMaxSize, serverNameHashMaxSize)
+		cfg.ServerNameHashMaxSize = serverNameHashMaxSize
+	}
+
 	conf := make(map[string]interface{})
 	conf["backlogSize"] = sysctlSomaxconn()
 	conf["upstreams"] = ingressCfg.Upstreams
@@ -78,7 +99,7 @@ func (ngx *Manager) writeCfg(cfg config.Configuration, ingressCfg IngressConfig)
 	if glog.V(3) {
 		b, err := json.Marshal(conf)
 		if err != nil {
-			glog.Errorf("unexpected error:", err)
+			glog.Errorf("unexpected error: %v", err)
 		}
 		glog.Infof("NGINX configuration: %v", string(b))
 	}
@@ -248,4 +269,18 @@ func buildRateLimit(input interface{}) []string {
 	}
 
 	return limits
+}
+
+// http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+// https://play.golang.org/p/TVSyCcdxUh
+func nextPowerOf2(v int) int {
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+
+	return v
 }
