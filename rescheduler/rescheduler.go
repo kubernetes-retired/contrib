@@ -197,7 +197,10 @@ func prepareNodeForPod(client *kube_client.Client, predicateChecker *ca_simulato
 	if err != nil {
 		return fmt.Errorf("Error while copying node: %v", err)
 	}
-	addTaint(client, originalNode, podId(criticalPod))
+	err = addTaint(client, originalNode, podId(criticalPod))
+	if err != nil {
+		return fmt.Errorf("Error while adding taint: %v", err)
+	}
 
 	requiredPods, otherPods, err := groupPods(client, node)
 	if err != nil {
