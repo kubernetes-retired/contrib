@@ -123,5 +123,6 @@ retest-body
 default-ssl-certificate
 housekeeping-interval
 system-namespace
+initial-delay
 netrc-dir
 publish-command
