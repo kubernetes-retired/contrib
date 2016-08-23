@@ -1,6 +1,5 @@
 ---
-
-- name: Setup etcd
+- name: Deploy etcd
   hosts: etcd
   sudo: yes
   roles:

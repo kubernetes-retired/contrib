@@ -1,40 +1,17 @@
 ---
-- include: fedora.yml
-  when: ansible_distribution == "Fedora"
+- name: Fedora | Remove docker window manager on F20
+  yum: pkg=docker state=absent
+  when: ansible_distribution == "Fedora" and ansible_distribution_major_version == "20"
+  tags: install
 
-- name: Update {{ kube_script_dir }} if this is atomic
-  set_fact:
-    kube_script_dir: "/usr/local/libexec/kubernetes"
-  when: is_atomic and kube_script_dir == "/usr/libexec/kubernetes"
+- name: Override kubernetes facts
+  include: override_facts.yml
 
-- name: Initialize the python_bin fact
-  set_fact:
-    python_bin: "python"
-
-- name: Update facts if this is CoreOS or Ubuntu 14.04
-  set_fact:
-    bin_dir: "/opt/bin"
-    kube_script_dir: "/opt/bin/kubernetes"
-    python_bin: "/opt/bin/python"
-  when: is_coreos or ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
-
-- name: Create kubernetes config directory
-  file: path={{ kube_config_dir }} state=directory
-
-- name: Create kubernetes script directory
-  file: path={{ kube_script_dir }} state=directory
-
-- name: Create bin dir
-  file: path={{ bin_dir }} state=directory
-
-- name: write the global config file
-  template: src=config.j2 dest={{ kube_config_dir }}/config
-  notify:
-    - restart daemons
-
-- include: download_bins.yml
-  when: is_coreos or ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
+- name: Configure kubernetes
+  include: configure.yml
+  tags: configure
 
 - include: secrets.yml
   tags:
     secrets
+  tags: configure

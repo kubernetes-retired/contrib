@@ -1,8 +1,4 @@
 ---
-- name: CoreOS | Force source_type to github
-  set_fact:
-    source_type: "github-release"
-
 - name: CoreOS | Get Systemd Unit Files from Kubernetes repository
   get_url:
     url=https://raw.githubusercontent.com/kubernetes/contrib/master/init/systemd/{{ item }}.service
