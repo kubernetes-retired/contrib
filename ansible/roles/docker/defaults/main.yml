@@ -10,10 +10,10 @@ repository_baseurl: https://yum.dockerproject.org/repo/main/centos/$releasever/
 repository_gpgkey: https://yum.dockerproject.org/gpg
 
 # The URL do download distribution rpms shipping docker binaries from
-docker_rpm_url_base: https://kojipkgs.fedoraproject.org//packages/docker/1.10.3/28.git78aa320.fc24/x86_64
-docker_rpm_url_sufix: 1.10.3-28.git78aa320.fc24.x86_64.rpm
+docker_rpm_url_base: https://kojipkgs.fedoraproject.org//packages/docker/1.10.3/41.git78aa320.fc23/x86_64
+docker_rpm_url_sufix: 1.10.3-41.git78aa320.fc23.x86_64.rpm
 
 docker_rpms:
-- docker
 - docker-selinux
-- docker-v1.10-migrator
+- docker-forward-journald
+- docker
