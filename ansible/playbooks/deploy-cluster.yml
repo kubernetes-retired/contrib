@@ -50,13 +50,7 @@
 - include: deploy-master.yml
 
 # launch addons, like dns
-- hosts: masters
-  become: yes
-  roles:
-    - kubernetes-addons
-  tags:
-    - addons
-    - dns
+- include: deploy-addons.yml
 
 # install kubernetes on the nodes
 - include: deploy-node.yml

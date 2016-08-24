@@ -6,3 +6,6 @@
 
 - name: restart kube-addons
   service: name=kube-addons state=restarted
+
+- name: restart apiserver
+  service: name=kube-apiserver state=restarted
