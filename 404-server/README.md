@@ -7,7 +7,7 @@
 
 ## How to release:
 
-The `404-server` Makefile supports multiple architecures, which means it may cross-compile and build an docker image easily.
+The `404-server` Makefile supports multiple architectures, which means it may cross-compile and build an docker image easily.
 If you are releasing a new version, please bump the `TAG` value in the `Makefile` before building the images.
 
 How to build and push all images:
