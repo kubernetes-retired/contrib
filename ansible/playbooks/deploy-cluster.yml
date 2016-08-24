@@ -14,13 +14,7 @@
 - include: deploy-etcd.yml
 
 # Install docker
-- hosts: all
-  become: yes
-  roles:
-    - common
-    - docker
-  tags:
-    - docker
+- include: deploy-docker.yml
 
 # install flannel
 - hosts:
