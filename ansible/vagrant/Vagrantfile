@@ -205,6 +205,16 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     # This sets up both flannel and kube.
     ansible.playbook = "../playbooks/deploy-cluster.yml"
 
+    # Copy group_vars directory if it exists
+    vagrant_inventory_directory = ".vagrant/provisioners/ansible/inventory"
+    unless File.directory?(vagrant_inventory_directory)
+      FileUtils.mkdir_p(vagrant_inventory_directory)
+    end
+
+    if File.directory?("../inventory/group_vars")
+      FileUtils.copy_entry "../inventory/group_vars", File.join(vagrant_inventory_directory, "group_vars")
+    end
+
     if provider == :virtualbox
       master_ip = VBOX_STATIC_IP_TEMPLATE % 0
 
