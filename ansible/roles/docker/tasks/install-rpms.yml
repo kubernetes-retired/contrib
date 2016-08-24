@@ -1,0 +1,6 @@
+---
+- name: Install docker distribution rpms
+  yum: name={{ docker_rpm_url_base }}/{{ item }}-{{ docker_rpm_url_sufix }}
+  with_items:
+    - "{{ docker_rpms }}"
+ 
