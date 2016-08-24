@@ -66,6 +66,24 @@ You can just setup certain parts instead of doing it all.
 
 `$ ./deploy-cluster.sh --tags=nodes`
 
+### Addons
+
+By default, the Ansible playbook deploys Kubernetes addons as well. Addons consist of:
+
+* DNS (skydns)
+* cluster monitoring (Grafana, Heapster, InfluxDB)
+* cluster logging (Kibana, ElasticSearch)
+* Kubernetes dashboard
+* Kubernetes dash
+
+In order to skip addons deployment, run
+
+`$ ./deploy-cluster.sh --skip-tags=addons`
+
+In order to run addons deployment only (requires kubernetes master already deployed), run
+
+`$ ./deploy-cluster.sh --tags=addons` or `$ ./deploy-addons.sh`
+
 ### Component sources
 
 Each component can be installed from various sources. For instance:
