@@ -3,8 +3,6 @@ Kubernetes Virtual IP address/es using [keepalived](http://www.keepalived.org)
 
 AKA "how to set up virtual IP addresses in kubernetes using [IPVS - The Linux Virtual Server Project](http://www.linuxvirtualserver.org/software/ipvs.html)".
 
-## Disclaimer:
-- This is a **work in progress**.
 
 ## Overview
 
