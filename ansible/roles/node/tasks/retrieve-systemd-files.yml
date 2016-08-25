@@ -1,46 +1,23 @@
 ---
-- name: Get Systemd unit files from Kubernetes repository
-  get_url:
-    url=https://raw.githubusercontent.com/kubernetes/contrib/master/init/systemd/{{ item }}.service
-    dest=/etc/systemd/system/{{ item }}.service
-    force=yes
-  register: "{{ item }}_service"
+- name: Install Systemd unit files
+  copy: src={{ item }}.service dest=/etc/systemd/system/{{ item }}.service
   notify:
     - reload systemd
   with_items:
     - kubelet
     - kube-proxy
-  environment:
-    http_proxy: "{{ http_proxy|default('') }}"
-    https_proxy: "{{ https_proxy|default('') }}"
-    no_proxy: "{{ no_proxy|default('') }}"
+  register: "{{ item }}_service"
 
-- name: Get Systemd config files from Kubernetes repository
-  get_url:
-    url=https://raw.githubusercontent.com/kubernetes/contrib/master/init/systemd/environ/{{ item }}
-    dest={{ kube_config_dir }}/{{ item }}
-    force=yes
+- name: Install Systemd config files
+  template: src={{ item }}.j2 dest={{ kube_config_dir }}/{{ item }}
   register: "{{ item }}_default"
   notify:
     - reload systemd
   with_items:
-    - config
     - kubelet
     - proxy
-  environment:
-    http_proxy: "{{ http_proxy|default('') }}"
-    https_proxy: "{{ https_proxy|default('') }}"
-    no_proxy: "{{ no_proxy|default('') }}"
 
-- name: Get Systemd tmpfile from Kubernetes repository
-  get_url:
-    url=https://raw.githubusercontent.com/kubernetes/contrib/master/init/systemd/tmpfiles.d/kubernetes.conf
-    dest=/usr/lib/tmpfiles.d/kubernetes.conf
-    force=yes
+- name: Install Systemd tmpfile
+  copy: src=kubernetes.conf dest=/usr/lib/tmpfiles.d/kubernetes.conf
   notify:
     - reload systemd
-  environment:
-    http_proxy: "{{ http_proxy|default('') }}"
-    https_proxy: "{{ https_proxy|default('') }}"
-    no_proxy: "{{ no_proxy|default('') }}"
-
