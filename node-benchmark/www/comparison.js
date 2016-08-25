@@ -74,7 +74,7 @@ PerfDashApp.prototype.aggregateBuild = function(builds) {
     selectedPerBuild = {};
     
     angular.forEach(builds, function(build, name) {
-        if(build.perf.length > 0 && parseInt(name) >= this.minBuild) {
+        if(build.perf.length > 0 && parseInt(name) >= this.minBuild && parseInt(name) <= this.maxBuild) {
             selectedPerBuild[name] = build.perf;
         }
     }, this)

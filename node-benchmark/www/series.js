@@ -16,16 +16,36 @@ limitations under the License.
 
 PerfDashApp.prototype.buildChanged = function() {
     // search for the selected node
-    dataItem = this.allData[this.test].data[this.node][this.build].series[0];
-    this.timeseries = dataItem.resource_data;
-    this.latencySeriesMap = dataItem.op_data;
+    series = this.allData[this.test].data[this.node][this.build].series;
+    dataItem = series[0];
+    // merge following dataitems
+    for(var i in series) {
+        if(i == '0'){
+            continue;
+        }
+        newDataItem = series[i];
+        //console.log(JSON.stringify(newDataItem))
+        if(newDataItem.version == dataItem.version &&
+           newDataItem.labels.test == dataItem.labels.test &&
+           newDataItem.labels.node == dataItem.labels.node){
+               if(newDataItem.op_series != null) {
+                   for(var k in newDataItem.op_series) {
+                       dataItem.op_series[k] = newDataItem.op_series[k];
+                   }
+               }
+                if(newDataItem.resource_series != null) {
+                   for(var k in newDataItem.resource_series) {
+                       dataItem.resource_series[k] = newDataItem.resource_series[k];
+                   }
+               }
+           }
+    }
+    //console.log(JSON.stringify(dataItem))
+    this.timeseries = dataItem.resource_series;
+    this.latencySeriesMap = dataItem.op_series;
 
-    //this.timeseries = this.allData[this.test].builds_series[this.build].data;
-    //console.log(JSON.stringify(this.timeseries))
     this.plotTimeSeries();
     this.seriesBuildLabels = dataItem.labels;
-    //console.log(JSON.stringify(this.seriesLabels))
-    //console.log(JSON.stringify(this.allData[this.test].builds_series[this.build]))
 }
 
 // Plot the time series data for the selected build
@@ -40,19 +60,42 @@ PerfDashApp.prototype.plotTimeSeries = function() {
         switch(plot) {
             case 'latency':
                 dataSets = [{ 
-                        label: 'create',
+                        label: 'create_test',
                         data: getHistSeries(this.latencySeriesMap['create'].map(function(value){
                             return ((value - start)/1e9).toFixed(1);
                         })),
                         backgroundColor: 'rgba(51,153,255,0.3)',
                     },
                     { 
-                        label: 'running',
+                        label: 'running_test',
                         data: getHistSeries(this.latencySeriesMap['running'].map(function(value){
                             return ((value - start)/1e9).toFixed(1);
                         })),
                         backgroundColor: 'rgba(0,204,102,0.3)',
                     },
+                    { 
+                        label: 'firstSeen_kublet',
+                        data: getHistSeries(this.latencySeriesMap['PodCreatefirstSeen'].map(function(value){
+                            return ((value - start)/1e9).toFixed(1);
+                        })),
+                        backgroundColor: 'rgba(30,164,40,0.3)',
+                    },
+                    { 
+                        label: 'running_kublet',
+                        data: getHistSeries(this.latencySeriesMap['PodCreateRunning'].map(function(value){
+                            return ((value - start)/1e9).toFixed(1);
+                        })),
+                        backgroundColor: 'rgba(0,20,102,0.3)',
+                    },
+                    /*
+                    { 
+                        label: 'container',
+                        data: getHistSeries(this.latencySeriesMap['container'].map(function(value){
+                            return ((value - start)/1e9).toFixed(1);
+                        })),
+                        backgroundColor: 'rgba(1000,20,0,0.3)',
+                    },
+                    */
                 ];
                 unit = "#Pod"
                 ctx = document.getElementById("series_latency").getContext("2d");
