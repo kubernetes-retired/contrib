@@ -23,21 +23,27 @@ package federation
 import (
 	api "k8s.io/kubernetes/pkg/api"
 	conversion "k8s.io/kubernetes/pkg/conversion"
+	runtime "k8s.io/kubernetes/pkg/runtime"
 	reflect "reflect"
 )
 
 func init() {
-	if err := api.Scheme.AddGeneratedDeepCopyFuncs(
-		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_Cluster, InType: reflect.TypeOf(func() *Cluster { var x *Cluster; return x }())},
-		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterCondition, InType: reflect.TypeOf(func() *ClusterCondition { var x *ClusterCondition; return x }())},
-		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterList, InType: reflect.TypeOf(func() *ClusterList { var x *ClusterList; return x }())},
-		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterSpec, InType: reflect.TypeOf(func() *ClusterSpec { var x *ClusterSpec; return x }())},
-		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterStatus, InType: reflect.TypeOf(func() *ClusterStatus { var x *ClusterStatus; return x }())},
-		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ServerAddressByClientCIDR, InType: reflect.TypeOf(func() *ServerAddressByClientCIDR { var x *ServerAddressByClientCIDR; return x }())},
-	); err != nil {
-		// if one of the deep copy functions is malformed, detect it immediately.
-		panic(err)
-	}
+	SchemeBuilder.Register(RegisterDeepCopies)
+}
+
+// RegisterDeepCopies adds deep-copy functions to the given scheme. Public
+// to allow building arbitrary schemes.
+func RegisterDeepCopies(scheme *runtime.Scheme) error {
+	return scheme.AddGeneratedDeepCopyFuncs(
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_Cluster, InType: reflect.TypeOf(&Cluster{})},
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterCondition, InType: reflect.TypeOf(&ClusterCondition{})},
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterList, InType: reflect.TypeOf(&ClusterList{})},
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterReplicaSetPreferences, InType: reflect.TypeOf(&ClusterReplicaSetPreferences{})},
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterSpec, InType: reflect.TypeOf(&ClusterSpec{})},
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ClusterStatus, InType: reflect.TypeOf(&ClusterStatus{})},
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_FederatedReplicaSetPreferences, InType: reflect.TypeOf(&FederatedReplicaSetPreferences{})},
+		conversion.GeneratedDeepCopyFunc{Fn: DeepCopy_federation_ServerAddressByClientCIDR, InType: reflect.TypeOf(&ServerAddressByClientCIDR{})},
+	)
 }
 
 func DeepCopy_federation_Cluster(in interface{}, out interface{}, c *conversion.Cloner) error {
@@ -93,6 +99,23 @@ func DeepCopy_federation_ClusterList(in interface{}, out interface{}, c *convers
 	}
 }
 
+func DeepCopy_federation_ClusterReplicaSetPreferences(in interface{}, out interface{}, c *conversion.Cloner) error {
+	{
+		in := in.(*ClusterReplicaSetPreferences)
+		out := out.(*ClusterReplicaSetPreferences)
+		out.MinReplicas = in.MinReplicas
+		if in.MaxReplicas != nil {
+			in, out := &in.MaxReplicas, &out.MaxReplicas
+			*out = new(int64)
+			**out = **in
+		} else {
+			out.MaxReplicas = nil
+		}
+		out.Weight = in.Weight
+		return nil
+	}
+}
+
 func DeepCopy_federation_ClusterSpec(in interface{}, out interface{}, c *conversion.Cloner) error {
 	{
 		in := in.(*ClusterSpec)
@@ -140,6 +163,28 @@ func DeepCopy_federation_ClusterStatus(in interface{}, out interface{}, c *conve
 			out.Zones = nil
 		}
 		out.Region = in.Region
+		return nil
+	}
+}
+
+func DeepCopy_federation_FederatedReplicaSetPreferences(in interface{}, out interface{}, c *conversion.Cloner) error {
+	{
+		in := in.(*FederatedReplicaSetPreferences)
+		out := out.(*FederatedReplicaSetPreferences)
+		out.Rebalance = in.Rebalance
+		if in.Clusters != nil {
+			in, out := &in.Clusters, &out.Clusters
+			*out = make(map[string]ClusterReplicaSetPreferences)
+			for key, val := range *in {
+				newVal := new(ClusterReplicaSetPreferences)
+				if err := DeepCopy_federation_ClusterReplicaSetPreferences(&val, newVal, c); err != nil {
+					return err
+				}
+				(*out)[key] = *newVal
+			}
+		} else {
+			out.Clusters = nil
+		}
 		return nil
 	}
 }
