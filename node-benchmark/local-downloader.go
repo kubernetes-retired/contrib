@@ -21,12 +21,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"strconv"
 )
 
 const (
 	latestBuildFile = "latest-build.txt"
+	tracingParser   = "parse_kubelet_log.py"
 )
 
 // LocalDownloader that gets data about Google results from the GCS repository
@@ -52,7 +54,7 @@ func (g *LocalDownloader) getData() (TestToBuildData, error) {
 	for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
 		fmt.Printf("Fetching build %v...\n", buildNumber)
 
-		file, err := os.Open(path.Join(dataDir, fmt.Sprintf("%d.log", buildNumber)))
+		file, err := os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "build-log.txt"))
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -60,6 +62,28 @@ func (g *LocalDownloader) getData() (TestToBuildData, error) {
 
 		testDataScanner := bufio.NewScanner(file)
 		parseTestOutput(testDataScanner,
+			"kubernetes-e2e-node-benchmark",
+			nil,
+			buildNumber,
+			result)
+
+		file, err = os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "tracing.log"))
+		if os.IsNotExist(err) {
+			// Tracing data have not been parsed yet
+			cmd := exec.Command("/usr/bin/python", tracingParser, dataDir, fmt.Sprintf("%d", buildNumber))
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err = cmd.Run(); err != nil {
+				log.Fatal(err)
+			}
+			file, err = os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "tracing.log"))
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		testDataScanner = bufio.NewScanner(file)
+		parseTracingData(testDataScanner,
 			"kubernetes-e2e-node-benchmark",
 			nil,
 			buildNumber,

@@ -113,3 +113,52 @@ func parseTestOutput(scanner *bufio.Scanner, job string, tests Tests, buildNumbe
 		}
 	}
 }
+
+func parseTracingData(scanner *bufio.Scanner, job string, tests Tests, buildNumber int, result TestToBuildData) {
+	buff := &bytes.Buffer{}
+	state := scanning
+	build := fmt.Sprintf("%d", buildNumber)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if state == processing {
+			if strings.Contains(line, TimeSeriesEnd) {
+				state = scanning
+
+				obj := TestData{}
+				if err := json.Unmarshal(buff.Bytes(), &obj); err != nil {
+					fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, buff.String())
+					continue
+				}
+				testName, nodeName := obj.Labels["test"], obj.Labels["node"]
+				nodeName = strings.Split(nodeName, "-image-")[0]
+
+				if _, found := result[testName]; !found {
+					fmt.Fprintf(os.Stderr, "Error: tracing data have no test result: %s", testName)
+					continue
+				}
+				if _, found := result[testName].Data[nodeName]; !found {
+					fmt.Fprintf(os.Stderr, "Error: tracing data have not test result: %s", nodeName)
+					continue
+				}
+				if _, found := result[testName].Data[nodeName][build]; !found {
+					fmt.Fprintf(os.Stderr, "Error: tracing data have not test result: %s", build)
+					continue
+				}
+
+				if result[testName].Version == obj.Version {
+					(result[testName].Data[nodeName][build]).AppendSeriesData(obj)
+				}
+
+				buff.Reset()
+			}
+		}
+		if strings.Contains(line, TimeSeriesTag) {
+			state = processing
+			line = line[strings.Index(line, "{"):]
+		}
+		if state == processing {
+			buff.WriteString(line + " ")
+		}
+	}
+}

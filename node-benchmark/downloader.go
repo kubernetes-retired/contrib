@@ -87,8 +87,8 @@ type ResourceSeries struct {
 type TestData struct {
 	Version         string                    `json:"version"`
 	DataItems       []perftype.DataItem       `json:"dataItems,omitempty"`
-	OperationSeries map[string][]int64        `json:"op_data,omitempty"`
-	ResourceSeries  map[string]ResourceSeries `json:"resource_data,omitempty"`
+	OperationSeries map[string][]int64        `json:"op_series,omitempty"`
+	ResourceSeries  map[string]ResourceSeries `json:"resource_series,omitempty"`
 	Labels          map[string]string         `json:"labels,omitempty"`
 }
 

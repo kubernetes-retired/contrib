@@ -34,14 +34,6 @@
           </md-input-container>
           </div>
 
-          <!-- min build -->
-          <div style="width: 150px" layout-gt-sm="row">
-            <legend style="color: #3F51B5;">Min build:</legend>
-            <md-input-container md-no-float class="md-block">
-              <input ng-model="controller.minBuild">
-            </md-input-container>
-          </div>
-
           <!-- compare button -->
           <div layout="row" layout-align="space-around">
             <div style="width:50px"></div>
@@ -144,199 +136,14 @@
 
         <!-- Menu 4: navigation -->
         <div class="nav">
-          <!-- Page 1: builds -->
-          <script type="text/ng-template" id="partials/builds.html">
-          <div class="display-latency">
-            <!-- Plot Create Pod Latency -->
-            <div id="chart-div">
-            <p align="center">Pod Creation Latency</p>
-            <canvas id="line" class="chart chart-line" chart-data="controller.seriesDataMap['latency']"
-              chart-labels="controller.buildsMap['latency']" chart-options="controller.optionsMap['latency']"
-              chart-series="controller.seriesMap['latency']" chart-click="controller.onClick">
-            </canvas>
-            <div tc-chartjs-legend chart-legend="legendsMap['latency']"></div>
-            </div>
-          </div>
-
-          <div class="display-resource" align="center">
-            <!-- Plot Kubelet CPU Usage -->
-            <div id="chart-div">
-            <p align="center">Kubelet CPU Usage</p>
-            <canvas id="line" class="chart chart-line" chart-data="controller.seriesDataMap['kubelet_cpu']"
-              chart-labels="controller.buildsMap['kubelet_cpu']" chart-options="controller.optionsMap['kubelet_cpu']"
-              chart-series="controller.seriesMap['kubelet_cpu']" chart-click="controller.onClick">
-            </canvas>
-            </div>
-
-            <!-- Plot Kubelet Memory Usage -->
-            <div id="chart-div">
-            <p align="center">Kubelet Memory Usage</p>
-            <canvas id="line" class="chart chart-line" chart-data="controller.seriesDataMap['kubelet_memory']"
-              chart-labels="controller.buildsMap['kubelet_memory']" chart-options="controller.optionsMap['kubelet_memory']"
-              chart-series="controller.seriesMap['kubelet_memory']" chart-click="controller.onClick">
-            </canvas>
-            </div>
-
-            <!-- Plot Runtime CPU Usage -->
-            <div id="chart-div">
-            <p align="center">Runtime CPU Usage</p>
-            <canvas id="line" class="chart chart-line" chart-data="controller.seriesDataMap['runtime_cpu']"
-              chart-labels="controller.buildsMap['runtime_cpu']" chart-options="controller.optionsMap['runtime_cpu']"
-              chart-series="controller.seriesMap['runtime_cpu']" chart-click="controller.onClick">
-            </canvas>
-            </div>
-
-            <!-- Plot Runtime Memory Usage -->
-            <div id="chart-div">
-            <p align="center">Runtime Memory Usage</p>
-            <canvas id="line" class="chart chart-line" chart-data="controller.seriesDataMap['runtime_memory']"
-              chart-labels="controller.buildsMap['runtime_memory']" chart-options="controller.optionsMap['runtime_memory']"
-              chart-series="controller.seriesMap['runtime_memory']" chart-click="controller.onClick">
-            </canvas>
-            </div>
-          </div>
-          </script>
-        
-          <!-- Page 2: comparison -->
-          <script type="text/ng-template" id="partials/comparison.html">
-
-           <div class="select_aggregation">
-              <div style="width: 200px; display: inline-block;">
-                <legend style="color: #3F51B5; ">Aggregation method</legend>
-                <md-input-container>
-                  <md-select placeholder="aggName" ng-model="controller.aggregateType"  ng-change="controller.aggChanged()">
-                    <md-option ng-value="agg" ng-repeat="agg in controller.aggregateTypes">
-                      {{agg}}
-                    </md-option>
-                  </md-select>
-                </md-input-container> 
-              </div>
-              <div>
-                <md-button class="md-raised" ng-click="controller.plotComparison()">
-                  Load
-                </md-button>
-              </div>
-            </div>
-          
-          <div class="display-latency-bar">
-            <!-- Plot Create Pod Latency -->
-            <div id="chart-div">
-            <p align="center">Pod Creation Latency</p>
-            <canvas id="bar" class="chart chart-bar" chart-data="controller.comparisonSeriesDataMap['latency']" 
-              chart-labels="controller.comparisonLabelsMap['latency']" 
-              chart-series="controller.comparisonSeriesMap['latency']"
-              chart-options="controller.comparisonOptionsMap['latency']">
-            </canvas>
-            </div>
-          </div>
-
-          <div class="display-resource-bar">
-            <!-- Plot Kubelet CPU Usage -->
-            <div id="chart-div">
-            <p align="center">Kubelet CPU Usage</p>
-            <canvas id="bar" class="chart chart-bar" chart-data="controller.comparisonSeriesDataMap['kubelet_cpu']" 
-              chart-labels="controller.comparisonLabelsMap['kubelet_cpu']" 
-              chart-series="controller.comparisonSeriesMap['kubelet_cpu']"
-              chart-options="controller.comparisonOptionsMap['kubelet_cpu']">
-            </canvas>
-            </div>
-
-            <!-- Plot Kubelet Memory Usage -->
-            <div id="chart-div">
-            <p align="center">Kubelet Memory Usage</p>
-            <canvas id="bar" class="chart chart-bar" chart-data="controller.comparisonSeriesDataMap['kubelet_memory']" 
-              chart-labels="controller.comparisonLabelsMap['kubelet_memory']" 
-              chart-series="controller.comparisonSeriesMap['kubelet_memory']"
-              chart-options="controller.comparisonOptionsMap['kubelet_memory']">
-            </canvas>
-            </div>
-
-            <!-- Plot Runtime CPU Usage -->
-            <div id="chart-div">
-            <p align="center">Runtime CPU Usage</p>
-            <canvas id="bar" class="chart chart-bar" chart-data="controller.comparisonSeriesDataMap['runtime_cpu']" 
-              chart-labels="controller.comparisonLabelsMap['runtime_cpu']" 
-              chart-series="controller.comparisonSeriesMap['runtime_cpu']"
-              chart-options="controller.comparisonOptionsMap['runtime_cpu']">
-            </canvas>
-            </div>
-
-            <!-- Plot Runtime Memory Usage -->
-            <div id="chart-div">
-            <p align="center">Runtime Memory Usage</p>
-            <canvas id="bar" class="chart chart-bar" chart-data="controller.comparisonSeriesDataMap['runtime_memory']" 
-              chart-labels="controller.comparisonLabelsMap['runtime_memory']" 
-              chart-series="controller.comparisonSeriesMap['runtime_memory']"
-              chart-options="controller.comparisonOptionsMap['runtime_memory']">
-            </canvas>
-            </div>
-          </div>
-
-          </script>
-        
-          <!-- Page 3: time series -->
-          <script type="text/ng-template" id="partials/series.html">
-            <div class="select_series">
-              <div style="width: 150px" layout-gt-sm="row">
-                <legend style="color: #3F51B5;"><b>Select build:</b></legend>
-                <md-input-container md-no-float class="md-block">
-                  <input ng-model="controller.build">
-                </md-input-container>
-              </div>
-              <div>
-                <md-button class="md-raised" ng-click="controller.buildChanged()">
-                  Load
-                </md-button>
-              </div>
-            </div>
-            
-            <p style="color: #3F51B5; font-weight: 300;" align="center">
-              Node: {{ controller.seriesBuildLabels.node }}
-            </p>
-  
-            <!-- Plot Create Pod Latency (not implemented yet) -->    
-            <div class="display-latency">
-              <div id="chart-div">
-                <p align="center">Pod Creation Latency</p>
-                <canvas id="series_latency"></canvas>
-              </div>
-            </div>
-
-            <!-- Plot Kubelet CPU Usage -->
-            <div class="display-resource">
-              <div id="chart-div">
-                <p align="center">Kubelet CPU Usage</p>
-                <canvas id="series_kubelet_cpu"></canvas>
-              </div>
-
-              <!-- Plot Kubelet Memory Usage -->
-              <div id="chart-div">
-                <p align="center">Kubelet Memory Usage</p>
-                <canvas id="series_kubelet_memory"></canvas>
-              </div>
-
-              <!-- Plot Runtime CPU Usage -->
-              <div id="chart-div">
-                <p align="center">Runtime CPU Usage</p>
-                <canvas id="series_runtime_cpu"></canvas>
-              </div>
-
-              <!-- Plot Runtime Memory Usage -->
-              <div id="chart-div">
-                <p align="center">Runtime Memory Usage</p>
-                <canvas id="series_runtime_memory"></canvas>      
-              </div>
-            </div>
-          </div>
-
-          </script>
-
           <md-tabs md-stretch-tabs md-selected="selectedIndex">
             <md-tab label="Builds"></md-tab> 
             <md-tab label="Comparison"></md-tab>
-            <md-tab label="Time Series"></md-tab>  
+            <md-tab label="Time Series"></md-tab>
+            <md-tab label="Config"></md-tab>
           </md-tabs>
-        <div id="chart" ui-view flex> </div>
+          <div id="chart" ui-view flex> </div>
+        </div>
       </div>
 
       <!-- Angular Material Dependencies -->
@@ -350,6 +157,8 @@
       <script src="builds.js"></script>
       <script src="comparison.js"></script>
       <script src="series.js"></script>
+      <script src="overview.js"></script>
+      <script src="config.js"></script>
     </div>
   </body>
 </html>

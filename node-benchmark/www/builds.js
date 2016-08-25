@@ -30,7 +30,7 @@ var plotRules = {
 // Rules to parse test options
 var testOptions = {
     'density': {
-        options: ['opertation', 'mode', 'pods', 'interval (ms)', 'background pods', 'stress'],
+        options: ['opertation', 'mode', 'pods', 'background pods', 'interval (ms)', 'stress'],
         remark: '',
     },
     'resource': {
@@ -48,15 +48,19 @@ app.config(function($stateProvider, $urlRouterProvider) {
         $stateProvider
         .state('builds', {
             url: "/builds",
-            templateUrl: "partials/builds.html"
+            templateUrl: "builds.html"
         })
         .state('comparison', {
             url: "/comparison",
-            templateUrl: "partials/comparison.html"
+            templateUrl: "comparison.html"
         })
         .state('series', {
             url: "/series",
-            templateUrl: "partials/series.html"
+            templateUrl: "series.html"
+        })
+        .state('config', {
+            url: "/config",
+            templateUrl: "config.html"
         });
     });
 
@@ -78,6 +82,9 @@ app.controller('AppCtrl', ['$scope', '$http', '$interval', '$location',
                     break;
                 case 2:
                     $location.url("/series");
+                    break;
+                case 3:
+                    $location.url("/config");
                     break;
             }
             if(old == 2) { // clear charts for time series plot
@@ -132,6 +139,10 @@ var PerfDashApp = function(http, scope) {
 
     // for time series
     this.seriesCharts = {};
+
+    // for condig
+    this.minBuild = 0;
+    this.maxBuild = 0;
 };
 
 // TODO(coufon): not handled for benchmark yet
@@ -162,6 +173,7 @@ PerfDashApp.prototype.refresh = function() {
                 this.parseTest()
                 this.parseNodeInfo();
                 this.testChanged();
+                //this.loadOverview();
             }.bind(this))
     .error(function(data) {
         console.log("error fetching result");
@@ -314,10 +326,14 @@ PerfDashApp.prototype.nodeChanged = function() {
         return;
     }
     this.node = this.image + '/' + this.machine;
-    this.data = this.allData[this.test].data[this.node];
-    
-    this.labels = this.getLabels();
+    this.data = this.allData[this.test].data[this.node];    
     this.builds = this.getBuilds();
+    this.labels = this.getLabels();
+    
+    if(this.maxBuild == 0) {
+        this.minBuild = parseInt(Math.min.apply(Math, this.builds));
+        this.maxBuild = parseInt(Math.max.apply(Math, this.builds));
+    }
     this.labelChanged();
 };
 
@@ -441,19 +457,21 @@ PerfDashApp.prototype.getLabels = function() {
 PerfDashApp.prototype.getData = function(labels, builds) {
     var result = [];
     angular.forEach(this.data, function(items, build) {
-        angular.forEach(items.perf, function(item) {
-            var match = true;
-            angular.forEach(labels, function(label, name) {
-                if (item.labels[name] != label) {
-                    match = false;
+        if(parseInt(build) >= this.minBuild && parseInt(build) <= this.maxBuild) {
+            angular.forEach(items.perf, function(item) {
+                var match = true;
+                angular.forEach(labels, function(label, name) {
+                    if (item.labels[name] != label) {
+                        match = false;
+                    }
+                });
+                if (match && builds[builds.length-1] != build) {
+                    result.push(item);
+                    builds.push(build)
                 }
             });
-            if (match && builds[builds.length-1] != build) {
-                result.push(item);
-                builds.push(build)
-            }
-        });
-    });
+        }
+    }, this);
     return result;
 };
 

@@ -23,7 +23,7 @@
 
 .page #node_menu {
     display: flex;
-    justify-content: space-between;
+    justify-content: space-around;
 }
 
 .nav {
@@ -85,10 +85,15 @@
 
 .select_aggregation {
     display: flex;
-    justify-content: space-between;
+    justify-content: space-around;
 }
 
 .select_series {
     display: flex;
-    justify-content: space-between;
+    justify-content: space-around;
+}
+
+.config {
+    display: flex;
+    justify-content: space-around;
 }
