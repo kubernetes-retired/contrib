@@ -18,6 +18,7 @@ package main
 
 import (
 	"testing"
+	"os"
 )
 
 func TestSyslogSocket(t *testing.T) {
@@ -27,4 +28,5 @@ func TestSyslogSocket(t *testing.T) {
 	}
 
 	server.Shutdown()
+	os.Remove("./test-syslog.socket")
 }

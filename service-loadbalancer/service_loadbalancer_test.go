@@ -159,7 +159,7 @@ func TestGetServices(t *testing.T) {
 	flb.tcpServices = map[string]int{
 		svc1.Name: 20,
 	}
-	http, _, tcp := flb.getServices()
+	http, _, tcp, https := flb.getServices()
 	serviceURLEp := fmt.Sprintf("%v:%v", svc1.Name, 20)
 	if len(tcp) != 1 || tcp[0].Name != serviceURLEp || tcp[0].FrontendPort != 20 {
 		t.Fatalf("Unexpected tcp service %+v expected %+v", tcp, svc1.Name)
@@ -198,6 +198,20 @@ func TestGetServices(t *testing.T) {
 		}
 		if len(receivedEp) != len(expectedEps) && !receivedEp.IsSuperset(expectedEps) {
 			t.Fatalf("Expected %+v, got %+v", expectedEps, receivedEp)
+		}
+	}
+
+	for _, s := range https {
+		expectedEps, ok := expectedURLMapping[s.Name]
+		if !ok {
+			t.Fatalf("Expected https url endpoint %v, found %+v", s.Name, expectedURLMapping)
+		}
+		receivedEp := sets.NewString()
+		for i := range s.Ep {
+			receivedEp.Insert(s.Ep[i])
+		}
+		if len(receivedEp) != len(expectedEps) && !receivedEp.IsSuperset(expectedEps) {
+			t.Fatalf("Expected https %+v, got %+v", expectedEps, receivedEp)
 		}
 	}
 }
@@ -295,10 +309,11 @@ func compareCfgFiles(t *testing.T, orig, template string) {
 
 func TestDefaultAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
@@ -310,10 +325,11 @@ func TestDefaultAlgorithm(t *testing.T) {
 
 func TestDefaultCustomAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("leastconn")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -325,11 +341,12 @@ func TestDefaultCustomAlgorithm(t *testing.T) {
 
 func TestSyslog(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	flb.cfg.startSyslog = true
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -341,11 +358,12 @@ func TestSyslog(t *testing.T) {
 
 func TestSvcCustomAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	httpSvc[0].Algorithm = "leastconn"
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -357,11 +375,12 @@ func TestSvcCustomAlgorithm(t *testing.T) {
 
 func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 	flb := buildTestLoadBalancer("leastconn")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	httpSvc[0].Algorithm = "roundrobin"
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -373,11 +392,12 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 
 func TestServiceAffinity(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
@@ -389,17 +409,104 @@ func TestServiceAffinity(t *testing.T) {
 
 func TestServiceAffinityWithCookies(t *testing.T) {
 	flb := buildTestLoadBalancer("")
-	httpSvc, _, tcpSvc := flb.getServices()
+	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	httpSvc[0].SessionAffinity = true
 	httpSvc[0].CookieStickySession = true
 	if err := flb.cfg.write(
 		map[string][]service{
 			"http": httpSvc,
+			"https": httpsSvc,
 			"tcp":  tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
 	template, _ := filepath.Abs("./test-samples/TestServiceAffinityWithCookies.cfg")
+	compareCfgFiles(t, flb.cfg.Config, template)
+	os.Remove(flb.cfg.Config)
+}
+
+func TestRulesPerService(t *testing.T) {
+	endpointAddresses := []api.EndpointAddress{
+		{IP: "1.2.3.4"},
+		{IP: "5.6.7.8"},
+	}
+	ports := []int{3306, 80, 443}
+	endpointPorts := []api.EndpointPort{
+		{Port: ports[0], Protocol: "TCP"},
+		{Port: ports[1], Protocol: "HTTP"},
+		{Port: ports[2], Protocol: "HTTP"},
+	}
+	svc1ServicePorts := []api.ServicePort{
+		{Name: "svc1-tcp-port", Port: ports[0], TargetPort: intstr.FromInt(ports[0])},
+		{Name: "svc1-http-port", Port: ports[1], TargetPort: intstr.FromInt(ports[1])},
+		{Name: "svc1-https-port", Port: ports[2], TargetPort: intstr.FromInt(ports[2])},
+	}
+	svc2ServicePorts := []api.ServicePort{
+		{Name: "svc2-tcp-port", Port: ports[0], TargetPort: intstr.FromInt(ports[0])},
+		{Name: "svc2-http-port", Port: ports[1], TargetPort: intstr.FromInt(ports[1])},
+		{Name: "svc2-https-port", Port: ports[2], TargetPort: intstr.FromInt(ports[2])},
+	}
+	svc3ServicePorts := []api.ServicePort{
+		{Name: "svc3-https-1-port", Port: ports[2], TargetPort: intstr.FromInt(ports[2])},
+		{Name: "svc3-https-2-port", Port: ports[2], TargetPort: intstr.FromInt(ports[2])},
+	}
+	svc3EndpointPorts := []api.EndpointPort{
+		{Port: ports[2], Protocol: "HTTP"},
+		{Port: ports[2], Protocol: "HTTP"},
+	}
+
+	svc1 := getService(svc1ServicePorts)
+	svc1.ObjectMeta.Name = "svc-1"
+	svc1.ObjectMeta.Annotations = map[string]string{
+		lbAclMatch + ".svc1-http-port": "-i /svc1-http-custom-acl",
+		lbHostKey + ".svc1-http-port": "svc1-http-custom-acl.mydomain",
+		lbHostKey + ".svc1-https-port": "svc1-https-custom-acl.mydomain",
+		lbSslBridge + ".svc1-https-port": "true",
+	}
+	svc2 := getService(svc2ServicePorts)
+	svc2.ObjectMeta.Name = "svc-2"
+	svc2.ObjectMeta.Annotations = map[string]string{
+		lbSslTerm: "true",
+		lbAclMatch + ".svc2-http-port": "-i /svc2-http-custom-acl",
+		lbHostKey + ".svc2-http-port": "svc2-http-custom-acl.mydomain",
+		lbHostKey + ".svc2-https-port": "svc2-https-custom-acl.mydomain",
+		lbSslBridge + ".svc2-https-port": "true",
+	}
+	svc3 := getService(svc3ServicePorts)
+	svc3.ObjectMeta.Name = "svc-3"
+	svc3.ObjectMeta.Annotations = map[string]string{
+		lbSslBridge: "true",
+		lbAclMatch + ".svc3-https-1-port": "-i /svc3-https-1-custom-acl",
+		lbHostKey + ".svc3-https-2-port": "svc3-https-2-custom-acl.mydomain",
+	}
+
+	endpoints := []*api.Endpoints{
+		getEndpoints(svc1, endpointAddresses, endpointPorts),
+		getEndpoints(svc2, endpointAddresses, endpointPorts),
+		getEndpoints(svc3, endpointAddresses, svc3EndpointPorts),
+	}
+	flb := newFakeLoadBalancerController(endpoints, []*api.Service{svc1, svc2, svc3})
+	flb.tcpServices = map[string]int{
+		svc1.Name: ports[0],
+		svc2.Name: ports[0],
+	}
+
+	cfg, _ := filepath.Abs("./test-samples/loadbalancer_test.json")
+	flb.cfg = parseCfg(cfg, "roundrobin", "/ssl/crt.pem", "/ssl/ca.crt")
+	cfgFile, _ := filepath.Abs("test-rules-per-svc-" + string(util.NewUUID()))
+	flb.cfg.Config = cfgFile
+
+	httpSvc, httpsTermSvc, tcpSvc, httpsSvc  := flb.getServices()
+	if err := flb.cfg.write(
+		map[string][]service{
+			"http": httpSvc,
+			"httpsTerm": httpsTermSvc,
+			"tcp":  tcpSvc,
+			"https": httpsSvc,
+		}, false); err != nil {
+		t.Fatalf("Expected at least one tcp or http service: %v", err)
+	}
+	template, _ := filepath.Abs("./test-samples/TestRulesPerService.cfg")
 	compareCfgFiles(t, flb.cfg.Config, template)
 	os.Remove(flb.cfg.Config)
 }

@@ -52,6 +52,7 @@ const (
 	lbAlgorithmKey           = "serviceloadbalancer/lb.algorithm"
 	lbHostKey                = "serviceloadbalancer/lb.host"
 	lbSslTerm                = "serviceloadbalancer/lb.sslTerm"
+	lbSslBridge              = "serviceloadbalancer/lb.sslBridge"
 	lbAclMatch               = "serviceloadbalancer/lb.aclMatch"
 	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
@@ -165,6 +166,9 @@ type service struct {
 	// if true, terminate ssl using the loadbalancers certificates.
 	SslTerm bool
 
+	// if true, proxy ssl traffic to ssl enabled backends
+	SslProxy bool
+
 	// if set use this to match the path rule
 	AclMatch string
 
@@ -228,7 +232,11 @@ func (s serviceAnnotations) getAlgorithm() (string, bool) {
 	return val, ok
 }
 
-func (s serviceAnnotations) getHost() (string, bool) {
+func (s serviceAnnotations) getHost(servicePortName string) (string, bool) {
+	index := lbHostKey + "." + servicePortName;
+	if val, ok := s[index]; ok {
+		return val, ok
+	}
 	val, ok := s[lbHostKey]
 	return val, ok
 }
@@ -243,8 +251,21 @@ func (s serviceAnnotations) getSslTerm() (string, bool) {
 	return val, ok
 }
 
-func (s serviceAnnotations) getAclMatch() (string, bool) {
+func (s serviceAnnotations) getAclMatch(servicePortName string) (string, bool) {
+	index := lbAclMatch + "." + servicePortName;
+	if val, ok := s[index]; ok {
+		return val, ok
+	}
 	val, ok := s[lbAclMatch]
+	return val, ok
+}
+
+func (s serviceAnnotations) getSslProxy(servicePortName string) (string, bool) {
+	index := lbSslBridge + "." + servicePortName;
+	if val, ok := s[index]; ok {
+		return val, ok
+	}
+	val, ok := s[lbSslBridge]
 	return val, ok
 }
 
@@ -408,7 +429,7 @@ func getServiceNameForLBRule(s *api.Service, servicePort int) string {
 }
 
 // getServices returns a list of services and their endpoints.
-func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSvc []service, tcpSvc []service) {
+func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSvc []service, tcpSvc []service, httpsSvc []service) {
 	ep := []string{}
 	services, _ := lbc.svcLister.List()
 	for _, s := range services.Items {
@@ -442,7 +463,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				BackendPort: getTargetPort(&servicePort),
 			}
 
-			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(); ok {
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(servicePort.Name); ok {
 				newSvc.Host = val
 			}
 
@@ -472,8 +493,17 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				}
 			}
 
-			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getAclMatch(); ok {
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getAclMatch(servicePort.Name); ok {
 				newSvc.AclMatch = val
+			}
+
+			// By default ssl proxy is disabled
+			newSvc.SslProxy = false
+			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getSslProxy(servicePort.Name); ok {
+				b, err := strconv.ParseBool(val)
+				if err == nil {
+					newSvc.SslProxy = b
+				}
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
@@ -490,6 +520,8 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				newSvc.FrontendPort = lbc.httpPort
 				if newSvc.SslTerm == true {
 					httpsTermSvc = append(httpsTermSvc, newSvc)
+				} else if (newSvc.SslProxy == true) {
+					httpsSvc = append(httpsSvc, newSvc)
 				} else {
 					httpSvc = append(httpSvc, newSvc)
 				}
@@ -499,6 +531,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 	}
 
 	sort.Sort(serviceByName(httpSvc))
+	sort.Sort(serviceByName(httpsSvc))
 	sort.Sort(serviceByName(httpsTermSvc))
 	sort.Sort(serviceByName(tcpSvc))
 
@@ -511,7 +544,7 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 		time.Sleep(100 * time.Millisecond)
 		return errDeferredSync
 	}
-	httpSvc, httpsTermSvc, tcpSvc := lbc.getServices()
+	httpSvc, httpsTermSvc, tcpSvc, httpsSvc := lbc.getServices()
 	if len(httpSvc) == 0 && len(httpsTermSvc) == 0 && len(tcpSvc) == 0 {
 		return nil
 	}
@@ -520,6 +553,7 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 			"http":      httpSvc,
 			"httpsTerm": httpsTermSvc,
 			"tcp":       tcpSvc,
+			"https":     httpsSvc,
 		}, dryRun); err != nil {
 		return err
 	}
