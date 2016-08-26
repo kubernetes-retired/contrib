@@ -28,6 +28,7 @@ import (
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
@@ -57,6 +58,10 @@ var (
 	initialDelay = flags.Duration("initial-delay", 2*time.Minute,
 		`How long should rescheduler wait after start to make sure
 		 all critical addons had a chance to start.`)
+
+	podScheduledTimeout = flags.Duration("pod-scheduled-timeout", 10*time.Minute,
+		`How long should rescheduler wait for critical pod to be scheduled
+		 after evicting pods to make a spot for it.`)
 )
 
 func main() {
@@ -119,7 +124,7 @@ func main() {
 							glog.Warningf("%+v", err)
 						} else {
 							podsBeingProcessed.Add(pod)
-							go waitForScheduled(podsBeingProcessed, pod)
+							go waitForScheduled(kubeClient, podsBeingProcessed, pod)
 						}
 					}
 				}
@@ -130,10 +135,21 @@ func main() {
 	}
 }
 
-func waitForScheduled(podsBeingProcessed *podSet, pod *kube_api.Pod) {
-	// TODO(piosz): periodically check whether pod is actually scheduled
+func waitForScheduled(client *kube_client.Client, podsBeingProcessed *podSet, pod *kube_api.Pod) {
 	glog.Infof("Waiting for pod %s to be scheduled", podId(pod))
-	time.Sleep(10 * time.Minute)
+	err := wait.Poll(time.Second, *podScheduledTimeout, func() (bool, error) {
+		p, err := client.Pods(pod.Namespace).Get(pod.Name)
+		if err != nil {
+			glog.Warningf("Error while getting pod %s: %v", podId(pod), err)
+			return false, nil
+		}
+		return p.Spec.NodeName != "", nil
+	})
+	if err != nil {
+		glog.Warningf("Timeout while waiting for pod %s to be scheduled after %v.", podId(pod), *podScheduledTimeout)
+	} else {
+		glog.Infof("Pod %v was successfully scheduled.", podId(pod))
+	}
 	podsBeingProcessed.Remove(pod)
 }
 
