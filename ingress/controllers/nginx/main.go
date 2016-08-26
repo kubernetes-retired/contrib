@@ -29,8 +29,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
-	"k8s.io/contrib/ingress/controllers/nginx/nginx"
-
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/healthz"
@@ -77,9 +75,6 @@ var (
 
 	healthzPort = flags.Int("healthz-port", healthPort, "port for healthz endpoint.")
 
-	buildCfg = flags.Bool("dump-nginx-configuration", false, `Returns a ConfigMap with the default nginx conguration.
-		This can be used as a guide to create a custom configuration.`)
-
 	profiling = flags.Bool("profiling", true, `Enable profiling via web interface host:port/debug/pprof/`)
 
 	defSSLCertificate = flags.String("default-ssl-certificate", "", `Name of the secret that contains a SSL 
@@ -92,11 +87,6 @@ func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
 	glog.Infof("Using build: %v - %v", gitRepo, version)
-
-	if *buildCfg {
-		fmt.Printf("Example of ConfigMap to customize NGINX configuration:\n%v", nginx.ConfigMapAsString())
-		os.Exit(0)
-	}
 
 	if *defaultSvc == "" {
 		glog.Fatalf("Please specify --default-backend-service")
@@ -123,7 +113,7 @@ func main() {
 	glog.Infof("Validated %v as the default backend", *defaultSvc)
 
 	if *nxgConfigMap != "" {
-		_, _, err := parseNsName(*nxgConfigMap)
+		_, _, err = parseNsName(*nxgConfigMap)
 		if err != nil {
 			glog.Fatalf("configmap error: %v", err)
 		}
@@ -158,12 +148,12 @@ func registerHandlers(lbc *loadBalancerController) {
 	mux := http.NewServeMux()
 	healthz.InstallHandler(mux, lbc.nginx)
 
-	http.HandleFunc("/build", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/build", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "build: %v - %v", gitRepo, version)
 	})
 
-	http.HandleFunc("/stop", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/stop", func(w http.ResponseWriter, r *http.Request) {
 		lbc.Stop()
 	})
 
