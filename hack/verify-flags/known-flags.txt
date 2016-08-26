@@ -124,6 +124,7 @@ default-ssl-certificate
 housekeeping-interval
 system-namespace
 initial-delay
+pod-scheduled-timeout
 netrc-dir
 publish-command
 triager-url
