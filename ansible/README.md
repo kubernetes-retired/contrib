@@ -37,6 +37,10 @@ Look through all of the options in `inventory/group_vars/all.yml` and
 set the variables to reflect your needs. The options are described there
 in full detail.
 
+#### Securing etcd
+
+If you wish to use TLS certificates for your etcd cluster you have to specify TLS keypairs and https for `etcd_url_scheme`/`etcd_peer_url_scheme`. This will enable encrypted communication, but will not authenticate the clients certificate validity. To prevent unauthorized access to your etcd cluster, please set `etcd_client_cert_auth`/`etcd_peer_client_cert_auth` correspondingly to true.
+
 ## Running the playbook
 
 After going through the setup, run the `deploy-cluster.sh` script from within the `scripts` directory:
