@@ -138,7 +138,14 @@
         - /etc/systemd/system/kube-scheduler.service
         - /etc/systemd/system/flanneld.service
         - /etc/systemd/system/flanneld.service.wants
-        - /etc/systemd/system/multi-user.target.wants
+        - /etc/systemd/system/multi-user.target.wants/etcd.service
+        - /etc/systemd/system/multi-user.target.wants/flanneld.service
+        - /etc/systemd/system/multi-user.target.wants/kubelet.service
+        - /etc/systemd/system/multi-user.target.wants/kube-proxy.service
+        - /etc/systemd/system/multi-user.target.wants/kube-apiserver.service
+        - /etc/systemd/system/multi-user.target.wants/kube-scheduler.service
+        - /etc/systemd/system/multi-user.target.wants/kube-controller-manager.service
+        - /etc/systemd/system/multi-user.target.wants/kube-addons.service
         - /etc/systemd/system/delay-master-services.target
         - /etc/systemd/system/delay-node-services.target
         - /etc/sysconfig/flanneld
