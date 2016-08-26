@@ -17,8 +17,8 @@ limitations under the License.
 package main
 
 import (
-	"testing"
 	"os"
+	"testing"
 )
 
 func TestSyslogSocket(t *testing.T) {

@@ -233,7 +233,7 @@ func (s serviceAnnotations) getAlgorithm() (string, bool) {
 }
 
 func (s serviceAnnotations) getHost(servicePortName string) (string, bool) {
-	index := lbHostKey + "." + servicePortName;
+	index := lbHostKey + "." + servicePortName
 	if val, ok := s[index]; ok {
 		return val, ok
 	}
@@ -252,7 +252,7 @@ func (s serviceAnnotations) getSslTerm() (string, bool) {
 }
 
 func (s serviceAnnotations) getAclMatch(servicePortName string) (string, bool) {
-	index := lbAclMatch + "." + servicePortName;
+	index := lbAclMatch + "." + servicePortName
 	if val, ok := s[index]; ok {
 		return val, ok
 	}
@@ -261,7 +261,7 @@ func (s serviceAnnotations) getAclMatch(servicePortName string) (string, bool) {
 }
 
 func (s serviceAnnotations) getSslProxy(servicePortName string) (string, bool) {
-	index := lbSslBridge + "." + servicePortName;
+	index := lbSslBridge + "." + servicePortName
 	if val, ok := s[index]; ok {
 		return val, ok
 	}
@@ -520,7 +520,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				newSvc.FrontendPort = lbc.httpPort
 				if newSvc.SslTerm == true {
 					httpsTermSvc = append(httpsTermSvc, newSvc)
-				} else if (newSvc.SslProxy == true) {
+				} else if newSvc.SslProxy == true {
 					httpsSvc = append(httpsSvc, newSvc)
 				} else {
 					httpSvc = append(httpSvc, newSvc)

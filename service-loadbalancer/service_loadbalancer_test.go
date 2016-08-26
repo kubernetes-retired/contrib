@@ -312,9 +312,9 @@ func TestDefaultAlgorithm(t *testing.T) {
 	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
+			"http":  httpSvc,
 			"https": httpsSvc,
-			"tcp":  tcpSvc,
+			"tcp":   tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected a valid HAProxy cfg, but an error was returned: %v", err)
 	}
@@ -328,9 +328,9 @@ func TestDefaultCustomAlgorithm(t *testing.T) {
 	httpSvc, _, tcpSvc, httpsSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
+			"http":  httpSvc,
 			"https": httpsSvc,
-			"tcp":  tcpSvc,
+			"tcp":   tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
@@ -345,9 +345,9 @@ func TestSyslog(t *testing.T) {
 	flb.cfg.startSyslog = true
 	if err := flb.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
+			"http":  httpSvc,
 			"https": httpsSvc,
-			"tcp":  tcpSvc,
+			"tcp":   tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
@@ -362,9 +362,9 @@ func TestSvcCustomAlgorithm(t *testing.T) {
 	httpSvc[0].Algorithm = "leastconn"
 	if err := flb.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
+			"http":  httpSvc,
 			"https": httpsSvc,
-			"tcp":  tcpSvc,
+			"tcp":   tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
@@ -379,9 +379,9 @@ func TestCustomDefaultAndSvcAlgorithm(t *testing.T) {
 	httpSvc[0].Algorithm = "roundrobin"
 	if err := flb.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
+			"http":  httpSvc,
 			"https": httpsSvc,
-			"tcp":  tcpSvc,
+			"tcp":   tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
@@ -396,9 +396,9 @@ func TestServiceAffinity(t *testing.T) {
 	httpSvc[0].SessionAffinity = true
 	if err := flb.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
+			"http":  httpSvc,
 			"https": httpsSvc,
-			"tcp":  tcpSvc,
+			"tcp":   tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
@@ -414,9 +414,9 @@ func TestServiceAffinityWithCookies(t *testing.T) {
 	httpSvc[0].CookieStickySession = true
 	if err := flb.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
+			"http":  httpSvc,
 			"https": httpsSvc,
-			"tcp":  tcpSvc,
+			"tcp":   tcpSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
@@ -458,26 +458,26 @@ func TestRulesPerService(t *testing.T) {
 	svc1 := getService(svc1ServicePorts)
 	svc1.ObjectMeta.Name = "svc-1"
 	svc1.ObjectMeta.Annotations = map[string]string{
-		lbAclMatch + ".svc1-http-port": "-i /svc1-http-custom-acl",
-		lbHostKey + ".svc1-http-port": "svc1-http-custom-acl.mydomain",
-		lbHostKey + ".svc1-https-port": "svc1-https-custom-acl.mydomain",
+		lbAclMatch + ".svc1-http-port":   "-i /svc1-http-custom-acl",
+		lbHostKey + ".svc1-http-port":    "svc1-http-custom-acl.mydomain",
+		lbHostKey + ".svc1-https-port":   "svc1-https-custom-acl.mydomain",
 		lbSslBridge + ".svc1-https-port": "true",
 	}
 	svc2 := getService(svc2ServicePorts)
 	svc2.ObjectMeta.Name = "svc-2"
 	svc2.ObjectMeta.Annotations = map[string]string{
-		lbSslTerm: "true",
-		lbAclMatch + ".svc2-http-port": "-i /svc2-http-custom-acl",
-		lbHostKey + ".svc2-http-port": "svc2-http-custom-acl.mydomain",
-		lbHostKey + ".svc2-https-port": "svc2-https-custom-acl.mydomain",
+		lbSslTerm:                        "true",
+		lbAclMatch + ".svc2-http-port":   "-i /svc2-http-custom-acl",
+		lbHostKey + ".svc2-http-port":    "svc2-http-custom-acl.mydomain",
+		lbHostKey + ".svc2-https-port":   "svc2-https-custom-acl.mydomain",
 		lbSslBridge + ".svc2-https-port": "true",
 	}
 	svc3 := getService(svc3ServicePorts)
 	svc3.ObjectMeta.Name = "svc-3"
 	svc3.ObjectMeta.Annotations = map[string]string{
-		lbSslBridge: "true",
+		lbSslBridge:                       "true",
 		lbAclMatch + ".svc3-https-1-port": "-i /svc3-https-1-custom-acl",
-		lbHostKey + ".svc3-https-2-port": "svc3-https-2-custom-acl.mydomain",
+		lbHostKey + ".svc3-https-2-port":  "svc3-https-2-custom-acl.mydomain",
 	}
 
 	endpoints := []*api.Endpoints{
@@ -496,13 +496,13 @@ func TestRulesPerService(t *testing.T) {
 	cfgFile, _ := filepath.Abs("test-rules-per-svc-" + string(util.NewUUID()))
 	flb.cfg.Config = cfgFile
 
-	httpSvc, httpsTermSvc, tcpSvc, httpsSvc  := flb.getServices()
+	httpSvc, httpsTermSvc, tcpSvc, httpsSvc := flb.getServices()
 	if err := flb.cfg.write(
 		map[string][]service{
-			"http": httpSvc,
+			"http":      httpSvc,
 			"httpsTerm": httpsTermSvc,
-			"tcp":  tcpSvc,
-			"https": httpsSvc,
+			"tcp":       tcpSvc,
+			"https":     httpsSvc,
 		}, false); err != nil {
 		t.Fatalf("Expected at least one tcp or http service: %v", err)
 	}
