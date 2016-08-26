@@ -17,7 +17,6 @@ limitations under the License.
 package mungerutil
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -39,6 +38,17 @@ func TestGetUsers(t *testing.T) {
 	}
 	if len(GetUsers(makeUser("John"), makeUser("John"))) != 1 {
 		t.Error("Duplicate users are not removed")
+	}
+}
+
+func TestCreateMentionedUsers(t *testing.T) {
+	users := GetMentionedUsers(`@John is a valid user, and @-not-user is not.
+What about @multi-dash-in-name? He can also have numbers @123-456 and a single dash in the middle is OK.`)
+	if !reflect.DeepEqual(
+		users,
+		GetUsers(makeUser("@John"), makeUser("@multi-dash"), makeUser("@123-456")),
+	) {
+		t.Error("Failed to create users from mentions")
 	}
 }
 
@@ -64,8 +74,21 @@ func TestUserSetMention(t *testing.T) {
 	if !reflect.DeepEqual(
 		GetUsers(makeUser("@John")).Mention().List(),
 		GetUsers(makeUser("@John")).List()) {
-		fmt.Println(GetUsers(makeUser("@John")).List())
 		t.Error("Failed to re-mention users")
+	}
+}
+
+func TestUserSetUnMention(t *testing.T) {
+	if !reflect.DeepEqual(
+		GetUsers(makeUser("John"), makeUser("@Jane")).UnMention(),
+		GetUsers(makeUser("John"), makeUser("Jane"))) {
+		t.Error("Failed to un-mention users")
+	}
+
+	if !reflect.DeepEqual(
+		GetUsers(makeUser("@John")).UnMention(),
+		GetUsers(makeUser("John"))) {
+		t.Error("Failed to un-mention users")
 	}
 }
 
