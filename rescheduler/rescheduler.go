@@ -25,6 +25,7 @@ import (
 	ca_simulator "k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_utils "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	kube_api "k8s.io/kubernetes/pkg/api"
+	kube_record "k8s.io/kubernetes/pkg/client/record"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -77,6 +78,8 @@ func main() {
 		glog.Fatalf("Failed to create kube client: %v", err)
 	}
 
+	recorder := createEventRecorder(kubeClient)
+
 	predicateChecker, err := ca_simulator.NewPredicateChecker(kubeClient)
 	if err != nil {
 		glog.Fatalf("Failed to create predicate checker: %v", err)
@@ -90,7 +93,6 @@ func main() {
 
 	releaseAllTaints(kubeClient, nodeLister, podsBeingProcessed)
 
-	// TODO(piosz): add events
 	for {
 		select {
 		case <-time.After(*housekeepingInterval):
@@ -115,11 +117,13 @@ func main() {
 						node := findNodeForPod(kubeClient, predicateChecker, nodes, pod)
 						if node == nil {
 							glog.Errorf("Pod %s can't be scheduled on any existing node.", podId(pod))
+							recorder.Eventf(pod, kube_api.EventTypeNormal, "PodDoestFitAnyNode",
+								"Critical pod %s doesn't fit on any node.", podId(pod))
 							continue
 						}
 						glog.Infof("Trying to place the pod on node %v", node.Name)
 
-						err = prepareNodeForPod(kubeClient, predicateChecker, node, pod)
+						err = prepareNodeForPod(kubeClient, recorder, predicateChecker, node, pod)
 						if err != nil {
 							glog.Warningf("%+v", err)
 						} else {
@@ -165,6 +169,13 @@ func createKubeClient(flags *flag.FlagSet, inCluster bool) (*kube_client.Client,
 	return kube_client.NewOrDie(config), nil
 }
 
+func createEventRecorder(client *kube_client.Client) kube_record.EventRecorder {
+	eventBroadcaster := kube_record.NewBroadcaster()
+	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartRecordingToSink(client.Events(""))
+	return eventBroadcaster.NewRecorder(kube_api.EventSource{Component: "rescheduler"})
+}
+
 func releaseAllTaints(client *kube_client.Client, nodeLister *kube_utils.ReadyNodeLister, podsBeingProcessed *podSet) {
 	nodes, err := nodeLister.List()
 	if err != nil {
@@ -207,7 +218,7 @@ func releaseAllTaints(client *kube_client.Client, nodeLister *kube_utils.ReadyNo
 }
 
 // The caller of this function must remove the taint if this function returns error.
-func prepareNodeForPod(client *kube_client.Client, predicateChecker *ca_simulator.PredicateChecker, originalNode *kube_api.Node, criticalPod *kube_api.Pod) error {
+func prepareNodeForPod(client *kube_client.Client, recorder kube_record.EventRecorder, predicateChecker *ca_simulator.PredicateChecker, originalNode *kube_api.Node, criticalPod *kube_api.Pod) error {
 	// Operate on a copy of the node to ensure pods running on the node will pass CheckPredicates below.
 	node, err := copyNode(originalNode)
 	if err != nil {
@@ -237,6 +248,8 @@ func prepareNodeForPod(client *kube_client.Client, predicateChecker *ca_simulato
 	for _, p := range otherPods {
 		if err := predicateChecker.CheckPredicates(p, nodeInfo); err != nil {
 			glog.Infof("Pod %s will be deleted in order to schedule critical pod %s.", podId(p), podId(criticalPod))
+			recorder.Eventf(p, kube_api.EventTypeNormal, "DeletedByRescheduler",
+				"Deleted by rescheduler in order to schedule critical pod %s.", podId(criticalPod))
 			// TODO(piosz): add better support of graceful deletion
 			delErr := client.Pods(p.Namespace).Delete(p.Name, kube_api.NewDeleteOptions(10))
 			if delErr != nil {
