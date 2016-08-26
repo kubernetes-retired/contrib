@@ -2,7 +2,7 @@
   <head>
     <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/angular_material/0.11.0/angular-material.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=RobotoDraft:300,400,500,700,400italic">
-    <link rel="stylesheet" type="text/css" href="public/www.css">
+    <link rel="stylesheet" type="text/css" href="css/www.css">
     <meta name="viewport" content="initial-scale=1" />
   </head>
   
@@ -111,29 +111,6 @@
         </div>
         <hr color="#34495E">
 
-        <!-- Menu 3: comparison -->
-        <md-content>
-          <md-list class="test_list" flex="">
-            <legend style="color: #148F77;">Comparison list:</legend>
-            <md-list-item class="md-3-line" ng-repeat="item in controller.comparisonList">
-              <md-checkbox aria-label="Checkbox 1"
-            	             ng-checked="controller.exists(item.id, controller.comparisonListSelected)" 
-                           ng-click="controller.toggle(item.id, controller.comparisonListSelected)">
-                Checkbox 1: {{ item.id }}
-              </md-checkbox>
-              <div class="md-list-item-text" layout="column">
-                <h4>{{ item.test }}</h4>
-                <h4>{{ item.node }}</h4>
-                <p>{{ item.detail }}</p>
-              </div>
-              <md-button class="md-raised" ng-click="controller.deleteSelectedTest(item)">
-                Delete
-              </md-button>
-            </md-list-item>
-          </md-list>
-        </md-content>
-        <br><hr color="#34495E">
-
         <!-- Menu 4: navigation -->
         <div class="nav">
           <md-tabs md-stretch-tabs md-selected="selectedIndex">
@@ -151,14 +128,15 @@
       <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.8/angular-animate.min.js"></script>
       <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.8/angular-aria.min.js"></script>
       <script src="https://ajax.googleapis.com/ajax/libs/angular_material/1.0.7/angular-material.min.js"></script>
-      <script src="public/Chart.js"></script>
-      <script src="public/angular-chart.js"></script>
-      <script src="public/angular-ui-router.min.js"></script>
-      <script src="builds.js"></script>
-      <script src="comparison.js"></script>
-      <script src="series.js"></script>
-      <script src="overview.js"></script>
-      <script src="config.js"></script>
+      <script src="lib/Chart.js"></script>
+      <script src="lib/angular-chart.js"></script>
+      <script src="lib/angular-ui-router.min.js"></script>
+      <script src="controller/index.js"></script>
+      <script src="controller/builds.js"></script>
+      <script src="controller/comparison.js"></script>
+      <script src="controller/series.js"></script>
+      <script src="controller/overview.js"></script>
+      <script src="controller/config.js"></script>
     </div>
   </body>
 </html>

@@ -16,10 +16,6 @@ limitations under the License.
 
 package main
 
-import (
-	"k8s.io/contrib/test-utils/utils"
-)
-
 // To add new e2e test support, you need to:
 //   1) Transform e2e performance test result into *PerfData* in k8s/kubernetes/test/e2e/perftype,
 //   and print the PerfData in e2e test log.
@@ -39,22 +35,4 @@ const (
 	TestNameSeparator = "[It] "
 	// BenchmarkSeparator is the suffix of benchmark test name.
 	BenchmarkSeparator = " [Benchmark]"
-)
-
-var (
-	// TestConfig contains all the test PerfDash supports now. Downloader will download and
-	// analyze build log from all these Jobs, and parse the data from all these Test.
-	// Notice that all the tests should have different name for now.
-	TestConfig = Buckets{
-		utils.KubekinsBucket: Jobs{
-			"kubernetes-e2e-gce-scalability": Tests{
-				"[Feature:Performance] should allow starting 30 pods per node":    "Density",
-				"[Feature:Performance] should be able to handle 30 pods per node": "Load",
-			},
-			"kubernetes-e2e-gce-serial": Tests{
-				"resource tracking for 35 pods per node":  "Kubelet Perf 35",
-				"resource tracking for 100 pods per node": "Kubelet Perf 100",
-			},
-		},
-	}
 )

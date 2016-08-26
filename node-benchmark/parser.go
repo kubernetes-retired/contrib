@@ -34,7 +34,7 @@ const (
 	processing = iota
 )
 
-func parseTestOutput(scanner *bufio.Scanner, job string, tests Tests, buildNumber int, result TestToBuildData) {
+func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData) {
 	buff := &bytes.Buffer{}
 	state := scanning
 	//testName := ""
@@ -114,7 +114,7 @@ func parseTestOutput(scanner *bufio.Scanner, job string, tests Tests, buildNumbe
 	}
 }
 
-func parseTracingData(scanner *bufio.Scanner, job string, tests Tests, buildNumber int, result TestToBuildData) {
+func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData) {
 	buff := &bytes.Buffer{}
 	state := scanning
 	build := fmt.Sprintf("%d", buildNumber)

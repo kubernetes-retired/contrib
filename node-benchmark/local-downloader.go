@@ -63,7 +63,6 @@ func (g *LocalDownloader) getData() (TestToBuildData, error) {
 		testDataScanner := bufio.NewScanner(file)
 		parseTestOutput(testDataScanner,
 			"kubernetes-e2e-node-benchmark",
-			nil,
 			buildNumber,
 			result)
 
@@ -85,7 +84,6 @@ func (g *LocalDownloader) getData() (TestToBuildData, error) {
 		testDataScanner = bufio.NewScanner(file)
 		parseTracingData(testDataScanner,
 			"kubernetes-e2e-node-benchmark",
-			nil,
 			buildNumber,
 			result)
 	}
