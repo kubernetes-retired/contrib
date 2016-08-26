@@ -47,25 +47,25 @@ func NewGoogleGCSDownloader(builds int) *GoogleGCSDownloader {
 func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 	fmt.Print("Getting Data from GCS...\n")
 	result := make(TestToBuildData)
-	for job, tests := range TestConfig[utils.KubekinsBucket] {
-		lastBuildNo, err := g.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
-		if err != nil {
-			return result, err
-		}
-		fmt.Printf("Last build no: %v\n", lastBuildNo)
-		for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
-			fmt.Printf("Fetching build %v...\n", buildNumber)
-			testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, logFile)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
-				continue
-			}
-
-			testDataBody := testDataResponse.Body
-			defer testDataBody.Close()
-			testDataScanner := bufio.NewScanner(testDataBody)
-			parseTestOutput(testDataScanner, job, tests, buildNumber, result)
-		}
+	job := "kubelet-benchmark-gce-e2e-ci"
+	lastBuildNo, err := g.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
+	if err != nil {
+		return result, err
 	}
+	fmt.Printf("Last build no: %v\n", lastBuildNo)
+	for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
+		fmt.Printf("Fetching build %v...\n", buildNumber)
+		testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, logFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
+			continue
+		}
+
+		testDataBody := testDataResponse.Body
+		defer testDataBody.Close()
+		testDataScanner := bufio.NewScanner(testDataBody)
+		parseTestOutput(testDataScanner, job, buildNumber, result)
+	}
+
 	return result, nil
 }

@@ -1,0 +1,52 @@
+<!-- Page 3: time series -->
+<div class="select_series">
+    <div style="width: 150px" layout-gt-sm="row">
+        <legend style="color: #3F51B5;"><b>Select build:</b></legend>
+        <md-input-container md-no-float class="md-block">
+            <input ng-model="controller.build" aria-label="build">
+        </md-input-container>
+    </div>
+    <div>
+        <md-button class="md-raised" ng-click="controller.buildChanged()">
+            Load
+        </md-button>
+    </div>
+</div>
+            
+<p style="color: #3F51B5; font-weight: 300;" align="center">
+    Node: {{ controller.seriesBuildLabels.node }}
+</p>
+  
+<!-- Plot Create Pod Latency (not implemented yet) -->    
+<div class="display-latency">
+    <div id="chart-div">
+        <p align="center">Pod Creation Latency</p>
+        <canvas id="series_latency"></canvas>
+    </div>
+</div>
+
+<!-- Plot Kubelet CPU Usage -->
+<div class="display-resource">
+	<div id="chart-div">
+    	<p align="center">Kubelet CPU Usage</p>
+        <canvas id="series_kubelet_cpu"></canvas>
+    </div>
+
+    <!-- Plot Kubelet Memory Usage -->
+    <div id="chart-div">
+        <p align="center">Kubelet Memory Usage</p>
+        <canvas id="series_kubelet_memory"></canvas>
+    </div>
+
+    <!-- Plot Runtime CPU Usage -->
+    <div id="chart-div">
+        <p align="center">Runtime CPU Usage</p>
+        <canvas id="series_runtime_cpu"></canvas>
+    </div>
+
+    <!-- Plot Runtime Memory Usage -->
+    <div id="chart-div">
+        <p align="center">Runtime Memory Usage</p>
+        <canvas id="series_runtime_memory"></canvas>      
+    </div>
+</div>
