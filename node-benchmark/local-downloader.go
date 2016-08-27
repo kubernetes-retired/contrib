@@ -18,6 +18,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -66,22 +67,22 @@ func (g *LocalDownloader) getData() (TestToBuildData, error) {
 			buildNumber,
 			result)
 
-		file, err = os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "tracing.log"))
-		if os.IsNotExist(err) {
-			// Tracing data have not been parsed yet
-			cmd := exec.Command("/usr/bin/python", tracingParser, dataDir, fmt.Sprintf("%d", buildNumber))
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err = cmd.Run(); err != nil {
-				log.Fatal(err)
-			}
-			file, err = os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "tracing.log"))
-		}
+		//file, err = os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "tracing.log"))
+		//if os.IsNotExist(err) {
+		// Tracing data have not been parsed yet
+		cmd := exec.Command("/usr/bin/python", tracingParser, dataDir, fmt.Sprintf("%d", buildNumber))
+		cmd.Stderr = os.Stderr
+		output, err := cmd.Output()
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer file.Close()
-		testDataScanner = bufio.NewScanner(file)
+		//file, err = os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "tracing.log"))
+		//}
+		//if err != nil {
+		//	log.Fatal(err)
+		//}
+		//defer file.Close()
+		testDataScanner = bufio.NewScanner(bytes.NewReader(output))
 		parseTracingData(testDataScanner,
 			"kubernetes-e2e-node-benchmark",
 			buildNumber,

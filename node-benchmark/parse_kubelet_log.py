@@ -8,7 +8,6 @@ year = str(date.today().year)
 #test_result_dir = '/usr/local/google/home/zhoufang/test_logs'
 test_result_file = 'build-log.txt'
 kubelet_log_file = 'kubelet.log'
-tracing_file = 'tracing.log'
 
 regex_event = re.compile(r'[IW](?:\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}) .* Event\(.*\): type: \'(.*)\' reason: \'(.*)\' (.*)')
 regex_event_msg = re.compile(r'pod: (.*), probe: (.*), timestamp: ([0-9]*)')
@@ -52,7 +51,7 @@ class TimeSeries:
 
 
     def load_tracing(self, test_result_dir, build, test_time_range):
-        with open(os.path.join(test_result_dir, str(build), test_time_range.node, kubelet_log_file)) as f:
+        with open(os.path.join(test_result_dir, str(build), 'artifacts', test_time_range.node, kubelet_log_file)) as f:
             for line in f.readlines():
                 match_obj = regex_event.match(line)
                 # find an tracing event in log
@@ -115,14 +114,9 @@ def main():
 
     print 'parse_kubelet_log.py: parsing tracing data from kubelet.log'
     
-    tracing_file_path = os.path.join(test_result_dir, str(build), tracing_file)
-    # Parse tracing data only if it does not exit.
-    if not os.path.isfile(tracing_file_path):
-        with open(tracing_file_path, 'a') as f:
-            f.write('\nTracing time series data from kubelet.log:\n\n')
-            for test_ts_range in load_test_ts_range(test_result_dir, build):
-                time_series = TimeSeries(test_ts_range.node, test_ts_range.test)
-                f.write(time_series.load_tracing(test_result_dir, build, test_ts_range))
+    for test_ts_range in load_test_ts_range(test_result_dir, build):
+        print TimeSeries(test_ts_range.node, test_ts_range.test).load_tracing(
+            test_result_dir, build, test_ts_range)
 
 if __name__ == '__main__':
     main()
