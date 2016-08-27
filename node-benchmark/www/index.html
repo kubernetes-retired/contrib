@@ -81,7 +81,7 @@
         <div id="node_menu">
           <div style="width: 300px">
           <md-input-container>
-            <md-select placeholder="Image" ng-model="controller.image"  ng-change="controller.nodeChanged()">
+            <md-select placeholder="Image" ng-model="controller.image"  ng-change="controller.imageChanged()">
               <md-option ng-value="image" ng-repeat="image in controller.imageList">
                 {{image}}
               </md-option>
@@ -91,7 +91,7 @@
 
           <div style="width: 300px">
           <md-input-container>
-            <md-select placeholder="Machine" ng-model="controller.machine"  ng-change="controller.nodeChanged()">
+            <md-select placeholder="Machine" ng-model="controller.machine"  ng-change="controller.machineChanged()">
               <md-option ng-value="machine" ng-repeat="machine in controller.machineList">
                 {{machine}}
               </md-option>

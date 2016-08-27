@@ -167,31 +167,54 @@ PerfDashApp.prototype.testChanged = function() {
         return;
     }
     this.imageList = Object.keys(this.testNodeTreeRoot[this.test]);
-
-    //this.job = this.allData[this.test].job;
-
-    //console.log(JSON.stringify(this.allData))
-    
-    this.nodeChanged()
+    this.imageChanged();
 };
+
+PerfDashApp.prototype.imageChanged = function() {
+    if(this.image == null) {
+        return;
+    } else if(this.imageList.indexOf(this.image) == -1){
+        this.image = null;
+        this.machine = null;
+        this.machineList = [];
+        return;
+    }
+    this.machineList = Object.keys(this.testNodeTreeRoot[this.test][this.image]);
+    this.machineChanged();
+}
+
+PerfDashApp.prototype.machineChanged = function() {
+    if(this.machine == null) {
+        return;
+    } else if(this.machineList.indexOf(this.machine) == -1) {
+        this.machine = null;
+        return;
+    }
+    this.nodeChanged();
+}
 
 // Apply new data to charts, using the selected node (machine/image)
 PerfDashApp.prototype.nodeChanged = function() {
-    if(!this.image) {
+    if(this.image == null || this.machine == null) {
         return;
-    } else if(!this.machine){
-        this.machineList = Object.keys(this.testNodeTreeRoot[this.test][this.image]);
-        return;
-    }
+    }   
+
     this.node = this.image + '/' + this.machine;
-    this.data = this.allData[this.test].data[this.node];    
+
+    this.data = this.allData[this.test].data[this.node];
     this.builds = this.getBuilds();
     this.labels = this.getLabels();
     
-    if(this.maxBuild == 0) {
-        this.minBuild = parseInt(Math.min.apply(Math, this.builds));
-        this.maxBuild = parseInt(Math.max.apply(Math, this.builds));
+    newMinBuild = parseInt(Math.min.apply(Math, this.builds));
+    newMaxBuild = parseInt(Math.max.apply(Math, this.builds));
+
+    if(this.minBuild < newMinBuild || this.minBuild > newMaxBuild) {
+        this.minBuild = newMinBuild;
     }
+    if(this.maxBuild > newMaxBuild || this.maxBuild < newMinBuild || this.maxBuild == 0) {
+        this.maxBuild = newMaxBuild;
+    }
+
     this.labelChanged();
 };
 

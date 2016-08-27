@@ -69,7 +69,7 @@ PerfDashApp.prototype.plotTimeSeries = function() {
                         data: getHistSeries(this.latencySeriesMap[key].map(function(value){
                             return ((value - start)/1e9).toFixed(1);
                         })),
-                        backgroundColor: 'rgba(51,153,255,0.3)',
+                        backgroundColor: colorList[i++],
                     })
                 }
                 unit = "#Pod"
