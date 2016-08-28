@@ -97,3 +97,8 @@
     display: flex;
     justify-content: space-around;
 }
+
+.tracing {
+    display: flex;
+    justify-content: space-around;
+}

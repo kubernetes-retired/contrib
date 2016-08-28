@@ -1,3 +1,85 @@
+/*
+Copyright 2015 The Kubernetes Authors All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Plots in dashboard
+var plots = new Set(['latency', 'throughput', 'kubelet_cpu', 'kubelet_memory', 'runtime_cpu', 'runtime_memory']);
+var seriesPlots = new Set(['latency', 'kubelet_cpu', 'kubelet_memory', 'runtime_cpu', 'runtime_memory'])
+
+// Metrics to plot in each plot
+var plotRules = {
+    'latency': {
+        metrics: ['Perc50', 'Perc90', 'Perc99'],
+        labels: {
+            'datatype': 'latency',
+            'latencytype': 'create-pod',
+        },
+    },
+    'throughput': {
+        metrics: ['batch', 'single-worst'],
+        labels: {
+            'datatype': 'throughput',
+            'latencytype': 'create-pod',
+        },
+    },
+    'kubelet_cpu': {
+        metrics: ['Perc50', 'Perc90', 'Perc99'],
+        labels: {
+            'datatype': 'resource',
+            'container': 'kubelet',
+            'resource': 'cpu',
+        },
+    },
+    'kubelet_memory': {
+        metrics: ['memory', 'rss', 'workingset'],
+        labels: {
+            'datatype': 'resource',
+            'container': 'kubelet',
+            'resource': 'memory',
+        },
+    },
+    'runtime_cpu': {
+        metrics: ['Perc50', 'Perc90', 'Perc99'],
+        labels: {
+            'datatype': 'resource',
+            'container': 'runtime',
+            'resource': 'cpu',
+        },
+    },
+    'runtime_memory': {
+        metrics: ['memory', 'rss', 'workingset'],
+        labels: {
+            'datatype': 'resource',
+            'container': 'runtime',
+            'resource': 'memory',
+        },
+    },
+}
+
+// Rules to parse test options
+var testOptions = {
+    'density': {
+        options: ['opertation', 'mode', 'pods', 'background pods', 'interval (ms)', 'stress'],
+        remark: '',
+    },
+    'resource': {
+        options: ['pods'],
+        remark: '',
+    },   
+}
+
 var app = angular.module('PerfDashApp', ['ngMaterial', 'chart.js', 'ui.router']);
 var clearSeriesCharts = false;
 
@@ -17,9 +99,9 @@ app.config(function($stateProvider, $urlRouterProvider) {
             url: "/series",
             templateUrl: "view/series.html"
         })
-        .state('config', {
-            url: "/config",
-            templateUrl: "view/config.html"
+        .state('tracing', {
+            url: "/tracing",
+            templateUrl: "view/tracing.html"
         });
     });
 
@@ -43,7 +125,7 @@ app.controller('AppCtrl', ['$scope', '$http', '$interval', '$location',
                     $location.url("/series");
                     break;
                 case 3:
-                    $location.url("/config");
+                    $location.url("/tracing");
                     break;
             }
             if(old == 2) { // clear charts for time series plot
@@ -95,10 +177,11 @@ var PerfDashApp = function(http, scope) {
     this.comparisonSeriesMap = {};
     this.comparisonSeriesDataMap = {};
     this.comparisonOptionsMap = {};
-    this.comparisonLabelsMap = plotRules;
+    this.comparisonLabelsMap = {};
 
     // for time series
     this.seriesCharts = {};
+    this.probes = [];
 
     // for condig
     this.minBuild = 0;
@@ -130,10 +213,9 @@ PerfDashApp.prototype.refresh = function() {
             .success(function(data) {
                 this.tests = Object.keys(data);
                 this.allData = data;
-                this.parseTest()
+                this.parseTest();
                 this.parseNodeInfo();
                 this.testChanged();
-                //this.loadOverview();
             }.bind(this))
     .error(function(data) {
         console.log("error fetching result");

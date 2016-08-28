@@ -112,52 +112,24 @@ PerfDashApp.prototype.aggregateBuild = function(builds) {
 PerfDashApp.prototype.plotComparisonChart = function(aggDataMap) {
     // get data for each plot
     angular.forEach(plots, function(plot){
+        plotRule = plotRules[plot];
         this.comparisonSeriesDataMap[plot] = [];
         this.comparisonSeriesMap[plot] = [];
         switch(plot) {
             case 'latency':
-                selectedLabels = {
-                    'datatype': 'latency',
-                };
-                break;
+            case 'throughput':
             case 'kubelet_cpu':
-                selectedLabels = {
-                    'datatype': 'resource',
-                    'container': 'kubelet',
-                    'resource': 'cpu',
-                };
-                break;
             case 'kubelet_memory':
-                selectedLabels = {
-                    'datatype': 'resource',
-                    'container': 'kubelet',
-                    'resource': 'memory',
-                };
-                break;
             case 'runtime_cpu':
-                selectedLabels = {
-                    'datatype': 'resource',
-                    'container': 'runtime',
-                    'resource': 'cpu',
-                };
-                break;
             case 'runtime_memory':
-                selectedLabels = {
-                    'datatype': 'resource',
-                    'container': 'runtime',
-                    'resource': 'memory',
-                };
+                selectedLabels = plotRule.labels;
                 break;
             default:
                 console.log('unkown plot type ' + plot)
                 return;              
         }
-        if(this.node === 'undefined') {
-            return
-        }
-        //console.log(JSON.stringify(selectedLabels));
-
         result = this.getComparisonData(aggDataMap, selectedLabels);
+        this.comparisonLabelsMap[plot] = JSON.parse(JSON.stringify(plotRule.metrics));
 
         if (Object.keys(result).length <= 0) {
             return;
@@ -179,11 +151,10 @@ PerfDashApp.prototype.plotComparisonChart = function(aggDataMap) {
 
         angular.forEach(this.comparisonListSelected, function(id) {
             item = result[id]
-            this.comparisonSeriesDataMap[plot].push(this.getComparisonStream(item, plotRules[plot]));
+            this.comparisonSeriesDataMap[plot].push(this.getComparisonStream(item, plotRule.metrics));
             this.comparisonSeriesMap[plot].push(id);
         }, this);
-        //console.log(JSON.stringify(this.seriesMap[plot]));
-        //console.log(JSON.stringify(this.seriesDataMap[plot]))
+
     }, this)
 };
 
