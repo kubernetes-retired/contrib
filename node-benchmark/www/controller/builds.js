@@ -1,43 +1,3 @@
-/*
-Copyright 2015 The Kubernetes Authors All rights reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-// Plots in dashboard
-var plots = new Set(['latency', 'kubelet_cpu', 'kubelet_memory', 'runtime_cpu', 'runtime_memory']);
-var seriesPlots = new Set(['latency', 'kubelet_cpu', 'kubelet_memory', 'runtime_cpu', 'runtime_memory'])
-
-// Metrics to plot in each plot
-var plotRules = {
-    'latency': ['Perc50', 'Perc90', 'Perc99'],
-    'kubelet_cpu': ['Perc50', 'Perc90', 'Perc99'],
-    'kubelet_memory': ['memory', 'rss', 'workingset'],
-    'runtime_cpu': ['Perc50', 'Perc90', 'Perc99'],
-    'runtime_memory': ['memory', 'rss', 'workingset'],    
-}
-
-// Rules to parse test options
-var testOptions = {
-    'density': {
-        options: ['opertation', 'mode', 'pods', 'background pods', 'interval (ms)', 'stress'],
-        remark: '',
-    },
-    'resource': {
-        options: ['pods'],
-        remark: '',
-    },   
-}
 
 // Parse test information
 PerfDashApp.prototype.parseTest = function() {
@@ -204,6 +164,8 @@ PerfDashApp.prototype.nodeChanged = function() {
     this.data = this.allData[this.test].data[this.node];
     this.builds = this.getBuilds();
     this.labels = this.getLabels();
+
+    //console.log(JSON.stringify(this.data))
     
     newMinBuild = parseInt(Math.min.apply(Math, this.builds));
     newMaxBuild = parseInt(Math.max.apply(Math, this.builds));
@@ -222,42 +184,19 @@ PerfDashApp.prototype.nodeChanged = function() {
 PerfDashApp.prototype.labelChanged = function() {
     // get data for each plot
     angular.forEach(plots, function(plot){
+        plotRule = plotRules[plot];
         this.seriesDataMap[plot] = [];
         this.seriesMap[plot] = [];
         this.buildsMap[plot] = [];
         switch(plot) {
             case 'latency':
-                selectedLabels = {
-                    'datatype': 'latency',
-                };
-                break;
+            case 'throughput':
+            case 'throughput':
             case 'kubelet_cpu':
-                selectedLabels = {
-                    'datatype': 'resource',
-                    'container': 'kubelet',
-                    'resource': 'cpu',
-                };
-                break;
             case 'kubelet_memory':
-                selectedLabels = {
-                    'datatype': 'resource',
-                    'container': 'kubelet',
-                    'resource': 'memory',
-                };
-                break;
             case 'runtime_cpu':
-                selectedLabels = {
-                    'datatype': 'resource',
-                    'container': 'runtime',
-                    'resource': 'cpu',
-                };
-                break;
             case 'runtime_memory':
-                selectedLabels = {
-                    'datatype': 'resource',
-                    'container': 'runtime',
-                    'resource': 'memory',
-                };
+                selectedLabels = plotRule.labels;
                 break;
             default:
                 console.log('unkown plot type ' + plot)
@@ -294,7 +233,7 @@ PerfDashApp.prototype.labelChanged = function() {
                 display: true,
             },
         };
-        angular.forEach(plotRules[plot], function(metric) {
+        angular.forEach(plotRule.metrics, function(metric) {
             this.seriesDataMap[plot].push(this.getStream(result, metric));
             this.seriesMap[plot].push(metric);
         }, this);
@@ -365,4 +304,15 @@ PerfDashApp.prototype.getStream = function(data, stream) {
         result.push(value.data[stream]);
     });
     return result;
+};
+
+PerfDashApp.prototype.buildRangeChanged = function() {
+    this.labelChanged();
+};
+
+PerfDashApp.prototype.resetBuildRange = function() {    
+    this.minBuild = parseInt(Math.min.apply(Math, this.builds));
+    this.maxBuild = parseInt(Math.max.apply(Math, this.builds));
+
+    this.buildRangeChanged();
 };

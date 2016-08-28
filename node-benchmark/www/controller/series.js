@@ -15,6 +15,9 @@ limitations under the License.
 */
 
 PerfDashApp.prototype.buildChanged = function() {
+    if(this.build == null) {
+        this.build = this.minBuild;
+    }
     // search for the selected node
     series = this.allData[this.test].data[this.node][this.build].series;
     dataItem = series[0];
@@ -40,7 +43,8 @@ PerfDashApp.prototype.buildChanged = function() {
                }
            }
     }
-    //console.log(JSON.stringify(dataItem))
+    this.probes = Object.keys(dataItem.op_series);
+    
     this.timeseries = dataItem.resource_series;
     this.latencySeriesMap = dataItem.op_series;
 
