@@ -18,18 +18,18 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path"
 	"strconv"
+	"strings"
 )
 
 const (
 	latestBuildFile = "latest-build.txt"
-	tracingParser   = "parse_kubelet_log.py"
+	testResultFile  = "build-log.txt"
+	kubeletLogFile  = "kubelet.log"
 )
 
 // LocalDownloader that gets data about Google results from the GCS repository
@@ -67,26 +67,14 @@ func (g *LocalDownloader) getData() (TestToBuildData, error) {
 			buildNumber,
 			result)
 
-		//file, err = os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "tracing.log"))
-		//if os.IsNotExist(err) {
-		// Tracing data have not been parsed yet
-		cmd := exec.Command("/usr/bin/python", tracingParser, dataDir, fmt.Sprintf("%d", buildNumber))
-		cmd.Stderr = os.Stderr
-		output, err := cmd.Output()
-		if err != nil {
-			log.Fatal(err)
+		if *tracing {
+			tracingData := ParseTracing(path.Join(dataDir, fmt.Sprintf("%d", buildNumber)))
+			testDataScanner = bufio.NewScanner(strings.NewReader(tracingData))
+			parseTracingData(testDataScanner,
+				"kubernetes-e2e-node-benchmark",
+				buildNumber,
+				result)
 		}
-		//file, err = os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "tracing.log"))
-		//}
-		//if err != nil {
-		//	log.Fatal(err)
-		//}
-		//defer file.Close()
-		testDataScanner = bufio.NewScanner(bytes.NewReader(output))
-		parseTracingData(testDataScanner,
-			"kubernetes-e2e-node-benchmark",
-			buildNumber,
-			result)
 	}
 
 	return result, nil
