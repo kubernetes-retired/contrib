@@ -49,6 +49,14 @@ func TestParseNotification(t *testing.T) {
 			comment: "[NOTIF] Valid notification",
 		},
 		{
+			notif:   &Notification{Name: "NOTIF", Arguments: "Multiple Lines"},
+			comment: "Someone says:\n[NOTIF] Multiple Lines\nAnd something else...",
+		},
+		{
+			notif:   &Notification{Name: "NOTIF"},
+			comment: "Someone says:\n[NOTIF]\nAnd something else...",
+		},
+		{
 			notif:   &Notification{Name: "NOTIF", Arguments: "Notif name is upper-cased"},
 			comment: "[notif] Notif name is upper-cased",
 		},

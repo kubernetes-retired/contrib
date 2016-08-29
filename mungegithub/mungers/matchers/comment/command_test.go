@@ -45,6 +45,18 @@ func TestParseCommand(t *testing.T) {
 			comment:         "/COMMAND Valid command",
 		},
 		{
+			expectedCommand: &Command{Name: "COMMAND", Arguments: "Multiple Lines"},
+			comment:         "Someone says:\n/COMMAND Multiple Lines\nAnd something else...",
+		},
+		{
+			expectedCommand: &Command{Name: "COMMAND"},
+			comment:         "Someone says:\n/COMMAND\nAnd something else...",
+		},
+		{
+			expectedCommand: &Command{Name: "COMMAND", Arguments: "Args"},
+			comment:         "/COMMAND Args\n/OTHERCOMMAND OtherArgs",
+		},
+		{
 			expectedCommand: &Command{Name: "COMMAND", Arguments: "Command name is upper-cased"},
 			comment:         "/command Command name is upper-cased",
 		},

@@ -34,7 +34,7 @@ var (
 	// - Line that starts with slash
 	// - followed by non-space characteres,
 	// - (optional) followed by space and arguments
-	commandRegex = regexp.MustCompile(`^/([^\s]+)\s?(.*)$`)
+	commandRegex = regexp.MustCompile(`(?m:^/([^\s]+) *?(.*)$)`)
 )
 
 // ParseCommand attempts to read a command from a comment
