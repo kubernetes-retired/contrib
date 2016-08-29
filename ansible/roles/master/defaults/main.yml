@@ -2,7 +2,7 @@ kube_master_insecure_port: 8080
 
 localBuildOutput: ../../../_output/local/go/bin
 
-admission_controllers: NamespaceLifecycle,NamespaceExists,LimitRanger,ServiceAccount,ResourceQuota
+admission_controllers: NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota
 
 kube_apiserver_bind_address: "0.0.0.0"
 kube_apiserver_insecure_bind_address: "127.0.0.1"
