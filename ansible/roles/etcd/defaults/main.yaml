@@ -9,8 +9,13 @@ etcd_peer_port: 2380
 etcd_client_legacy_port: 4001
 etcd_peer_legacy_port: 7001
 etcd_peers_group: etcd
+
 etcd_url_scheme: http
 etcd_peer_url_scheme: http
+# Set correspondingly to true when use https values above to enable cert auth
+etcd_client_cert_auth: false
+etcd_peer_client_cert_auth: false
+
 etcd_conf_dir: /etc/etcd
 etcd_script_dir: /usr/libexec/etcd
 etcd_ca_file: "{{ etcd_conf_dir }}/ca.crt"
