@@ -157,8 +157,7 @@ PerfDashApp.prototype.machineChanged = function() {
 PerfDashApp.prototype.nodeChanged = function() {
     if(this.image == null || this.machine == null) {
         return;
-    }   
-
+    }
     this.node = this.image + '/' + this.machine;
 
     this.data = this.allData[this.test].data[this.node];
@@ -170,12 +169,15 @@ PerfDashApp.prototype.nodeChanged = function() {
     newMinBuild = parseInt(Math.min.apply(Math, this.builds));
     newMaxBuild = parseInt(Math.max.apply(Math, this.builds));
 
+    /*
     if(this.minBuild < newMinBuild || this.minBuild > newMaxBuild) {
         this.minBuild = newMinBuild;
     }
     if(this.maxBuild > newMaxBuild || this.maxBuild < newMinBuild || this.maxBuild == 0) {
         this.maxBuild = newMaxBuild;
     }
+    */
+    this.resetBuildRange();
 
     this.labelChanged();
 };
@@ -310,7 +312,7 @@ PerfDashApp.prototype.buildRangeChanged = function() {
     this.labelChanged();
 };
 
-PerfDashApp.prototype.resetBuildRange = function() {    
+PerfDashApp.prototype.resetBuildRange = function() {
     this.minBuild = parseInt(Math.min.apply(Math, this.builds));
     this.maxBuild = parseInt(Math.max.apply(Math, this.builds));
 

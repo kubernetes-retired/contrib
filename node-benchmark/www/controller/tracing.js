@@ -41,24 +41,24 @@ PerfDashApp.prototype.plotBuildsTracing = function() {
     }
     this.tracingBuilds = [];
     for (build = this.minBuild; build <= this.maxBuild; build++) { 
-        startTimeData = this.extractTracingData(this.probeStart, build);
-        endTimeData = this.extractTracingData(this.probeEnd, build);
+        startTimeData = this.extractTracingData(this.probeStart, build).sort(function(a, b){return a-b});
+        endTimeData = this.extractTracingData(this.probeEnd, build).sort(function(a, b){return a-b});
 
         latency = arraySubstract(endTimeData, startTimeData).sort(function(a, b){return a-b});
-        console.log(latency)
+        //console.log(latency)
 
         latencyPercentiles['Perc50'].push(getPercentile(latency, 0.5));
         latencyPercentiles['Perc90'].push(getPercentile(latency, 0.9));
         latencyPercentiles['Perc99'].push(getPercentile(latency, 0.99));
 
-        console.log(build)
-        console.log(getPercentile(latency, 0.5))
-        console.log(getPercentile(latency, 0.9))
-        console.log(getPercentile(latency, 0.99))
+        //console.log(build)
+        //console.log(getPercentile(latency, 0.5))
+        //console.log(getPercentile(latency, 0.9))
+        //console.log(getPercentile(latency, 0.99))
 
         this.tracingBuilds.push(build);
     }
-    console.log(JSON.stringify(latencyPercentiles));
+    //console.log(JSON.stringify(latencyPercentiles));
     this.tracingData = [];
     this.tracingSeries = [];
     for(var metric in latencyPercentiles) {
@@ -76,7 +76,7 @@ PerfDashApp.prototype.plotBuildsTracing = function() {
             yAxes: [{
                 scaleLabel: {
                     display: true,
-                    labelString: 's',
+                    labelString: 'ms',
                 }
             }]
         }, 
@@ -94,7 +94,7 @@ PerfDashApp.prototype.plotBuildsTracing = function() {
 var arraySubstract = function(arr1, arr2) {
     var diff = [];
     for(var i in arr1) {
-        diff.push(parseInt(arr1[i] - arr2[i])/1000000000);
+        diff.push(parseInt(arr1[i] - arr2[i])/1000000);
     }
     return diff;
 }

@@ -213,10 +213,9 @@ PerfDashApp.prototype.refresh = function() {
             .success(function(data) {
                 this.tests = Object.keys(data);
                 this.allData = data;
-                this.parseTest()
+                this.parseTest();
                 this.parseNodeInfo();
                 this.testChanged();
-                //this.loadOverview();
             }.bind(this))
     .error(function(data) {
         console.log("error fetching result");

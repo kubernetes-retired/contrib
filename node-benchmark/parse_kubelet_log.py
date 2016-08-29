@@ -72,6 +72,10 @@ class TimeSeries:
                     if test_time_range.in_range(ts_unixnano):
                         self.append_op_series(probe, ts_unixnano)
 
+        # sort time series
+        for series in self.op_series.itervalues():
+            series.sort()
+
         time_series_str = json.dumps(self.__dict__)
         return timeseries_result_tag + time_series_str + '\n\n' + timeseries_finish_tag + '\n'
 
