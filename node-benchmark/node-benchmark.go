@@ -36,8 +36,9 @@ var (
 	www          = flag.Bool("www", false, "If true, start a web-server to server performance data")
 	wwwDir       = flag.String("dir", "www", "If non-empty, add a file server for this directory at the root of the web server")
 	builds       = flag.Int("builds", maxBuilds, "Total builds number")
-	datasource   = flag.String("datasource", "local", "Source of test data. Options include 'local', 'google-gcs'")
-	localDataDir = flag.String("local-data-dir", "/usr/local/google/home/zhoufang/test_logs", "The path to test data directory")
+	datasource   = flag.String("datasource", "google-gcs", "Source of test data. Options include 'local', 'google-gcs'")
+	localDataDir = flag.String("local-data-dir", "", "The path to test data directory")
+	tracing      = flag.Bool("tracing", false, "If true, try to obtain tracing data from kubelet.log")
 )
 
 func main() {
