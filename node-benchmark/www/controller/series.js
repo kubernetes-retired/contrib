@@ -44,7 +44,7 @@ PerfDashApp.prototype.buildChanged = function() {
            }
     }
     this.probes = Object.keys(dataItem.op_series);
-    
+
     this.timeseries = dataItem.resource_series;
     this.latencySeriesMap = dataItem.op_series;
 
@@ -52,7 +52,10 @@ PerfDashApp.prototype.buildChanged = function() {
     this.seriesBuildLabels = dataItem.labels;
 }
 
-colorList = ['rgba(51,153,255,0.3)', 'rgba(0,204,102,0.3)', 'rgba(30,164,40,0.3)', 'rgba(0,20,102,0.3)', 'rgba(1000,20,0,0.3)'];
+colorList = ['rgba(51,153,255,0.3)', 'rgba(0,204,102,0.3)', 
+             'rgba(0,255,255,0.3)', 'rgba(0,20,102,0.3)', 
+             'rgba(255,0,0,0.3)‘, ’rgba(255,128,0,0.3)',
+             'rgba(204,204,0,0.3)'];
 
 // Plot the time series data for the selected build
 PerfDashApp.prototype.plotTimeSeries = function() {

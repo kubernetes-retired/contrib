@@ -5,7 +5,7 @@
             Load probes
         </md-button>
     </div>
-    <div style="width: 200px; display: inline-block;">
+    <div style="width: 300px; display: inline-block;">
         <legend style="color: #3F51B5; ">Probe start</legend>
         <md-input-container>
         <md-select placeholder="probe start" ng-model="controller.probeStart"  ng-change="controller.plotBuildsTracing()">
@@ -15,7 +15,7 @@
         </md-select>
         </md-input-container> 
     </div>
-    <div style="width: 200px; display: inline-block;">
+    <div style="width: 300px; display: inline-block;">
         <legend style="color: #3F51B5; ">Probe end</legend>
         <md-input-container>
         <md-select placeholder="probe end" ng-model="controller.probeEnd"  ng-change="controller.plotBuildsTracing()">
@@ -41,3 +41,4 @@
         <div tc-chartjs-legend chart-legend="legendsMap['latency']"></div>
     </div>
 </div>
+
