@@ -1,32 +1,34 @@
 <!-- Page 1: builds -->
 <div class="config">
     <!-- min build -->
-        <div>
-            <legend style="color: #3F51B5;">Min build:</legend>
-            <md-input-container class="md-block"">
-                <input ng-model="controller.minBuild" aria-label="minBuild">
-            </md-input-container>
-        </div>
-        <div>
-            <legend style="color: #3F51B5;">Max build:</legend>
-            <md-input-container class="md-block">
-                <input ng-model="controller.maxBuild" aria-label="maxBuild">
-            </md-input-container>
-        </div>
-        <div>
-            <md-button class="md-raised" ng-click="controller.buildRangeChanged()">
-                Load
-            </md-button>
-        </div>
-        <div>
-            <md-button class="md-raised" ng-click="controller.resetBuildRange()">
-                Reset
-            </md-button>
-        </div>
+    <div>
+        <legend style="color: #3F51B5;">Min build:</legend>
+        <md-input-container class="md-block"">
+            <input ng-model="controller.minBuild" aria-label="minBuild">
+        </md-input-container>
+    </div>
+    <!-- max build -->
+    <div>
+        <legend style="color: #3F51B5;">Max build:</legend>
+        <md-input-container class="md-block">
+            <input ng-model="controller.maxBuild" aria-label="maxBuild">
+        </md-input-container>
+    </div>
+    <!-- load -->
+    <div>
+        <md-button class="md-raised" ng-click="controller.buildRangeChanged()">
+            Load
+        </md-button>
+    </div>
+    <!-- reset -->
+    <div>
+        <md-button class="md-raised" ng-click="controller.resetBuildRange()">
+            Reset
+         </md-button>
+    </div>
 </div>
 
-<br>
-<hr color="#34495E"><br>
+<hr color="#34495E">
 
 <div class="display-latency">
     <!-- Plot Create Pod Latency -->
@@ -88,6 +90,4 @@
     </div>
 </div>
 
-<br>
-<hr color="#34495E"><br>
-
+<br><hr color="#34495E">

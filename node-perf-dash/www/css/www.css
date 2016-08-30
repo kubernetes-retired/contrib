@@ -83,12 +83,12 @@
     width: 75%;
 }
 
-.select_aggregation {
+.select-aggregation {
     display: flex;
     justify-content: space-around;
 }
 
-.select_series {
+.select-series {
     display: flex;
     justify-content: space-around;
 }

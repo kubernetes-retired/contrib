@@ -21,27 +21,30 @@ PerfDashApp.prototype.buildChanged = function() {
     // search for the selected node
     series = this.allData[this.test].data[this.node][this.build].series;
     dataItem = series[0];
+
     // merge following dataitems
     for(var i in series) {
         if(i == '0'){
             continue;
         }
         newDataItem = series[i];
-        //console.log(JSON.stringify(newDataItem))
-        if(newDataItem.version == dataItem.version &&
-           newDataItem.labels.test == dataItem.labels.test &&
-           newDataItem.labels.node == dataItem.labels.node){
-               if(newDataItem.op_series != null) {
-                   for(var k in newDataItem.op_series) {
-                       dataItem.op_series[k] = newDataItem.op_series[k];
-                   }
-               }
-                if(newDataItem.resource_series != null) {
-                   for(var k in newDataItem.resource_series) {
-                       dataItem.resource_series[k] = newDataItem.resource_series[k];
-                   }
-               }
-           }
+
+        // TODO(coufon): be aware that duplicated data may occur when test fails
+        // because the error output also contains test result.
+        if(newDataItem.op_series != null) {
+            for(var k in newDataItem.op_series) {
+                if(!(k in dataItem.op_series)) {
+                    dataItem.op_series[k] = newDataItem.op_series[k];
+                }
+            }
+        }
+        if(newDataItem.resource_series != null) {
+            for(var k in newDataItem.resource_series) {
+                if(!(k in dataItem.resource_series)) {
+                    dataItem.resource_series[k] = newDataItem.resource_series[k];
+                }
+            }
+        }   
     }
     this.probes = Object.keys(dataItem.op_series);
 
@@ -73,7 +76,7 @@ PerfDashApp.prototype.plotTimeSeries = function() {
                 for(var key in this.latencySeriesMap) {
                     dataSets.push({ 
                         label: key,
-                        data: getHistSeries(this.latencySeriesMap[key].map(function(value){
+                        data: getAccumSeries(this.latencySeriesMap[key].map(function(value){
                             return ((value - start)/1e9).toFixed(1);
                         })),
                         backgroundColor: colorList[i++],
@@ -145,11 +148,11 @@ PerfDashApp.prototype.plotTimeSeries = function() {
         }
 
         if(plot in this.seriesCharts) {
-            console.log("update")
+            //console.log("update")
             this.seriesCharts[plot].data.datasets = dataSets;
             this.seriesCharts[plot].update();
         } else {
-            console.log("new")
+            //console.log("new")
             this.seriesCharts[plot] = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -181,6 +184,7 @@ PerfDashApp.prototype.plotTimeSeries = function() {
     }, this)
 };
 
+// combineSeries combines two arraies into one array of tuples (x:v1, y:v2)
 var combineSeries = function(s0, s1) {
     if(s0.length != s1.length) {
         console.log("Series length mismatch.");
@@ -196,7 +200,8 @@ var combineSeries = function(s0, s1) {
     return ret
 }
 
-var getHistSeries = function(s0) {
+// getAccumSeries calculate accumulated time series data
+var getAccumSeries = function(s0) {
     var ret = [];
     var sum = 0;
     for(var i in s0) {

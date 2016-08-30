@@ -18,4 +18,4 @@ RUN apt-get update
 RUN apt-get install -y -qq ca-certificates
 ADD node-perf-dash /node-perf-dash
 ADD www /www
-
+ADD sample_data /sample_data

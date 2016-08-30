@@ -1,3 +1,19 @@
+/*
+Copyright 2015 The Kubernetes Authors All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 PerfDashApp.prototype.loadProbes = function() {
     if(this.build == null) {
         this.build = this.minBuild;
@@ -12,20 +28,20 @@ PerfDashApp.prototype.loadProbes = function() {
         }
         newDataItem = series[i];
         //console.log(JSON.stringify(newDataItem))
-        if(newDataItem.version == dataItem.version &&
-           newDataItem.labels.test == dataItem.labels.test &&
-           newDataItem.labels.node == dataItem.labels.node){
-               if(newDataItem.op_series != null) {
-                   for(var k in newDataItem.op_series) {
-                       dataItem.op_series[k] = newDataItem.op_series[k];
-                   }
-               }
-                if(newDataItem.resource_series != null) {
-                   for(var k in newDataItem.resource_series) {
-                       dataItem.resource_series[k] = newDataItem.resource_series[k];
-                   }
-               }
-           }
+        if(newDataItem.op_series != null) {
+            for(var k in newDataItem.op_series) {
+                if(!(k in dataItem.op_series)) {
+                    dataItem.op_series[k] = newDataItem.op_series[k];
+                }
+            }
+        }
+        if(newDataItem.resource_series != null) {
+            for(var k in newDataItem.resource_series) {
+                if(!(k in dataItem.resource_series)) {
+                    dataItem.resource_series[k] = newDataItem.resource_series[k];
+                }
+            }
+        }   
     }
     this.probes = Object.keys(dataItem.op_series);
 }
@@ -116,12 +132,9 @@ PerfDashApp.prototype.extractTracingData = function(probe, build) {
             continue;
         }
         newDataItem = series[i];
-        if(newDataItem.version == dataItem.version &&
-            newDataItem.labels.test == dataItem.labels.test &&
-            newDataItem.labels.node == dataItem.labels.node){
-            if(probe in newDataItem.op_series) {
-                return newDataItem.op_series[probe];
-            }
-        }
+
+        if(probe in newDataItem.op_series) {
+            return newDataItem.op_series[probe];
+        }  
     }
 }
