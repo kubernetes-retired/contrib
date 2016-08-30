@@ -19,71 +19,26 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path"
 	"strconv"
-	"strings"
-)
-
-const (
-	latestBuildFile = "latest-build.txt"
-	testResultFile  = "build-log.txt"
-	kubeletLogFile  = "kubelet.log"
 )
 
 // LocalDownloader that gets data about Google results from the GCS repository
 type LocalDownloader struct {
-	Builds int
 }
 
 // NewLocalDownloader creates a new LocalDownloader
-func NewLocalDownloader(builds int) *LocalDownloader {
-	return &LocalDownloader{
-		Builds: builds,
-	}
+func NewLocalDownloader() *LocalDownloader {
+	return &LocalDownloader{}
 }
 
-// TODO(random-liu): Only download and update new data each time.
-func (g *LocalDownloader) getData() (TestToBuildData, error) {
-	fmt.Print("Getting Data from test_log...\n")
-	result := make(TestToBuildData)
-	dataDir := *localDataDir
-
-	lastBuildNo := getLastestBuildNumber(dataDir)
-
-	for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
-		fmt.Printf("Fetching build %v...\n", buildNumber)
-
-		file, err := os.Open(path.Join(dataDir, fmt.Sprintf("%d", buildNumber), "build-log.txt"))
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer file.Close()
-
-		testDataScanner := bufio.NewScanner(file)
-		parseTestOutput(testDataScanner,
-			"kubernetes-e2e-node-benchmark",
-			buildNumber,
-			result)
-
-		if *tracing {
-			tracingData := ParseTracing(path.Join(dataDir, fmt.Sprintf("%d", buildNumber)))
-			testDataScanner = bufio.NewScanner(strings.NewReader(tracingData))
-			parseTracingData(testDataScanner,
-				"kubernetes-e2e-node-benchmark",
-				buildNumber,
-				result)
-		}
-	}
-
-	return result, nil
-}
-
-func getLastestBuildNumber(dataDir string) int {
-	file, err := os.Open(path.Join(dataDir, latestBuildFile))
+func (d *LocalDownloader) GetLastestBuildNumber(job string) (int, error) {
+	file, err := os.Open(path.Join(*localDataDir, latestBuildFile))
 	if err != nil {
-		log.Fatal(err)
+		return -1, err
 	}
 	defer file.Close()
 
@@ -93,6 +48,11 @@ func getLastestBuildNumber(dataDir string) int {
 	i, err := strconv.Atoi(scanner.Text())
 	if err != nil {
 		log.Fatal(err)
+		return -1, err
 	}
-	return i
+	return i, nil
+}
+
+func (d *LocalDownloader) GetFile(job string, buildNumber int, filePath string) (io.ReadCloser, error) {
+	return os.Open(path.Join(*localDataDir, fmt.Sprintf("%d", buildNumber), filePath))
 }

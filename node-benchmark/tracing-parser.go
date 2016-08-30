@@ -19,6 +19,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path"
@@ -59,11 +60,12 @@ func (ttr *TestTimeRange) InRange(ts int64) bool {
 }
 
 // GrabTestTimeRange return a list of tests and their time ranges.
-func GrabTestTimeRange(buildPath string) []*TestTimeRange {
+func GrabTestTimeRange(d Downloader, job string, buildNumber int) []*TestTimeRange {
 	var ttrList []*TestTimeRange
 
-	file, err := os.Open(path.Join(buildPath, testResultFile))
+	file, err := d.GetFile(job, buildNumber, testResultFile)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error while fetching tracing data time range: %v\n", err)
 		log.Fatal(err)
 	}
 	defer file.Close()
@@ -148,14 +150,15 @@ func (td *TracingData) ToSeriesData() string {
 }
 
 // GrabTracing parses tracing events in kubelet.log and filter events by time range.
-func GrabTracing(buildPath string, ttr *TestTimeRange) string {
-	file, err := os.Open(path.Join(buildPath, "artifacts", ttr.Node, kubeletLogFile))
+func GrabTracing(d Downloader, job string, buildNumber int, ttr *TestTimeRange) string {
+	file, err := d.GetFile(job, buildNumber, path.Join("artifacts", ttr.Node, kubeletLogFile))
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error while fetching tracing data event: %v\n", err)
 		log.Fatal(err)
 	}
 	defer file.Close()
-
 	scanner := bufio.NewScanner(file)
+
 	// TODO(coufon): we do not store pod name for each timestamp.
 	tracingData := TracingData{
 		Labels: map[string]string{
@@ -205,11 +208,11 @@ func GrabTracing(buildPath string, ttr *TestTimeRange) string {
 // ParseTracing parses tracing data from kubelet.log.
 // It firstly grabs the start and end time of each test from build-log.txt,
 // then use this time range to extract tracing events for each test.
-func ParseTracing(buildPath string) string {
-	ttrList := GrabTestTimeRange(buildPath)
+func ParseTracing(d Downloader, job string, buildNumber int) string {
+	ttrList := GrabTestTimeRange(d, job, buildNumber)
 	result := ""
 	for _, ttr := range ttrList {
-		result += GrabTracing(buildPath, ttr)
+		result += GrabTracing(d, job, buildNumber, ttr)
 	}
 	return result
 }

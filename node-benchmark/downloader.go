@@ -17,16 +17,27 @@ limitations under the License.
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"strings"
 
 	"k8s.io/kubernetes/test/e2e/perftype"
 )
 
+const (
+	latestBuildFile = "latest-build.txt"
+	testResultFile  = "build-log.txt"
+	kubeletLogFile  = "kubelet.log"
+)
+
 // Downloader is the interface that gets a data from a predefined source.
 type Downloader interface {
-	getData() (TestToBuildData, error)
+	GetLastestBuildNumber(job string) (int, error)
+	GetFile(job string, buildNumber int, logFilePath string) (io.ReadCloser, error)
 }
 
 // DataPerBuild contains perf data and time series for a build
@@ -112,4 +123,39 @@ func (b *TestInfoMap) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-type", "application/json")
 	res.WriteHeader(http.StatusOK)
 	res.Write(data)
+}
+
+// TODO(random-liu): Only download and update new data each time.
+func GetData(d Downloader) (TestToBuildData, error) {
+	fmt.Print("Getting Data from test_log...\n")
+	result := make(TestToBuildData)
+	job := "kubelet-benchmark-gce-e2e-ci"
+	buildNr := *builds
+	//dataDir := *localDataDir
+
+	lastBuildNo, err := d.GetLastestBuildNumber(job)
+	if err != nil {
+		return result, err
+	}
+
+	fmt.Printf("Last build no: %v\n", lastBuildNo)
+	for buildNumber := lastBuildNo; buildNumber > lastBuildNo-buildNr && buildNumber > 0; buildNumber-- {
+		fmt.Printf("Fetching build %v...\n", buildNumber)
+
+		file, err := d.GetFile(job, buildNumber, testResultFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
+			return result, err
+		}
+
+		parseTestOutput(bufio.NewScanner(file), job, buildNumber, result)
+		file.Close()
+
+		if *tracing {
+			tracingData := ParseTracing(d, job, buildNumber)
+			parseTracingData(bufio.NewScanner(strings.NewReader(tracingData)), job, buildNumber, result)
+		}
+	}
+
+	return result, nil
 }
