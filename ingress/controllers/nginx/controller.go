@@ -895,25 +895,29 @@ func (lbc *loadBalancerController) getPemsFromIngress(data []interface{}) map[st
 		ing := ingIf.(*extensions.Ingress)
 		for _, tls := range ing.Spec.TLS {
 			secretName := tls.SecretName
+			if secretName == "" {
+				glog.Errorf("No secretName defined for hosts")
+				continue
+			}
 			secretKey := fmt.Sprintf("%s/%s", ing.Namespace, secretName)
 			secretInterface, exists, err := lbc.secrLister.Store.GetByKey(secretKey)
 			if err != nil {
-				glog.Warningf("Error retriveing secret %v for ing %v: %v", secretName, ing.Name, err)
+				glog.Warningf("Error retriveing secret named '%v' for ing named '%v': %v", secretName, ing.Name, err)
 				continue
 			}
 			if !exists {
-				glog.Warningf("Secret %v is not existing", secretKey)
+				glog.Warningf("Secret '%v' does not exist", secretKey)
 				continue
 			}
 			secret := secretInterface.(*api.Secret)
 			cert, ok := secret.Data[api.TLSCertKey]
 			if !ok {
-				glog.Warningf("Secret %v has no private key", secretName)
+				glog.Warningf("Secret named '%v' has no private key", secretName)
 				continue
 			}
 			key, ok := secret.Data[api.TLSPrivateKeyKey]
 			if !ok {
-				glog.Warningf("Secret %v has no cert", secretName)
+				glog.Warningf("Secret named '%v' has no cert", secretName)
 				continue
 			}
 
