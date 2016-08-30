@@ -8,13 +8,14 @@ metadata:
     version: "0.1"
 spec:
   containers:
-  - image: gcr.io/google_containers/node-perf-dash:0.1
+  - image: choufong/node-perf-dash:v0.1
     command:
-      - /perfdash
+      - /node-perf-dash
       -   --www=true
       -   --dir=/www
       -   --address=0.0.0.0:8080
       -   --builds=100
+      -   --datasource=google-gcs
     imagePullPolicy: Always
     name: node-perf-dash
     ports:
@@ -22,8 +23,8 @@ spec:
       containerPort: 8080
     livenessProbe:
       httpGet:
-        path: /api
+        path: /data
         port: 8080
-      initialDelaySeconds: 10
-      timeoutSeconds: 1
+      initialDelaySeconds: 60
+      timeoutSeconds: 30
   restartPolicy: OnFailure
