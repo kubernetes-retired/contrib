@@ -17,55 +17,32 @@ limitations under the License.
 package main
 
 import (
-	"bufio"
-	"fmt"
-	"os"
+	"io"
 
 	"k8s.io/contrib/test-utils/utils"
 )
 
-// constants to use for downloading data.
-const (
-	logFile = "build-log.txt"
-)
-
 // GoogleGCSDownloader that gets data about Google results from the GCS repository
 type GoogleGCSDownloader struct {
-	Builds               int
 	GoogleGCSBucketUtils *utils.Utils
 }
 
 // NewGoogleGCSDownloader creates a new GoogleGCSDownloader
-func NewGoogleGCSDownloader(builds int) *GoogleGCSDownloader {
+func NewGoogleGCSDownloader() *GoogleGCSDownloader {
 	return &GoogleGCSDownloader{
-		Builds:               builds,
 		GoogleGCSBucketUtils: utils.NewUtils(utils.KubekinsBucket, utils.LogDir),
 	}
 }
 
-// TODO(random-liu): Only download and update new data each time.
-func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
-	fmt.Print("Getting Data from GCS...\n")
-	result := make(TestToBuildData)
-	job := "kubelet-benchmark-gce-e2e-ci"
-	lastBuildNo, err := g.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
+func (d *GoogleGCSDownloader) GetLastestBuildNumber(job string) (int, error) {
+	// It returns -1 if the path is not found
+	return d.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
+}
+
+func (d *GoogleGCSDownloader) GetFile(job string, buildNumber int, filePath string) (io.ReadCloser, error) {
+	response, err := d.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, filePath)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
-	fmt.Printf("Last build no: %v\n", lastBuildNo)
-	for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
-		fmt.Printf("Fetching build %v...\n", buildNumber)
-		testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, logFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
-			continue
-		}
-
-		testDataBody := testDataResponse.Body
-		defer testDataBody.Close()
-		testDataScanner := bufio.NewScanner(testDataBody)
-		parseTestOutput(testDataScanner, job, buildNumber, result)
-	}
-
-	return result, nil
+	return response.Body, nil
 }

@@ -55,9 +55,9 @@ func main() {
 	var downloader Downloader
 	switch *datasource {
 	case "local":
-		downloader = NewLocalDownloader(*builds)
+		downloader = NewLocalDownloader()
 	case "google-gcs":
-		downloader = NewGoogleGCSDownloader(*builds)
+		downloader = NewGoogleGCSDownloader()
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported test data source %s\n", *datasource)
 		os.Exit(1)
@@ -66,7 +66,7 @@ func main() {
 	var err error
 
 	if !*www {
-		result, err = downloader.getData()
+		result, err = GetData(downloader)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
 			os.Exit(1)
@@ -83,7 +83,7 @@ func main() {
 	go func() {
 		for {
 			fmt.Printf("Fetching new data...\n")
-			result, err = downloader.getData()
+			result, err = GetData(downloader)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
 				time.Sleep(errorDelay)
