@@ -103,7 +103,7 @@ func pollForever() {
 	}
 	pollFn() // Run immediately.
 	ticker := time.NewTicker(*poll)
-	for _ = range ticker.C {
+	for range ticker.C {
 		pollFn()
 	}
 }
