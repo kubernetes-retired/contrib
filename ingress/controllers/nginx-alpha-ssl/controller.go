@@ -62,7 +62,7 @@ http {
   log_format proxied_combined '"$http_x_forwarded_for" - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" $request_time';
-  
+
   error_log /dev/stderr info;
   access_log /dev/stdout proxied_combined;
 
@@ -78,6 +78,9 @@ http {
       root   /usr/share/nginx/html;
       index index.html index.htm;
     }
+    location /ELBHealthCheck {
+			root /var/www/healthcheck/;
+		}
   }
 {{range $i := .}}
 
@@ -173,7 +176,7 @@ func main() {
   } else {
     vaultEnabled = vaultEnabledFlag
   }
- 
+
   if vaultAddress == "" || vaultToken == "" {
     fmt.Printf("\nVault not configured\n")
     vaultEnabled = "false"
@@ -214,7 +217,7 @@ func main() {
 
     for _, ingress := range ingresses.Items {
 
-      ingressHost := ingress.Spec.Rules[0].Host   
+      ingressHost := ingress.Spec.Rules[0].Host
 
       // Setup ingress defaults
 
