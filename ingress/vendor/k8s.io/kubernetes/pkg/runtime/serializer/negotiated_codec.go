@@ -17,6 +17,7 @@ limitations under the License.
 package serializer
 
 import (
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -47,10 +48,10 @@ func (n *negotiatedSerializerWrapper) StreamingSerializerForMediaType(mediaType 
 	return n.streamInfo, true
 }
 
-func (n *negotiatedSerializerWrapper) EncoderForVersion(e runtime.Encoder, _ runtime.GroupVersioner) runtime.Encoder {
+func (n *negotiatedSerializerWrapper) EncoderForVersion(e runtime.Encoder, _ unversioned.GroupVersion) runtime.Encoder {
 	return e
 }
 
-func (n *negotiatedSerializerWrapper) DecoderToVersion(d runtime.Decoder, _gv runtime.GroupVersioner) runtime.Decoder {
+func (n *negotiatedSerializerWrapper) DecoderToVersion(d runtime.Decoder, _gv unversioned.GroupVersion) runtime.Decoder {
 	return d
 }

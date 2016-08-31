@@ -31,15 +31,10 @@ type Interface interface {
 
 // New constructs a new workqueue (see the package comment).
 func New() *Type {
-	return NewNamed("")
-}
-
-func NewNamed(name string) *Type {
 	return &Type{
 		dirty:      set{},
 		processing: set{},
 		cond:       sync.NewCond(&sync.Mutex{}),
-		metrics:    newQueueMetrics(name),
 	}
 }
 
@@ -62,8 +57,6 @@ type Type struct {
 	cond *sync.Cond
 
 	shuttingDown bool
-
-	metrics queueMetrics
 }
 
 type empty struct{}
@@ -93,14 +86,10 @@ func (q *Type) Add(item interface{}) {
 	if q.dirty.has(item) {
 		return
 	}
-
-	q.metrics.add(item)
-
 	q.dirty.insert(item)
 	if q.processing.has(item) {
 		return
 	}
-
 	q.queue = append(q.queue, item)
 	q.cond.Signal()
 }
@@ -127,14 +116,9 @@ func (q *Type) Get() (item interface{}, shutdown bool) {
 		// We must be shutting down.
 		return nil, true
 	}
-
 	item, q.queue = q.queue[0], q.queue[1:]
-
-	q.metrics.get(item)
-
 	q.processing.insert(item)
 	q.dirty.delete(item)
-
 	return item, false
 }
 
@@ -144,9 +128,6 @@ func (q *Type) Get() (item interface{}, shutdown bool) {
 func (q *Type) Done(item interface{}) {
 	q.cond.L.Lock()
 	defer q.cond.L.Unlock()
-
-	q.metrics.done(item)
-
 	q.processing.delete(item)
 	if q.dirty.has(item) {
 		q.queue = append(q.queue, item)

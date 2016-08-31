@@ -17,6 +17,8 @@ limitations under the License.
 package unversioned
 
 import (
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apimachinery/registered"
 	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/client/restclient"
 )
@@ -52,7 +54,7 @@ func (c *RbacClient) ClusterRoles() ClusterRoleInterface {
 // NewRbac creates a new RbacClient for the given config.
 func NewRbac(c *restclient.Config) (*RbacClient, error) {
 	config := *c
-	if err := setGroupDefaults(rbac.GroupName, &config); err != nil {
+	if err := setRbacDefaults(&config); err != nil {
 		return nil, err
 	}
 	client, err := restclient.RESTClientFor(&config)
@@ -70,4 +72,25 @@ func NewRbacOrDie(c *restclient.Config) *RbacClient {
 		panic(err)
 	}
 	return client
+}
+
+func setRbacDefaults(config *restclient.Config) error {
+	// if rbac group is not registered, return an error
+	g, err := registered.Group(rbac.GroupName)
+	if err != nil {
+		return err
+	}
+	config.APIPath = defaultAPIPath
+	if config.UserAgent == "" {
+		config.UserAgent = restclient.DefaultKubernetesUserAgent()
+	}
+
+	// TODO: Unconditionally set the config.Version, until we fix the config.
+	//if config.Version == "" {
+	copyGroupVersion := g.GroupVersion
+	config.GroupVersion = &copyGroupVersion
+	//}
+
+	config.NegotiatedSerializer = api.Codecs
+	return nil
 }

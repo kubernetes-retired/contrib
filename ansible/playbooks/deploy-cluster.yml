@@ -14,7 +14,13 @@
 - include: deploy-etcd.yml
 
 # Install docker
-- include: deploy-docker.yml
+- hosts: all
+  become: yes
+  roles:
+    - common
+    - docker
+  tags:
+    - docker
 
 # install flannel
 - hosts:
@@ -41,13 +47,29 @@
     - { role: contiv, contiv_role: netmaster, when: networking == 'contiv' }
 
 # install kube master services
-- include: deploy-master.yml
+- hosts: masters
+  become: yes
+  roles:
+    - master
+  tags:
+    - masters
 
 # launch addons, like dns
-- include: deploy-addons.yml
+- hosts: masters
+  become: yes
+  roles:
+    - kubernetes-addons
+  tags:
+    - addons
+    - dns
 
 # install kubernetes on the nodes
-- include: deploy-node.yml
+- hosts: nodes
+  become: yes
+  roles:
+    - node
+  tags:
+    - nodes
 
 # provision opencontrail once the services are operational
 - hosts:
@@ -65,3 +87,10 @@
   roles:
     - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
 
+# install runtime dependencies
+- hosts: nodes
+  become: yes
+  roles:
+  - epilogue
+  tags:
+  - epilogue

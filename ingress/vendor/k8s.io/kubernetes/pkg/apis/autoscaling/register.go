@@ -38,18 +38,17 @@ func Resource(resource string) unversioned.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
 
-var (
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
+func AddToScheme(scheme *runtime.Scheme) {
+	// Add the API to Scheme.
+	addKnownTypes(scheme)
+}
 
 // Adds the list of known types to api.Scheme.
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&Scale{},
 		&HorizontalPodAutoscaler{},
 		&HorizontalPodAutoscalerList{},
 		&api.ListOptions{},
 	)
-	return nil
 }

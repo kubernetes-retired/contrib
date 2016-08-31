@@ -22,10 +22,10 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
-var (
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
+func AddToScheme(scheme *runtime.Scheme) {
+	// Add the API to Scheme.
+	addKnownTypes(scheme)
+}
 
 // GroupName is the group name use in this package
 const GroupName = "apps"
@@ -44,12 +44,11 @@ func Resource(resource string) unversioned.GroupResource {
 }
 
 // Adds the list of known types to api.Scheme.
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) {
 	// TODO this will get cleaned up with the scheme types are fixed
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&PetSet{},
 		&PetSetList{},
 		&api.ListOptions{},
 	)
-	return nil
 }

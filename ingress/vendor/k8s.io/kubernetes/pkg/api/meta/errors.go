@@ -38,40 +38,19 @@ func (e *AmbiguousResourceError) Error() string {
 		return fmt.Sprintf("%v matches multiple kinds %v", e.PartialResource, e.MatchingKinds)
 	case len(e.MatchingResources) > 0:
 		return fmt.Sprintf("%v matches multiple resources %v", e.PartialResource, e.MatchingResources)
+
 	}
+
 	return fmt.Sprintf("%v matches multiple resources or kinds", e.PartialResource)
 }
 
-// AmbiguousKindError is returned if the RESTMapper finds multiple matches for a kind
-type AmbiguousKindError struct {
-	PartialKind unversioned.GroupVersionKind
-
-	MatchingResources []unversioned.GroupVersionResource
-	MatchingKinds     []unversioned.GroupVersionKind
-}
-
-func (e *AmbiguousKindError) Error() string {
-	switch {
-	case len(e.MatchingKinds) > 0 && len(e.MatchingResources) > 0:
-		return fmt.Sprintf("%v matches multiple resources %v and kinds %v", e.PartialKind, e.MatchingResources, e.MatchingKinds)
-	case len(e.MatchingKinds) > 0:
-		return fmt.Sprintf("%v matches multiple kinds %v", e.PartialKind, e.MatchingKinds)
-	case len(e.MatchingResources) > 0:
-		return fmt.Sprintf("%v matches multiple resources %v", e.PartialKind, e.MatchingResources)
-	}
-	return fmt.Sprintf("%v matches multiple resources or kinds", e.PartialKind)
-}
-
-func IsAmbiguousError(err error) bool {
+func IsAmbiguousResourceError(err error) bool {
 	if err == nil {
 		return false
 	}
-	switch err.(type) {
-	case *AmbiguousResourceError, *AmbiguousKindError:
-		return true
-	default:
-		return false
-	}
+
+	_, ok := err.(*AmbiguousResourceError)
+	return ok
 }
 
 // NoResourceMatchError is returned if the RESTMapper can't find any match for a resource
@@ -83,23 +62,11 @@ func (e *NoResourceMatchError) Error() string {
 	return fmt.Sprintf("no matches for %v", e.PartialResource)
 }
 
-// NoKindMatchError is returned if the RESTMapper can't find any match for a kind
-type NoKindMatchError struct {
-	PartialKind unversioned.GroupVersionKind
-}
-
-func (e *NoKindMatchError) Error() string {
-	return fmt.Sprintf("no matches for %v", e.PartialKind)
-}
-
-func IsNoMatchError(err error) bool {
+func IsNoResourceMatchError(err error) bool {
 	if err == nil {
 		return false
 	}
-	switch err.(type) {
-	case *NoResourceMatchError, *NoKindMatchError:
-		return true
-	default:
-		return false
-	}
+
+	_, ok := err.(*NoResourceMatchError)
+	return ok
 }

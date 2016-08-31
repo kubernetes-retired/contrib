@@ -38,19 +38,18 @@ func Resource(resource string) unversioned.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
 
-var (
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
+// Adds the list of known types to api.Scheme.
+func AddToScheme(scheme *runtime.Scheme) {
+	addKnownTypes(scheme)
+}
 
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&Cluster{},
 		&ClusterList{},
 		&api.ListOptions{},
 		&api.DeleteOptions{},
 	)
-	return nil
 }
 
 func (obj *Cluster) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }

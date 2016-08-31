@@ -8,7 +8,6 @@ blunderbuss-config
 blunderbuss-reassign
 change-permissions
 chart-url
-cla-status-context
 cloud-config
 cloud-provider
 cluster-uid
@@ -124,8 +123,5 @@ retest-body
 default-ssl-certificate
 housekeeping-interval
 system-namespace
-initial-delay
-pod-scheduled-timeout
 netrc-dir
 publish-command
-triager-url

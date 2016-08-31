@@ -19,7 +19,7 @@ package latest
 import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
-	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api/v1"
+	_ "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api/v1"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer/json"
 	"k8s.io/kubernetes/pkg/runtime/serializer/versioning"
@@ -40,27 +40,15 @@ const OldestVersion = "v1"
 // with a set of versions to choose.
 var Versions = []string{"v1"}
 
-var (
-	Codec  runtime.Codec
-	Scheme *runtime.Scheme
-)
+var Codec runtime.Codec
 
 func init() {
-	Scheme = runtime.NewScheme()
-	if err := api.AddToScheme(Scheme); err != nil {
-		// Programmer error, detect immediately
-		panic(err)
-	}
-	if err := v1.AddToScheme(Scheme); err != nil {
-		// Programmer error, detect immediately
-		panic(err)
-	}
-	yamlSerializer := json.NewYAMLSerializer(json.DefaultMetaFactory, Scheme, Scheme)
+	yamlSerializer := json.NewYAMLSerializer(json.DefaultMetaFactory, api.Scheme, api.Scheme)
 	Codec = versioning.NewCodecForScheme(
-		Scheme,
+		api.Scheme,
 		yamlSerializer,
 		yamlSerializer,
-		unversioned.GroupVersion{Version: Version},
-		runtime.InternalGroupVersioner,
+		[]unversioned.GroupVersion{{Version: Version}},
+		[]unversioned.GroupVersion{{Version: runtime.APIVersionInternal}},
 	)
 }

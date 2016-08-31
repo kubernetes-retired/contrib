@@ -2,24 +2,24 @@
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: echomap
+  name: vpclub-ingress
 spec:
   rules:
-  - host: foo.bar.com
+  - host: nginx.vpclub.cn
     http:
       paths:
-      - path: /foo
+      - path: /nginx
         backend:
           serviceName: echoheaders-x
           servicePort: 80
-  - host: bar.baz.com
+  - host: hehe.vpclub.cn
     http:
       paths:
-      - path: /bar
+      - path: /hehe
         backend:
           serviceName: echoheaders-y
           servicePort: 80
-      - path: /foo
+      - path: /nginx
         backend:
           serviceName: echoheaders-x
           servicePort: 80

@@ -1,0 +1,18 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: foo
+  namespace: default
+spec:
+  tls:
+  - hosts:
+    - foo.bar.com
+    secretName: foo-secret
+  rules:
+  - host: foo.bar.com
+    http:
+      paths:
+      - backend:
+          serviceName: echoheaders-x
+          servicePort: 80
+        path: /

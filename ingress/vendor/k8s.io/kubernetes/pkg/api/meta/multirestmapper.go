@@ -56,7 +56,7 @@ func (m MultiRESTMapper) ResourcesFor(resource unversioned.GroupVersionResource)
 	for _, t := range m {
 		gvrs, err := t.ResourcesFor(resource)
 		// ignore "no match" errors, but any other error percolates back up
-		if IsNoMatchError(err) {
+		if IsNoResourceMatchError(err) {
 			continue
 		}
 		if err != nil {
@@ -91,7 +91,7 @@ func (m MultiRESTMapper) KindsFor(resource unversioned.GroupVersionResource) (gv
 	for _, t := range m {
 		gvks, err := t.KindsFor(resource)
 		// ignore "no match" errors, but any other error percolates back up
-		if IsNoMatchError(err) {
+		if IsNoResourceMatchError(err) {
 			continue
 		}
 		if err != nil {
@@ -155,7 +155,7 @@ func (m MultiRESTMapper) RESTMapping(gk unversioned.GroupKind, versions ...strin
 	for _, t := range m {
 		currMapping, err := t.RESTMapping(gk, versions...)
 		// ignore "no match" errors, but any other error percolates back up
-		if IsNoMatchError(err) {
+		if IsNoResourceMatchError(err) {
 			continue
 		}
 		if err != nil {
@@ -171,43 +171,12 @@ func (m MultiRESTMapper) RESTMapping(gk unversioned.GroupKind, versions ...strin
 		return allMappings[0], nil
 	}
 	if len(allMappings) > 1 {
-		var kinds []unversioned.GroupVersionKind
-		for _, m := range allMappings {
-			kinds = append(kinds, m.GroupVersionKind)
-		}
-		return nil, &AmbiguousKindError{PartialKind: gk.WithVersion(""), MatchingKinds: kinds}
+		return nil, fmt.Errorf("multiple matches found for %v in %v", gk, versions)
 	}
 	if len(errors) > 0 {
 		return nil, utilerrors.NewAggregate(errors)
 	}
-	return nil, &NoKindMatchError{PartialKind: gk.WithVersion("")}
-}
-
-// RESTMappings returns all possible RESTMappings for the provided group kind, or an error
-// if the type is not recognized.
-func (m MultiRESTMapper) RESTMappings(gk unversioned.GroupKind) ([]*RESTMapping, error) {
-	var allMappings []*RESTMapping
-	var errors []error
-
-	for _, t := range m {
-		currMappings, err := t.RESTMappings(gk)
-		// ignore "no match" errors, but any other error percolates back up
-		if IsNoMatchError(err) {
-			continue
-		}
-		if err != nil {
-			errors = append(errors, err)
-			continue
-		}
-		allMappings = append(allMappings, currMappings...)
-	}
-	if len(errors) > 0 {
-		return nil, utilerrors.NewAggregate(errors)
-	}
-	if len(allMappings) == 0 {
-		return nil, &NoKindMatchError{PartialKind: gk.WithVersion("")}
-	}
-	return allMappings, nil
+	return nil, fmt.Errorf("no match found for %v in %v", gk, versions)
 }
 
 // AliasesForResource finds the first alias response for the provided mappers.

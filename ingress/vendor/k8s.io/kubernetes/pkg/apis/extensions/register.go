@@ -40,13 +40,13 @@ func Resource(resource string) unversioned.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
 
-var (
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
+func AddToScheme(scheme *runtime.Scheme) {
+	// Add the API to Scheme.
+	addKnownTypes(scheme)
+}
 
 // Adds the list of known types to api.Scheme.
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) {
 	// TODO this gets cleaned up when the types are fixed
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&Deployment{},
@@ -68,7 +68,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&Ingress{},
 		&IngressList{},
 		&api.ListOptions{},
-		&api.DeleteOptions{},
 		&ReplicaSet{},
 		&ReplicaSetList{},
 		&api.ExportOptions{},
@@ -76,8 +75,5 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&PodSecurityPolicyList{},
 		&NetworkPolicy{},
 		&NetworkPolicyList{},
-		&StorageClass{},
-		&StorageClassList{},
 	)
-	return nil
 }

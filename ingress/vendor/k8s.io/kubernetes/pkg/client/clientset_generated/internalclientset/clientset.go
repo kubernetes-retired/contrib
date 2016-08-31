@@ -18,8 +18,6 @@ package internalclientset
 
 import (
 	"github.com/golang/glog"
-	unversionedauthentication "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/authentication/unversioned"
-	unversionedauthorization "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/authorization/unversioned"
 	unversionedautoscaling "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/autoscaling/unversioned"
 	unversionedbatch "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/batch/unversioned"
 	unversionedcertificates "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/certificates/unversioned"
@@ -34,13 +32,11 @@ import (
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	Core() unversionedcore.CoreInterface
-	Authentication() unversionedauthentication.AuthenticationInterface
-	Authorization() unversionedauthorization.AuthorizationInterface
+	Extensions() unversionedextensions.ExtensionsInterface
 	Autoscaling() unversionedautoscaling.AutoscalingInterface
 	Batch() unversionedbatch.BatchInterface
-	Certificates() unversionedcertificates.CertificatesInterface
-	Extensions() unversionedextensions.ExtensionsInterface
 	Rbac() unversionedrbac.RbacInterface
+	Certificates() unversionedcertificates.CertificatesInterface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -48,13 +44,11 @@ type Interface interface {
 type Clientset struct {
 	*discovery.DiscoveryClient
 	*unversionedcore.CoreClient
-	*unversionedauthentication.AuthenticationClient
-	*unversionedauthorization.AuthorizationClient
+	*unversionedextensions.ExtensionsClient
 	*unversionedautoscaling.AutoscalingClient
 	*unversionedbatch.BatchClient
-	*unversionedcertificates.CertificatesClient
-	*unversionedextensions.ExtensionsClient
 	*unversionedrbac.RbacClient
+	*unversionedcertificates.CertificatesClient
 }
 
 // Core retrieves the CoreClient
@@ -65,20 +59,12 @@ func (c *Clientset) Core() unversionedcore.CoreInterface {
 	return c.CoreClient
 }
 
-// Authentication retrieves the AuthenticationClient
-func (c *Clientset) Authentication() unversionedauthentication.AuthenticationInterface {
+// Extensions retrieves the ExtensionsClient
+func (c *Clientset) Extensions() unversionedextensions.ExtensionsInterface {
 	if c == nil {
 		return nil
 	}
-	return c.AuthenticationClient
-}
-
-// Authorization retrieves the AuthorizationClient
-func (c *Clientset) Authorization() unversionedauthorization.AuthorizationInterface {
-	if c == nil {
-		return nil
-	}
-	return c.AuthorizationClient
+	return c.ExtensionsClient
 }
 
 // Autoscaling retrieves the AutoscalingClient
@@ -97,28 +83,20 @@ func (c *Clientset) Batch() unversionedbatch.BatchInterface {
 	return c.BatchClient
 }
 
-// Certificates retrieves the CertificatesClient
-func (c *Clientset) Certificates() unversionedcertificates.CertificatesInterface {
-	if c == nil {
-		return nil
-	}
-	return c.CertificatesClient
-}
-
-// Extensions retrieves the ExtensionsClient
-func (c *Clientset) Extensions() unversionedextensions.ExtensionsInterface {
-	if c == nil {
-		return nil
-	}
-	return c.ExtensionsClient
-}
-
 // Rbac retrieves the RbacClient
 func (c *Clientset) Rbac() unversionedrbac.RbacInterface {
 	if c == nil {
 		return nil
 	}
 	return c.RbacClient
+}
+
+// Certificates retrieves the CertificatesClient
+func (c *Clientset) Certificates() unversionedcertificates.CertificatesInterface {
+	if c == nil {
+		return nil
+	}
+	return c.CertificatesClient
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -138,11 +116,7 @@ func NewForConfig(c *restclient.Config) (*Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
-	clientset.AuthenticationClient, err = unversionedauthentication.NewForConfig(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
-	clientset.AuthorizationClient, err = unversionedauthorization.NewForConfig(&configShallowCopy)
+	clientset.ExtensionsClient, err = unversionedextensions.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -154,15 +128,11 @@ func NewForConfig(c *restclient.Config) (*Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
-	clientset.CertificatesClient, err = unversionedcertificates.NewForConfig(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
-	clientset.ExtensionsClient, err = unversionedextensions.NewForConfig(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
 	clientset.RbacClient, err = unversionedrbac.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
+	clientset.CertificatesClient, err = unversionedcertificates.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -180,13 +150,11 @@ func NewForConfig(c *restclient.Config) (*Clientset, error) {
 func NewForConfigOrDie(c *restclient.Config) *Clientset {
 	var clientset Clientset
 	clientset.CoreClient = unversionedcore.NewForConfigOrDie(c)
-	clientset.AuthenticationClient = unversionedauthentication.NewForConfigOrDie(c)
-	clientset.AuthorizationClient = unversionedauthorization.NewForConfigOrDie(c)
+	clientset.ExtensionsClient = unversionedextensions.NewForConfigOrDie(c)
 	clientset.AutoscalingClient = unversionedautoscaling.NewForConfigOrDie(c)
 	clientset.BatchClient = unversionedbatch.NewForConfigOrDie(c)
-	clientset.CertificatesClient = unversionedcertificates.NewForConfigOrDie(c)
-	clientset.ExtensionsClient = unversionedextensions.NewForConfigOrDie(c)
 	clientset.RbacClient = unversionedrbac.NewForConfigOrDie(c)
+	clientset.CertificatesClient = unversionedcertificates.NewForConfigOrDie(c)
 
 	clientset.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
 	return &clientset
@@ -196,13 +164,11 @@ func NewForConfigOrDie(c *restclient.Config) *Clientset {
 func New(c *restclient.RESTClient) *Clientset {
 	var clientset Clientset
 	clientset.CoreClient = unversionedcore.New(c)
-	clientset.AuthenticationClient = unversionedauthentication.New(c)
-	clientset.AuthorizationClient = unversionedauthorization.New(c)
+	clientset.ExtensionsClient = unversionedextensions.New(c)
 	clientset.AutoscalingClient = unversionedautoscaling.New(c)
 	clientset.BatchClient = unversionedbatch.New(c)
-	clientset.CertificatesClient = unversionedcertificates.New(c)
-	clientset.ExtensionsClient = unversionedextensions.New(c)
 	clientset.RbacClient = unversionedrbac.New(c)
+	clientset.CertificatesClient = unversionedcertificates.New(c)
 
 	clientset.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &clientset

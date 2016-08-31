@@ -27,20 +27,14 @@ const GroupName = "componentconfig"
 // SchemeGroupVersion is group version used to register these objects
 var SchemeGroupVersion = unversioned.GroupVersion{Group: GroupName, Version: "v1alpha1"}
 
-var (
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes, addDefaultingFuncs)
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
+func AddToScheme(scheme *runtime.Scheme) {
+	addKnownTypes(scheme)
+	addDefaultingFuncs(scheme)
+}
 
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&KubeProxyConfiguration{},
 		&KubeSchedulerConfiguration{},
-		&KubeletConfiguration{},
 	)
-	return nil
 }
-
-func (obj *KubeProxyConfiguration) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }
-func (obj *KubeSchedulerConfiguration) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
-func (obj *KubeletConfiguration) GetObjectKind() unversioned.ObjectKind       { return &obj.TypeMeta }

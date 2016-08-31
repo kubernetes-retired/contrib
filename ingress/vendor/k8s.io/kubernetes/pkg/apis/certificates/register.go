@@ -22,11 +22,6 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
-var (
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
-
 // GroupName is the group name use in this package
 const GroupName = "certificates"
 
@@ -43,15 +38,19 @@ func Resource(resource string) unversioned.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
 
+func AddToScheme(scheme *runtime.Scheme) {
+	// Add the API to Scheme.
+	addKnownTypes(scheme)
+}
+
 // Adds the list of known types to api.Scheme.
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&CertificateSigningRequest{},
 		&CertificateSigningRequestList{},
 		&api.ListOptions{},
 		&api.DeleteOptions{},
 	)
-	return nil
 }
 
 func (obj *CertificateSigningRequest) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }

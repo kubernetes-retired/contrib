@@ -72,7 +72,6 @@ func paramNames() []GeneratorParam {
 		{"target-port", false},
 		{"port-name", false},
 		{"session-affinity", false},
-		{"cluster-ip", false},
 	}
 }
 
@@ -181,11 +180,11 @@ func generate(genericParams map[string]interface{}) (runtime.Object, error) {
 			Ports:    ports,
 		},
 	}
-	targetPortString := params["target-port"]
-	if len(targetPortString) == 0 {
-		targetPortString = params["container-port"]
+	targetPortString, found := params["target-port"]
+	if !found {
+		targetPortString, found = params["container-port"]
 	}
-	if len(targetPortString) > 0 {
+	if found && len(targetPortString) > 0 {
 		var targetPort intstr.IntOrString
 		if portNum, err := strconv.Atoi(targetPortString); err != nil {
 			targetPort = intstr.FromString(targetPortString)
@@ -224,13 +223,6 @@ func generate(genericParams map[string]interface{}) (runtime.Object, error) {
 			service.Spec.SessionAffinity = api.ServiceAffinityClientIP
 		default:
 			return nil, fmt.Errorf("unknown session affinity: %s", params["session-affinity"])
-		}
-	}
-	if len(params["cluster-ip"]) != 0 {
-		if params["cluster-ip"] == "None" {
-			service.Spec.ClusterIP = api.ClusterIPNone
-		} else {
-			service.Spec.ClusterIP = params["cluster-ip"]
 		}
 	}
 	return &service, nil

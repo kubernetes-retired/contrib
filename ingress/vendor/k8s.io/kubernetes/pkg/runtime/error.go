@@ -84,7 +84,7 @@ type missingVersionErr struct {
 }
 
 // IsMissingVersion returns true if the error indicates that the provided object
-// is missing a 'Version' field.
+// is missing a 'Versioj' field.
 func NewMissingVersionErr(data string) error {
 	return &missingVersionErr{data}
 }

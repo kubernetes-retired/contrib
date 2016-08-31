@@ -17,7 +17,6 @@ limitations under the License.
 package rest
 
 import (
-	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -25,5 +24,5 @@ import (
 type RESTExportStrategy interface {
 	// Export strips fields that can not be set by the user.  If 'exact' is false
 	// fields specific to the cluster are also stripped
-	Export(ctx api.Context, obj runtime.Object, exact bool) error
+	Export(obj runtime.Object, exact bool) error
 }

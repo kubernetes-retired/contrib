@@ -20,7 +20,7 @@ import (
 	"sort"
 	"time"
 
-	"k8s.io/kubernetes/pkg/util/clock"
+	"k8s.io/kubernetes/pkg/util"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
@@ -34,22 +34,17 @@ type DelayingInterface interface {
 
 // NewDelayingQueue constructs a new workqueue with delayed queuing ability
 func NewDelayingQueue() DelayingInterface {
-	return newDelayingQueue(clock.RealClock{}, "")
+	return newDelayingQueue(util.RealClock{})
 }
 
-func NewNamedDelayingQueue(name string) DelayingInterface {
-	return newDelayingQueue(clock.RealClock{}, name)
-}
-
-func newDelayingQueue(clock clock.Clock, name string) DelayingInterface {
+func newDelayingQueue(clock util.Clock) DelayingInterface {
 	ret := &delayingType{
-		Interface:          NewNamed(name),
+		Interface:          New(),
 		clock:              clock,
 		heartbeat:          clock.Tick(maxWait),
 		stopCh:             make(chan struct{}),
 		waitingTimeByEntry: map[t]time.Time{},
 		waitingForAddCh:    make(chan waitFor, 1000),
-		metrics:            newRetryMetrics(name),
 	}
 
 	go ret.waitingLoop()
@@ -62,7 +57,7 @@ type delayingType struct {
 	Interface
 
 	// clock tracks time for delayed firing
-	clock clock.Clock
+	clock util.Clock
 
 	// stopCh lets us signal a shutdown to the waiting loop
 	stopCh chan struct{}
@@ -76,9 +71,6 @@ type delayingType struct {
 	waitingTimeByEntry map[t]time.Time
 	// waitingForAddCh is a buffered channel that feeds waitingForAdd
 	waitingForAddCh chan waitFor
-
-	// metrics counts the number of retries
-	metrics retryMetrics
 }
 
 // waitFor holds the data to add and the time it should be added
@@ -99,8 +91,6 @@ func (q *delayingType) AddAfter(item interface{}, duration time.Duration) {
 	if q.ShuttingDown() {
 		return
 	}
-
-	q.metrics.retry()
 
 	// immediately add things with no delay
 	if duration <= 0 {

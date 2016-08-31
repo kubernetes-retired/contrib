@@ -40,7 +40,7 @@ type RESTCreateStrategy interface {
 	// the object.  For example: remove fields that are not to be persisted,
 	// sort order-insensitive list fields, etc.  This should not remove fields
 	// whose presence would be considered a validation error.
-	PrepareForCreate(ctx api.Context, obj runtime.Object)
+	PrepareForCreate(obj runtime.Object)
 	// Validate is invoked after default fields in the object have been filled in before
 	// the object is persisted.  This method should not mutate the object.
 	Validate(ctx api.Context, obj runtime.Object) field.ErrorList
@@ -67,12 +67,9 @@ func BeforeCreate(strategy RESTCreateStrategy, ctx api.Context, obj runtime.Obje
 	}
 	objectMeta.DeletionTimestamp = nil
 	objectMeta.DeletionGracePeriodSeconds = nil
-	strategy.PrepareForCreate(ctx, obj)
+	strategy.PrepareForCreate(obj)
 	api.FillObjectMetaSystemFields(ctx, objectMeta)
 	api.GenerateName(strategy, objectMeta)
-
-	// ClusterName is ignored and should not be saved
-	objectMeta.ClusterName = ""
 
 	if errs := strategy.Validate(ctx, obj); len(errs) > 0 {
 		return errors.NewInvalid(kind.GroupKind(), objectMeta.Name, errs)

@@ -20,6 +20,5 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
-func addDefaultingFuncs(scheme *runtime.Scheme) error {
-	return nil
+func addDefaultingFuncs(scheme *runtime.Scheme) {
 }

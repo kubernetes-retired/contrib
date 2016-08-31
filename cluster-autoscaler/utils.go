@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
@@ -133,7 +132,7 @@ func CheckGroupsAndNodes(nodes []*kube_api.Node, cloudProvider cloudprovider.Clo
 		if err != nil {
 			return err
 		}
-		if group == nil || reflect.ValueOf(group).IsNil() {
+		if group == nil {
 			continue
 		}
 		id := group.Id()
@@ -163,7 +162,7 @@ func GetNodeInfosForGroups(nodes []*kube_api.Node, cloudProvider cloudprovider.C
 		if err != nil {
 			return map[string]*schedulercache.NodeInfo{}, err
 		}
-		if nodeGroup == nil || reflect.ValueOf(nodeGroup).IsNil() {
+		if nodeGroup == nil {
 			continue
 		}
 		id := nodeGroup.Id()

@@ -24,7 +24,7 @@ import (
 )
 
 func podId(pod *kube_api.Pod) string {
-	return fmt.Sprintf("%s_%s", pod.Namespace, pod.Name)
+	return fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 }
 
 // Thread safe implementation of set of Pods.

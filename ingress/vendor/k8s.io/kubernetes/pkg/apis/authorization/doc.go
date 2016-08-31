@@ -16,5 +16,4 @@ limitations under the License.
 
 // +k8s:deepcopy-gen=package,register
 
-// +groupName=authorization.k8s.io
 package authorization

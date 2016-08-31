@@ -128,5 +128,3 @@ func (obj *ObjectReference) SetGroupVersionKind(gvk unversioned.GroupVersionKind
 func (obj *ObjectReference) GroupVersionKind() unversioned.GroupVersionKind {
 	return unversioned.FromAPIVersionAndKind(obj.APIVersion, obj.Kind)
 }
-
-func (obj *ObjectReference) GetObjectKind() unversioned.ObjectKind { return obj }

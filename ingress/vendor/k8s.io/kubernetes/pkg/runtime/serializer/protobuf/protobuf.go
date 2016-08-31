@@ -26,7 +26,6 @@ import (
 
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/runtime/serializer/recognizer"
 	"k8s.io/kubernetes/pkg/util/framer"
 )
 
@@ -77,7 +76,6 @@ type Serializer struct {
 }
 
 var _ runtime.Serializer = &Serializer{}
-var _ recognizer.RecognizingDecoder = &Serializer{}
 
 // Decode attempts to convert the provided data into a protobuf message, extract the stored schema kind, apply the provided default
 // gvk, and then load that data into an object matching the desired schema kind or the provided into. If into is *runtime.Unknown,
@@ -126,7 +124,7 @@ func (s *Serializer) Decode(originalData []byte, gvk *unversioned.GroupVersionKi
 
 	if intoUnknown, ok := into.(*runtime.Unknown); ok && intoUnknown != nil {
 		*intoUnknown = unk
-		if ok, _, _ := s.RecognizesData(bytes.NewBuffer(unk.Raw)); ok {
+		if len(intoUnknown.ContentType) == 0 {
 			intoUnknown.ContentType = s.contentType
 		}
 		return intoUnknown, &actual, nil
@@ -169,29 +167,16 @@ func (s *Serializer) Decode(originalData []byte, gvk *unversioned.GroupVersionKi
 
 // Encode serializes the provided object to the given writer.
 func (s *Serializer) Encode(obj runtime.Object, w io.Writer) error {
-	prefixSize := uint64(len(s.prefix))
-
 	var unk runtime.Unknown
-	switch t := obj.(type) {
-	case *runtime.Unknown:
-		estimatedSize := prefixSize + uint64(t.Size())
-		data := make([]byte, estimatedSize)
-		i, err := t.MarshalTo(data[prefixSize:])
-		if err != nil {
-			return err
-		}
-		copy(data, s.prefix)
-		_, err = w.Write(data[:prefixSize+uint64(i)])
-		return err
-	default:
-		kind := obj.GetObjectKind().GroupVersionKind()
-		unk = runtime.Unknown{
-			TypeMeta: runtime.TypeMeta{
-				Kind:       kind.Kind,
-				APIVersion: kind.GroupVersion().String(),
-			},
-		}
+	kind := obj.GetObjectKind().GroupVersionKind()
+	unk = runtime.Unknown{
+		TypeMeta: runtime.TypeMeta{
+			Kind:       kind.Kind,
+			APIVersion: kind.GroupVersion().String(),
+		},
 	}
+
+	prefixSize := uint64(len(s.prefix))
 
 	switch t := obj.(type) {
 	case bufferedMarshaller:
@@ -239,19 +224,19 @@ func (s *Serializer) Encode(obj runtime.Object, w io.Writer) error {
 }
 
 // RecognizesData implements the RecognizingDecoder interface.
-func (s *Serializer) RecognizesData(peek io.Reader) (bool, bool, error) {
+func (s *Serializer) RecognizesData(peek io.Reader) (bool, error) {
 	prefix := make([]byte, 4)
 	n, err := peek.Read(prefix)
 	if err != nil {
 		if err == io.EOF {
-			return false, false, nil
+			return false, nil
 		}
-		return false, false, err
+		return false, err
 	}
 	if n != 4 {
-		return false, false, nil
+		return false, nil
 	}
-	return bytes.Equal(s.prefix, prefix), false, nil
+	return bytes.Equal(s.prefix, prefix), nil
 }
 
 // copyKindDefaults defaults dst to the value in src if dst does not have a value set.

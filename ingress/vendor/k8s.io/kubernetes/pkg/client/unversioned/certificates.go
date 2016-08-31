@@ -17,6 +17,8 @@ limitations under the License.
 package unversioned
 
 import (
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apimachinery/registered"
 	"k8s.io/kubernetes/pkg/apis/certificates"
 	"k8s.io/kubernetes/pkg/client/restclient"
 )
@@ -58,7 +60,22 @@ func NewCertificatesOrDie(c *restclient.Config) *CertificatesClient {
 }
 
 func setCertificatesDefaults(config *restclient.Config) error {
-	setGroupDefaults(certificates.GroupName, config)
+	// if certificates group is not registered, return an error
+	g, err := registered.Group(certificates.GroupName)
+	if err != nil {
+		return err
+	}
+	config.APIPath = defaultAPIPath
+	if config.UserAgent == "" {
+		config.UserAgent = restclient.DefaultKubernetesUserAgent()
+	}
+	// TODO: Unconditionally set the config.Version, until we fix the config.
+	//if config.Version == "" {
+	copyGroupVersion := g.GroupVersion
+	config.GroupVersion = &copyGroupVersion
+	//}
+
+	config.NegotiatedSerializer = api.Codecs
 	if config.QPS == 0 {
 		config.QPS = 5
 	}

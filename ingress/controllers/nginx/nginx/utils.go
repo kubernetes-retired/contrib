@@ -28,6 +28,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/mitchellh/mapstructure"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/util/sysctl"
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 )
@@ -159,7 +160,7 @@ func (ngx *Manager) filterErrors(errCodes []int) []int {
 	return fa
 }
 
-func (ngx *Manager) needsReload(data []byte) (bool, error) {
+func (ngx *Manager) needsReload(data *bytes.Buffer) (bool, error) {
 	filename := ngx.ConfigFile
 	in, err := os.Open(filename)
 	if err != nil {
@@ -172,13 +173,14 @@ func (ngx *Manager) needsReload(data []byte) (bool, error) {
 		return false, err
 	}
 
-	if !bytes.Equal(src, data) {
-		err = ioutil.WriteFile(filename, data, 0644)
+	res := data.Bytes()
+	if !bytes.Equal(src, res) {
+		err = ioutil.WriteFile(filename, res, 0644)
 		if err != nil {
 			return false, err
 		}
 
-		dData, err := diff(src, data)
+		dData, err := diff(src, res)
 		if err != nil {
 			glog.Errorf("error computing diff: %s", err)
 			return true, nil
@@ -218,4 +220,17 @@ func diff(b1, b2 []byte) (data []byte, err error) {
 		err = nil
 	}
 	return
+}
+
+// sysctlSomaxconn returns the value of net.core.somaxconn, i.e.
+// maximum number of connections that can be queued for acceptance
+// http://nginx.org/en/docs/http/ngx_http_core_module.html#listen
+func sysctlSomaxconn() int {
+	maxConns, err := sysctl.GetSysctl("net/core/somaxconn")
+	if err != nil || maxConns < 512 {
+		glog.V(3).Infof("system net.core.somaxconn=%v. Using NGINX default (511)", maxConns)
+		return 511
+	}
+
+	return maxConns
 }

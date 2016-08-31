@@ -84,7 +84,7 @@ func TestAnnotations(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 	if mf != 1 {
-		t.Errorf("Expected 1 but returned %v", mf)
+		t.Errorf("Expected 1 but returned %s", mf)
 	}
 
 	ft, err := ingAnnotations(ing.GetAnnotations()).failTimeout()
@@ -92,7 +92,7 @@ func TestAnnotations(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 	if ft != 1 {
-		t.Errorf("Expected 1 but returned %v", ft)
+		t.Errorf("Expected 1 but returned %s", ft)
 	}
 }
 

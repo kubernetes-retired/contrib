@@ -21,23 +21,22 @@ import (
 
 	api "k8s.io/kubernetes/pkg/api"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	cache "k8s.io/kubernetes/pkg/client/cache"
 	client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_3"
-	runtime "k8s.io/kubernetes/pkg/runtime"
-	watch "k8s.io/kubernetes/pkg/watch"
 )
 
 type kubernetesClient struct {
-	namespace  string
-	deployment string
-	pod        string
-	container  string
-	clientset  *client.Clientset
-	nodeStore  cache.Store
+	namespace, deployment, pod, container string
+	clientset                             *client.Clientset
 }
 
 func (k *kubernetesClient) CountNodes() (uint64, error) {
-	return uint64(len(k.nodeStore.List())), nil
+	opt := api.ListOptions{Watch: false}
+
+	nodes, err := k.clientset.CoreClient.Nodes().List(opt)
+	if err != nil {
+		return 0, err
+	}
+	return uint64(len(nodes.Items)), nil
 }
 
 func (k *kubernetesClient) ContainerResources() (*apiv1.ResourceRequirements, error) {
@@ -76,23 +75,11 @@ func (k *kubernetesClient) UpdateDeployment(resources *apiv1.ResourceRequirement
 
 // NewKubernetesClient gives a KubernetesClient with the given dependencies.
 func NewKubernetesClient(namespace, deployment, pod, container string, clientset *client.Clientset) KubernetesClient {
-	result := &kubernetesClient{
+	return &kubernetesClient{
 		namespace:  namespace,
 		deployment: deployment,
 		pod:        pod,
 		container:  container,
 		clientset:  clientset,
-		nodeStore:  cache.NewStore(cache.MetaNamespaceKeyFunc),
 	}
-	// Start propagating contents of the nodeStore.
-	nodeListWatch := &cache.ListWatch{
-		ListFunc: func(options api.ListOptions) (runtime.Object, error) {
-			return clientset.Core().Nodes().List(options)
-		},
-		WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-			return clientset.Core().Nodes().Watch(options)
-		},
-	}
-	cache.NewReflector(nodeListWatch, &api.Node{}, result.nodeStore, 0).Run()
-	return result
 }

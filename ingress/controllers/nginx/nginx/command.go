@@ -27,7 +27,6 @@ import (
 	"k8s.io/kubernetes/pkg/healthz"
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
 )
 
 // Start starts a nginx (master process) and waits. If the process ends
@@ -57,23 +56,19 @@ func (ngx *Manager) Start() {
 // shut down, stop accepting new connections and continue to service current requests
 // until all such requests are serviced. After that, the old worker processes exit.
 // http://nginx.org/en/docs/beginners_guide.html#control
-func (ngx *Manager) CheckAndReload(cfg config.Configuration, ingressCfg ingress.Configuration) error {
+func (ngx *Manager) CheckAndReload(cfg config.Configuration, ingressCfg IngressConfig) error {
 	ngx.reloadRateLimiter.Accept()
 
 	ngx.reloadLock.Lock()
 	defer ngx.reloadLock.Unlock()
 
-	newCfg, err := ngx.template.Write(cfg, ingressCfg)
+	newCfg, err := ngx.writeCfg(cfg, ingressCfg)
+
 	if err != nil {
 		return fmt.Errorf("failed to write new nginx configuration. Avoiding reload: %v", err)
 	}
 
-	changed, err := ngx.needsReload(newCfg)
-	if err != nil {
-		return err
-	}
-
-	if changed {
+	if newCfg {
 		if err := ngx.shellOut("nginx -s reload"); err != nil {
 			return fmt.Errorf("error reloading nginx: %v", err)
 		}

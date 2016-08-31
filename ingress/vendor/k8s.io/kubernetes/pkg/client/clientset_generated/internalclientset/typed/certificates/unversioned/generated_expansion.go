@@ -15,3 +15,5 @@ limitations under the License.
 */
 
 package unversioned
+
+type CertificateSigningRequestExpansion interface{}

@@ -20,8 +20,8 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
-func addDefaultingFuncs(scheme *runtime.Scheme) error {
-	return scheme.AddDefaultingFuncs(
+func addDefaultingFuncs(scheme *runtime.Scheme) {
+	scheme.AddDefaultingFuncs(
 		SetDefaults_Job,
 		SetDefaults_ScheduledJob,
 	)
@@ -45,8 +45,5 @@ func SetDefaults_Job(obj *Job) {
 func SetDefaults_ScheduledJob(obj *ScheduledJob) {
 	if obj.Spec.ConcurrencyPolicy == "" {
 		obj.Spec.ConcurrencyPolicy = AllowConcurrent
-	}
-	if obj.Spec.Suspend == nil {
-		obj.Spec.Suspend = new(bool)
 	}
 }

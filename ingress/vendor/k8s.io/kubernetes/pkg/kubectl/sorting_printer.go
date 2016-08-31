@@ -40,10 +40,6 @@ type SortingPrinter struct {
 	Decoder   runtime.Decoder
 }
 
-func (s *SortingPrinter) FinishPrint(w io.Writer, res string) error {
-	return nil
-}
-
 func (s *SortingPrinter) PrintObj(obj runtime.Object, out io.Writer) error {
 	if !meta.IsListType(obj) {
 		return s.Delegate.PrintObj(obj, out)

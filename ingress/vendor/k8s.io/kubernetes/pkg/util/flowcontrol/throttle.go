@@ -35,13 +35,10 @@ type RateLimiter interface {
 	// Usually we use token bucket rate limiter. In that case,
 	// 1.0 means no tokens are available; 0.0 means we have a full bucket of tokens to use.
 	Saturation() float64
-	// QPS returns QPS of this rate limiter
-	QPS() float32
 }
 
 type tokenBucketRateLimiter struct {
 	limiter *ratelimit.Bucket
-	qps     float32
 }
 
 // NewTokenBucketRateLimiter creates a rate limiter which implements a token bucket approach.
@@ -51,10 +48,7 @@ type tokenBucketRateLimiter struct {
 // The maximum number of tokens in the bucket is capped at 'burst'.
 func NewTokenBucketRateLimiter(qps float32, burst int) RateLimiter {
 	limiter := ratelimit.NewBucketWithRate(float64(qps), int64(burst))
-	return &tokenBucketRateLimiter{
-		limiter: limiter,
-		qps:     qps,
-	}
+	return &tokenBucketRateLimiter{limiter}
 }
 
 func (t *tokenBucketRateLimiter) TryAccept() bool {
@@ -75,10 +69,6 @@ func (t *tokenBucketRateLimiter) Accept() {
 func (t *tokenBucketRateLimiter) Stop() {
 }
 
-func (t *tokenBucketRateLimiter) QPS() float32 {
-	return t.qps
-}
-
 type fakeAlwaysRateLimiter struct{}
 
 func NewFakeAlwaysRateLimiter() RateLimiter {
@@ -97,18 +87,16 @@ func (t *fakeAlwaysRateLimiter) Stop() {}
 
 func (t *fakeAlwaysRateLimiter) Accept() {}
 
-func (t *fakeAlwaysRateLimiter) QPS() float32 {
-	return 1
-}
-
 type fakeNeverRateLimiter struct {
 	wg sync.WaitGroup
 }
 
 func NewFakeNeverRateLimiter() RateLimiter {
-	rl := fakeNeverRateLimiter{}
-	rl.wg.Add(1)
-	return &rl
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	return &fakeNeverRateLimiter{
+		wg: wg,
+	}
 }
 
 func (t *fakeNeverRateLimiter) TryAccept() bool {
@@ -125,8 +113,4 @@ func (t *fakeNeverRateLimiter) Stop() {
 
 func (t *fakeNeverRateLimiter) Accept() {
 	t.wg.Wait()
-}
-
-func (t *fakeNeverRateLimiter) QPS() float32 {
-	return 1
 }

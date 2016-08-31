@@ -496,34 +496,21 @@ func (f *DeltaFIFO) Replace(list []interface{}, resourceVersion string) error {
 
 // Resync will send a sync event for each item
 func (f *DeltaFIFO) Resync() error {
-	var keys []string
-	func() {
-		f.lock.RLock()
-		defer f.lock.RUnlock()
-		keys = f.knownObjects.ListKeys()
-	}()
-	for _, k := range keys {
-		if err := f.syncKey(k); err != nil {
-			return err
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+	for _, k := range f.knownObjects.ListKeys() {
+		obj, exists, err := f.knownObjects.GetByKey(k)
+		if err != nil {
+			glog.Errorf("Unexpected error %v during lookup of key %v, unable to queue object for sync", err, k)
+			continue
+		} else if !exists {
+			glog.Infof("Key %v does not exist in known objects store, unable to queue object for sync", k)
+			continue
 		}
-	}
-	return nil
-}
 
-func (f *DeltaFIFO) syncKey(key string) error {
-	f.lock.Lock()
-	defer f.lock.Unlock()
-	obj, exists, err := f.knownObjects.GetByKey(key)
-	if err != nil {
-		glog.Errorf("Unexpected error %v during lookup of key %v, unable to queue object for sync", err, key)
-		return nil
-	} else if !exists {
-		glog.Infof("Key %v does not exist in known objects store, unable to queue object for sync", key)
-		return nil
-	}
-
-	if err := f.queueActionLocked(Sync, obj); err != nil {
-		return fmt.Errorf("couldn't queue object: %v", err)
+		if err := f.queueActionLocked(Sync, obj); err != nil {
+			return fmt.Errorf("couldn't queue object: %v", err)
+		}
 	}
 	return nil
 }

@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/registry/thirdpartyresourcedata"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -53,8 +54,20 @@ func (m *Mapper) InfoForData(data []byte, source string) (*Info, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to decode %q: %v", source, err)
 	}
-
-	obj, versioned := versions.Last(), versions.First()
+	var obj runtime.Object
+	var versioned runtime.Object
+	if isThirdParty, gvkOut, err := thirdpartyresourcedata.IsThirdPartyObject(data, gvk); err != nil {
+		return nil, err
+	} else if isThirdParty {
+		obj, err = runtime.Decode(thirdpartyresourcedata.NewDecoder(nil, gvkOut.Kind), data)
+		versioned = obj
+		gvk = gvkOut
+	} else {
+		obj, versioned = versions.Last(), versions.First()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("unable to decode %q: %v [%v]", source, err, gvk)
+	}
 	mapping, err := m.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
 		return nil, fmt.Errorf("unable to recognize %q: %v", source, err)

@@ -37,25 +37,8 @@ const (
 	KernelPanicRebootTimeout = 10 // seconds after a panic for the kernel to reboot
 )
 
-// An injectable interface for running sysctl commands.
-type Interface interface {
-	// GetSysctl returns the value for the specified sysctl setting
-	GetSysctl(sysctl string) (int, error)
-	// SetSysctl modifies the specified sysctl flag to the new value
-	SetSysctl(sysctl string, newVal int) error
-}
-
-// New returns a new Interface for accessing sysctl
-func New() Interface {
-	return &procSysctl{}
-}
-
-// procSysctl implements Interface by reading and writing files under /proc/sys
-type procSysctl struct {
-}
-
 // GetSysctl returns the value for the specified sysctl setting
-func (_ *procSysctl) GetSysctl(sysctl string) (int, error) {
+func GetSysctl(sysctl string) (int, error) {
 	data, err := ioutil.ReadFile(path.Join(sysctlBase, sysctl))
 	if err != nil {
 		return -1, err
@@ -68,6 +51,6 @@ func (_ *procSysctl) GetSysctl(sysctl string) (int, error) {
 }
 
 // SetSysctl modifies the specified sysctl flag to the new value
-func (_ *procSysctl) SetSysctl(sysctl string, newVal int) error {
+func SetSysctl(sysctl string, newVal int) error {
 	return ioutil.WriteFile(path.Join(sysctlBase, sysctl), []byte(strconv.Itoa(newVal)), 0640)
 }

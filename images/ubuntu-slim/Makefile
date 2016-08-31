@@ -1,6 +1,6 @@
 all: push
 
-TAG ?= 0.4
+TAG ?= 0.3
 PREFIX ?= gcr.io/google_containers/ubuntu-slim
 BUILD_IMAGE ?= ubuntu-build
 TAR_FILE ?= rootfs.tar

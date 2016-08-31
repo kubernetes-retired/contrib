@@ -39,13 +39,14 @@ func Resource(resource string) unversioned.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
 
-var (
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes, addConversionFuncs)
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
+func AddToScheme(scheme *runtime.Scheme) {
+	addKnownTypes(scheme)
+	// addDefaultingFuncs(scheme)
+	addConversionFuncs(scheme)
+}
 
 // Adds the list of known types to api.Scheme.
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&CertificateSigningRequest{},
 		&CertificateSigningRequestList{},
@@ -55,7 +56,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 
 	// Add the watch version that applies
 	versionedwatch.AddToGroupVersion(scheme, SchemeGroupVersion)
-	return nil
 }
 
 func (obj *CertificateSigningRequest) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }

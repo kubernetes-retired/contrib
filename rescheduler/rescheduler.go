@@ -25,11 +25,9 @@ import (
 	ca_simulator "k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_utils "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	kube_api "k8s.io/kubernetes/pkg/api"
-	kube_record "k8s.io/kubernetes/pkg/client/record"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
@@ -55,14 +53,6 @@ var (
 
 	systemNamespace = flags.String("system-namespace", kube_api.NamespaceSystem,
 		`Namespace to watch for critical addons.`)
-
-	initialDelay = flags.Duration("initial-delay", 2*time.Minute,
-		`How long should rescheduler wait after start to make sure
-		 all critical addons had a chance to start.`)
-
-	podScheduledTimeout = flags.Duration("pod-scheduled-timeout", 10*time.Minute,
-		`How long should rescheduler wait for critical pod to be scheduled
-		 after evicting pods to make a spot for it.`)
 )
 
 func main() {
@@ -70,15 +60,10 @@ func main() {
 
 	flags.Parse(os.Args)
 
-	// TODO(piosz): figure our a better way of verifying cluster stabilization here.
-	time.Sleep(*initialDelay)
-
 	kubeClient, err := createKubeClient(flags, *inCluster)
 	if err != nil {
 		glog.Fatalf("Failed to create kube client: %v", err)
 	}
-
-	recorder := createEventRecorder(kubeClient)
 
 	predicateChecker, err := ca_simulator.NewPredicateChecker(kubeClient)
 	if err != nil {
@@ -93,6 +78,7 @@ func main() {
 
 	releaseAllTaints(kubeClient, nodeLister, podsBeingProcessed)
 
+	// TODO(piosz): add events
 	for {
 		select {
 		case <-time.After(*housekeepingInterval):
@@ -117,18 +103,16 @@ func main() {
 						node := findNodeForPod(kubeClient, predicateChecker, nodes, pod)
 						if node == nil {
 							glog.Errorf("Pod %s can't be scheduled on any existing node.", podId(pod))
-							recorder.Eventf(pod, kube_api.EventTypeNormal, "PodDoestFitAnyNode",
-								"Critical pod %s doesn't fit on any node.", podId(pod))
 							continue
 						}
 						glog.Infof("Trying to place the pod on node %v", node.Name)
 
-						err = prepareNodeForPod(kubeClient, recorder, predicateChecker, node, pod)
+						err = prepareNodeForPod(kubeClient, predicateChecker, node, pod)
 						if err != nil {
 							glog.Warningf("%+v", err)
 						} else {
 							podsBeingProcessed.Add(pod)
-							go waitForScheduled(kubeClient, podsBeingProcessed, pod)
+							go waitForScheduled(podsBeingProcessed, pod)
 						}
 					}
 				}
@@ -139,21 +123,10 @@ func main() {
 	}
 }
 
-func waitForScheduled(client *kube_client.Client, podsBeingProcessed *podSet, pod *kube_api.Pod) {
+func waitForScheduled(podsBeingProcessed *podSet, pod *kube_api.Pod) {
+	// TODO(piosz): periodically check whether pod is actually scheduled
 	glog.Infof("Waiting for pod %s to be scheduled", podId(pod))
-	err := wait.Poll(time.Second, *podScheduledTimeout, func() (bool, error) {
-		p, err := client.Pods(pod.Namespace).Get(pod.Name)
-		if err != nil {
-			glog.Warningf("Error while getting pod %s: %v", podId(pod), err)
-			return false, nil
-		}
-		return p.Spec.NodeName != "", nil
-	})
-	if err != nil {
-		glog.Warningf("Timeout while waiting for pod %s to be scheduled after %v.", podId(pod), *podScheduledTimeout)
-	} else {
-		glog.Infof("Pod %v was successfully scheduled.", podId(pod))
-	}
+	time.Sleep(10 * time.Minute)
 	podsBeingProcessed.Remove(pod)
 }
 
@@ -167,13 +140,6 @@ func createKubeClient(flags *flag.FlagSet, inCluster bool) (*kube_client.Client,
 		fmt.Errorf("error connecting to the client: %v", err)
 	}
 	return kube_client.NewOrDie(config), nil
-}
-
-func createEventRecorder(client *kube_client.Client) kube_record.EventRecorder {
-	eventBroadcaster := kube_record.NewBroadcaster()
-	eventBroadcaster.StartLogging(glog.Infof)
-	eventBroadcaster.StartRecordingToSink(client.Events(""))
-	return eventBroadcaster.NewRecorder(kube_api.EventSource{Component: "rescheduler"})
 }
 
 func releaseAllTaints(client *kube_client.Client, nodeLister *kube_utils.ReadyNodeLister, podsBeingProcessed *podSet) {
@@ -218,16 +184,8 @@ func releaseAllTaints(client *kube_client.Client, nodeLister *kube_utils.ReadyNo
 }
 
 // The caller of this function must remove the taint if this function returns error.
-func prepareNodeForPod(client *kube_client.Client, recorder kube_record.EventRecorder, predicateChecker *ca_simulator.PredicateChecker, originalNode *kube_api.Node, criticalPod *kube_api.Pod) error {
-	// Operate on a copy of the node to ensure pods running on the node will pass CheckPredicates below.
-	node, err := copyNode(originalNode)
-	if err != nil {
-		return fmt.Errorf("Error while copying node: %v", err)
-	}
-	err = addTaint(client, originalNode, podId(criticalPod))
-	if err != nil {
-		return fmt.Errorf("Error while adding taint: %v", err)
-	}
+func prepareNodeForPod(client *kube_client.Client, predicateChecker *ca_simulator.PredicateChecker, node *kube_api.Node, criticalPod *kube_api.Pod) error {
+	addTaint(client, node, podId(criticalPod))
 
 	requiredPods, otherPods, err := groupPods(client, node)
 	if err != nil {
@@ -247,9 +205,7 @@ func prepareNodeForPod(client *kube_client.Client, recorder kube_record.EventRec
 
 	for _, p := range otherPods {
 		if err := predicateChecker.CheckPredicates(p, nodeInfo); err != nil {
-			glog.Infof("Pod %s will be deleted in order to schedule critical pod %s.", podId(p), podId(criticalPod))
-			recorder.Eventf(p, kube_api.EventTypeNormal, "DeletedByRescheduler",
-				"Deleted by rescheduler in order to schedule critical pod %s.", podId(criticalPod))
+			glog.Infof("Pod %s will be deleted in order to schedule critical pods %s.", podId(p), podId(criticalPod))
 			// TODO(piosz): add better support of graceful deletion
 			delErr := client.Pods(p.Namespace).Delete(p.Name, kube_api.NewDeleteOptions(10))
 			if delErr != nil {
@@ -264,18 +220,6 @@ func prepareNodeForPod(client *kube_client.Client, recorder kube_record.EventRec
 
 	// TODO(piosz): how to reset scheduler backoff?
 	return nil
-}
-
-func copyNode(node *kube_api.Node) (*kube_api.Node, error) {
-	objCopy, err := kube_api.Scheme.DeepCopy(node)
-	if err != nil {
-		return nil, err
-	}
-	copied, ok := objCopy.(*kube_api.Node)
-	if !ok {
-		return nil, fmt.Errorf("expected Node, got %#v", objCopy)
-	}
-	return copied, nil
 }
 
 func addTaint(client *kube_client.Client, node *kube_api.Node, value string) error {
@@ -350,13 +294,14 @@ func groupPods(client *kube_client.Client, node *kube_api.Node) ([]*kube_api.Pod
 	podsOnNode, err := client.Pods(kube_api.NamespaceAll).List(
 		kube_api.ListOptions{FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name})})
 	if err != nil {
+
 		return []*kube_api.Pod{}, []*kube_api.Pod{}, err
 	}
 
 	requiredPods := make([]*kube_api.Pod, 0)
 	otherPods := make([]*kube_api.Pod, 0)
-	for i := range podsOnNode.Items {
-		pod := &podsOnNode.Items[i]
+	for _, p := range podsOnNode.Items {
+		pod := &p
 
 		creatorRef, err := ca_simulator.CreatorRefKind(pod)
 		if err != nil {

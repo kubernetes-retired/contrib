@@ -40,8 +40,7 @@
                         "secret": null,
                         "nfs": null,
                         "iscsi": null,
-                        "glusterfs": null,
-                        "quobyte": null
+                        "glusterfs": null
                     }
                 ],
                 "containers": [

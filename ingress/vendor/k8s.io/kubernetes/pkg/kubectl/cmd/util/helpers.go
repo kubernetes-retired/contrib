@@ -19,7 +19,6 @@ package util
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -28,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	kerrors "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
@@ -39,8 +38,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
-	utilexec "k8s.io/kubernetes/pkg/util/exec"
-	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/strategicpatch"
 
 	"github.com/evanphx/json-patch"
@@ -51,7 +48,6 @@ import (
 
 const (
 	ApplyAnnotationsFlag = "save-config"
-	DefaultErrorExitCode = 1
 )
 
 type debugError interface {
@@ -63,10 +59,10 @@ type debugError interface {
 // souce is the filename or URL to the template file(*.json or *.yaml), or stdin to use to handle the resource.
 func AddSourceToErr(verb string, source string, err error) error {
 	if source != "" {
-		if statusError, ok := err.(kerrors.APIStatus); ok {
+		if statusError, ok := err.(errors.APIStatus); ok {
 			status := statusError.Status()
 			status.Message = fmt.Sprintf("error when %s %q: %v", verb, source, status.Message)
-			return &kerrors.StatusError{ErrStatus: status}
+			return &errors.StatusError{ErrStatus: status}
 		}
 		return fmt.Errorf("error when %s %q: %v", verb, source, err)
 	}
@@ -76,9 +72,9 @@ func AddSourceToErr(verb string, source string, err error) error {
 var fatalErrHandler = fatal
 
 // BehaviorOnFatal allows you to override the default behavior when a fatal
-// error occurs, which is to call os.Exit(code). You can pass 'panic' as a function
+// error occurs, which is call os.Exit(1). You can pass 'panic' as a function
 // here if you prefer the panic() over os.Exit(1).
-func BehaviorOnFatal(f func(string, int)) {
+func BehaviorOnFatal(f func(string)) {
 	fatalErrHandler = f
 }
 
@@ -88,21 +84,19 @@ func DefaultBehaviorOnFatal() {
 	fatalErrHandler = fatal
 }
 
-// fatal prints the message if set and then exits. If V(2) or greater, glog.Fatal
+// fatal prints the message and then exits. If V(2) or greater, glog.Fatal
 // is invoked for extended information.
-func fatal(msg string, code int) {
-	if len(msg) > 0 {
-		// add newline if needed
-		if !strings.HasSuffix(msg, "\n") {
-			msg += "\n"
-		}
-
-		if glog.V(2) {
-			glog.FatalDepth(2, msg)
-		}
-		fmt.Fprint(os.Stderr, msg)
+func fatal(msg string) {
+	// add newline if needed
+	if !strings.HasSuffix(msg, "\n") {
+		msg += "\n"
 	}
-	os.Exit(code)
+
+	if glog.V(2) {
+		glog.FatalDepth(2, msg)
+	}
+	fmt.Fprint(os.Stderr, msg)
+	os.Exit(1)
 }
 
 // CheckErr prints a user friendly error to STDERR and exits with a non-zero
@@ -119,65 +113,56 @@ func checkErrWithPrefix(prefix string, err error) {
 	checkErr(prefix, err, fatalErrHandler)
 }
 
-// checkErr formats a given error as a string and calls the passed handleErr
-// func with that string and an kubectl exit code.
-func checkErr(prefix string, err error, handleErr func(string, int)) {
-	switch {
-	case err == nil:
+func checkErr(pref string, err error, handleErr func(string)) {
+	if err == nil {
 		return
-	case kerrors.IsInvalid(err):
-		details := err.(*kerrors.StatusError).Status().Details
-		s := fmt.Sprintf("%sThe %s %q is invalid", prefix, details.Kind, details.Name)
-		if len(details.Causes) > 0 {
-			errs := statusCausesToAggrError(details.Causes)
-			handleErr(MultilineError(s+": ", errs), DefaultErrorExitCode)
-		} else {
-			handleErr(s, DefaultErrorExitCode)
+	}
+
+	if errors.IsInvalid(err) {
+		details := err.(*errors.StatusError).Status().Details
+		prefix := fmt.Sprintf("%sThe %s %q is invalid.\n", pref, details.Kind, details.Name)
+		errs := statusCausesToAggrError(details.Causes)
+		handleErr(MultilineError(prefix, errs))
+	}
+
+	if meta.IsNoResourceMatchError(err) {
+		noMatch := err.(*meta.NoResourceMatchError)
+
+		switch {
+		case len(noMatch.PartialResource.Group) > 0 && len(noMatch.PartialResource.Version) > 0:
+			handleErr(fmt.Sprintf("%sthe server doesn't have a resource type %q in group %q and version %q", pref, noMatch.PartialResource.Resource, noMatch.PartialResource.Group, noMatch.PartialResource.Version))
+		case len(noMatch.PartialResource.Group) > 0:
+			handleErr(fmt.Sprintf("%sthe server doesn't have a resource type %q in group %q", pref, noMatch.PartialResource.Resource, noMatch.PartialResource.Group))
+		case len(noMatch.PartialResource.Version) > 0:
+			handleErr(fmt.Sprintf("%sthe server doesn't have a resource type %q in version %q", pref, noMatch.PartialResource.Resource, noMatch.PartialResource.Version))
+		default:
+			handleErr(fmt.Sprintf("%sthe server doesn't have a resource type %q", pref, noMatch.PartialResource.Resource))
 		}
-	case clientcmd.IsConfigurationInvalid(err):
-		handleErr(MultilineError(fmt.Sprintf("%sError in configuration: ", prefix), err), DefaultErrorExitCode)
-	default:
-		switch err := err.(type) {
-		case *meta.NoResourceMatchError:
-			switch {
-			case len(err.PartialResource.Group) > 0 && len(err.PartialResource.Version) > 0:
-				handleErr(fmt.Sprintf("%sthe server doesn't have a resource type %q in group %q and version %q", prefix, err.PartialResource.Resource, err.PartialResource.Group, err.PartialResource.Version), DefaultErrorExitCode)
-			case len(err.PartialResource.Group) > 0:
-				handleErr(fmt.Sprintf("%sthe server doesn't have a resource type %q in group %q", prefix, err.PartialResource.Resource, err.PartialResource.Group), DefaultErrorExitCode)
-			case len(err.PartialResource.Version) > 0:
-				handleErr(fmt.Sprintf("%sthe server doesn't have a resource type %q in version %q", prefix, err.PartialResource.Resource, err.PartialResource.Version), DefaultErrorExitCode)
-			default:
-				handleErr(fmt.Sprintf("%sthe server doesn't have a resource type %q", prefix, err.PartialResource.Resource), DefaultErrorExitCode)
-			}
-		case utilerrors.Aggregate:
-			handleErr(MultipleErrors(prefix, err.Errors()), DefaultErrorExitCode)
-		case utilexec.ExitError:
-			// do not print anything, only terminate with given error
-			handleErr("", err.ExitStatus())
-		default: // for any other error type
-			msg, ok := StandardErrorMessage(err)
-			if !ok {
-				msg = err.Error()
-				if !strings.HasPrefix(msg, "error: ") {
-					msg = fmt.Sprintf("error: %s", msg)
-				}
-			}
-			handleErr(msg, DefaultErrorExitCode)
+		return
+	}
+
+	// handle multiline errors
+	if clientcmd.IsConfigurationInvalid(err) {
+		handleErr(MultilineError(fmt.Sprintf("%sError in configuration: ", pref), err))
+	}
+	if agg, ok := err.(utilerrors.Aggregate); ok && len(agg.Errors()) > 0 {
+		handleErr(MultipleErrors(pref, agg.Errors()))
+	}
+
+	msg, ok := StandardErrorMessage(err)
+	if !ok {
+		msg = err.Error()
+		if !strings.HasPrefix(msg, "error: ") {
+			msg = fmt.Sprintf("error: %s", msg)
 		}
 	}
+	handleErr(fmt.Sprintf("%s%s", pref, msg))
 }
 
 func statusCausesToAggrError(scs []unversioned.StatusCause) utilerrors.Aggregate {
-	errs := make([]error, 0, len(scs))
-	errorMsgs := sets.NewString()
-	for _, sc := range scs {
-		// check for duplicate error messages and skip them
-		msg := fmt.Sprintf("%s: %s", sc.Field, sc.Message)
-		if errorMsgs.Has(msg) {
-			continue
-		}
-		errorMsgs.Insert(msg)
-		errs = append(errs, errors.New(msg))
+	errs := make([]error, len(scs))
+	for i, sc := range scs {
+		errs[i] = fmt.Errorf("%s: %s", sc.Field, sc.Message)
 	}
 	return utilerrors.NewAggregate(errs)
 }
@@ -192,7 +177,7 @@ func StandardErrorMessage(err error) (string, bool) {
 	if debugErr, ok := err.(debugError); ok {
 		glog.V(4).Infof(debugErr.DebugError())
 	}
-	status, isStatus := err.(kerrors.APIStatus)
+	status, isStatus := err.(errors.APIStatus)
 	switch {
 	case isStatus:
 		switch s := status.Status(); {
@@ -201,7 +186,7 @@ func StandardErrorMessage(err error) (string, bool) {
 		default:
 			return fmt.Sprintf("Error from server: %s", err.Error()), true
 		}
-	case kerrors.IsUnexpectedObjectError(err):
+	case errors.IsUnexpectedObjectError(err):
 		return fmt.Sprintf("Server returned an unexpected response: %s", err.Error()), true
 	}
 	switch t := err.(type) {
@@ -380,7 +365,7 @@ func ReadConfigDataFromReader(reader io.Reader, source string) ([]byte, error) {
 	}
 
 	if len(data) == 0 {
-		return nil, fmt.Errorf("Read from %s but no data found", source)
+		return nil, fmt.Errorf(`Read from %s but no data found`, source)
 	}
 
 	return data, nil
@@ -452,7 +437,7 @@ func UpdateObject(info *resource.Info, codec runtime.Codec, updateFn func(runtim
 
 // AddCmdRecordFlag adds --record flag to command
 func AddRecordFlag(cmd *cobra.Command) {
-	cmd.Flags().Bool("record", false, "Record current kubectl command in the resource annotation. If set to false, do not record the command. If set to true, record the command. If not set, default to updating the existing annotation value only if one already exists.")
+	cmd.Flags().Bool("record", false, "Record current kubectl command in the resource annotation.")
 }
 
 func GetRecordFlag(cmd *cobra.Command) bool {
@@ -506,7 +491,7 @@ func ContainsChangeCause(info *resource.Info) bool {
 
 // ShouldRecord checks if we should record current change cause
 func ShouldRecord(cmd *cobra.Command, info *resource.Info) bool {
-	return GetRecordFlag(cmd) || (ContainsChangeCause(info) && !cmd.Flags().Changed("record"))
+	return GetRecordFlag(cmd) || ContainsChangeCause(info)
 }
 
 // GetThirdPartyGroupVersions returns the thirdparty "group/versions"s and
@@ -520,7 +505,7 @@ func GetThirdPartyGroupVersions(discovery discovery.DiscoveryInterface) ([]unver
 	groupList, err := discovery.ServerGroups()
 	if err != nil {
 		// On forbidden or not found, just return empty lists.
-		if kerrors.IsForbidden(err) || kerrors.IsNotFound(err) {
+		if errors.IsForbidden(err) || errors.IsNotFound(err) {
 			return result, gvks, nil
 		}
 

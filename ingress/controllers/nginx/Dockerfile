@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/google_containers/nginx-slim:0.9
+FROM gcr.io/google_containers/nginx-slim:0.8
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y \
   diffutils \
@@ -23,7 +23,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y \
 
 COPY nginx-ingress-controller /
 COPY nginx.tmpl /etc/nginx/template/nginx.tmpl
-COPY nginx.tmpl /etc/nginx/nginx.tmpl
 COPY default.conf /etc/nginx/nginx.conf
 
 COPY lua /etc/nginx/lua/

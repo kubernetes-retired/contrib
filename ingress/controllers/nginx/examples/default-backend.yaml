@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ReplicationController
 metadata:
   name: default-http-backend
+#  namespace: kube-system
 spec:
   replicas: 1
   selector:
@@ -12,12 +13,14 @@ spec:
         app: default-http-backend
     spec:
       terminationGracePeriodSeconds: 60
+      imagePullSecrets:
+      - name: aliregistrykey   
       containers:
       - name: default-http-backend
         # Any image is permissable as long as:
         # 1. It serves a 404 page at /
         # 2. It serves 200 on a /healthz endpoint
-        image: gcr.io/google_containers/defaultbackend:1.0
+        image: hub.docker.vpclub.cn/vpclub_containers/defaultbackend-amd64:1.2
         livenessProbe:
           httpGet:
             path: /healthz

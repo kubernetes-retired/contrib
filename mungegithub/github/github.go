@@ -726,11 +726,6 @@ func (obj *MungeObject) AddLabels(labels []string) error {
 	prNum := *obj.Issue.Number
 	config.analytics.AddLabels.Call(config, nil)
 	glog.Infof("Adding labels %v to PR %d", labels, prNum)
-	if len(labels) == 0 {
-		glog.Info("No labels to add: quitting")
-		return nil
-	}
-
 	if config.DryRun {
 		return nil
 	}
@@ -1616,13 +1611,9 @@ func (obj *MungeObject) ListComments(withListOpts ...WithListOpt) ([]*github.Iss
 // WriteComment will send the `msg` as a comment to the specified PR
 func (obj *MungeObject) WriteComment(msg string) error {
 	config := obj.config
-	prNum := obj.Number()
+	prNum := *obj.Issue.Number
 	config.analytics.CreateComment.Call(config, nil)
-	comment := msg
-	if len(comment) > 512 {
-		comment = comment[:512]
-	}
-	glog.Infof("Commenting in %d: %q", prNum, comment)
+	glog.Infof("Commenting %q in %d", msg, prNum)
 	if config.DryRun {
 		return nil
 	}

@@ -329,9 +329,9 @@ func NewGenericServerResponse(code int, verb string, qualifiedResource unversion
 		}
 	}
 	switch {
-	case !qualifiedResource.Empty() && len(name) > 0:
+	case !qualifiedResource.IsEmpty() && len(name) > 0:
 		message = fmt.Sprintf("%s (%s %s %s)", message, strings.ToLower(verb), qualifiedResource.String(), name)
-	case !qualifiedResource.Empty():
+	case !qualifiedResource.IsEmpty():
 		message = fmt.Sprintf("%s (%s %s)", message, strings.ToLower(verb), qualifiedResource.String())
 	}
 	var causes []unversioned.StatusCause

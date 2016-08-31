@@ -20,7 +20,11 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
-func addConversionFuncs(scheme *runtime.Scheme) error {
+func addConversionFuncs(scheme *runtime.Scheme) {
 	// Add non-generated conversion functions
-	return scheme.AddConversionFuncs()
+	err := scheme.AddConversionFuncs()
+	if err != nil {
+		// If one of the conversion functions is malformed, detect it immediately.
+		panic(err)
+	}
 }

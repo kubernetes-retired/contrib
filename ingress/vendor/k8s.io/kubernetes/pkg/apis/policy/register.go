@@ -17,7 +17,6 @@ limitations under the License.
 package policy
 
 import (
-	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 )
@@ -38,19 +37,16 @@ func Resource(resource string) unversioned.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
 }
 
-var (
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
+func AddToScheme(scheme *runtime.Scheme) {
+	// Add the API to Scheme.
+	addKnownTypes(scheme)
+}
 
 // Adds the list of known types to api.Scheme.
-func addKnownTypes(scheme *runtime.Scheme) error {
+func addKnownTypes(scheme *runtime.Scheme) {
 	// TODO this gets cleaned up when the types are fixed
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&PodDisruptionBudget{},
 		&PodDisruptionBudgetList{},
-		&api.ListOptions{},
-		&Eviction{},
 	)
-	return nil
 }

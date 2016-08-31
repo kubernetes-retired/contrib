@@ -121,41 +121,20 @@ func IsDNS1123Subdomain(value string) []string {
 	return errs
 }
 
-const dns1035LabelFmt string = "[a-z]([-a-z0-9]*[a-z0-9])?"
-const DNS1035LabelMaxLength int = 63
+const dns952LabelFmt string = "[a-z]([-a-z0-9]*[a-z0-9])?"
+const DNS952LabelMaxLength int = 24
 
-var dns1035LabelRegexp = regexp.MustCompile("^" + dns1035LabelFmt + "$")
+var dns952LabelRegexp = regexp.MustCompile("^" + dns952LabelFmt + "$")
 
-// IsDNS1035Label tests for a string that conforms to the definition of a label in
-// DNS (RFC 1035).
-func IsDNS1035Label(value string) []string {
+// IsDNS952Label tests for a string that conforms to the definition of a label in
+// DNS (RFC 952).
+func IsDNS952Label(value string) []string {
 	var errs []string
-	if len(value) > DNS1035LabelMaxLength {
-		errs = append(errs, MaxLenError(DNS1035LabelMaxLength))
+	if len(value) > DNS952LabelMaxLength {
+		errs = append(errs, MaxLenError(DNS952LabelMaxLength))
 	}
-	if !dns1035LabelRegexp.MatchString(value) {
-		errs = append(errs, RegexError(dns1035LabelFmt, "my-name", "abc-123"))
-	}
-	return errs
-}
-
-// wildcard definition - RFC 1034 section 4.3.3.
-// examples:
-// - valid: *.bar.com, *.foo.bar.com
-// - invalid: *.*.bar.com, *.foo.*.com, *bar.com, f*.bar.com, *
-const wildcardDNF1123SubdomainFmt = "\\*\\." + dns1123SubdomainFmt
-
-// IsWildcardDNS1123Subdomain tests for a string that conforms to the definition of a
-// wildcard subdomain in DNS (RFC 1034 section 4.3.3).
-func IsWildcardDNS1123Subdomain(value string) []string {
-	wildcardDNS1123SubdomainRegexp := regexp.MustCompile("^\\*\\." + dns1123SubdomainFmt + "$")
-
-	var errs []string
-	if len(value) > DNS1123SubdomainMaxLength {
-		errs = append(errs, MaxLenError(DNS1123SubdomainMaxLength))
-	}
-	if !wildcardDNS1123SubdomainRegexp.MatchString(value) {
-		errs = append(errs, RegexError(wildcardDNF1123SubdomainFmt, "*.example.com"))
+	if !dns952LabelRegexp.MatchString(value) {
+		errs = append(errs, RegexError(dns952LabelFmt, "my-name", "abc-123"))
 	}
 	return errs
 }
@@ -268,26 +247,19 @@ func IsHTTPHeaderName(value string) []string {
 	return nil
 }
 
-const configMapKeyFmt = `[-._a-zA-Z0-9]+`
+const configMapKeyFmt = "\\.?" + dns1123SubdomainFmt
 
 var configMapKeyRegexp = regexp.MustCompile("^" + configMapKeyFmt + "$")
 
-// IsConfigMapKey tests for a string that is a valid key for a ConfigMap or Secret
+// IsConfigMapKey tests for a string that conforms to the definition of a
+// subdomain in DNS (RFC 1123), except that a leading dot is allowed
 func IsConfigMapKey(value string) []string {
 	var errs []string
 	if len(value) > DNS1123SubdomainMaxLength {
 		errs = append(errs, MaxLenError(DNS1123SubdomainMaxLength))
 	}
 	if !configMapKeyRegexp.MatchString(value) {
-		errs = append(errs, RegexError(configMapKeyFmt, "key.name", "KEY_NAME", "key-name"))
-	}
-	if value == "." {
-		errs = append(errs, `must not be '.'`)
-	}
-	if value == ".." {
-		errs = append(errs, `must not be '..'`)
-	} else if strings.HasPrefix(value, "..") {
-		errs = append(errs, `must not start with '..'`)
+		errs = append(errs, RegexError(configMapKeyFmt, "key.name"))
 	}
 	return errs
 }

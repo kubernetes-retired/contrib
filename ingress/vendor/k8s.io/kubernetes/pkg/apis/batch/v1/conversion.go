@@ -27,17 +27,18 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
-func addConversionFuncs(scheme *runtime.Scheme) error {
+func addConversionFuncs(scheme *runtime.Scheme) {
 	// Add non-generated conversion functions
 	err := scheme.AddConversionFuncs(
 		Convert_batch_JobSpec_To_v1_JobSpec,
 		Convert_v1_JobSpec_To_batch_JobSpec,
 	)
 	if err != nil {
-		return err
+		// If one of the conversion functions is malformed, detect it immediately.
+		panic(err)
 	}
 
-	return api.Scheme.AddFieldLabelConversionFunc("batch/v1", "Job",
+	err = api.Scheme.AddFieldLabelConversionFunc("batch/v1", "Job",
 		func(label, value string) (string, string, error) {
 			switch label {
 			case "metadata.name", "metadata.namespace", "status.successful":
@@ -45,8 +46,11 @@ func addConversionFuncs(scheme *runtime.Scheme) error {
 			default:
 				return "", "", fmt.Errorf("field label not supported: %s", label)
 			}
-		},
-	)
+		})
+	if err != nil {
+		// If one of the conversion functions is malformed, detect it immediately.
+		panic(err)
+	}
 }
 
 func Convert_batch_JobSpec_To_v1_JobSpec(in *batch.JobSpec, out *JobSpec, s conversion.Scope) error {
