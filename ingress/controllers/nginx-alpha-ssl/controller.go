@@ -79,17 +79,18 @@ http {
       index index.html index.htm;
     }
     location /ELBHealthCheck {
-			root /var/www/healthcheck/;
-		}
-    location /nginx_status { # Used by sysdig-agent only. Exclude in Nginx logs.
-			stub_status on;
-			access_log off;
-			allow 127.0.0.1/32;
-			deny all;
+      root /var/www/healthcheck/;
     }
-		location /usr_nginx_status { # Used by user with Nginx log enabled. No access control.
-			stub_status on;
-		}
+    location /nginx_status { # Used by sysdig-agent only. Exclude in Nginx logs.
+      stub_status on;
+      access_log off;
+      allow 127.0.0.1/32;
+      deny all;
+    }
+    location /usr_nginx_status { # Used by user with Nginx log enabled. No access control.
+      stub_status on;
+    }
+
   }
 {{range $i := .}}
 
@@ -337,6 +338,11 @@ func main() {
     err = exec.Command(nginxCommand, verifyArgs...).Run()
     if err != nil {
       fmt.Printf("ERR: nginx config failed validation: %v\n", err)
+      fmt.Printf("Sent config error notification to statsd.\n")
+      nginxArgs := []string{
+        nginxConfDir + "/nginx-error-statsd.sh",
+			}
+      shellOut("/bin/bash", nginxArgs)
     } else {
       exec.Command(nginxCommand, reloadArgs...).Run()
       fmt.Printf("nginx config updated.\n")
