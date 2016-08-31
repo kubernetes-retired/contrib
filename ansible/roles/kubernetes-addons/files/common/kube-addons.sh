@@ -26,7 +26,7 @@ token_dir=${TOKEN_DIR:-/srv/kubernetes}
 trusty_master=${TRUSTY_MASTER:-false}
 
 function ensure_python() {
-  if ! python --version > /dev/null 2>&1; then    
+  if ! python -c "import yaml" > /dev/null 2>&1; then    
     echo "No python on the machine, will use a python image"
     local -r PYTHON_IMAGE=python:2.7-slim-pyyaml
     export PYTHON="docker run --interactive --rm --net=none ${PYTHON_IMAGE} python"
