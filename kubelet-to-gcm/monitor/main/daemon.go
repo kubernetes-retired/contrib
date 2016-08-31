@@ -41,11 +41,11 @@ const (
 
 var (
 	// Flags to identify the Kubelet.
-	zoneArg    = pflag.String("zone", "", "The zone where this kubelet lives.")
-	projectArg = pflag.String("project", "", "The project where this kubelet's host lives.")
-	cluster    = pflag.String("cluster", "unknown", "The cluster where this kubelet holds membership.")
-	host       = pflag.String("host", "localhost", "The kubelet's host name.")
-	port       = pflag.Uint("port", 10255, "The kubelet's port.")
+	zoneArg        = pflag.String("zone", "use-gce", "The zone where this kubelet lives.")
+	projectArg     = pflag.String("project", "use-gce", "The project where this kubelet's host lives.")
+	clusterArg     = pflag.String("cluster", "use-gce", "The cluster where this kubelet holds membership.")
+	kubeletHostArg = pflag.String("kubelet-host", "use-gce", "The kubelet's host name.")
+	port           = pflag.Uint("kubelet-port", 10255, "The kubelet's port.")
 	// Flags to control runtime behavior.
 	resolution  = time.Second * time.Duration(*pflag.Uint("resolution", 10, "The time, in seconds, to poll the Kubelet."))
 	gcmEndpoint = pflag.String("gcm-endpoint", "", "The GCM endpoint to hit. Defaults to the default endpoint.")
@@ -71,9 +71,9 @@ func getGCEMetaData(uri string) ([]byte, error) {
 	return body, nil
 }
 
-// getZone returns zone if it's set, and hits the GCE MD server otherwise.
+// getZone returns zone if it's given, or gets it from gce if asked.
 func getZone(zone string) (string, error) {
-	if zone == "" {
+	if zone == "use-gce" {
 		body, err := getGCEMetaData("http://169.254.169.254/computeMetadata/v1/instance/zone")
 		if err != nil {
 			return "", fmt.Errorf("Failed to get zone from GCE: %v", err)
@@ -87,16 +87,40 @@ func getZone(zone string) (string, error) {
 	return zone, nil
 }
 
-// getProjectID returns projectID if it's set, and hits the GCE MD server otherwise.
+// getProjectID returns projectID if it's given, or gets it from gce if asked.
 func getProjectID(projectID string) (string, error) {
-	if projectID == "" {
-		body, err := getGCEMetaData("http://169.254.169.254/computeMetadata/v1/project/project-id")
+	if projectID == "use-gce" {
+		body, err := getGCEMetaData("http://169.254.169.254/computeMetadata/v1/project/numeric-project-id")
 		if err != nil {
 			return "", fmt.Errorf("Failed to get zone from GCE: %v", err)
 		}
 		projectID = string(body)
 	}
 	return projectID, nil
+}
+
+// getCluster returns the cluster name given, or gets it from gce if asked.
+func getCluster(cluster string) (string, error) {
+	if cluster == "use-gce" {
+		body, err := getGCEMetaData("http://169.254.169.254/computeMetadata/v1beta1/instance/attributes/cluster-name")
+		if err != nil {
+			return "", fmt.Errorf("Failed to get cluster name from GCE: %v", err)
+		}
+		cluster = string(body)
+	}
+	return cluster, nil
+}
+
+// getKubeletHost returns the kubelet host if given, or gets ip of network interface 0 from gce.
+func getKubeletHost(kubeletHost string) (string, error) {
+	if kubeletHost == "use-gce" {
+		body, err := getGCEMetaData("http://169.254.169.254/computeMetadata/v1beta1/instance/network-interfaces/0/ip")
+		if err != nil {
+			return "", fmt.Errorf("Failed to get instance IP from GCE: %v", err)
+		}
+		kubeletHost = string(body)
+	}
+	return kubeletHost, nil
 }
 
 func main() {
@@ -115,15 +139,23 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to get project: %v", err)
 	}
-	log.Infof("Using zone %q and project %q", zone, project)
+	cluster, err := getCluster(*clusterArg)
+	if err != nil {
+		log.Fatalf("Failed to get cluster: %v", err)
+	}
+	kubeletHost, err := getKubeletHost(*kubeletHostArg)
+	if err != nil {
+		log.Fatalf("Failed to get kubelet host: %v", err)
+	}
+	log.Infof("Monitoring kubelet %s in cluster {%s, %s, %s}", kubeletHost, zone, project, cluster)
 
-	translator := monitor.NewTranslator(zone, project, *cluster, *host, resolution)
+	translator := monitor.NewTranslator(zone, project, cluster, kubeletHost, resolution)
 	log.Info("New Translator successfully created.")
 
 	// NewKubeletClient validates its own inputs.
-	kubelet, err := monitor.NewKubeletClient(*host, *port, nil)
+	kubelet, err := monitor.NewKubeletClient(kubeletHost, *port, nil)
 	if err != nil {
-		log.Fatalf("Failed to create a Kubelet client with host %s and port %d: %v", *host, *port, err)
+		log.Fatalf("Failed to create a Kubelet client with host %s and port %d: %v", kubeletHost, *port, err)
 	}
 	log.Info("Successfully created kubelet client.")
 
