@@ -1,18 +1,18 @@
 all: push
 
 # See pod.yaml for the version currently running-- bump this ahead before rebuilding!
-TAG = 0.6
+TAG = v0.1
 
-PROJ = google_containers
+REPO = choufong
 
-perfdash: perfdash.go parser.go config.go downloader.go google-gcs-downloader.go
-	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o perfdash
+node-perf-dash: node-perf-dash.go parser.go downloader.go data.go kubelet-parser.go
+	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o node-perf-dash
 
-container: perfdash
-	docker build -t gcr.io/$(PROJ)/perfdash:$(TAG) .
+container: node-perf-dash
+	docker build -t $(REPO)/node-perf-dash:$(TAG) .
 
 push: container
-	gcloud docker push gcr.io/$(PROJ)/perfdash:$(TAG)
+	docker push $(REPO)/node-perf-dash:$(TAG)
 
 clean:
-	rm -f perfdash
+	rm -f node-perf-dash

@@ -22,26 +22,11 @@
   </md-content>
 </div>
 
-<hr color="#34495E"><br>
-
-<div class="select-aggregation">
-  <div style="width: 200px; display: inline-block;">
-    <legend style="color: #3F51B5; ">Aggregation method</legend>
-    <md-input-container>
-      <md-select placeholder="aggName" ng-model="controller.aggregateType"  ng-change="controller.aggChanged()">
-        <md-option ng-value="agg" ng-repeat="agg in controller.aggregateTypes">
-          {{agg}}
-        </md-option>
-      </md-select>
-    </md-input-container> 
-  </div>
   <div>
     <md-button class="md-raised" ng-click="controller.plotComparison()">
       Load
     </md-button>
   </div>
-</div>
-
 <hr color="#34495E"><br>
           
 <div class="display-latency-bar">

@@ -129,7 +129,7 @@ app.controller('AppCtrl', ['$scope', '$http', '$interval', '$location',
                     break;
             }
             if(old == 2) { // clear charts for time series plot
-                console.log("clear")
+                //console.log("clear")
                 clearSeriesCharts = true;
             }
         });
@@ -171,7 +171,7 @@ var PerfDashApp = function(http, scope) {
 
     // aggregation in test comparison
     this.aggregateTypes = ['latest', 'average'];
-    this.aggregateType = 'latest';
+    this.aggregateType = 'average';
 
     // for comparison data
     this.comparisonSeriesMap = {};
@@ -216,7 +216,7 @@ PerfDashApp.prototype.refresh = function() {
                 this.allData = data;
                 this.parseTest();
                 this.parseNodeInfo();
-                this.testChanged();
+                this.testChangedWrapper();
             }.bind(this))
     .error(function(data) {
         console.log("Error fetching data");

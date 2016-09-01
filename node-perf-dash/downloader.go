@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path"
 	"strconv"
@@ -59,8 +60,11 @@ func GetData(d Downloader, allTestData TestToBuildData) error {
 	}
 
 	fmt.Printf("Last build no: %v\n", lastBuildNo)
-	for buildNumber := lastBuildNo; buildNumber > lastBuildNo-buildNr && buildNumber > 0 &&
-		buildNumber > grabbedLastBuild; buildNumber-- {
+
+	endBuild := lastBuildNo
+	startBuild := int(math.Max(math.Max(float64(lastBuildNo-buildNr), 0), float64(grabbedLastBuild))) + 1
+
+	for buildNumber := startBuild; buildNumber <= endBuild; buildNumber++ {
 		fmt.Printf("Fetching build %v...\n", buildNumber)
 
 		file, err := d.GetFile(job, buildNumber, testResultFile)
@@ -69,18 +73,18 @@ func GetData(d Downloader, allTestData TestToBuildData) error {
 			return err
 		}
 
-		testEndTime := TestEndTime{}
-		parseTestOutput(bufio.NewScanner(file), job, buildNumber, allTestData, testEndTime)
+		testTime := TestTime{}
+		parseTestOutput(bufio.NewScanner(file), job, buildNumber, allTestData, testTime)
 		file.Close()
 
 		// TODO(coufon): currently we run one test per node. we must check multi-test per node
 		// to make sure test separation by 'end time of test' works.
 
 		// It contains test end time information, used to extract event logs
-		//fmt.Printf("%#v\n", testEndTime.Sort())
+		//fmt.Printf("%#v\n", testTime.Sort())
 
 		if *tracing {
-			tracingData := ParseKubeletLog(d, job, buildNumber, testEndTime)
+			tracingData := ParseKubeletLog(d, job, buildNumber, testTime)
 			parseTracingData(bufio.NewScanner(strings.NewReader(tracingData)), job, buildNumber, allTestData)
 		}
 	}
