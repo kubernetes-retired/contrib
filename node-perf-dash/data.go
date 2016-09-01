@@ -15,11 +15,11 @@ const (
 	BenchmarkSeparator = " [Benchmark]"
 
 	// Test result tags
-	PerfResultTag = perftype.PerfResultTag
-	PerfResultEnd = perftype.PerfResultEnd
+	perfResultTag = perftype.PerfResultTag
+	perfResultEnd = perftype.PerfResultEnd
 	// TODO(coufon): add the tags to perftype
-	TimeSeriesTag = "[Result:TimeSeries]"
-	TimeSeriesEnd = "[Finish:TimeSeries]"
+	timeSeriesTag = "[Result:TimeSeries]"
+	timeSeriesEnd = "[Finish:TimeSeries]"
 )
 
 // PerfData is performance test result (latency, resource-usage).
@@ -58,10 +58,12 @@ type DataPerBuild struct {
 	Series []SeriesData `json:"series,omitempty"`
 }
 
+// AppendPerfData appends data into performance data
 func (db *DataPerBuild) AppendPerfData(obj TestData) {
 	db.Perf = append(db.Perf, obj.PerfDataItems...)
 }
 
+// AppendSeriesData data into time series data
 func (db *DataPerBuild) AppendSeriesData(obj TestData) {
 	db.Series = append(db.Series, obj.SeriesData)
 }
@@ -69,7 +71,7 @@ func (db *DataPerBuild) AppendSeriesData(obj TestData) {
 // DataPerNode contains perf data and time series for a node
 type DataPerNode map[string]*DataPerBuild
 
-// BuildData contains job name and a map from build number to perf data
+// DataPerTest contains job name and a map from build number to perf data
 type DataPerTest struct {
 	Data    map[string]DataPerNode `json:"data"`
 	Job     string                 `json:"job"`

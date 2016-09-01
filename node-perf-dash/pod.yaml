@@ -14,8 +14,9 @@ spec:
       -   --www=true
       -   --dir=/www
       -   --address=0.0.0.0:8080
-      -   --builds=100
+      -   --builds=20
       -   --datasource=google-gcs
+      -   --tracing=true
     imagePullPolicy: Always
     name: node-perf-dash
     ports:

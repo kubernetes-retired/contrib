@@ -44,13 +44,13 @@
 .display-latency {
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
+    justify-content: space-around;
 }
 
 .display-resource {
     display: flex;
     flex-wrap: wrap;   
-    justify-content: center;
+    justify-content: space-around;
 }
 
 .display-latency #chart-div {
@@ -64,23 +64,21 @@
 .display-latency-bar {
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
-    flex-direction: column;
+    justify-content: space-around;
 }
 
 .display-resource-bar {
     display: flex;
     flex-wrap: wrap;   
-    justify-content: center;
-    flex-direction: column;
+    justify-content: space-around;
 }
 
 .display-latency-bar #chart-div {
-    width: 75%;
+    width: 50%;
 }
 
 .display-resource-bar #chart-div {
-    width: 75%;
+    width: 50%;
 }
 
 .select-aggregation {

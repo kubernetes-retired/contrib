@@ -42,11 +42,11 @@ var (
 )
 
 func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData,
-	testEndTime TestEndTime) {
+	testTime TestTime) {
 	buff := &bytes.Buffer{}
 	state := scanning
 	TestDetail := ""
-	timeInLog := ""
+	endTime := ""
 	build := fmt.Sprintf("%d", buildNumber)
 
 	isTimeSeries := false
@@ -58,7 +58,7 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 			state = inTest
 		}
 		if state == processing {
-			if strings.Contains(line, PerfResultEnd) || strings.Contains(line, TimeSeriesEnd) ||
+			if strings.Contains(line, perfResultEnd) || strings.Contains(line, timeSeriesEnd) ||
 				strings.Contains(line, "INFO") || strings.Contains(line, "STEP") ||
 				strings.Contains(line, "Failure") || strings.Contains(line, "[AfterEach]") {
 				state = inTest
@@ -72,13 +72,16 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 
 				testName, nodeName := obj.Labels["test"], obj.Labels["node"]
 				testInfoMap.Info[testName] = TestDetail
-				if timeInLog == "" {
+
+				if endTime == "" {
 					log.Fatal("Error: test end time not parsed")
 				}
-				testEndTime.Add(testName, nodeName, timeInLog)
-				timeInLog = "" // reset
 
-				nodeName = strings.Split(nodeName, "-image-")[0]
+				testTime.Add(testName, nodeName, endTime)
+				endTime = "" // reset
+
+				// remove suffix
+				nodeName = removeNodeSuffix(nodeName)
 
 				if _, found := result[testName]; !found {
 					result[testName] = &DataPerTest{
@@ -97,7 +100,6 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 					key := testName + "/" + nodeName
 					// Update build FIFO
 					buildFIFOs[key] = append(buildFIFOs[key], build)
-
 					// Remove stale builds
 					if len(buildFIFOs[key]) > *builds {
 						delete(result[testName].Data[nodeName], buildFIFOs[key][0])
@@ -117,8 +119,8 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 				buff.Reset()
 			}
 		}
-		if state == inTest && (strings.Contains(line, PerfResultTag) || strings.Contains(line, TimeSeriesTag)) {
-			if strings.Contains(line, TimeSeriesTag) {
+		if state == inTest && (strings.Contains(line, perfResultTag) || strings.Contains(line, timeSeriesTag)) {
+			if strings.Contains(line, timeSeriesTag) {
 				isTimeSeries = true
 			}
 			state = processing
@@ -126,7 +128,7 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 			// Parse test end time
 			matchResult := regexResult.FindSubmatch([]byte(line))
 			if matchResult != nil {
-				timeInLog = string(matchResult[1])
+				endTime = string(matchResult[1])
 			} else {
 				log.Fatalf("Error: can not parse test end time:\n%s\n", line)
 			}
@@ -139,6 +141,17 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 	}
 }
 
+// removeNodeSuffix the UUID suffix of node name.
+func removeNodeSuffix(nodeName string) string {
+	result := ""
+	parts := strings.Split(nodeName, "-")
+	for _, part := range parts[0 : len(parts)-1] {
+		result += part + "-"
+	}
+	return result[:len(result)-1]
+}
+
+// parseTracingData extracts and appends tracing data into time series data.
 func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData) {
 	buff := &bytes.Buffer{}
 	state := scanning
@@ -147,16 +160,16 @@ func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, resul
 	for scanner.Scan() {
 		line := scanner.Text()
 		if state == processing {
-			if strings.Contains(line, TimeSeriesEnd) {
+			if strings.Contains(line, timeSeriesEnd) {
 				state = scanning
 
 				obj := TestData{}
 				if err := json.Unmarshal(buff.Bytes(), &obj); err != nil {
-					fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, buff.String())
+					fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v\n%s\n", buildNumber, err, buff.String())
 					continue
 				}
 				testName, nodeName := obj.Labels["test"], obj.Labels["node"]
-				nodeName = strings.Split(nodeName, "-image-")[0]
+				nodeName = removeNodeSuffix(nodeName)
 
 				if _, found := result[testName]; !found {
 					fmt.Fprintf(os.Stderr, "Error: tracing data have no test result: %s", testName)
@@ -178,7 +191,7 @@ func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, resul
 				buff.Reset()
 			}
 		}
-		if strings.Contains(line, TimeSeriesTag) {
+		if strings.Contains(line, timeSeriesTag) {
 			state = processing
 			line = line[strings.Index(line, "{"):]
 		}

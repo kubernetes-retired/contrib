@@ -19,8 +19,15 @@ PerfDashApp.prototype.buildChanged = function() {
         this.build = this.minBuild;
     }
     // search for the selected node
-    series = this.allData[this.test].data[this.node][this.build].series;
-    dataItem = series[0];
+    try{
+        series = this.allData[this.test].data[this.node][this.build].series;
+        dataItem = series[0];
+    }
+    catch(err){
+        console.log(err);
+        console.log("Selected build number does not exist.");
+        return;
+    }
 
     // merge following dataitems
     for(var i in series) {
@@ -52,12 +59,11 @@ PerfDashApp.prototype.buildChanged = function() {
     this.latencySeriesMap = dataItem.op_series;
 
     this.plotTimeSeries();
-    this.seriesBuildLabels = dataItem.labels;
 }
 
 colorList = ['rgba(51,153,255,0.3)', 'rgba(0,204,102,0.3)', 
-             'rgba(0,255,255,0.3)', 'rgba(0,20,102,0.3)', 
-             'rgba(255,0,0,0.3)‘, ’rgba(255,128,0,0.3)',
+             'rgba(0,255,255,0.3)', 'rgba(102,0,102,0.3)', 
+             'rgba(255,0,0,0.3)', 'rgba(255,128,0,0.3)',
              'rgba(204,204,0,0.3)'];
 
 // Plot the time series data for the selected build

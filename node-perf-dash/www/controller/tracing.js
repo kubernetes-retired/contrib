@@ -19,8 +19,15 @@ PerfDashApp.prototype.loadProbes = function() {
         this.build = this.minBuild;
     }
     // search for the selected node
-    series = this.allData[this.test].data[this.node][this.build].series;
-    dataItem = series[0];
+    try{
+        series = this.allData[this.test].data[this.node][this.build].series;
+        dataItem = series[0];
+    }
+    catch(err){
+        console.log(err);
+        console.log("Selected build number does not exist.");
+        return;
+    }
     // merge following dataitems
     for(var i in series) {
         if(i == '0'){
@@ -56,7 +63,12 @@ PerfDashApp.prototype.plotBuildsTracing = function() {
         'Perc99': [],
     }
     this.tracingBuilds = [];
-    for (build = this.minBuild; build <= this.maxBuild; build++) { 
+    for (var i in this.builds) { 
+        var build = parseInt(this.builds[i]);
+        if(build < this.minBuild || build > this.maxBuild) {
+            continue;
+        }
+
         startTimeData = this.extractTracingData(this.probeStart, build).sort(function(a, b){return a-b});
         endTimeData = this.extractTracingData(this.probeEnd, build).sort(function(a, b){return a-b});
 
@@ -109,8 +121,9 @@ PerfDashApp.prototype.plotBuildsTracing = function() {
 
 var arraySubstract = function(arr1, arr2) {
     var diff = [];
-    for(var i in arr1) {
-        diff.push(parseInt(arr1[i] - arr2[i])/1000000);
+    var len = Math.min(arr1.length, arr2.length);
+    for(i = 0; i < len; i++) {
+        diff.push(parseInt(Math.abs(arr1[i] - arr2[i]))/1000000);
     }
     return diff;
 }
