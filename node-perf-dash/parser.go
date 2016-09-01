@@ -21,7 +21,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -32,10 +34,19 @@ const (
 	processing = iota
 )
 
-func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData) {
+var (
+	// Regex for the performance result data log entry. It is used to parse the test end time.
+	regexResult = regexp.MustCompile(`([A-Z][a-z]*\s{1,2}\d{1,2} \d{2}:\d{2}:\d{2}.\d{3}): INFO: .*`)
+	// map[testName + nodeName string]FIFO(build string)
+	buildFIFOs = map[string][]string{}
+)
+
+func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData,
+	testEndTime TestEndTime) {
 	buff := &bytes.Buffer{}
 	state := scanning
 	TestDetail := ""
+	timeInLog := ""
 	build := fmt.Sprintf("%d", buildNumber)
 
 	isTimeSeries := false
@@ -58,9 +69,16 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 						buildNumber, err, buff.String())
 					continue
 				}
+
 				testName, nodeName := obj.Labels["test"], obj.Labels["node"]
-				nodeName = strings.Split(nodeName, "-image-")[0]
 				testInfoMap.Info[testName] = TestDetail
+				if timeInLog == "" {
+					log.Fatal("Error: test end time not parsed")
+				}
+				testEndTime.Add(testName, nodeName, timeInLog)
+				timeInLog = "" // reset
+
+				nodeName = strings.Split(nodeName, "-image-")[0]
 
 				if _, found := result[testName]; !found {
 					result[testName] = &DataPerTest{
@@ -72,8 +90,19 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 				if _, found := result[testName].Data[nodeName]; !found {
 					result[testName].Data[nodeName] = DataPerNode{}
 				}
+				// Find data from a new build.
 				if _, found := result[testName].Data[nodeName][build]; !found {
 					result[testName].Data[nodeName][build] = &DataPerBuild{}
+
+					key := testName + "/" + nodeName
+					// Update build FIFO
+					buildFIFOs[key] = append(buildFIFOs[key], build)
+
+					// Remove stale builds
+					if len(buildFIFOs[key]) > *builds {
+						delete(result[testName].Data[nodeName], buildFIFOs[key][0])
+						buildFIFOs[key] = buildFIFOs[key][1:]
+					}
 				}
 
 				if result[testName].Version == obj.Version {
@@ -93,6 +122,15 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 				isTimeSeries = true
 			}
 			state = processing
+
+			// Parse test end time
+			matchResult := regexResult.FindSubmatch([]byte(line))
+			if matchResult != nil {
+				timeInLog = string(matchResult[1])
+			} else {
+				log.Fatalf("Error: can not parse test end time:\n%s\n", line)
+			}
+
 			line = line[strings.Index(line, "{"):]
 		}
 		if state == processing {
