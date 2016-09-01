@@ -28,9 +28,10 @@ import (
 	"strconv"
 )
 
+// This parser needs additional probes intrumented inside kubelet code (https://github.com/kubernetes/kubernetes/pull/31583).
+// Node perf dash is using kubelet-parser.go for compatibility with Kubernetes main branch.
+
 const (
-	// TODO(coufon): use constants defined in Kubernetes packages
-	tracingVersion     = "v1"
 	tracingEventReason = "NodeTracing"
 )
 
@@ -115,13 +116,6 @@ func GrabTestTimeRange(d Downloader, job string, buildNumber int) []*TestTimeRan
 	}
 
 	return ttrList
-}
-
-// TracingData contains the tracing time series data of a test on a node
-type TracingData struct {
-	Labels  map[string]string   `json:"labels"`
-	Version string              `json:"version"`
-	Data    map[string]int64arr `json:"op_series"`
 }
 
 // AppendData adds a new timestamp of a probe into tracing data.
@@ -215,9 +209,3 @@ func ParseTracing(d Downloader, job string, buildNumber int) string {
 	}
 	return result
 }
-
-type int64arr []int64
-
-func (a int64arr) Len() int           { return len(a) }
-func (a int64arr) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a int64arr) Less(i, j int) bool { return a[i] < a[j] }

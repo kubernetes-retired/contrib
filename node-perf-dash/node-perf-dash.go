@@ -63,9 +63,8 @@ func main() {
 	}
 
 	var err error
-	allTestData := make(TestToBuildData)
 	if !*www {
-		allTestData, err = GetData(downloader)
+		err = GetData(downloader, allTestData)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
 			os.Exit(1)
@@ -82,7 +81,7 @@ func main() {
 	go func() {
 		for {
 			fmt.Printf("Fetching new data...\n")
-			allTestData, err = GetData(downloader)
+			err = GetData(downloader, allTestData)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
 				time.Sleep(errorDelay)
