@@ -95,9 +95,14 @@ PerfDashApp.prototype.parseNodeInfo = function() {
         }
 
         angular.forEach(test.data, function(nodeData, nodeName) {
-            pair = nodeName.split("-e2e-node-")
-            machine = pair[0];
-            image = pair[1];
+            parts = nodeName.split("-");
+            machine = parts[0] + "-" + parts[1] + "-" + parts[2];
+            image = "";
+            for(i = 3; i < parts.length; i++) {
+                image += parts[i] + "-";
+            }
+            image = image.substring(0, image.length-1);
+
             newNodeName = image + '/' + machine;
             test.data[newNodeName] = nodeData;
 
@@ -140,31 +145,43 @@ PerfDashApp.prototype.testChangedWrapper = function() {
 // Apply new data to charts, using the selected test
 PerfDashApp.prototype.testChanged = function() {
     if(!this.test | !(this.test in this.allData)) {
-        return;
+        if(this.tests.length > 0) {
+            this.test = this.tests[0]
+        } else {
+            return;
+        }
     }
     this.imageList = Object.keys(this.testNodeTreeRoot[this.test]);
     this.imageChanged();
 };
 
 PerfDashApp.prototype.imageChanged = function() {
-    if(this.image == null) {
-        return;
-    } else if(this.imageList.indexOf(this.image) == -1){
+    if(this.image != null && this.imageList.indexOf(this.image) == -1){
         this.image = null;
         this.machine = null;
         this.machineList = [];
-        return;
+    }
+    if(this.image == null) {
+        if(this.imageList.length > 0) {
+            this.image = this.imageList[0];
+        } else {
+            return;
+        }
     }
     this.machineList = Object.keys(this.testNodeTreeRoot[this.test][this.image]);
     this.machineChanged();
 }
 
 PerfDashApp.prototype.machineChanged = function() {
-    if(this.machine == null) {
-        return;
-    } else if(this.machineList.indexOf(this.machine) == -1) {
+    if(this.machine != null && this.machineList.indexOf(this.machine) == -1) {
         this.machine = null;
-        return;
+    }
+    if(this.machine ==null) {
+        if(this.machineList.length > 0) {
+            this.machine = this.machineList[0];
+        } else {
+            return;
+        }
     }
     this.nodeChanged();
 }
@@ -194,7 +211,7 @@ PerfDashApp.prototype.nodeChanged = function() {
     }
     */
     this.resetBuildRange();
-
+    this.build = this.maxBuild;
     this.labelChanged();
 };
 

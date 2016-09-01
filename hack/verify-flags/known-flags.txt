@@ -132,3 +132,7 @@ pod-scheduled-timeout
 netrc-dir
 publish-command
 triager-url
+datasource
+local-data-dir
+tracing
+jenkins-job
