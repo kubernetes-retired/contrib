@@ -119,3 +119,7 @@ retest-body
 default-ssl-certificate
 housekeeping-interval
 system-namespace
+datasource
+local-data-dir
+tracing
+jenkins-job
