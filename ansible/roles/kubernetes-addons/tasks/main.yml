@@ -50,12 +50,12 @@
   copy:
     src=common/python-image/
     dest={{ kube_script_dir }}/python-image
-  when: is_coreos
+  when: is_coreos or (ansible_distribution == "Fedora" and is_atomic)
   register: kube_addons_python_image_dockerfile
 
 - name: Build Python image to use in Kubernetes Addons
   shell: "docker build -t python:2.7-slim-pyyaml {{ kube_script_dir }}/python-image"
-  when: is_coreos and kube_addons_python_image_dockerfile | changed
+  when: is_coreos or (ansible_distribution == "Fedora" and is_atomic) and kube_addons_python_image_dockerfile | changed
 
 - name: Run kube-gen-token script to create {{ kube_token_dir }}/known_tokens.csv
   command: "{{ kube_script_dir }}/kube-gen-token.sh {{ item }}"
