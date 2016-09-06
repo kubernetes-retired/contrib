@@ -8,13 +8,13 @@
 
 - name: Retrieve systemd files for github-release kube_source_type type
   include: retrieve-systemd-files.yml
-  when: kube_source_type == "github-release"
+  when: kube_source_type == "github-release" or (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int == 16)
 
 # Change default value of kube_source_type
 - name: Force kube_source_type to github
   set_fact:
     kube_source_type: "github-release"
-  when: is_coreos or (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15)
+  when: is_coreos or ansible_distribution == 'Ubuntu'
 
 # Install kubernetes master components
 - include: packageManagerInstall.yml
