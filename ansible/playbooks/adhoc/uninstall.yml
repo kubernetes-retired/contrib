@@ -114,7 +114,7 @@
     - name: Remove remaining files
       file: path={{ item }} state=absent
       with_items:
-        - "~{{ ansible_ssh_user }}/.kube"
+        - "{{ ansible_env.HOME }}/.kube"
         - /root/.kube
         - "{{ bin_dir }}/kube-apiserver"
         - "{{ bin_dir }}/kube-controller-manager"
