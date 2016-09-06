@@ -1,3 +1,0 @@
-subjectAltName=`kubectl -s http://172.16.5.40:8080 get services --all-namespaces |grep 'default'|grep 'kubernetes'|grep '443'|awk '{print $3}'`
-echo subjectAltName=IP:${subjectAltName} > extfile.cnf
-
