@@ -19,6 +19,22 @@
       </div>
 
       <div class="md-whiteframe-z2" style="padding: 20px">
+        <!-- Menu 0: select test -->
+        <div id="job_menu">
+          <!-- test -->
+          <div style="width: 600px">
+            <legend style="color: #3F51B5;"><b>Select job:</b></legend>
+            <md-input-container>
+              <md-select placeholder="Job" ng-model="controller.job"  ng-change="controller.jobChangedWrapper()">
+                <md-option ng-value="job" ng-repeat="job in controller.jobs">
+                  {{job}}
+                </md-option>
+              </md-select>
+            </md-input-container>
+          </div>
+        </div>        
+        <hr color="#34495E">
+
         <!-- Menu 1: select test -->
         <div id="test_menu">
           <!-- test -->

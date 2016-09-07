@@ -37,9 +37,10 @@ const (
 )
 
 var (
-	grabbedLastBuild int
 	// allTestData stores all parsed perf and time series data in memeory.
-	allTestData = TestToBuildData{}
+	allTestData = map[string]*TestToBuildData{}
+	// grabbedLastBuild stores the last build grabbed for each job
+	allGrabbedLastBuild = map[string]int{}
 )
 
 // Downloader is the interface that gets a data from a predefined source.
@@ -49,46 +50,41 @@ type Downloader interface {
 }
 
 // GetData fetch as much data as possible and result the result.
-func GetData(d Downloader, allTestData TestToBuildData) error {
-	fmt.Printf("Getting Data from %s...\n", *datasource)
-	job := *jenkinsJob
+func GetData(job string, d Downloader) error {
+	fmt.Printf("Getting Data from %s... (Job: %s)\n", *datasource, job)
 	buildNr := *builds
+	testData := *allTestData[job]
+	grabbedLastBuild := allGrabbedLastBuild[job]
 
 	lastBuildNo, err := d.GetLastestBuildNumber(job)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Last build no: %v\n", lastBuildNo)
+	fmt.Printf("Last build no: %v (Job: %s)\n", lastBuildNo, job)
 
 	endBuild := lastBuildNo
 	startBuild := int(math.Max(math.Max(float64(lastBuildNo-buildNr), 0), float64(grabbedLastBuild))) + 1
 
 	for buildNumber := startBuild; buildNumber <= endBuild; buildNumber++ {
-		fmt.Printf("Fetching build %v...\n", buildNumber)
+		fmt.Printf("Fetching build %v... (Job: %s)\n", buildNumber, job)
 
 		file, err := d.GetFile(job, buildNumber, testResultFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error while fetching data: %v (Job: %s)\n", err, job)
 			return err
 		}
 
 		testTime := TestTime{}
-		parseTestOutput(bufio.NewScanner(file), job, buildNumber, allTestData, testTime)
+		parseTestOutput(bufio.NewScanner(file), job, buildNumber, testData, testTime)
 		file.Close()
-
-		// TODO(coufon): currently we run one test per node. we must check multi-test per node
-		// to make sure test separation by 'end time of test' works.
-
-		// It contains test end time information, used to extract event logs
-		//fmt.Printf("%#v\n", testTime.Sort())
 
 		if *tracing {
 			tracingData := ParseKubeletLog(d, job, buildNumber, testTime)
-			parseTracingData(bufio.NewScanner(strings.NewReader(tracingData)), job, buildNumber, allTestData)
+			parseTracingData(bufio.NewScanner(strings.NewReader(tracingData)), job, buildNumber, testData)
 		}
 	}
-	grabbedLastBuild = lastBuildNo
+	allGrabbedLastBuild[job] = lastBuildNo
 	return nil
 }
 

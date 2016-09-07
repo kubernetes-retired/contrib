@@ -54,12 +54,22 @@
 }
 
 .display-latency #chart-div {
-    width: 65%;
+    width: 50%;
 }
 
 .display-resource #chart-div {
     width: 50%;
 }
+
+.display-series-latency {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;  
+}
+.display-series-latency #chart-div {
+    width: 75%;
+}
+
 
 .display-latency-bar {
     display: flex;

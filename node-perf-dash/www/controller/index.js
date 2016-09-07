@@ -81,7 +81,6 @@ var testOptions = {
 }
 
 var app = angular.module('PerfDashApp', ['ngMaterial', 'chart.js', 'ui.router']);
-var clearSeriesCharts = false;
 
 app.config(function($stateProvider, $urlRouterProvider) {
 
@@ -130,7 +129,7 @@ app.controller('AppCtrl', ['$scope', '$http', '$interval', '$location',
             }
             if(old == 2) { // clear charts for time series plot
                 //console.log("clear")
-                clearSeriesCharts = true;
+                $scope.controller.clearSeriesCharts = true;
             }
         });
 }]);
@@ -141,6 +140,92 @@ var PerfDashApp = function(http, scope) {
     this.scope = scope;
     this.onClick = this.onClickInternal_.bind(this);
 
+    // aggregation in test comparison
+    this.aggregateTypes = ['latest', 'average'];
+    this.aggregateType = 'average';
+
+    // for job
+    this.jobs = [];
+    this.job = null;
+
+    this.seriesCharts = {};
+    this.clearSeriesCharts = false;
+
+    this.resetTestSelect();
+};
+
+// TODO(coufon): not handled in node-perf-dashboard yet
+PerfDashApp.prototype.onClickInternal_ = function(data) {
+    console.log(data);
+    // Get location
+    // TODO(random-liu): Make the URL configurable if we want to support more
+    // buckets in the future.
+    //window.location = "http://kubekins.dls.corp.google.com/job/" + this.job + "/" + data[0].label + "/";
+};
+
+// Fetch data from the server and update the data to display
+PerfDashApp.prototype.refresh = function() {
+    // get job informantion
+    this.http.get("jobs")
+            .success(function(data) {
+                this.jobs = data;
+                if(this.jobs.length == 0) {
+                    this.job = null;
+                } else {
+                    if(this.job == null || this.jobs.indexOf(this.job) == -1){
+                        this.job = this.jobs[0]
+                    }
+                }
+                if(this.job != null) {
+                    // get test data
+                    this.fetchData();
+                    // get test information
+                    this.fetchTestInfo()
+                }
+            }.bind(this))
+    .error(function(data) {
+        console.log("Error fetching jobs");
+        console.log(data);
+    });
+};
+
+// Change the job which we collect data from
+PerfDashApp.prototype.jobChangedWrapper = function() {
+    if(this.job != null) {
+        this.resetTestSelect();
+        this.fetchData();
+    }
+}  
+
+// fetchdata fetches data from data/job endpoint
+PerfDashApp.prototype.fetchData = function() {
+    this.http.get("data/" + this.job)
+        .success(function(data) {
+            this.tests = Object.keys(data);
+            this.allData = data;
+            this.parseTest();
+            this.parseNodeInfo();
+            this.testChangedWrapper();
+        }.bind(this))
+    .error(function(data) {
+        console.log("Error fetching data");
+        console.log(data);
+    });
+}
+
+// fetchTestInfo fetches test information from testinfo endpoint
+PerfDashApp.prototype.fetchTestInfo = function() {
+    this.http.get("testinfo")
+            .success(function(data) {
+                this.testInfo = data;
+            }.bind(this))
+    .error(function(data) {
+        console.log("Error fetching testinfo");
+        console.log(data);
+    });
+}
+
+PerfDashApp.prototype.resetTestSelect = function() {
     // machine/image/test to plot is not defined at beginning
     this.node = null;
     this.image = null;
@@ -169,10 +254,6 @@ var PerfDashApp = function(http, scope) {
     this.comparisonList = [];
     this.comparisonListSelected = [];
 
-    // aggregation in test comparison
-    this.aggregateTypes = ['latest', 'average'];
-    this.aggregateType = 'average';
-
     // for comparison data
     this.comparisonSeriesMap = {};
     this.comparisonSeriesDataMap = {};
@@ -180,46 +261,10 @@ var PerfDashApp = function(http, scope) {
     this.comparisonLabelsMap = {};
 
     // for time series
-    this.seriesCharts = {};
     this.probes = [];
 
     // for config
     this.minBuild = 0;
     this.minBuild = 0;
     this.maxBuild = 0;
-};
-
-// TODO(coufon): not handled in node-perf-dashboard yet
-PerfDashApp.prototype.onClickInternal_ = function(data) {
-    console.log(data);
-    // Get location
-    // TODO(random-liu): Make the URL configurable if we want to support more
-    // buckets in the future.
-    //window.location = "http://kubekins.dls.corp.google.com/job/" + this.job + "/" + data[0].label + "/";
-};
-
-// Fetch data from the server and update the data to display
-PerfDashApp.prototype.refresh = function() {
-    // get test information
-    this.http.get("testinfo")
-            .success(function(data) {
-                this.testInfo = data;
-            }.bind(this))
-    .error(function(data) {
-        console.log("Error fetching test info");
-        console.log(data);
-    });
-    // get test data
-    this.http.get("data")
-            .success(function(data) {
-                this.tests = Object.keys(data);
-                this.allData = data;
-                this.parseTest();
-                this.parseNodeInfo();
-                this.testChangedWrapper();
-            }.bind(this))
-    .error(function(data) {
-        console.log("Error fetching data");
-        console.log(data);
-    });
-};
+}
