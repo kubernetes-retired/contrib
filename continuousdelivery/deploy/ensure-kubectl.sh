@@ -49,7 +49,7 @@ if [ ! -e ~/.kube ]; then
 fi
 
 if [ ! -e ~/.kube/kubectl ]; then
-    wget https://storage.googleapis.com/kubernetes-release/release/v1.2.2/bin/linux/amd64/kubectl -O ~/.kube/kubectl
+    wget https://storage.googleapis.com/kubernetes-release/release/v1.3.6/bin/linux/amd64/kubectl -O ~/.kube/kubectl
     chmod +x ~/.kube/kubectl
 fi
 
