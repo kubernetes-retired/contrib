@@ -53,6 +53,7 @@ issue-mungers
 issue-reports
 jenkins-host
 jenkins-jobs
+kube-api-content-type
 kubelet-host
 kubelet-port
 label-file
