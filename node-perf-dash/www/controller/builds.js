@@ -98,6 +98,10 @@ PerfDashApp.prototype.parseNodeInfo = function() {
             parts = nodeName.split("-");
             machine = parts[0] + "-" + parts[1] + "-" + parts[2];
             image = "";
+            // TODO(coufon): we need a standard format to name a node using image and machine type.
+
+            // TODO(coufon): GCI image name is changed across build, we should
+            // change test framework to use a consistent name.
             for(i = 3; i < parts.length; i++) {
                 image += parts[i] + "-";
             }

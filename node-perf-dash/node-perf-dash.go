@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -33,7 +34,7 @@ const (
 
 var (
 	addr         = flag.String("address", ":8080", "The address to serve web data on")
-	www          = flag.Bool("www", false, "If true, start a web-server to server performance data")
+	www          = flag.Bool("www", true, "If true, start a web-server to server performance data")
 	wwwDir       = flag.String("dir", "www", "If non-empty, add a file server for this directory at the root of the web server")
 	builds       = flag.Int("builds", maxBuilds, "Total builds number")
 	datasource   = flag.String("datasource", "google-gcs", "Source of test data. Options include 'local', 'google-gcs'")
@@ -43,6 +44,12 @@ var (
 )
 
 func main() {
+	var (
+		downloader Downloader
+		err        error
+		jobs       JobList
+	)
+
 	fmt.Print("Starting Node Performance Dashboard...\n")
 	flag.Parse()
 
@@ -51,7 +58,6 @@ func main() {
 		*builds = maxBuilds
 	}
 
-	var downloader Downloader
 	switch *datasource {
 	case "local":
 		downloader = NewLocalDownloader()
@@ -62,37 +68,65 @@ func main() {
 		os.Exit(1)
 	}
 
-	var err error
+	jobs = strings.Split(*jenkinsJob, ",")
+	fmt.Println(jobs)
+	for _, job := range jobs {
+		allTestData[job] = &TestToBuildData{}
+	}
+
 	if !*www {
-		err = GetData(downloader, allTestData)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
-			os.Exit(1)
+		for _, job := range jobs {
+			err = GetData(job, downloader)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
+				os.Exit(1)
+			}
+			prettyResult, err := json.MarshalIndent(allTestData, "", " ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error formating data: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Result: %v\n", string(prettyResult))
 		}
-		prettyResult, err := json.MarshalIndent(allTestData, "", " ")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error formating data: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Result: %v", string(prettyResult))
 		return
 	}
 
-	go func() {
-		for {
-			fmt.Printf("Fetching new data...\n")
-			err = GetData(downloader, allTestData)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
-				time.Sleep(errorDelay)
-				continue
+	for _, job := range jobs {
+		go func(job string) {
+			for {
+				fmt.Printf("Fetching new data...\n")
+				err = GetData(job, downloader)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
+					time.Sleep(errorDelay)
+					continue
+				}
+				time.Sleep(pollDuration)
 			}
-			time.Sleep(pollDuration)
-		}
-	}()
+		}(job)
+	}
 
-	http.Handle("/data", &allTestData)
+	for _, job := range jobs {
+		http.Handle(fmt.Sprintf("/data/%s", job), allTestData[job])
+	}
 	http.Handle("/testinfo", &testInfoMap)
+	http.Handle("/jobs", &jobs)
 	http.Handle("/", http.FileServer(http.Dir(*wwwDir)))
 	http.ListenAndServe(*addr, nil)
+}
+
+// JobList is the list containing all job names
+type JobList []string
+
+func (j *JobList) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	data, err := json.Marshal(j)
+	if err != nil {
+		res.Header().Set("Content-type", "text/html")
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write([]byte(fmt.Sprintf("<h3>Internal Error</h3><p>%v", err)))
+		return
+	}
+	res.Header().Set("Content-type", "application/json")
+	res.WriteHeader(http.StatusOK)
+	res.Write(data)
 }

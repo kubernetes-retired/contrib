@@ -28,30 +28,36 @@ const (
 	kubeletLogTimeFormat = "2006 0102 15:04:05.000000"
 
 	// Probe names
-	probeFirstseen      = "kubelet_pod_config_change"
-	probeRuntime        = "kubelet_runtime"
-	probeContainerStart = "kubelet_container_start"
-	probeStatusUpdate   = "kubelet_pod_status_running"
+	probeFirstseen              = "pod_config_change"
+	probeRuntime                = "runtime_manager"
+	probeContainerStartPLEG     = "container_start_pleg"
+	probeContainerStartPLEGSync = "container_start_pleg_sync"
+	probeStatusUpdate           = "pod_status_running"
+
+	// TODO(coufon): we do not plot infra container now for simplicity.
+
 	// time when the infra container for the test pod starts
-	probeInfraContainer = "kubelet_start_infra_container"
+	probeInfraContainerPLEGSync = "infra_container_start_pleg_sync"
 	// time when the test pod starts
-	probeTestContainer = "kubelet_start_test_pod"
+	probeTestContainerPLEGSync = "container_start_pleg_sync"
+
+	probeInfraContainerPLEG = "infra_container_start_pleg"
+	probeTestContainerPLEG  = "container_start_pleg"
+
+	probeTestPodStart = "pod_running"
 )
 
 var (
 	// Kubelet parser do not leverage on additional tracing probes. It uses the native log of Kubelet instead.
 	// The mapping from native log to tracing probes is as follows:
 	// TODO(coufon): there is no volume now in our node-e2e performance test. Add probe for volume manager in future.
-	//          probe                                      log
-	//     kubelet_firstseen           SyncLoop (ADD, "api")
-	//     kubelet_runtime             docker_manager.go.*restart pod infra container
-	//     kubelet_container_start     kubelet.go.*SyncLoop (PLEG):.*Type:"ContainerStarted"
-	//     kubelet_status              status_manager.go.*updated successfully: {status:{Phase:Running
 	regexMap = map[string]*regexp.Regexp{
-		probeFirstseen:      regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet.go.*SyncLoop \(ADD, \"api\"\): \".+\"`),
-		probeRuntime:        regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*docker_manager.go.*Need to restart pod infra container for.*because it is not found.*`),
-		probeContainerStart: regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet.go.*SyncLoop \(PLEG\): \".*\((.*)\)\".*Type:"ContainerStarted", Data:"(.*)".*`),
-		probeStatusUpdate:   regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*status_manager.go.*Status for pod \".*\((.*)\)\" updated successfully.*Phase:Running.*`),
+		probeFirstseen:              regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet.go.*SyncLoop \(ADD, \"api\"\): \".+\"`),
+		probeRuntime:                regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*docker_manager.go.*Need to restart pod infra container for.*because it is not found.*`),
+		probeContainerStartPLEG:     regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}) .* GenericPLEG: ([^\/]*)\/([^:]*): non-existent -> running`),
+		probeContainerStartPLEGSync: regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet.go.*SyncLoop \(PLEG\): \".*\((.*)\)\".*Type:"ContainerStarted", Data:"(.*)".*`),
+		probeStatusUpdate:           regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*status_manager.go.*Status for pod \".*\((.*)\)\" updated successfully.*Phase:Running.*`),
+		probeTestPodStart:           regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}) .* server.go.*Event.*UID:\"([^\"]*)\", .* type: 'Normal' reason: 'Started' Started container.*`),
 	}
 	// We do not process logs for cAdvisor pod. Use this regex to filter them out.
 	regexMapCadvisorLog = regexp.MustCompile(`.*cadvisor.*`)
@@ -136,8 +142,9 @@ func ParseKubeletLog(d Downloader, job string, buildNumber int, testTime TestTim
 
 // PodState records the state of a pod from parsed kubelet log. The state is used in parsing.
 type PodState struct {
-	ContainerNr   int
-	StatusUpdated bool
+	ContainerNrPLEG     int
+	ContainerNrPLEGSync int
+	StatusUpdated       bool
 }
 
 // GrabTracingKubelet parse tracing data using kubelet.log. It does not reuqire additional tracing probes.
@@ -233,33 +240,59 @@ func parseLogEntry(line []byte, statePerPod map[string]*PodState) *DetectedEntry
 				if err != nil {
 					log.Fatal("Error: can not parse log timestamp in kubelet.log")
 				}
-				if probe == probeContainerStart {
-					pod := string(matchResult[2])
-					if _, ok := statePerPod[pod]; !ok {
-						statePerPod[pod] = &PodState{ContainerNr: 1}
-					} else {
-						statePerPod[pod].ContainerNr++
+				switch probe {
+				// 'container starts' reported by PLEG event
+				case probeContainerStartPLEG:
+					{
+						pod := string(matchResult[2])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{ContainerNrPLEG: 1}
+						} else {
+							statePerPod[pod].ContainerNrPLEG++
+						}
+						// In our test the pod contains an infra container and test container.
+						switch statePerPod[pod].ContainerNrPLEG {
+						case 1:
+							probe = probeInfraContainerPLEG
+						case 2:
+							probe = probeTestContainerPLEG
+						default:
+							return nil
+						}
 					}
-					// In our test the pod contains an infra container and test container.
-					switch statePerPod[pod].ContainerNr {
-					case 1:
-						probe = probeInfraContainer
-					case 2:
-						probe = probeTestContainer
-					default:
-						return nil
+				// 'container starts' detected by PLEG reported in Kublet SyncPod
+				case probeContainerStartPLEGSync:
+					{
+						pod := string(matchResult[2])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{ContainerNrPLEGSync: 1}
+						} else {
+							statePerPod[pod].ContainerNrPLEGSync++
+						}
+						// In our test the pod contains an infra container and test container.
+						switch statePerPod[pod].ContainerNrPLEGSync {
+						case 1:
+							probe = probeInfraContainerPLEGSync
+						case 2:
+							probe = probeTestContainerPLEGSync
+						default:
+							return nil
+						}
 					}
-				}
-				// We only trace the first status update event.
-				if probe == probeStatusUpdate {
-					pod := string(matchResult[2])
-					if _, ok := statePerPod[pod]; !ok {
-						statePerPod[pod] = &PodState{}
+				// 'pod running' reported by Kubelet status manager
+				case probeStatusUpdate:
+					{
+						// We only trace the first status update event.
+
+						pod := string(matchResult[2])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{}
+						}
+						if statePerPod[pod].StatusUpdated {
+							return nil
+						}
+						statePerPod[pod].StatusUpdated = true
 					}
-					if statePerPod[pod].StatusUpdated {
-						return nil
-					}
-					statePerPod[pod].StatusUpdated = true
 				}
 				return &DetectedEntry{Probe: probe, Timestamp: ts}
 			}

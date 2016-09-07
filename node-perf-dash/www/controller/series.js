@@ -64,13 +64,17 @@ PerfDashApp.prototype.buildChanged = function() {
 colorList = ['rgba(51,153,255,0.3)', 'rgba(0,204,102,0.3)', 
              'rgba(0,255,255,0.3)', 'rgba(102,0,102,0.3)', 
              'rgba(255,0,0,0.3)', 'rgba(255,128,0,0.3)',
-             'rgba(204,204,0,0.3)'];
+             'rgba(204,204,0,0.3)', 'rgba(0,0,153,0.3)',
+             'rgba(153,0,0,0.3)'];
+
+opTimeSeriesShowList = ['create', 'running', 'pod_running', 'pod_config_change'];
 
 // Plot the time series data for the selected build
 PerfDashApp.prototype.plotTimeSeries = function() {
     // align timeline
     var start = Math.min(this.timeseries['kubelet']['ts'][0],
         this.timeseries['runtime']['ts'][0])
+
     // get data for each plot
     angular.forEach(seriesPlots, function(plot){
         var ctx, dataSets;
@@ -79,13 +83,22 @@ PerfDashApp.prototype.plotTimeSeries = function() {
             case 'latency':
                 dataSets = [];
                 var i = 0;
+                
                 for(var key in this.latencySeriesMap) {
+                    let hidden  = true;
+                    for(var j in opTimeSeriesShowList) {
+                        if(key == opTimeSeriesShowList[j]) {
+                            hidden = false;
+                        }
+                    }
+
                     dataSets.push({ 
                         label: key,
                         data: getAccumSeries(this.latencySeriesMap[key].map(function(value){
                             return ((value - start)/1e9).toFixed(1);
                         })),
                         backgroundColor: colorList[i++],
+                        hidden: hidden,
                     })
                 }
                 unit = "#Pod"
@@ -148,9 +161,9 @@ PerfDashApp.prototype.plotTimeSeries = function() {
                 return;              
         }
 
-        if(clearSeriesCharts) {
+        if(this.clearSeriesCharts) {
             this.seriesCharts = {};
-            clearSeriesCharts = false;
+            this.clearSeriesCharts = false;
         }
 
         if(plot in this.seriesCharts) {

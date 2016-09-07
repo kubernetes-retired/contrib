@@ -81,7 +81,7 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 				endTime = "" // reset
 
 				// remove suffix
-				nodeName = removeNodeSuffix(nodeName)
+				nodeName = formatNodeName(nodeName, job)
 
 				if _, found := result[testName]; !found {
 					result[testName] = &DataPerTest{
@@ -141,11 +141,19 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 	}
 }
 
-// removeNodeSuffix the UUID suffix of node name.
-func removeNodeSuffix(nodeName string) string {
+// formatNodeName the UUID suffix of node name.
+func formatNodeName(nodeName string, job string) string {
 	result := ""
 	parts := strings.Split(nodeName, "-")
-	for _, part := range parts[0 : len(parts)-1] {
+	lastPart := len(parts) - 1
+
+	// TODO(coufon): GCI image name is changed across build, we should
+	// change test framework to use a consistent name.\
+	if job == "continuous-node-e2e-docker-benchmark" && parts[3] == "gci" {
+		lastPart -= 3
+	}
+
+	for _, part := range parts[0:lastPart] {
 		result += part + "-"
 	}
 	return result[:len(result)-1]
@@ -169,7 +177,7 @@ func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, resul
 					continue
 				}
 				testName, nodeName := obj.Labels["test"], obj.Labels["node"]
-				nodeName = removeNodeSuffix(nodeName)
+				nodeName = formatNodeName(nodeName, job)
 
 				if _, found := result[testName]; !found {
 					fmt.Fprintf(os.Stderr, "Error: tracing data have no test result: %s", testName)
