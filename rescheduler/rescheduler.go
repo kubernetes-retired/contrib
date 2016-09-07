@@ -26,6 +26,7 @@ import (
 	kube_utils "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
+	kube_restclient "k8s.io/kubernetes/pkg/client/restclient"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -49,6 +50,9 @@ var (
 	inCluster = flags.Bool("running-in-cluster", true,
 		`Optional, if this controller is running in a kubernetes cluster, use the
 		 pod secrets for creating a Kubernetes client.`)
+
+	contentType = flags.String("kube-api-content-type", "application/vnd.kubernetes.protobuf",
+		`Content type of requests sent to apiserver.`)
 
 	housekeepingInterval = flags.Duration("housekeeping-interval", 10*time.Second,
 		`How often rescheduler takes actions.`)
@@ -158,14 +162,18 @@ func waitForScheduled(client *kube_client.Client, podsBeingProcessed *podSet, po
 }
 
 func createKubeClient(flags *flag.FlagSet, inCluster bool) (*kube_client.Client, error) {
+	var config *kube_restclient.Config
+	var err error
 	if inCluster {
-		return kube_client.NewInCluster()
+		config, err = kube_restclient.InClusterConfig()
+	} else {
+		clientConfig := kubectl_util.DefaultClientConfig(flags)
+		config, err = clientConfig.ClientConfig()
 	}
-	clientConfig := kubectl_util.DefaultClientConfig(flags)
-	config, err := clientConfig.ClientConfig()
 	if err != nil {
 		fmt.Errorf("error connecting to the client: %v", err)
 	}
+	config.ContentType = *contentType
 	return kube_client.NewOrDie(config), nil
 }
 
