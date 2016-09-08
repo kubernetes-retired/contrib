@@ -1,4 +1,5 @@
-# Copyright 2015 Google Inc. All rights reserved.
+#!/bin/bash
+# Copyright 2016 The Kubernetes Authors All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM google/debian:jessie
-MAINTAINER Chao Xu <xuchao@google.com>
-RUN apt-get update
-RUN apt-get install -y -qq ca-certificates git
+set -o errexit
+set -o nounset
+set -o pipefail
 
-CMD ["/mungegithub", "--dry-run", "--token-file=/token"]
+echo $@
+if [ ! $# -eq 2 ]; then
+    echo "usage: clone.sh destination_dir destination_url, destination_dir is expected to be absolute paths."
+    exit 1
+fi
 
-ADD mungegithub /mungegithub
-ADD mungers/clone.sh /clone.sh
-ADD mungers/construct.sh /construct.sh
-ADD mungers/publish.sh /publish.sh
+DST="${1}"
+DSTURL="${2}"
+# set up the destination directory
+rm -rf "${DST}"
+mkdir -p "${DST}"
+git clone "${DSTURL}" "${DST}"
