@@ -3,8 +3,6 @@ Kubernetes Virtual IP address/es using [keepalived](http://www.keepalived.org)
 
 AKA "how to set up virtual IP addresses in kubernetes using [IPVS - The Linux Virtual Server Project](http://www.linuxvirtualserver.org/software/ipvs.html)".
 
-## Disclaimer:
-- This is a **work in progress**.
 
 ## Overview
 
@@ -68,7 +66,7 @@ $ kubectl create -f vip-daemonset.yaml
 daemonset "kube-keepalived-vip" created
 $ kubectl get daemonset
 NAME                  CONTAINER(S)          IMAGE(S)                         SELECTOR                        NODE-SELECTOR
-kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.7   name in (kube-keepalived-vip)   type=worker
+kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.8   name in (kube-keepalived-vip)   type=worker
 ```
 
 **Note: the daemonset yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**

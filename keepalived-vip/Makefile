@@ -1,9 +1,10 @@
 all: push
 
-# 0.0 shouldn't clobber any release builds, current "latest" is 0.7
-TAG = 0.7
+# 0.0 shouldn't clobber any release builds, current "latest" is 0.8
+TAG = 0.8
 PREFIX = gcr.io/google_containers/kube-keepalived-vip
 BUILD_IMAGE = build-keepalived
+TEMP_GOPATH = ${GOPATH}:${GOPATH}/src/k8s.io/kubernetes/staging
 
 controller: clean
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-w' -o kube-keepalived-vip
@@ -23,3 +24,7 @@ push: container
 
 clean:
 	rm -f kube-keepalived-vip
+
+update-godeps:
+	GOPATH=$(TEMP_GOPATH) godep save ./...
+	ln -s kubernetes/staging/src/k8s.io/client-go vendor/k8s.io/client-go

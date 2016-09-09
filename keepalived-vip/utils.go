@@ -242,8 +242,9 @@ func loadIPVModule() error {
 // changeSysctl changes the required network setting in /proc to get
 // keepalived working in the local system.
 func changeSysctl() error {
+	sys := sysctl.New()
 	for k, v := range sysctlAdjustments {
-		if err := sysctl.SetSysctl(k, v); err != nil {
+		if err := sys.SetSysctl(k, v); err != nil {
 			return err
 		}
 	}

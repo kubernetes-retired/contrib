@@ -212,6 +212,10 @@ func (b *Builder) ResourceNames(resource string, names ...string) *Builder {
 			b.resourceTuples = append(b.resourceTuples, tuple)
 			continue
 		}
+		if len(resource) == 0 {
+			b.errs = append(b.errs, fmt.Errorf("the argument %q must be RESOURCE/NAME", name))
+			continue
+		}
 
 		// Use the given default type to create a resource tuple
 		b.resourceTuples = append(b.resourceTuples, resourceTuple{Resource: resource, Name: name})
@@ -454,7 +458,7 @@ func (b *Builder) mappingFor(resourceArg string) (*meta.RESTMapping, error) {
 	if fullySpecifiedGVR != nil {
 		gvk, _ = b.mapper.KindFor(*fullySpecifiedGVR)
 	}
-	if gvk.IsEmpty() {
+	if gvk.Empty() {
 		var err error
 		gvk, err = b.mapper.KindFor(groupResource.WithVersion(""))
 		if err != nil {

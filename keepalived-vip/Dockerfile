@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/google_containers/ubuntu-slim:0.3
+FROM gcr.io/google_containers/ubuntu-slim:0.4
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
   libssl1.0.0 \
@@ -28,7 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   kmod \
   ca-certificates \
   iproute2 \
-  ipvsadm && \
+  ipvsadm \
+  bash && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 

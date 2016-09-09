@@ -28,10 +28,17 @@ import (
 	batch "k8s.io/kubernetes/pkg/apis/batch"
 	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 	conversion "k8s.io/kubernetes/pkg/conversion"
+	runtime "k8s.io/kubernetes/pkg/runtime"
 )
 
 func init() {
-	if err := api.Scheme.AddGeneratedConversionFuncs(
+	SchemeBuilder.Register(RegisterConversions)
+}
+
+// RegisterConversions adds conversion functions to the given scheme.
+// Public to allow building arbitrary schemes.
+func RegisterConversions(scheme *runtime.Scheme) error {
+	return scheme.AddGeneratedConversionFuncs(
 		Convert_v1beta1_APIVersion_To_extensions_APIVersion,
 		Convert_extensions_APIVersion_To_v1beta1_APIVersion,
 		Convert_v1beta1_CustomMetricCurrentStatus_To_extensions_CustomMetricCurrentStatus,
@@ -156,6 +163,10 @@ func init() {
 		Convert_extensions_ScaleSpec_To_v1beta1_ScaleSpec,
 		Convert_v1beta1_ScaleStatus_To_extensions_ScaleStatus,
 		Convert_extensions_ScaleStatus_To_v1beta1_ScaleStatus,
+		Convert_v1beta1_StorageClass_To_extensions_StorageClass,
+		Convert_extensions_StorageClass_To_v1beta1_StorageClass,
+		Convert_v1beta1_StorageClassList_To_extensions_StorageClassList,
+		Convert_extensions_StorageClassList_To_v1beta1_StorageClassList,
 		Convert_v1beta1_SupplementalGroupsStrategyOptions_To_extensions_SupplementalGroupsStrategyOptions,
 		Convert_extensions_SupplementalGroupsStrategyOptions_To_v1beta1_SupplementalGroupsStrategyOptions,
 		Convert_v1beta1_ThirdPartyResource_To_extensions_ThirdPartyResource,
@@ -166,10 +177,7 @@ func init() {
 		Convert_extensions_ThirdPartyResourceDataList_To_v1beta1_ThirdPartyResourceDataList,
 		Convert_v1beta1_ThirdPartyResourceList_To_extensions_ThirdPartyResourceList,
 		Convert_extensions_ThirdPartyResourceList_To_v1beta1_ThirdPartyResourceList,
-	); err != nil {
-		// if one of the conversion functions is malformed, detect it immediately.
-		panic(err)
-	}
+	)
 }
 
 func autoConvert_v1beta1_APIVersion_To_extensions_APIVersion(in *APIVersion, out *extensions.APIVersion, s conversion.Scope) error {
@@ -2217,6 +2225,7 @@ func autoConvert_extensions_ReplicaSetSpec_To_v1beta1_ReplicaSetSpec(in *extensi
 func autoConvert_v1beta1_ReplicaSetStatus_To_extensions_ReplicaSetStatus(in *ReplicaSetStatus, out *extensions.ReplicaSetStatus, s conversion.Scope) error {
 	out.Replicas = in.Replicas
 	out.FullyLabeledReplicas = in.FullyLabeledReplicas
+	out.ReadyReplicas = in.ReadyReplicas
 	out.ObservedGeneration = in.ObservedGeneration
 	return nil
 }
@@ -2228,6 +2237,7 @@ func Convert_v1beta1_ReplicaSetStatus_To_extensions_ReplicaSetStatus(in *Replica
 func autoConvert_extensions_ReplicaSetStatus_To_v1beta1_ReplicaSetStatus(in *extensions.ReplicaSetStatus, out *ReplicaSetStatus, s conversion.Scope) error {
 	out.Replicas = in.Replicas
 	out.FullyLabeledReplicas = in.FullyLabeledReplicas
+	out.ReadyReplicas = in.ReadyReplicas
 	out.ObservedGeneration = in.ObservedGeneration
 	return nil
 }
@@ -2412,6 +2422,90 @@ func autoConvert_extensions_ScaleSpec_To_v1beta1_ScaleSpec(in *extensions.ScaleS
 
 func Convert_extensions_ScaleSpec_To_v1beta1_ScaleSpec(in *extensions.ScaleSpec, out *ScaleSpec, s conversion.Scope) error {
 	return autoConvert_extensions_ScaleSpec_To_v1beta1_ScaleSpec(in, out, s)
+}
+
+func autoConvert_v1beta1_StorageClass_To_extensions_StorageClass(in *StorageClass, out *extensions.StorageClass, s conversion.Scope) error {
+	if err := api.Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
+		return err
+	}
+	// TODO: Inefficient conversion - can we improve it?
+	if err := s.Convert(&in.ObjectMeta, &out.ObjectMeta, 0); err != nil {
+		return err
+	}
+	out.Provisioner = in.Provisioner
+	out.Parameters = in.Parameters
+	return nil
+}
+
+func Convert_v1beta1_StorageClass_To_extensions_StorageClass(in *StorageClass, out *extensions.StorageClass, s conversion.Scope) error {
+	return autoConvert_v1beta1_StorageClass_To_extensions_StorageClass(in, out, s)
+}
+
+func autoConvert_extensions_StorageClass_To_v1beta1_StorageClass(in *extensions.StorageClass, out *StorageClass, s conversion.Scope) error {
+	if err := api.Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
+		return err
+	}
+	// TODO: Inefficient conversion - can we improve it?
+	if err := s.Convert(&in.ObjectMeta, &out.ObjectMeta, 0); err != nil {
+		return err
+	}
+	out.Provisioner = in.Provisioner
+	out.Parameters = in.Parameters
+	return nil
+}
+
+func Convert_extensions_StorageClass_To_v1beta1_StorageClass(in *extensions.StorageClass, out *StorageClass, s conversion.Scope) error {
+	return autoConvert_extensions_StorageClass_To_v1beta1_StorageClass(in, out, s)
+}
+
+func autoConvert_v1beta1_StorageClassList_To_extensions_StorageClassList(in *StorageClassList, out *extensions.StorageClassList, s conversion.Scope) error {
+	if err := api.Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
+		return err
+	}
+	if err := api.Convert_unversioned_ListMeta_To_unversioned_ListMeta(&in.ListMeta, &out.ListMeta, s); err != nil {
+		return err
+	}
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]extensions.StorageClass, len(*in))
+		for i := range *in {
+			if err := Convert_v1beta1_StorageClass_To_extensions_StorageClass(&(*in)[i], &(*out)[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
+	return nil
+}
+
+func Convert_v1beta1_StorageClassList_To_extensions_StorageClassList(in *StorageClassList, out *extensions.StorageClassList, s conversion.Scope) error {
+	return autoConvert_v1beta1_StorageClassList_To_extensions_StorageClassList(in, out, s)
+}
+
+func autoConvert_extensions_StorageClassList_To_v1beta1_StorageClassList(in *extensions.StorageClassList, out *StorageClassList, s conversion.Scope) error {
+	if err := api.Convert_unversioned_TypeMeta_To_unversioned_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
+		return err
+	}
+	if err := api.Convert_unversioned_ListMeta_To_unversioned_ListMeta(&in.ListMeta, &out.ListMeta, s); err != nil {
+		return err
+	}
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]StorageClass, len(*in))
+		for i := range *in {
+			if err := Convert_extensions_StorageClass_To_v1beta1_StorageClass(&(*in)[i], &(*out)[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
+	return nil
+}
+
+func Convert_extensions_StorageClassList_To_v1beta1_StorageClassList(in *extensions.StorageClassList, out *StorageClassList, s conversion.Scope) error {
+	return autoConvert_extensions_StorageClassList_To_v1beta1_StorageClassList(in, out, s)
 }
 
 func autoConvert_v1beta1_SupplementalGroupsStrategyOptions_To_extensions_SupplementalGroupsStrategyOptions(in *SupplementalGroupsStrategyOptions, out *extensions.SupplementalGroupsStrategyOptions, s conversion.Scope) error {
