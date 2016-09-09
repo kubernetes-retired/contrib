@@ -13,7 +13,7 @@
 # limitations under the License.
 
 FROM google/debian:jessie
-MAINTAINER Zhou Fang <fangzhou051@gmail.com>
+MAINTAINER Zhou Fang, Dawn Chen <fangzhou051@gmail.com, dawnchen@google.com>
 RUN apt-get update
 RUN apt-get install -y -qq ca-certificates
 ADD node-perf-dash /node-perf-dash

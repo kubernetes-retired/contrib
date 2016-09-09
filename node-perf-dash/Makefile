@@ -3,7 +3,7 @@ all: push
 # See pod.yaml for the version currently running-- bump this ahead before rebuilding!
 TAG = v0.1
 
-REPO = choufong
+REPO = gcr.io/google_containers
 
 node-perf-dash: node-perf-dash.go parser.go downloader.go data.go kubelet-parser.go
 	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o node-perf-dash

@@ -1,3 +1,19 @@
+/*
+Copyright 2016 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
@@ -9,7 +25,7 @@ import (
 )
 
 const (
-	// TestNameSeparator is the prefix of time name.
+	// TestNameSeparator is the prefix of test name.
 	TestNameSeparator = "[It] "
 	// BenchmarkSeparator is the suffix of benchmark test name.
 	BenchmarkSeparator = " [Benchmark]"
@@ -29,14 +45,14 @@ type PerfData perftype.DataItem
 // SeriesData is time series data, including operation and resourage time series.
 // TODO(coufon): now we only record an array of timestamps when an operation (probe)
 // is called. In future we can record probe name, pod UID together with the timestamp.
-// TODO(coufon): rename 'operation' to 'probe'
+// TODO(coufon): rename 'operation' to 'probe'?
 type SeriesData struct {
 	OperationSeries map[string][]int64        `json:"op_series,omitempty"`
 	ResourceSeries  map[string]ResourceSeries `json:"resource_series,omitempty"`
 }
 
 // TestData wraps up PerfData and SeriesData to simplify parser logic.
-// TODO(coufon): name better json tags, need to change test code
+// TODO(coufon): use better json tags? need to change test code as well.
 type TestData struct {
 	Version       string            `json:"version"`
 	Labels        map[string]string `json:"labels,omitempty"`
@@ -44,7 +60,7 @@ type TestData struct {
 	SeriesData
 }
 
-// ResourceSeries contains time series data
+// ResourceSeries contains time series data of CPU/memory usage.
 type ResourceSeries struct {
 	Timestamp            []int64           `json:"ts"`
 	CPUUsageInMilliCores []int64           `json:"cpu"`
@@ -52,26 +68,26 @@ type ResourceSeries struct {
 	Units                map[string]string `json:"unit"`
 }
 
-// DataPerBuild contains perf data and time series for a build
+// DataPerBuild contains perf/time series data for a build.
 type DataPerBuild struct {
 	Perf   []PerfData   `json:"perf,omitempty"`
 	Series []SeriesData `json:"series,omitempty"`
 }
 
-// AppendPerfData appends data into performance data
+// AppendPerfData appends new perf data.
 func (db *DataPerBuild) AppendPerfData(obj TestData) {
 	db.Perf = append(db.Perf, obj.PerfDataItems...)
 }
 
-// AppendSeriesData data into time series data
+// AppendSeriesData appends new time series data.
 func (db *DataPerBuild) AppendSeriesData(obj TestData) {
 	db.Series = append(db.Series, obj.SeriesData)
 }
 
-// DataPerNode contains perf data and time series for a node
+// DataPerNode contains perf/time series data for a node.
 type DataPerNode map[string]*DataPerBuild
 
-// DataPerTest contains job name and a map from build number to perf data
+// DataPerTest contains job name and a map (build to perf data).
 type DataPerTest struct {
 	Data    map[string]DataPerNode `json:"data"`
 	Job     string                 `json:"job"`

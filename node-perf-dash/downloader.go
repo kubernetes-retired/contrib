@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,13 +37,13 @@ const (
 )
 
 var (
-	// allTestData stores all parsed perf and time series data in memeory.
+	// allTestData stores all parsed perf and time series data in memeory for each job.
 	allTestData = map[string]*TestToBuildData{}
-	// grabbedLastBuild stores the last build grabbed for each job
+	// grabbedLastBuild stores the last build grabbed for each job.
 	allGrabbedLastBuild = map[string]int{}
 )
 
-// Downloader is the interface that gets a data from a predefined source.
+// Downloader is the interface that connects to a data source.
 type Downloader interface {
 	GetLastestBuildNumber(job string) (int, error)
 	GetFile(job string, buildNumber int, logFilePath string) (io.ReadCloser, error)
@@ -66,6 +66,7 @@ func GetData(job string, d Downloader) error {
 	endBuild := lastBuildNo
 	startBuild := int(math.Max(math.Max(float64(lastBuildNo-buildNr), 0), float64(grabbedLastBuild))) + 1
 
+	// Grab data from startBuild to endBuild.
 	for buildNumber := startBuild; buildNumber <= endBuild; buildNumber++ {
 		fmt.Printf("Fetching build %v... (Job: %s)\n", buildNumber, job)
 
@@ -75,12 +76,15 @@ func GetData(job string, d Downloader) error {
 			return err
 		}
 
+		// testTime records the end time of each test, used to extract tracing events.
 		testTime := TestTime{}
 		parseTestOutput(bufio.NewScanner(file), job, buildNumber, testData, testTime)
 		file.Close()
 
 		if *tracing {
+			// Grab and convert tracing data from Kubelet log into time series data format.
 			tracingData := ParseKubeletLog(d, job, buildNumber, testTime)
+			// Parse time series data.
 			parseTracingData(bufio.NewScanner(strings.NewReader(tracingData)), job, buildNumber, testData)
 		}
 	}
@@ -88,7 +92,7 @@ func GetData(job string, d Downloader) error {
 	return nil
 }
 
-// LocalDownloader that gets data about Google results from the GCS repository
+// LocalDownloader gets test data from local files.
 type LocalDownloader struct {
 }
 
@@ -121,7 +125,7 @@ func (d *LocalDownloader) GetFile(job string, buildNumber int, filePath string) 
 	return os.Open(path.Join(*localDataDir, fmt.Sprintf("%d", buildNumber), filePath))
 }
 
-// GoogleGCSDownloader that gets data about Google results from the GCS repository
+// GoogleGCSDownloader gets test data from Google Cloud Storage.
 type GoogleGCSDownloader struct {
 	GoogleGCSBucketUtils *utils.Utils
 }

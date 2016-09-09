@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	// TODO(coufon): make them configurable?
 	pollDuration = 10 * time.Minute
 	errorDelay   = 10 * time.Second
 	maxBuilds    = 100
@@ -39,15 +40,15 @@ var (
 	builds       = flag.Int("builds", maxBuilds, "Total builds number")
 	datasource   = flag.String("datasource", "google-gcs", "Source of test data. Options include 'local', 'google-gcs'")
 	localDataDir = flag.String("local-data-dir", "", "The path to test data directory")
-	tracing      = flag.Bool("tracing", false, "If true, try to obtain tracing data from kubelet.log")
-	jenkinsJob   = flag.String("jenkins-job", "kubelet-benchmark-gce-e2e-ci", "Name of the Jenkins job running the tests")
+	tracing      = flag.Bool("tracing", false, "If true, try to get tracing data from Kubelet log")
+	jenkinsJob   = flag.String("jenkins-job", "kubelet-benchmark-gce-e2e-ci", "The Jenkins projects to display, separated by ,")
 )
 
 func main() {
 	var (
 		downloader Downloader
-		err        error
 		jobs       JobList
+		err        error
 	)
 
 	fmt.Print("Starting Node Performance Dashboard...\n")
@@ -69,11 +70,14 @@ func main() {
 	}
 
 	jobs = strings.Split(*jenkinsJob, ",")
-	fmt.Println(jobs)
+	fmt.Printf("The Jenkins jobs to display: %v\n", jobs)
+
+	// Initialize test result map.
 	for _, job := range jobs {
 		allTestData[job] = &TestToBuildData{}
 	}
 
+	// Grab test results but not start webserver.
 	if !*www {
 		for _, job := range jobs {
 			err = GetData(job, downloader)
@@ -91,7 +95,9 @@ func main() {
 		return
 	}
 
+	// Create a data collection goroutine for each Jenkins Job.
 	for _, job := range jobs {
+		// TODO(coufon): currently we do not need lock, but be aware of that.
 		go func(job string) {
 			for {
 				fmt.Printf("Fetching new data...\n")
@@ -106,6 +112,7 @@ func main() {
 		}(job)
 	}
 
+	// Create a http handler for each Jenkins Job.
 	for _, job := range jobs {
 		http.Handle(fmt.Sprintf("/data/%s", job), allTestData[job])
 	}
@@ -115,7 +122,7 @@ func main() {
 	http.ListenAndServe(*addr, nil)
 }
 
-// JobList is the list containing all job names
+// JobList is the list containing all Jenkins projects.
 type JobList []string
 
 func (j *JobList) ServeHTTP(res http.ResponseWriter, req *http.Request) {

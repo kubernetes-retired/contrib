@@ -71,7 +71,7 @@ var plotRules = {
 // Rules to parse test options
 var testOptions = {
     'density': {
-        options: ['opertation', 'mode', 'pods', 'background pods', 'interval (ms)', 'stress'],
+        options: ['opertation', 'mode', 'pods', 'background pods', 'interval (ms)', 'QPS'],
         remark: '',
     },
     'resource': {
@@ -248,7 +248,6 @@ PerfDashApp.prototype.resetTestSelect = function() {
     this.testSelectedOptions = {};
 
     this.testNodeTreeRoot = {};
-    this.testHostList = [];
 
     // comparisonList contains all tests for comparison
     this.comparisonList = [];

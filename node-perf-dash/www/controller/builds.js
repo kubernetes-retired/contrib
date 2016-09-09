@@ -95,20 +95,16 @@ PerfDashApp.prototype.parseNodeInfo = function() {
         }
 
         angular.forEach(test.data, function(nodeData, nodeName) {
-            parts = nodeName.split("-");
-            machine = parts[0] + "-" + parts[1] + "-" + parts[2];
-            image = "";
-            // TODO(coufon): we need a standard format to name a node using image and machine type.
-
-            // TODO(coufon): GCI image name is changed across build, we should
-            // change test framework to use a consistent name.
-            for(i = 3; i < parts.length; i++) {
-                image += parts[i] + "-";
+            parts = nodeName.split("_");
+            if(parts.length > 0) { 
+                // formatted node name: "image_machine"
+                // TODO(coufon): we need a standard format to name a node using image and machine type.
+                image = parts[0];
+                machine = parts[1];
+            } else {
+                console.log("node name format error: " + nodeName)
+                return
             }
-            image = image.substring(0, image.length-1);
-
-            newNodeName = image + '/' + machine;
-            test.data[newNodeName] = nodeData;
 
             // make selection of machine/image/host here
             treeNode = this.testNodeTreeRoot[testName];
@@ -118,13 +114,11 @@ PerfDashApp.prototype.parseNodeInfo = function() {
             treeNode = treeNode[image];
             if(!(machine in treeNode)) {
                 treeNode[machine] = {};
-            }            
-
-            delete test.data[nodeName];
+            }
         }, this);
     }, this);
-};
 
+};
 
 // Apply new data to charts, using the selected test, reflect the changes to test options
 PerfDashApp.prototype.testChangedWrapper = function() {
@@ -195,28 +189,19 @@ PerfDashApp.prototype.nodeChanged = function() {
     if(this.image == null || this.machine == null) {
         return;
     }
-    this.node = this.image + '/' + this.machine;
+    this.node = this.image + '_' + this.machine;
 
     this.data = this.allData[this.test].data[this.node];
     this.builds = this.getBuilds();
     this.labels = this.getLabels();
-
-    //console.log(JSON.stringify(this.data))
     
     newMinBuild = parseInt(Math.min.apply(Math, this.builds));
     newMaxBuild = parseInt(Math.max.apply(Math, this.builds));
-
-    /*
-    if(this.minBuild < newMinBuild || this.minBuild > newMaxBuild) {
-        this.minBuild = newMinBuild;
-    }
-    if(this.maxBuild > newMaxBuild || this.maxBuild < newMinBuild || this.maxBuild == 0) {
-        this.maxBuild = newMaxBuild;
-    }
-    */
+    
     this.resetBuildRange();
     this.build = this.maxBuild;
     this.labelChanged();
+    this.plotBuildsTracing();
 };
 
 // Update the data to charts, using selected labels

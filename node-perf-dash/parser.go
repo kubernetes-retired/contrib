@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import (
 	"strings"
 )
 
-// states of parsing machine
+// State machine of the parser.
 const (
 	scanning   = iota
 	inTest     = iota
@@ -35,20 +35,25 @@ const (
 )
 
 var (
-	// Regex for the performance result data log entry. It is used to parse the test end time.
+	// Regex to extract perf data log. It is used to get the test end time (time of the first perf data log).
+	// The end time is used to find events for each test from kubelet.log.
+	// TODO(coufon): to be more reliable, explicitly log test starting and ending time in a fixed format in node e2e test.
 	regexResult = regexp.MustCompile(`([A-Z][a-z]*\s{1,2}\d{1,2} \d{2}:\d{2}:\d{2}.\d{3}): INFO: .*`)
-	// map[testName + nodeName string]FIFO(build string)
+
+	// buildFIFOs stores a FIFO for each test/machine. A FIFO stores all build names. It is used to find and discard the oldest build.
 	buildFIFOs = map[string][]string{}
+
+	// formattedNodeNames stores formatted node names, looked up by host name (the machine which runs the test).
+	formattedNodeNames = map[string]string{}
 )
 
-func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData,
-	testTime TestTime) {
+// parseTestOutput extract perf/time series data from test result file.
+func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData, testTime TestTime) {
 	buff := &bytes.Buffer{}
 	state := scanning
 	TestDetail := ""
 	endTime := ""
 	build := fmt.Sprintf("%d", buildNumber)
-
 	isTimeSeries := false
 
 	for scanner.Scan() {
@@ -63,6 +68,7 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 				strings.Contains(line, "Failure") || strings.Contains(line, "[AfterEach]") {
 				state = inTest
 
+				// Parse JSON to perf/time series data item
 				obj := TestData{}
 				if err := json.Unmarshal(buff.Bytes(), &obj); err != nil {
 					fmt.Fprintf(os.Stderr, "Error: parsing JSON in build %d: %v %s\n",
@@ -70,18 +76,21 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 					continue
 				}
 
-				testName, nodeName := obj.Labels["test"], obj.Labels["node"]
+				// testName is the short name of Ginkgo tests.
+				// node is the name of host machine. It has the format "machineType-image-uuid" (for benchmark tests) or "prefix-uuid-image" (for normal node e2e tests).
+				// nodeName is the formatted name of node in the format "image_machineCapacity". Currently image and machineCapacity are labels with test data.
+				// If the labels are not found, image and machine info are extracted from node name "machineType-image-uuid" (to be deprecated).
+				testName, node, nodeName := obj.Labels["test"], obj.Labels["node"], formatNodeName(obj.Labels, job)
 				testInfoMap.Info[testName] = TestDetail
 
 				if endTime == "" {
 					log.Fatal("Error: test end time not parsed")
 				}
 
-				testTime.Add(testName, nodeName, endTime)
-				endTime = "" // reset
-
-				// remove suffix
-				nodeName = formatNodeName(nodeName, job)
+				// Record the test name, node and its end time.
+				testTime.Add(testName, node, endTime)
+				// Clear endtime.
+				endTime = ""
 
 				if _, found := result[testName]; !found {
 					result[testName] = &DataPerTest{
@@ -93,20 +102,21 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 				if _, found := result[testName].Data[nodeName]; !found {
 					result[testName].Data[nodeName] = DataPerNode{}
 				}
-				// Find data from a new build.
 				if _, found := result[testName].Data[nodeName][build]; !found {
+					// Find a new build.
 					result[testName].Data[nodeName][build] = &DataPerBuild{}
 
 					key := testName + "/" + nodeName
-					// Update build FIFO
+					// Update build FIFO.
 					buildFIFOs[key] = append(buildFIFOs[key], build)
-					// Remove stale builds
+					// Remove stale builds.
 					if len(buildFIFOs[key]) > *builds {
 						delete(result[testName].Data[nodeName], buildFIFOs[key][0])
 						buildFIFOs[key] = buildFIFOs[key][1:]
 					}
 				}
 
+				// Append new data item.
 				if result[testName].Version == obj.Version {
 					if isTimeSeries {
 						(result[testName].Data[nodeName][build]).AppendSeriesData(obj)
@@ -133,6 +143,8 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 				log.Fatalf("Error: can not parse test end time:\n%s\n", line)
 			}
 
+			// TODO(coufon): it requires the result tag must be on the same line with the starting of JSON data ('{'),
+			// it should be more flexible.
 			line = line[strings.Index(line, "{"):]
 		}
 		if state == processing {
@@ -141,25 +153,7 @@ func parseTestOutput(scanner *bufio.Scanner, job string, buildNumber int, result
 	}
 }
 
-// formatNodeName the UUID suffix of node name.
-func formatNodeName(nodeName string, job string) string {
-	result := ""
-	parts := strings.Split(nodeName, "-")
-	lastPart := len(parts) - 1
-
-	// TODO(coufon): GCI image name is changed across build, we should
-	// change test framework to use a consistent name.\
-	if job == "continuous-node-e2e-docker-benchmark" && parts[3] == "gci" {
-		lastPart -= 3
-	}
-
-	for _, part := range parts[0:lastPart] {
-		result += part + "-"
-	}
-	return result[:len(result)-1]
-}
-
-// parseTracingData extracts and appends tracing data into time series data.
+// parseTracingData extracts and converts tracing data into time series data.
 func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, result TestToBuildData) {
 	buff := &bytes.Buffer{}
 	state := scanning
@@ -176,19 +170,19 @@ func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, resul
 					fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v\n%s\n", buildNumber, err, buff.String())
 					continue
 				}
-				testName, nodeName := obj.Labels["test"], obj.Labels["node"]
-				nodeName = formatNodeName(nodeName, job)
+
+				testName, nodeName := obj.Labels["test"], formatNodeName(obj.Labels, job)
 
 				if _, found := result[testName]; !found {
-					fmt.Fprintf(os.Stderr, "Error: tracing data have no test result: %s", testName)
+					fmt.Fprintf(os.Stderr, "Error: tracing data have no test result: %s\n", testName)
 					continue
 				}
 				if _, found := result[testName].Data[nodeName]; !found {
-					fmt.Fprintf(os.Stderr, "Error: tracing data have not test result: %s", nodeName)
+					fmt.Fprintf(os.Stderr, "Error: tracing data have no test result: %s\n", nodeName)
 					continue
 				}
 				if _, found := result[testName].Data[nodeName][build]; !found {
-					fmt.Fprintf(os.Stderr, "Error: tracing data have not test result: %s", build)
+					fmt.Fprintf(os.Stderr, "Error: tracing data have not test result: %s\n", build)
 					continue
 				}
 
@@ -207,4 +201,48 @@ func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, resul
 			buff.WriteString(line + " ")
 		}
 	}
+}
+
+// formatNodeName gets fromatted node name (image_machineCapacity) from labels of test data.
+func formatNodeName(labels map[string]string, job string) string {
+	// Get the host name of the test node.
+	node := labels["node"]
+	// Check if we already have the formatted name.
+	if formatted, ok := formattedNodeNames[node]; ok {
+		return formatted
+	}
+
+	// The labels contains image and machine capacity info.
+	image, okImage := labels["image"]
+	machine, okMachine := labels["machine"]
+
+	if okImage && okMachine {
+		str := image + "_" + machine
+		formattedNodeNames[node] = str
+		return str
+	}
+
+	// Can not find image/machine in the labels. Extract machine/image info
+	// from host name "machine-image-uuid" (to be deprecated)
+	parts := strings.Split(node, "-")
+	lastPart := len(parts) - 1
+
+	machine = parts[0] + "-" + parts[1] + "-" + parts[2]
+
+	// GCI image name (gci-test-00-0000-0-0) is changed across build, drop the
+	// suffix for daily build (000-0-0) and keep milestone (test-gci-00)
+	// TODO(coufon): we should change test framework to use a consistent name.
+	if job == "continuous-node-e2e-docker-benchmark" && parts[3] == "gci" {
+		lastPart -= 3
+	}
+
+	result := ""
+	for _, part := range parts[3:lastPart] {
+		result += part + "-"
+	}
+
+	image = result[:len(result)-1]
+	str := image + "_" + machine
+	formattedNodeNames[node] = str
+	return str
 }

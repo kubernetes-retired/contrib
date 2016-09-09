@@ -34,7 +34,7 @@ PerfDashApp.prototype.loadProbes = function() {
             continue;
         }
         newDataItem = series[i];
-        //console.log(JSON.stringify(newDataItem))
+        
         if(newDataItem.op_series != null) {
             for(var k in newDataItem.op_series) {
                 if(!(k in dataItem.op_series)) {
@@ -73,20 +73,14 @@ PerfDashApp.prototype.plotBuildsTracing = function() {
         endTimeData = this.extractTracingData(this.probeEnd, build).sort(function(a, b){return a-b});
 
         latency = arraySubstract(endTimeData, startTimeData).sort(function(a, b){return a-b});
-        //console.log(latency)
 
         latencyPercentiles['Perc50'].push(getPercentile(latency, 0.5));
         latencyPercentiles['Perc90'].push(getPercentile(latency, 0.9));
         latencyPercentiles['Perc99'].push(getPercentile(latency, 0.99));
 
-        //console.log(build)
-        //console.log(getPercentile(latency, 0.5))
-        //console.log(getPercentile(latency, 0.9))
-        //console.log(getPercentile(latency, 0.99))
-
         this.tracingBuilds.push(build);
     }
-    //console.log(JSON.stringify(latencyPercentiles));
+
     this.tracingData = [];
     this.tracingSeries = [];
     for(var metric in latencyPercentiles) {
