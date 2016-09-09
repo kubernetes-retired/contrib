@@ -18,9 +18,6 @@ import (
 const (
 	// TODO(coufon): use constants defined in Kubernetes packages.
 	tracingVersion = "v1"
-	// TODO(coufon): We need a string of year because year is missing in log timestamp.
-	// Hardcoding the year here is a simple temporary solution.
-	currentYear = "2016"
 
 	// Timestamp format of test result log (build-log.txt)
 	testLogTimeFormat = "2006 Jan 2 15:04:05.000"
@@ -28,17 +25,17 @@ const (
 	kubeletLogTimeFormat = "2006 0102 15:04:05.000000"
 
 	// Probe names
-	probeFirstseen              = "pod_config_change"
-	probeRuntime                = "runtime_manager"
-	probeContainerStartPLEG     = "container_start_pleg"
+	probeFirstseen = "pod_config_change"
+	probeRuntime   = "runtime_manager"
+	// container starts log printed by PLEG
+	probeContainerStartPLEG = "container_start_pleg"
+	// container starts PLEG event printed by SyncLoop
 	probeContainerStartPLEGSync = "container_start_pleg_sync"
 	probeStatusUpdate           = "pod_status_running"
 
-	// TODO(coufon): we do not plot infra container now for simplicity.
-
-	// time when the infra container for the test pod starts
+	// infra container starts
 	probeInfraContainerPLEGSync = "infra_container_start_pleg_sync"
-	// time when the test pod starts
+	// test container starts
 	probeTestContainerPLEGSync = "container_start_pleg_sync"
 
 	probeInfraContainerPLEG = "infra_container_start_pleg"
@@ -48,6 +45,10 @@ const (
 )
 
 var (
+	// TODO(coufon): We need a string of year because year is missing in log timestamp.
+	// Using the current year is a simple temporary solution.
+	currentYear = fmt.Sprintf("%d", time.Now().Year())
+
 	// Kubelet parser do not leverage on additional tracing probes. It uses the native log of Kubelet instead.
 	// The mapping from native log to tracing probes is as follows:
 	// TODO(coufon): there is no volume now in our node-e2e performance test. Add probe for volume manager in future.

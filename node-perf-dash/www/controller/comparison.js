@@ -14,12 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+var testNodeSeparator = '//'
+
 // addToComparison adds current test/node into comparison list
 PerfDashApp.prototype.addToComparison = function() {
     if(!this.test | !this.node) {
         return;
     }
-    id = this.test + '/' + this.node;
+    id = this.test + testNodeSeparator + this.node;
     this.comparisonList.push({
         id: id,
         test: this.test,
@@ -43,8 +45,8 @@ PerfDashApp.prototype.selectTestData = function() {
     nodesPerTest = {};
     
     angular.forEach(this.comparisonListSelected, function(id) {
-        test = id.split('/')[0];
-        node = id.split('/')[1] + '/' + id.split('/')[2];
+        test = id.split(testNodeSeparator)[0];
+        node = id.split(testNodeSeparator)[1];
 
         if(tests.indexOf(test) == -1) {
             tests.push(test);
@@ -59,7 +61,7 @@ PerfDashApp.prototype.selectTestData = function() {
             angular.forEach(nodesPerTest[testName], function(node) {
                 aggregateBuilds = this.aggregateBuild(testData.data[node]);
                 if(Object.keys(aggregateBuilds).length > 0) {
-                    aggDataMap[testName + '/' + node] = aggregateBuilds;
+                    aggDataMap[testName + testNodeSeparator + node] = aggregateBuilds;
                 }
             }, this);
         }

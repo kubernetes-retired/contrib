@@ -91,6 +91,7 @@ func main() {
 		return
 	}
 
+	// We create a goroutine for each Jenkins Job
 	for _, job := range jobs {
 		go func(job string) {
 			for {
@@ -106,6 +107,7 @@ func main() {
 		}(job)
 	}
 
+	// // We create a http handler for each Jenkins Job
 	for _, job := range jobs {
 		http.Handle(fmt.Sprintf("/data/%s", job), allTestData[job])
 	}
