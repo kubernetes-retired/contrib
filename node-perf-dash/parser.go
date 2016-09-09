@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,10 +36,10 @@ const (
 
 var (
 	// Regex for the performance result data log entry. It is used to parse the test end time.
-	// The end time is used to find events for each test in kubelet.log.
-	// TODO(coufon): we use a log printed by node e2e test framework, but we want to have additional
-	// logs just for logging start and end timestamp to make it reliable.
+	// The end time is used to find events for each test from kubelet.log.
+	// TODO(coufon): explicitly log test starting and ending time in a fixed format in node e2e test to be more reliable.
 	regexResult = regexp.MustCompile(`([A-Z][a-z]*\s{1,2}\d{1,2} \d{2}:\d{2}:\d{2}.\d{3}): INFO: .*`)
+
 	// map[testName + nodeName string]FIFO(build string)
 	buildFIFOs = map[string][]string{}
 	// buffer the formatted node names
