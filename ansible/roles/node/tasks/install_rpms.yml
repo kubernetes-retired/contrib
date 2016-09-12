@@ -3,4 +3,7 @@
   yum: name={{ kube_rpm_url_base }}/{{ item }}-{{ kube_rpm_url_sufix }}
   with_items:
     - "{{ kube_node_rpms }}"
- 
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
