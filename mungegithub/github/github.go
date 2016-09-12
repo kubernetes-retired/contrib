@@ -720,6 +720,22 @@ func (obj *MungeObject) AddLabel(label string) error {
 	return obj.AddLabels([]string{label})
 }
 
+// AddLabelIfAbsent adds a single `label` to the issue, if it isn't present already.
+func (obj *MungeObject) AddLabelIfAbsent(label string) error {
+	if !obj.HasLabel(label) {
+		return obj.AddLabels([]string{label})
+	}
+	return nil
+}
+
+// RemoveLabelIfPresent removes a single `label` from the issue, if it is present.
+func (obj *MungeObject) RemoveLabelIfPresent(label string) error {
+	if obj.HasLabel(label) {
+		return obj.RemoveLabel(label)
+	}
+	return nil
+}
+
 // AddLabels will add all of the named `labels` to the issue
 func (obj *MungeObject) AddLabels(labels []string) error {
 	config := obj.config

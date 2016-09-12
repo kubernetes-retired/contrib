@@ -69,3 +69,6 @@ func (a AuthorLogin) Match(comment *github.IssueComment) bool {
 
 	return strings.ToLower(*comment.User.Login) == strings.ToLower(string(a))
 }
+
+// AuthorLogins matches comment made by these Authors
+type AuthorLogins []string
