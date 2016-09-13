@@ -1,28 +1,16 @@
-all: build
-
-TAG?=dev
-FLAGS=
-ENVVAR=
-
-deps:
-	go get github.com/tools/godep
-
-build: clean deps
-	$(ENVVAR) godep go build ./...
-	$(ENVVAR) godep go build -o cluster-autoscaler 
-
-test-unit: clean deps build
-	$(ENVVAR) godep go test --test.short -race ./... $(FLAGS)
-
-release: build
-ifndef REGISTRY
-	ERR = $(error REGISTRY is undefined)
-	$(ERR)
-endif
-	docker build -t ${REGISTRY}/cluster-autoscaler:${TAG} .
-	gcloud docker push ${REGISTRY}/cluster-autoscaler:${TAG}
+VERSION=v1.0
+IMAGE=723255503624.dkr.ecr.us-east-1.amazonaws.com/cluster-autoscaler
 
 clean:
-	rm -f cluster-autoscaler
+		rm -f cluster-autoscaler
 
-.PHONY: all deps build test-unit clean release
+compile: clean
+		GOOS=linux go build -a -o cluster-autoscaler
+
+build: compile
+		docker build -t $(IMAGE):$(VERSION) .
+
+push: build
+		docker push $(IMAGE):$(VERSION)
+
+.PHONY: clean compile build push
