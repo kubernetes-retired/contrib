@@ -23,6 +23,3 @@
   with_items:
     - etcd
     - etcdctl
-
-- name: Create upstart script
-  copy: src=etcd.upstart dest=/etc/init/etcd.conf
