@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package monitor
+package kubelet
 
 import (
 	"encoding/json"
@@ -26,29 +26,29 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/stats"
 )
 
-// KubeletClient contains all the information and methods to encapsulate
+// Client contains all the information and methods to encapsulate
 // communication with the Kubelet.
-type KubeletClient struct {
+type Client struct {
 	client     *http.Client
 	summaryURL *url.URL
 }
 
-// NewKubeletClient returns a new KubeletClient.
-func NewKubeletClient(host string, port uint, client *http.Client) (*KubeletClient, error) {
+// NewClient returns a new Client.
+func NewClient(host string, port uint, client *http.Client) (*Client, error) {
 	// Parse our URL upfront, so we can fail fast.
 	urlStr := fmt.Sprintf("http://%s:%d/stats/summary", host, port)
 	summaryURL, err := url.Parse(urlStr)
 	if err != nil {
 		return nil, err
 	}
-	return &KubeletClient{
+	return &Client{
 		client:     client,
 		summaryURL: summaryURL,
 	}, nil
 }
 
 // doRequestAndUnmarshal makes the request, and unmarshals the response into value.
-func (k *KubeletClient) doRequestAndUnmarshal(client *http.Client, req *http.Request, value interface{}) error {
+func (k *Client) doRequestAndUnmarshal(client *http.Client, req *http.Request, value interface{}) error {
 	response, err := client.Do(req)
 	if err != nil {
 		return err
@@ -71,7 +71,7 @@ func (k *KubeletClient) doRequestAndUnmarshal(client *http.Client, req *http.Req
 }
 
 // GetSummary gets the kubelet's Summary metrics.
-func (k *KubeletClient) GetSummary() (*stats.Summary, error) {
+func (k *Client) GetSummary() (*stats.Summary, error) {
 	req, err := http.NewRequest("GET", k.summaryURL.String(), nil)
 	if err != nil {
 		return nil, err
