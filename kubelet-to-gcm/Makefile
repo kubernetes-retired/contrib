@@ -26,18 +26,18 @@ OUT_DIR = build
 PACKAGE = k8s.io/contrib/kubelet-to-gcm
 #PREFIX = gcr.io/google_containers
 PREFIX = gcr.io/gke-test-us-central1-b-0
-TAG = 1.1
+TAG = 1.2
 
 # Rules for building the real image for deployment to gcr.io
 
 deps:
 		go get -u github.com/tools/godep
 
-compile: monitor/ deps
+compile: monitor/kubelet monitor/controller deps
 		GOOS=linux GOARCH=amd64 CGO_ENABLED=0 godep go build -a -o $(OUT_DIR)/monitor monitor/main/daemon.go
 
-test: monitor/
-		godep go test ${PACKAGE}/monitor -v
+test: monitor/kubelet monitor/controller
+		godep go test ${PACKAGE}/monitor ${PACKAGE}/monitor/kubelet ${PACKAGE}/monitor/controller ${PACKAGE}/monitor/config -v
 
 go: compile test
 
