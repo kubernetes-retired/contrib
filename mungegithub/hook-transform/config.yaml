@@ -1,0 +1,5 @@
+project: apelisse-test
+paths:
+  /kubernetes:
+    secret: kubernetes-secret
+    topic: kubernetes-github-webhooks
