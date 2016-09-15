@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: redis-composite-app
+  name: redis-composite-app
+spec:
+  ports:
+  - port: 8082
+    protocol: TCP
+    targetPort: 8082
+  selector:
+    run: redis-composite-app
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}

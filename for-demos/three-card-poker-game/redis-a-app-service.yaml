@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: redis-a-app
+  name: redis-a-app
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    run: redis-a-app
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}

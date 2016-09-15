@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: redis-b-app
+  name: redis-b-app
+spec:
+  ports:
+  - port: 8081
+    protocol: TCP
+    targetPort: 8081
+  selector:
+    run: redis-b-app
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}

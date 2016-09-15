@@ -1,0 +1,28 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: three-card-poker
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: three-card-poker
+    spec:
+      containers:
+      - image: suyogbarve/three-card-poker-java:latest
+        imagePullPolicy: Always
+        env:
+        - name: REDIS_COMPOSITE_SERVICE
+          value: REDIS_COMPOSITE_APP_SERVICE_HOST
+        name: three-card-poker
+        terminationMessagePath: /dev/termination-log
+        resources:
+          limits:
+            cpu: 800m
+            memory: 1600Mi
+          requests:
+            cpu: 400m
+            memory: 800Mi
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always

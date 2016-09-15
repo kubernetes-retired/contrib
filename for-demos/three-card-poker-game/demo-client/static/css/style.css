@@ -1,0 +1,105 @@
+html, body {
+    height: 100%;
+}
+.navbar-default {
+	background-color: #F8F8F8;
+	border-color: #E7E7E7;
+}
+
+img{
+	max-width:100px;
+	max-height:100px;
+	padding:5px;
+}
+
+
+.fill1 {
+	min-height: 23%;
+	max-height: 23%;
+	height:23%;
+	background: #f5f5f0;
+	overflow:hidden;
+}
+.fill2 {
+	min-height: 23%;
+	max-height: 23%;
+	height:23%;
+	background: #ebebe0;
+	overflow:hidden;
+}
+.fill3 {
+	min-height: 23%;
+	max-height: 23%;
+	height:23%;
+	background: #e0e0d1;
+	overflow:hidden;
+}
+.fill4 {
+	min-height: 23%;
+	max-height: 23%;
+	height:23%;
+	background: #d6d6c2;
+	overflow:hidden;
+}
+
+.price-form {
+	margin-bottom: 10px;
+	padding: 15px;
+	background-color: #5cb85c
+}
+
+.price-form-row {
+	margin-bottom: 10px;
+}
+
+.listing-form-row, .listing-button {
+	margin-top: 10px;
+}
+
+.listing-form h3 {
+	color: white;
+}
+
+.atomic{
+	border: solid;
+	border: 10px;
+}
+
+.ui-form {
+	margin-bottom: 10px;
+	padding: 15px;
+}
+.ui-form-row {
+	margin-bottom: 10px;
+}
+
+@media (min-width: 1200px) {
+
+}
+
+/* Landscape tablets and medium desktops */
+@media (min-width: 992px) and (max-width: 1199px) {
+
+}
+
+/* Portrait tablets and small desktops */
+@media (min-width: 768px) and (max-width: 991px) {
+
+}
+
+/* Landscape phones and portrait tablets */
+@media (max-width: 767px) {
+
+
+}
+
+/* Portrait phones and smaller */
+@media (max-width: 480px) {
+
+}
+
+
+
+
+
+

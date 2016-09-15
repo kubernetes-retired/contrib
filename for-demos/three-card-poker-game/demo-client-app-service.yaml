@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: demo-client-app
+  name: demo-client-app
+spec:
+  ports:
+  - port: 8084
+    protocol: TCP
+    targetPort: 8083
+  selector:
+    run: demo-client-app
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}

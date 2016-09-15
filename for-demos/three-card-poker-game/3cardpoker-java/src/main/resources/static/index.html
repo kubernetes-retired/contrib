@@ -1,0 +1,56 @@
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+     <meta http-equiv="Pragma" content="no-cache"/>
+     <meta http-equiv="Expires" content="0"/>
+
+<html ng-app="poker">
+  <head>
+    <title>3 Card Poker</title>
+    <link rel="stylesheet" href="bootstrap.min.css">
+    <script src="angular.min.js"></script>
+    <script src="controllers.js"></script>
+    <script src="ui-bootstrap-tpls.js"></script>
+  </head>
+
+
+  <body ng-controller="PokerCtrl">
+  
+      
+    <form>
+    <fieldset>
+    <br><br>
+    <nav class="navbar navbar-default">
+		<div class="container-fluid">
+			<div class="navbar-header">
+				<a href="" class="navbar-brand"><strong>3 Card Poker</strong></a>
+			</div>
+		</div>
+	</nav>
+	
+    <div class="container-fluid" > 
+      <div class="row">
+         <div class="col-xs-2">
+          <img ng-src="{{card1}}" alt="Description" class="img-rounded" width="150" height="250"/>
+         </div>
+
+          <div class="col-xs-2">
+            <img ng-src="{{card2}}" alt="Description" class="img-rounded" width="150" height="250"/>
+          </div>
+
+          <div class="col-xs-2">
+            <img ng-src="{{card3}}" alt="Description" class="img-rounded" width="150" height="250"/>
+          </div>
+      </div>
+    </div>
+    <br><br><br><br>
+    <div align="center">
+    <i>I am Bug in your application!!!!</i><img alt="Bug in your application" src="bug.jpeg" width="5%" height="5%" align="middle">
+    </div>
+    
+    </fieldset>
+    </form>
+
+  
+
+    
+  </body>
+</html>

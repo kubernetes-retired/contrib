@@ -1,0 +1,82 @@
+-----Depolyment in kube-system-----------
+kubectl create -f kube-dash.yaml
+http://10.65.226.67:8080/ui
+http://10.65.226.67:8080/api/v1/proxy/namespaces/kube-system/services/kubernetes-dashboard/#/workload
+
+-----Depolyment in kube-infra-----------
+kubectl create -f nginxplus-rc.yaml
+
+http://10.65.231.97:8080/status.html#upstreams
+http://10.65.231.97/dev-demo1/three-card-poker/
+http://10.65.231.97/cert-demo1/three-card-poker/
+http://10.65.231.97/prod-demo1/three-card-poker/
+
+
+
+-----Depolyment in default-----------
+
+kubectl create -f demo-client-app-deployment.yaml
+kubectl create -f demo-client-app-service.yaml
+
+http://10.65.226.67:8080/api/v1/proxy/namespaces/default/services/demo-client-app/demo/#/dev-demo1
+http://10.65.226.67:8080/api/v1/proxy/namespaces/default/services/demo-client-app/demo/#/cert-demo1
+http://10.65.226.67:8080/api/v1/proxy/namespaces/default/services/demo-client-app/demo/#/prod-demo1
+
+-----Depolyment in DEV-DEMO1-----------
+kubectl create -f redis-deployment.yaml --namespace=dev-demo1
+kubectl create -f redis-service.yaml --namespace=dev-demo1
+kubectl create -f redis-a-app-deployment.yaml --namespace=dev-demo1
+kubectl create -f redis-a-app-service.yaml --namespace=dev-demo1
+kubectl create -f redis-b-app-deployment.yaml --namespace=dev-demo1
+kubectl create -f redis-b-app-service.yaml --namespace=dev-demo1
+kubectl create -f redis-composite-app-deployment.yaml --namespace=dev-demo1
+kubectl create -f redis-composite-app-service.yaml --namespace=dev-demo1
+kubectl create -f three-card-poker-deployment.yaml --namespace=dev-demo1
+kubectl create -f three-card-poker-service.yaml --namespace=dev-demo1
+
+http://10.65.226.67:8080/api/v1/proxy/namespaces/dev-demo1/services/redis-a-app/randomNumber
+http://10.65.226.67:8080/api/v1/proxy/namespaces/dev-demo1/services/redis-b-app/randomSuit
+http://10.65.226.67:8080/api/v1/proxy/namespaces/dev-demo1/services/redis-composite-app/card
+http://10.65.226.67:8080/api/v1/proxy/namespaces/dev-demo1/services/three-card-poker/
+http://10.65.226.67:8080/api/v1/proxy/namespaces/dev-demo1/services/three-card-poker/health
+
+
+-----Depolyment in CERT-DEMO1-----------
+
+kubectl create -f redis-deployment.yaml --namespace=cert-demo1
+kubectl create -f redis-service.yaml --namespace=cert-demo1
+kubectl create -f redis-a-app-deployment.yaml --namespace=cert-demo1
+kubectl create -f redis-a-app-service.yaml --namespace=cert-demo1
+kubectl create -f redis-b-app-deployment.yaml --namespace=cert-demo1
+kubectl create -f redis-b-app-service.yaml --namespace=cert-demo1
+kubectl create -f redis-composite-app-deployment.yaml --namespace=cert-demo1
+kubectl create -f redis-composite-app-service.yaml --namespace=cert-demo1
+kubectl create -f three-card-poker-deployment.yaml --namespace=cert-demo1
+kubectl create -f three-card-poker-service.yaml --namespace=cert-demo1
+
+
+
+http://10.65.226.67:8080/api/v1/proxy/namespaces/cert-demo1/services/redis-a-app/randomNumber
+http://10.65.226.67:8080/api/v1/proxy/namespaces/cert-demo1/services/redis-b-app/randomSuit
+http://10.65.226.67:8080/api/v1/proxy/namespaces/cert-demo1/services/redis-composite-app/card
+http://10.65.226.67:8080/api/v1/proxy/namespaces/cert-demo1/services/three-card-poker/
+http://10.65.226.67:8080/api/v1/proxy/namespaces/cert-demo1/services/three-card-poker/health
+
+-----Depolyment in PROD-DEMO1-----------
+
+kubectl create -f redis-deployment.yaml --namespace=prod-demo1
+kubectl create -f redis-service.yaml --namespace=prod-demo1
+kubectl create -f redis-a-app-deployment.yaml --namespace=prod-demo1
+kubectl create -f redis-a-app-service.yaml --namespace=prod-demo1
+kubectl create -f redis-b-app-deployment.yaml --namespace=prod-demo1
+kubectl create -f redis-b-app-service.yaml --namespace=prod-demo1
+kubectl create -f redis-composite-app-deployment.yaml --namespace=prod-demo1
+kubectl create -f redis-composite-app-service.yaml --namespace=prod-demo1
+kubectl create -f three-card-poker-deployment.yaml --namespace=prod-demo1
+kubectl create -f three-card-poker-service.yaml --namespace=prod-demo1
+
+http://10.65.226.67:8080/api/v1/proxy/namespaces/prod-demo1/services/redis-a-app/randomNumber
+http://10.65.226.67:8080/api/v1/proxy/namespaces/prod-demo1/services/redis-b-app/randomSuit
+http://10.65.226.67:8080/api/v1/proxy/namespaces/prod-demo1/services/redis-composite-app/card
+http://10.65.226.67:8080/api/v1/proxy/namespaces/prod-demo1/services/three-card-poker/
+http://10.65.226.67:8080/api/v1/proxy/namespaces/prod-demo1/services/three-card-poker/health
