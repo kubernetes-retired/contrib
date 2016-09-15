@@ -35,7 +35,7 @@ import (
 )
 
 const (
-  version = "1.6.6"
+  version = "1.6.7"
   nginxConf = `
 daemon off;
 
@@ -62,7 +62,7 @@ http {
   log_format proxied_combined '"$http_x_forwarded_for" - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
                       '"$http_user_agent" $request_time';
-  
+
   error_log /dev/stderr info;
   access_log /dev/stdout proxied_combined;
 
@@ -78,6 +78,19 @@ http {
       root   /usr/share/nginx/html;
       index index.html index.htm;
     }
+    location /ELBHealthCheck {
+      root /var/www/healthcheck/;
+    }
+    location /nginx_status { # Used by sysdig-agent only. Exclude in Nginx logs.
+      stub_status on;
+      access_log off;
+      allow 127.0.0.1/32;
+      deny all;
+    }
+    location /usr_nginx_status { # Used by user with Nginx log enabled. No access control.
+      stub_status on;
+    }
+
   }
 {{range $i := .}}
 
@@ -173,7 +186,7 @@ func main() {
   } else {
     vaultEnabled = vaultEnabledFlag
   }
- 
+
   if vaultAddress == "" || vaultToken == "" {
     fmt.Printf("\nVault not configured\n")
     vaultEnabled = "false"
@@ -214,7 +227,7 @@ func main() {
 
     for _, ingress := range ingresses.Items {
 
-      ingressHost := ingress.Spec.Rules[0].Host   
+      ingressHost := ingress.Spec.Rules[0].Host
 
       // Setup ingress defaults
 
@@ -325,6 +338,11 @@ func main() {
     err = exec.Command(nginxCommand, verifyArgs...).Run()
     if err != nil {
       fmt.Printf("ERR: nginx config failed validation: %v\n", err)
+      fmt.Printf("Sent config error notification to statsd.\n")
+      nginxArgs := []string{
+        nginxConfDir + "/nginx-error-statsd.sh",
+			}
+      shellOut("/bin/bash", nginxArgs)
     } else {
       exec.Command(nginxCommand, reloadArgs...).Run()
       fmt.Printf("nginx config updated.\n")
