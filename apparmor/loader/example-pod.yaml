@@ -10,7 +10,7 @@ metadata:
   annotations:
     # Tell Kubernetes to apply the AppArmor profile "k8s-nginx".
     # Note that this is ignored if the Kubernetes node is not running version 1.4 or greater.
-    container.apparmor.security.alpha.kubernetes.io/nginx: localhost/k8s-nginx
+    container.apparmor.security.beta.kubernetes.io/nginx: localhost/k8s-nginx
 spec:
   containers:
   - name: nginx
