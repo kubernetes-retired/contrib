@@ -77,7 +77,7 @@ func (p *PublisherMunger) Initialize(config *github.Config, features *features.F
 		srcToDst: map[info]string{
 			info{repo: config.Project, branch: "release-1.4", dir: "staging/src/k8s.io/client-go/1.4"}: "1.4",
 			// TODO: uncomment this when 1.5 folder is created
-			// info{repo: config.Project, branch: "master", dir: "staging/src/k8s.io/client-go/1.5"}: "1.5",
+			info{repo: config.Project, branch: "master", dir: "staging/src/k8s.io/client-go/1.5"}: "1.5",
 		},
 	}
 	p.targets = []target{clientGo}
