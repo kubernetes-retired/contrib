@@ -77,7 +77,7 @@ func (p *PublisherMunger) Initialize(config *github.Config, features *features.F
 		srcToDst: map[info]string{
 			info{repo: config.Project, branch: "release-1.4", dir: "staging/src/k8s.io/client-go/1.4"}: "1.4",
 			// TODO: uncomment this when 1.5 folder is created
-			// info{repo: config.Project, branch: "master", dir: "staging/src/k8s.io/client-go/1.5"}:      "1.5",
+			// info{repo: config.Project, branch: "master", dir: "staging/src/k8s.io/client-go/1.5"}: "1.5",
 		},
 	}
 	p.targets = []target{clientGo}
@@ -85,6 +85,66 @@ func (p *PublisherMunger) Initialize(config *github.Config, features *features.F
 	p.features = features
 	p.githubConfig = config
 	return nil
+}
+
+// git clone dstURL to dst
+func clone(dst string, dstURL string) error {
+	err := exec.Command("rm", "-rf", dst).Run()
+	if err != nil {
+		return err
+	}
+	err = exec.Command("mkdir", "-p", dst).Run()
+	if err != nil {
+		return err
+	}
+	err = exec.Command("git", "clone", dstURL, dst).Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// construct checks out the source repo, copy the contents to the destination,
+// returns a commit message snippet and error.
+func construct(src, srcURL, srcBranch, dst, dstRelative string) (string, error) {
+	err := exec.Command("pushd", src).Run()
+	if err != nil {
+		return "", err
+	}
+	err := exec.Command("git", "checkout", srcBranch).Run()
+	if err != nil {
+		return "", err
+	}
+	out, err := exec.Command("git", "checkout", srcBranch).CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	commit_hash := string(out)
+	err := exec.Command("popd").Run()
+	if err != nil {
+		return "", err
+	}
+	err := exec.Command("pushd", dst).Run()
+	if err != nil {
+		return "", err
+	}
+	err := exec.Command("rm", "-rf", dstRelative).Run()
+	if err != nil {
+		return "", err
+	}
+	err := exec.Command("cp", "-a", src+"/.", dst).Run()
+	if err != nil {
+		return "", err
+	}
+	// rename _vendor to vendor
+	err := exec.Command("find", dstRelative, "-depth", "-name", "_vendor", "-type", "d", "-execdir", "mv", "{}", "vendor", "\\").Run()
+	if err != nil {
+		return "", err
+	}
+	commitMessage := fmt.Sprintf("Directory %s is copied from\n", dstRelative)
+	commitMessage += fmt.Sprintf("%s, branch %s,\n", srcURL, srcBranch)
+	commitMessage += fmt.Sprintf("last commit is %s\n", commit_hash)
+	return commitMessage, nil
 }
 
 // EachLoop is called at the start of every munge loop
@@ -95,8 +155,7 @@ Target:
 		// clone the destination repo
 		dst := filepath.Join(p.baseDir, target.dstRepo, "")
 		dstURL := fmt.Sprintf("https://github.com/%s/%s.git", p.githubConfig.Org, target.dstRepo)
-		cmd := exec.Command("./clone.sh", dst, dstURL)
-		output, err := cmd.CombinedOutput()
+		err := clone(dst, dstURL)
 		if err != nil {
 			glog.Errorf("Failed to clone %s.\nOutput: %s\nError: %s", dstURL, output, err)
 			errlist = append(errlist, err)
@@ -104,23 +163,20 @@ Target:
 		} else {
 			glog.Infof("Successfully clone %s", dstURL)
 		}
-
 		// construct the destination directory
 		var commitMessage string
 		for srcInfo, dstDir := range target.srcToDst {
 			src := filepath.Join(p.baseDir, srcInfo.repo, srcInfo.dir)
 			dst := filepath.Join(p.baseDir, target.dstRepo, dstDir)
 			srcURL := fmt.Sprintf("https://github.com/%s/%s.git", p.githubConfig.Org, srcInfo.repo)
-			srcBranch := srcInfo.branch
-			cmd := exec.Command("./construct.sh", src, srcURL, srcBranch, dst, dstDir)
-			output, err := cmd.CombinedOutput()
+
+			snippet, err := construct(src, srcURL, srcInfo.branch, dst, dstDir)
 			if err != nil {
 				glog.Errorf("Failed to construct %s.\nOutput: %s\nError: %s", dst, output, err)
 				errlist = append(errlist, err)
 				continue Target
 			} else {
-				splits := strings.Split(string(output), "commit_message:")
-				commitMessage += splits[len(splits)-1]
+				commitMessage += snippet
 				glog.Infof("Successfully construct %s: %s", dst, output)
 			}
 		}
