@@ -18,6 +18,7 @@ package mungers
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -29,7 +30,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/errors"
 )
 
-type info struct {
+type source struct {
 	repo   string
 	branch string
 	dir    string
@@ -39,7 +40,7 @@ type info struct {
 type target struct {
 	dstRepo string
 	// multiple sources mapping to different directories in the dstRepo
-	srcToDst map[info]string
+	srcToDstSubdir map[source]string
 }
 
 // PublisherMunger publishes content from one repository to another one.
@@ -74,10 +75,10 @@ func (p *PublisherMunger) Initialize(config *github.Config, features *features.F
 	}
 	clientGo := target{
 		dstRepo: "client-go",
-		srcToDst: map[info]string{
-			info{repo: config.Project, branch: "release-1.4", dir: "staging/src/k8s.io/client-go/1.4"}: "1.4",
+		srcToDstSubdir: map[source]string{
+			source{repo: config.Project, branch: "release-1.4", dir: "staging/src/k8s.io/client-go/1.4"}: "1.4",
 			// TODO: uncomment this when 1.5 folder is created
-			info{repo: config.Project, branch: "master", dir: "staging/src/k8s.io/client-go/1.5"}: "1.5",
+			source{repo: config.Project, branch: "master", dir: "staging/src/k8s.io/client-go/1.5"}: "1.5",
 		},
 	}
 	p.targets = []target{clientGo}
@@ -106,42 +107,39 @@ func clone(dst string, dstURL string) error {
 
 // construct checks out the source repo, copy the contents to the destination,
 // returns a commit message snippet and error.
-func construct(src, srcURL, srcBranch, dst, dstRelative string) (string, error) {
-	err := exec.Command("pushd", src).Run()
+func construct(srcRepo, srcDir, srcURL, srcBranch, dstRepo, dstSubdir string) (string, error) {
+	curDir, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	err := exec.Command("git", "checkout", srcBranch).Run()
-	if err != nil {
+	if err = os.Chdir(srcRepo); err != nil {
 		return "", err
 	}
-	out, err := exec.Command("git", "checkout", srcBranch).CombinedOutput()
+	if err = exec.Command("git", "checkout", srcBranch).Run(); err != nil {
+		return "", err
+	}
+	out, err := exec.Command("git", "rev-parse", "HEAD").CombinedOutput()
 	if err != nil {
 		return "", err
 	}
 	commit_hash := string(out)
-	err := exec.Command("popd").Run()
-	if err != nil {
+	if err = os.Chdir(dstRepo); err != nil {
 		return "", err
 	}
-	err := exec.Command("pushd", dst).Run()
-	if err != nil {
+	if err = exec.Command("rm", "-rf", dstSubdir).Run(); err != nil {
 		return "", err
 	}
-	err := exec.Command("rm", "-rf", dstRelative).Run()
-	if err != nil {
-		return "", err
-	}
-	err := exec.Command("cp", "-a", src+"/.", dst).Run()
-	if err != nil {
+	if err = exec.Command("cp", "-a", srcDir, dstSubdir).Run(); err != nil {
 		return "", err
 	}
 	// rename _vendor to vendor
-	err := exec.Command("find", dstRelative, "-depth", "-name", "_vendor", "-type", "d", "-execdir", "mv", "{}", "vendor", "\\").Run()
-	if err != nil {
+	if err = exec.Command("find", dstSubdir, "-depth", "-name", "_vendor", "-type", "d", "-execdir", "mv", "{}", "vendor", ";").Run(); err != nil {
 		return "", err
 	}
-	commitMessage := fmt.Sprintf("Directory %s is copied from\n", dstRelative)
+	if err = os.Chdir(curDir); err != nil {
+		return "", err
+	}
+	commitMessage := fmt.Sprintf("Directory %s is copied from\n", dstSubdir)
 	commitMessage += fmt.Sprintf("%s, branch %s,\n", srcURL, srcBranch)
 	commitMessage += fmt.Sprintf("last commit is %s\n", commit_hash)
 	return commitMessage, nil
@@ -157,33 +155,34 @@ Target:
 		dstURL := fmt.Sprintf("https://github.com/%s/%s.git", p.githubConfig.Org, target.dstRepo)
 		err := clone(dst, dstURL)
 		if err != nil {
-			glog.Errorf("Failed to clone %s.\nOutput: %s\nError: %s", dstURL, output, err)
+			glog.Errorf("Failed to clone %s.\nError: %s", dstURL, err)
 			errlist = append(errlist, err)
 			continue Target
 		} else {
 			glog.Infof("Successfully clone %s", dstURL)
 		}
 		// construct the destination directory
-		var commitMessage string
-		for srcInfo, dstDir := range target.srcToDst {
+		var commitMessage = "published by bot\n(https://github.com/kubernetes/contrib/tree/master/mungegithub)\n\n"
+		for srcInfo, dstSubdir := range target.srcToDstSubdir {
+			srcRepo := filepath.Join(p.baseDir, srcInfo.repo)
 			src := filepath.Join(p.baseDir, srcInfo.repo, srcInfo.dir)
-			dst := filepath.Join(p.baseDir, target.dstRepo, dstDir)
+			dstRepo := filepath.Join(p.baseDir, target.dstRepo)
 			srcURL := fmt.Sprintf("https://github.com/%s/%s.git", p.githubConfig.Org, srcInfo.repo)
 
-			snippet, err := construct(src, srcURL, srcInfo.branch, dst, dstDir)
+			snippet, err := construct(srcRepo, src, srcURL, srcInfo.branch, dstRepo, dstSubdir)
 			if err != nil {
-				glog.Errorf("Failed to construct %s.\nOutput: %s\nError: %s", dst, output, err)
+				glog.Errorf("Failed to construct %s.\nError: %s", dstRepo, err)
 				errlist = append(errlist, err)
 				continue Target
 			} else {
 				commitMessage += snippet
-				glog.Infof("Successfully construct %s: %s", dst, output)
+				glog.Infof("Successfully construct %s", filepath.Join(dstRepo, dstSubdir))
 			}
 		}
 
 		// publish the destination directory
-		cmd = exec.Command("./publish.sh", dst, p.githubConfig.Token(), p.netrcDir, strings.TrimSpace(commitMessage))
-		output, err = cmd.CombinedOutput()
+		cmd := exec.Command("./publish.sh", dst, p.githubConfig.Token(), p.netrcDir, strings.TrimSpace(commitMessage))
+		output, err := cmd.CombinedOutput()
 		if err != nil {
 			glog.Errorf("Failed to publish %s.\nOutput: %s\nError: %s", dst, output, err)
 			errlist = append(errlist, err)
