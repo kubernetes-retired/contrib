@@ -4,7 +4,7 @@ metadata:
   name: node-perf-dash
   labels:
     app: node-perf-dash
-    version: "0.1"
+    version: "0.2"
 spec:
   replicas: 1
   template:
@@ -13,7 +13,7 @@ spec:
         app: node-perf-dash
     spec:
       containers:
-      - image: gcr.io/google_containers/node-perf-dash:v0.1
+      - image: gcr.io/google_containers/node-perf-dash:v0.2
         command:
           - /node-perf-dash
           -   --www=true
