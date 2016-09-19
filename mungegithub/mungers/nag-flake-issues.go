@@ -29,18 +29,20 @@ import (
 )
 
 const (
-	flakeNagNotifName = "FLAKE-PING"
-	defaultTimePeriod = 14 * 24 * time.Hour
+	flakeNagNotifyName = "FLAKE-PING"
+	// defaultTimePeriod is priority/P1 (to get a human to prioritize)
+	defaultTimePeriod = 4 * 24 * time.Hour
 )
 
 var (
-	pinger = c.NewPinger(flakeNagNotifName).
+	pinger = c.NewPinger(flakeNagNotifyName).
 		SetDescription("This flaky-test issue would love to have more attention.")
 	// Only include priorities that you care about. Others won't be pinged
 	timePeriods = map[string]time.Duration{
 		"priority/P0": 2 * 24 * time.Hour,
 		"priority/P1": 4 * 24 * time.Hour,
-		"priority/P2": 7 * 24 * time.Hour,
+		"priority/P2": 2 * 30 * 24 * time.Hour,
+		"priority/P3": time.Duration(1<<63 - 1),
 	}
 )
 
@@ -131,7 +133,7 @@ func (NagFlakeIssues) Munge(obj *mgh.MungeObject) {
 func (NagFlakeIssues) StaleComments(obj *mgh.MungeObject, comments []*github.IssueComment) []*github.IssueComment {
 	// Remove all pings written before the last human actor comment
 	return c.FilterComments(comments, c.And([]c.Matcher{
-		c.MungerNotificationName(flakeNagNotifName),
+		c.MungerNotificationName(flakeNagNotifyName),
 		c.CreatedBefore(*c.LastComment(comments, c.HumanActor(), &time.Time{})),
 	}))
 }
