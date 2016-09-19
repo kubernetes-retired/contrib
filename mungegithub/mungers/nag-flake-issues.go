@@ -30,7 +30,7 @@ import (
 
 const (
 	flakeNagNotifName = "FLAKE-PING"
-	defaultTimePeriod = 14 * 24 * time.Hour
+	defaultTimePeriod = 4 * 24 * time.Hour
 )
 
 var (
@@ -40,7 +40,8 @@ var (
 	timePeriods = map[string]time.Duration{
 		"priority/P0": 2 * 24 * time.Hour,
 		"priority/P1": 4 * 24 * time.Hour,
-		"priority/P2": 7 * 24 * time.Hour,
+		"priority/P2": 2 * 30 * 24 * time.Hour,
+		"priority/P3": time.Duration(1<<63 - 1),
 	}
 )
 
