@@ -1,7 +1,7 @@
 all: push
 
 # See pod.yaml for the version currently running-- bump this ahead before rebuilding!
-TAG = v0.1
+TAG = v0.2
 
 REPO = gcr.io/google_containers
 
@@ -12,7 +12,7 @@ container: node-perf-dash
 	docker build -t $(REPO)/node-perf-dash:$(TAG) .
 
 push: container
-	docker push $(REPO)/node-perf-dash:$(TAG)
+	gcloud docker push $(REPO)/node-perf-dash:$(TAG)
 
 clean:
 	rm -f node-perf-dash
