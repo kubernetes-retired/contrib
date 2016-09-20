@@ -63,7 +63,7 @@ var (
 		Name:       "container.googleapis.com/container/memory/bytes_used",
 	}
 	pageFaultsMD = &metricMetadata{
-		MetricKind: "DELTA",
+		MetricKind: "CUMULATIVE",
 		ValueType:  "INT64",
 		Name:       "container.googleapis.com/container/memory/page_fault_count",
 	}
