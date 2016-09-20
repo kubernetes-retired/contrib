@@ -16,4 +16,5 @@ FROM alpine:3.4
 MAINTAINER Girish Kalele <gkalele@google.com>
 RUN apk --no-cache add dnsmasq
 COPY dnsmasq.conf /etc/dnsmasq.conf
+STOPSIGNAL SIGCONT
 ENTRYPOINT ["/usr/sbin/dnsmasq", "--keep-in-foreground"]

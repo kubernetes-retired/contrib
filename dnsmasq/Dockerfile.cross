@@ -19,5 +19,6 @@ CROSS_BUILD_COPY qemu-ARCH-static /usr/bin/
 MAINTAINER Girish Kalele <gkalele@google.com>
 COPY dnsmasq.conf /etc/dnsmasq.conf
 COPY dnsmasq /usr/sbin/dnsmasq
+STOPSIGNAL SIGCONT
 RUN mkdir /var/run/
 ENTRYPOINT ["/usr/sbin/dnsmasq", "--keep-in-foreground"]
