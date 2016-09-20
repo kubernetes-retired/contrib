@@ -2,6 +2,8 @@
 Create the Ingress controller
 ```
 kubectl create -f rc-default.yaml
+or
+kubectl create -f deployment-default.yaml
 ```
 
 To test if evertyhing is working correctly:
