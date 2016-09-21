@@ -115,9 +115,9 @@ labels:
     color: fef2c0
   - name: 'cla: human-approved'
     color: bfe5bf
-  - name: 'cla: no'
+  - name: 'cncf-cla: no'
     color: e11d21
-  - name: 'cla: yes'
+  - name: 'cncf-cla: yes'
     color: bfe5bf
   - name: component/apiserver
     color: 0052cc
