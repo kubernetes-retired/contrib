@@ -25,11 +25,11 @@ import (
 // TODO: Move these values into the API package.
 const (
 	// The prefix to an annotation key specifying a container profile.
-	ContainerAnnotationKeyPrefix = "container.apparmor.security.alpha.kubernetes.io/"
+	ContainerAnnotationKeyPrefix = "container.apparmor.security.beta.kubernetes.io/"
 	// The annotation key specifying the default AppArmor profile.
-	DefaultProfileAnnotationKey = "apparmor.security.alpha.kubernetes.io/defaultProfileName"
+	DefaultProfileAnnotationKey = "apparmor.security.beta.kubernetes.io/defaultProfileName"
 	// The annotation key specifying the allowed AppArmor profiles.
-	AllowedProfilesAnnotationKey = "apparmor.security.alpha.kubernetes.io/allowedProfileNames"
+	AllowedProfilesAnnotationKey = "apparmor.security.beta.kubernetes.io/allowedProfileNames"
 
 	// The profile specifying the runtime default.
 	ProfileRuntimeDefault = "runtime/default"
@@ -49,7 +49,13 @@ func isRequired(pod *api.Pod) bool {
 
 // Returns the name of the profile to use with the container.
 func GetProfileName(pod *api.Pod, containerName string) string {
-	return pod.Annotations[ContainerAnnotationKeyPrefix+containerName]
+	return GetProfileNameFromPodAnnotations(pod.Annotations, containerName)
+}
+
+// GetProfileNameFromPodAnnotations gets the name of the profile to use with container from
+// pod annotations
+func GetProfileNameFromPodAnnotations(annotations map[string]string, containerName string) string {
+	return annotations[ContainerAnnotationKeyPrefix+containerName]
 }
 
 // Sets the name of the profile to use with the container.

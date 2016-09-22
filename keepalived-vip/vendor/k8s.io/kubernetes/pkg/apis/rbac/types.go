@@ -71,13 +71,23 @@ type Subject struct {
 	// If the Authorizer does not recognized the kind value, the Authorizer should report an error.
 	Kind string
 	// APIVersion holds the API group and version of the referenced object. For non-object references such as "Group" and "User" this is
-	// expected to be API version of this API group. For example "rbac/v1alpha1".
+	// expected to be API version of this API group. For example, "rbac/v1alpha1".
 	APIVersion string
 	// Name of the object being referenced.
 	Name string
 	// Namespace of the referenced object.  If the object kind is non-namespace, such as "User" or "Group", and this value is not empty
 	// the Authorizer should report an error.
 	Namespace string
+}
+
+// RoleRef contains information that points to the role being used
+type RoleRef struct {
+	// APIGroup is the group for the resource being referenced
+	APIGroup string
+	// Kind is the type of resource being referenced
+	Kind string
+	// Name is the name of resource being referenced
+	Name string
 }
 
 // +genclient=true
@@ -106,7 +116,7 @@ type RoleBinding struct {
 
 	// RoleRef can reference a Role in the current namespace or a ClusterRole in the global namespace.
 	// If the RoleRef cannot be resolved, the Authorizer must return an error.
-	RoleRef api.ObjectReference
+	RoleRef RoleRef
 }
 
 // RoleBindingList is a collection of RoleBindings
@@ -157,7 +167,7 @@ type ClusterRoleBinding struct {
 
 	// RoleRef can only reference a ClusterRole in the global namespace.
 	// If the RoleRef cannot be resolved, the Authorizer must return an error.
-	RoleRef api.ObjectReference
+	RoleRef RoleRef
 }
 
 // ClusterRoleBindingList is a collection of ClusterRoleBindings
