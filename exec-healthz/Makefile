@@ -53,11 +53,11 @@ endif
 	cd $(TEMP_DIR) && sed -i "s|BASEIMAGE|$(BASEIMAGE)|g" Dockerfile
 
 	# Compile the binary inside a container for reliable builds
-	docker run --rm -it -v $(TEMP_DIR):/build golang:$(GOLANG_VERSION) /bin/bash -c "make -C /build server ARCH=$(ARCH)"
+	docker run --rm -it -v $(TEMP_DIR):/build golang:$(GOLANG_VERSION) /bin/bash -c "mv /build/vendor/* /go/src && make -C /build server ARCH=$(ARCH) TAG=$(TAG)"
 
 	docker build -t $(PREFIX)-$(ARCH):$(TAG) $(TEMP_DIR)
 
-	rm -r $(TEMP_DIR)
+	rm -rf $(TEMP_DIR)
 
 push: container
 	gcloud docker push $(PREFIX)-$(ARCH):$(TAG)
