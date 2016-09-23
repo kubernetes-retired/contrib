@@ -19,7 +19,7 @@ netplugin_vtep_ip: "{{ hostvars[inventory_hostname]['ansible_' + netplugin_inter
 netplugin_interface: "{{ ansible_default_ipv4.interface }}"
 
 # Interface used to bind Netmaster service
-nemaster_interface: "{{ ansible_default_ipv4.interface }}"
+netmaster_interface: "{{ ansible_default_ipv4.interface }}"
 
 # Path to the contiv binaries
 bin_dir: /usr/bin

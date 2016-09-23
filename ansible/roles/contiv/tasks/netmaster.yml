@@ -16,9 +16,9 @@
   lineinfile:
     dest=/etc/hosts
     regexp=.*netmaster$
-    line="{{ hostvars[item]['ansible_' + nemaster_interface].ipv4.address }} netmaster"
+    line="{{ hostvars[item]['ansible_' + netmaster_interface].ipv4.address }} netmaster"
     state=present
-  when: hostvars[item]['ansible_' + nemaster_interface].ipv4.address is defined
+  when: hostvars[item]['ansible_' + netmaster_interface].ipv4.address is defined
   with_items: groups['masters']
 
 - name: Netmaster | Create netmaster symlinks
