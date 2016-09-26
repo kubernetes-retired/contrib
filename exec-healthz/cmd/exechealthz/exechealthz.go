@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/contrib/exec-healthz/pkg/version"
 	"k8s.io/kubernetes/pkg/util/clock"
 	utilexec "k8s.io/kubernetes/pkg/util/exec"
 )
@@ -47,6 +48,7 @@ var (
 	period     = flag.Duration("period", 2*time.Second, "Period to run the given cmd in an async worker.")
 	maxLatency = flag.Duration("latency", 30*time.Second, "If the async worker hasn't updated the probe command output in this long, return a 503.")
 	quiet      = flag.Bool("quiet", false, "Run in quiet mode by only logging errors.")
+	printVer   = flag.Bool("version", false, "Print the version and exit.")
 	// probers are the async workers running the cmds, the output of which is used to service /healthz or others customized pathes.
 	probers = make(map[string]*execWorker)
 )
@@ -166,6 +168,12 @@ func newExecWorker(probeCmd, probePath string, execPeriod time.Duration, exec ut
 
 func main() {
 	flag.Parse()
+
+	if *printVer {
+		fmt.Printf("%s\n", version.VERSION)
+		os.Exit(0)
+	}
+
 	flagCheckUrlCmd()
 	links := []struct {
 		link, desc string

@@ -28,7 +28,7 @@ ARCH ?= amd64
 ### These variables should not need tweaking.
 ###
 
-SRC_DIRS := cmd # directories which hold app source (not vendored)
+SRC_DIRS := cmd pkg # directories which hold app source (not vendored)
 
 ALL_ARCH := amd64 arm arm64 ppc64le
 
