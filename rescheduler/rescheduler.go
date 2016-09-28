@@ -67,6 +67,10 @@ var (
 	podScheduledTimeout = flags.Duration("pod-scheduled-timeout", 10*time.Minute,
 		`How long should rescheduler wait for critical pod to be scheduled
 		 after evicting pods to make a spot for it.`)
+
+	podBucketList = flags.StringSlice("bucket-list", []string{},
+		`Ordered list of bucket namespaces from lowest priority bucket
+	     to highest priority bucket`)
 )
 
 func main() {
@@ -361,6 +365,11 @@ func groupPods(client *kube_client.Client, node *kube_api.Node) ([]*kube_api.Pod
 		return []*kube_api.Pod{}, []*kube_api.Pod{}, err
 	}
 
+	podBucketMap := make(map[string][]*kube_api.Pod)
+	for _, bucketName := range *podBucketList {
+		podBucketMap[bucketName] = make([]*kube_api.Pod, 0)
+	}
+
 	requiredPods := make([]*kube_api.Pod, 0)
 	otherPods := make([]*kube_api.Pod, 0)
 	for i := range podsOnNode.Items {
@@ -373,9 +382,15 @@ func groupPods(client *kube_client.Client, node *kube_api.Node) ([]*kube_api.Pod
 
 		if ca_simulator.IsMirrorPod(pod) || creatorRef == "DaemonSet" || isCriticalPod(pod) {
 			requiredPods = append(requiredPods, pod)
+		} else if bucketList, ok := podBucketMap[pod.GetNamespace()]; ok {
+			bucketList = append(bucketList, pod)
 		} else {
 			otherPods = append(otherPods, pod)
 		}
+	}
+
+	for _, bucketName := range *podBucketList {
+		otherPods = append(otherPods, podBucketMap[bucketName]...)
 	}
 
 	return requiredPods, otherPods, nil
