@@ -18,6 +18,7 @@ package main
 
 import (
   "fmt"
+  "time"
   "io"
   "io/ioutil"
   "log"
@@ -35,7 +36,7 @@ import (
 )
 
 const (
-  version = "1.6.7"
+  version = "1.6.8"
   nginxConf = `
 daemon off;
 
@@ -210,23 +211,39 @@ func main() {
 
   // Controller loop
   for {
+    if vaultEnabled != "true" {
+      continue
+    }
+
+    // Check Vault status
+    vaultStatus, err := vault.Sys().SealStatus()
+    if err != nil || vaultStatus == nil {
+      fmt.Printf("Error retrieving Vault status.\n")
+      time.Sleep(time.Second * 3)
+      continue
+    }
+
+    if vaultStatus.Sealed == true {
+      fmt.Printf("Vault is sealed.\n")
+      time.Sleep(time.Second * 3)
+      continue
+    }
+
     rateLimiter.Accept()
     ingresses, err := ingClient.List(api.ListOptions{})
     if err != nil {
       fmt.Printf("Error retrieving ingresses: %v\n", err)
+      time.Sleep(time.Second * 3)
       continue
     }
     if reflect.DeepEqual(ingresses.Items, known.Items) {
       continue
     }
     known = ingresses
-
     type IngressList []*Ingress
-
     var ingresslist IngressList = IngressList{}
 
     for _, ingress := range ingresses.Items {
-
       ingressHost := ingress.Spec.Rules[0].Host
 
       // Setup ingress defaults
@@ -264,7 +281,6 @@ func main() {
       }
 
       if vaultEnabled == "true" && i.Ssl {
-
         // Renew token
         tokenPath := "/auth/token/renew-self"
         tokenData, err := vault.Logical().Write(tokenPath, nil)
