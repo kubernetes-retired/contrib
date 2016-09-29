@@ -21,6 +21,7 @@ import (
 	"time"
 
 	v3 "google.golang.org/api/monitoring/v3"
+	"k8s.io/contrib/kubelet-to-gcm/monitor"
 	"k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/stats"
 )
 
@@ -140,7 +141,7 @@ func (t *Translator) translateNode(node stats.NodeStats) ([]*v3.TimeSeries, erro
 			StartTime: now.Add(-1 * t.resolution).Format(time.RFC3339),
 		},
 		Value: &v3.TypedValue{
-			DoubleValue: float64(time.Since(node.StartTime.Time).Seconds()),
+			DoubleValue: monitor.Float64Ptr(float64(time.Since(node.StartTime.Time).Seconds())),
 		},
 	}
 	timeSeries = append(timeSeries, tsFactory.newTimeSeries(noLabels, uptimeMD, uptimePoint))
@@ -207,7 +208,7 @@ func (t *Translator) translateContainers(pods []stats.PodStats) ([]*v3.TimeSerie
 					StartTime: now.Add(-1 * t.resolution).Format(time.RFC3339),
 				},
 				Value: &v3.TypedValue{
-					DoubleValue:     float64(time.Since(container.StartTime.Time).Seconds()),
+					DoubleValue:     monitor.Float64Ptr(float64(time.Since(container.StartTime.Time).Seconds())),
 					ForceSendFields: []string{"DoubleValue"},
 				},
 			}
@@ -268,7 +269,7 @@ func translateCPU(cpu *stats.CPUStats, tsFactory *timeSeriesFactory) ([]*v3.Time
 
 	// Total CPU utilization for all time. Convert from nanosec to sec.
 	cpuTotalPoint := tsFactory.newPoint(&v3.TypedValue{
-		DoubleValue:     float64(*cpu.UsageCoreNanoSeconds) / float64(1000*1000*1000),
+		DoubleValue:     monitor.Float64Ptr(float64(*cpu.UsageCoreNanoSeconds) / float64(1000*1000*1000)),
 		ForceSendFields: []string{"DoubleValue"},
 	}, cpu.Time.Time, usageTimeMD.MetricKind)
 	timeSeries = append(timeSeries, tsFactory.newTimeSeries(noLabels, usageTimeMD, cpuTotalPoint))
@@ -297,14 +298,14 @@ func translateFS(volume string, fs *stats.FsStats, tsFactory *timeSeriesFactory)
 	resourceLabels := map[string]string{"device_name": volume}
 	// Total disk available.
 	diskTotalPoint := tsFactory.newPoint(&v3.TypedValue{
-		Int64Value:      int64(*fs.CapacityBytes),
+		Int64Value:      monitor.Int64Ptr(int64(*fs.CapacityBytes)),
 		ForceSendFields: []string{"Int64Value"},
 	}, now, diskTotalMD.MetricKind)
 	timeSeries = append(timeSeries, tsFactory.newTimeSeries(resourceLabels, diskTotalMD, diskTotalPoint))
 
 	// Total disk used.
 	diskUsedPoint := tsFactory.newPoint(&v3.TypedValue{
-		Int64Value:      int64(*fs.UsedBytes),
+		Int64Value:      monitor.Int64Ptr(int64(*fs.UsedBytes)),
 		ForceSendFields: []string{"Int64Value"},
 	}, now, diskUsedMD.MetricKind)
 	timeSeries = append(timeSeries, tsFactory.newTimeSeries(resourceLabels, diskUsedMD, diskUsedPoint))
@@ -334,26 +335,26 @@ func translateMemory(memory *stats.MemoryStats, tsFactory *timeSeriesFactory) ([
 
 	// Major page faults.
 	majorPFPoint := tsFactory.newPoint(&v3.TypedValue{
-		Int64Value:      int64(*memory.MajorPageFaults),
+		Int64Value:      monitor.Int64Ptr(int64(*memory.MajorPageFaults)),
 		ForceSendFields: []string{"Int64Value"},
 	}, memory.Time.Time, pageFaultsMD.MetricKind)
 	timeSeries = append(timeSeries, tsFactory.newTimeSeries(majorPageFaultLabels, pageFaultsMD, majorPFPoint))
 	// Minor page faults.
 	minorPFPoint := tsFactory.newPoint(&v3.TypedValue{
-		Int64Value:      int64(*memory.PageFaults - *memory.MajorPageFaults),
+		Int64Value:      monitor.Int64Ptr(int64(*memory.PageFaults - *memory.MajorPageFaults)),
 		ForceSendFields: []string{"Int64Value"},
 	}, memory.Time.Time, pageFaultsMD.MetricKind)
 	timeSeries = append(timeSeries, tsFactory.newTimeSeries(minorPageFaultLabels, pageFaultsMD, minorPFPoint))
 
 	// Non-evictable memory.
 	nonEvictMemPoint := tsFactory.newPoint(&v3.TypedValue{
-		Int64Value:      int64(*memory.WorkingSetBytes),
+		Int64Value:      monitor.Int64Ptr(int64(*memory.WorkingSetBytes)),
 		ForceSendFields: []string{"Int64Value"},
 	}, memory.Time.Time, memUsedMD.MetricKind)
 	timeSeries = append(timeSeries, tsFactory.newTimeSeries(memUsedNonEvictableLabels, memUsedMD, nonEvictMemPoint))
 	// Evictable memory.
 	evictMemPoint := tsFactory.newPoint(&v3.TypedValue{
-		Int64Value:      int64(*memory.UsageBytes - *memory.WorkingSetBytes),
+		Int64Value:      monitor.Int64Ptr(int64(*memory.UsageBytes - *memory.WorkingSetBytes)),
 		ForceSendFields: []string{"Int64Value"},
 	}, memory.Time.Time, memUsedMD.MetricKind)
 	timeSeries = append(timeSeries, tsFactory.newTimeSeries(memUsedEvictableLabels, memUsedMD, evictMemPoint))
@@ -361,7 +362,7 @@ func translateMemory(memory *stats.MemoryStats, tsFactory *timeSeriesFactory) ([
 	// Available memory. This may or may not be present, so don't fail if it's absent.
 	if memory.AvailableBytes != nil {
 		availableMemPoint := tsFactory.newPoint(&v3.TypedValue{
-			Int64Value:      int64(*memory.AvailableBytes),
+			Int64Value:      monitor.Int64Ptr(int64(*memory.AvailableBytes)),
 			ForceSendFields: []string{"Int64Value"},
 		}, memory.Time.Time, memTotalMD.MetricKind)
 		timeSeries = append(timeSeries, tsFactory.newTimeSeries(noLabels, memTotalMD, availableMemPoint))
