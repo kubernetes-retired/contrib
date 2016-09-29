@@ -20,7 +20,7 @@
 #   [TAG=1.3] [REGISTRY=gcr.io/google_containers] make (build|push)
 
 # Default registry, arch and tag. This can be overwritten by arguments to make
-TAG?=1.3
+TAG?=1.4
 REGISTRY?=gcr.io/google_containers
 ARCH?=amd64
 KUBE_CROSS_IMAGE:=$(REGISTRY)/kube-cross:v1.6.2-2
