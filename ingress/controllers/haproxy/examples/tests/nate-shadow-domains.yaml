@@ -1,0 +1,42 @@
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: a-game
+spec:
+  rules:
+  - host: a.stackpoint.io
+    http:
+      paths:
+      - path:
+        backend:
+          serviceName: game2048
+          servicePort: 80
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: a.a.default
+spec:
+  rules:
+  - host: a.a.stackpoint.io
+    http:
+      paths:
+      - path:
+        backend:
+          serviceName: default-http-backend
+          servicePort: 80
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: a.a.a.echo
+spec:
+  rules:
+  - host: a.a.a.stackpoint.io
+    http:
+      paths:
+      - path:
+        backend:
+          serviceName: echoheaders
+          servicePort: 80

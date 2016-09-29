@@ -1,0 +1,14 @@
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: game-ingress
+spec:
+  rules:
+  - host: game.stackpoint.io
+    http:
+      paths:
+      - path:
+        backend:
+          serviceName: game2048
+          servicePort: 80
