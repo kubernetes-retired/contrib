@@ -73,6 +73,9 @@ http {
 
     client_max_body_size "{{ $cfg.bodySize }}";
 
+    # disable warning
+    uninitialized_variable_warn off;
+
     log_format upstreaminfo '{{ if $cfg.useProxyProtocol }}$proxy_protocol_addr{{ else }}$remote_addr{{ end }} - '
         '[$proxy_add_x_forwarded_for] - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" '
         '$request_length $request_time [$proxy_upstream_name] $upstream_addr $upstream_response_length $upstream_response_time $upstream_status';
@@ -265,8 +268,8 @@ http {
             proxy_set_header                        Accept-Encoding     "";
             {{- end }}
 
-            {{- buildProxyPass $location }}
             set $proxy_upstream_name "{{ $location.Upstream.Name }}";
+            {{- buildProxyPass $location }}
         }
         {{ end }}
 
@@ -334,7 +337,7 @@ http {
             return 503;
             {{ end }}
         }
-    }    
+    }
 }
 
 stream {
