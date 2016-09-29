@@ -20,6 +20,7 @@ import (
 	"time"
 
 	v3 "google.golang.org/api/monitoring/v3"
+	"k8s.io/contrib/kubelet-to-gcm/monitor"
 )
 
 var (
@@ -71,7 +72,7 @@ func (t *Translator) translateEviction(metrics *Metrics) *v3.TimeSeries {
 			StartTime: now,
 		},
 		Value: &v3.TypedValue{
-			Int64Value:      metrics.NodeEvictions,
+			Int64Value:      monitor.Int64Ptr(metrics.NodeEvictions),
 			ForceSendFields: []string{"Int64Value"},
 		},
 	}
