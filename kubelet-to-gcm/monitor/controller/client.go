@@ -18,50 +18,56 @@ package controller
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strconv"
 	"strings"
 
-	log "github.com/golang/glog"
+	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 // Metrics are parsed values from the kube-controller.
 type Metrics struct {
+	CreateTime    int64
 	NodeEvictions int64
 }
 
-// parseEvictions parses the node_collector_evictions_number metric, and
-// sets its value in the struct.
-func (c *Metrics) parseEvictions(line string) error {
-	// The value is the final token.
-	fields := strings.Fields(line)
-	value := fields[len(fields)-1]
-	// Try to parse the value as a uint.
-	count, err := strconv.ParseInt(value, 0, 64)
-	if err != nil {
-		return fmt.Errorf("Failed to parse node_collector_evictions_number value: %v", err)
+// parseMetrics takes the text format for prometheus metrics, and converts
+// them into our Metrics object.
+func (c *Metrics) parseMetrics(data string) error {
+	dec := expfmt.NewDecoder(strings.NewReader(data), expfmt.FmtText)
+	decoder := expfmt.SampleDecoder{
+		Dec:  dec,
+		Opts: &expfmt.DecodeOptions{},
 	}
-	c.NodeEvictions = count
-	return nil
+
+	for {
+		var v model.Vector
+		if err := decoder.Decode(&v); err != nil {
+			if err == io.EOF {
+				// Expected loop termination condition.
+				return nil
+			}
+			return fmt.Errorf("Invalid decode: %v", err)
+		}
+		for _, metric := range v {
+			switch name := string(metric.Metric[model.MetricNameLabel]); name {
+			case "node_collector_evictions_number":
+				c.NodeEvictions = int64(metric.Value)
+			case "process_start_time_seconds":
+				c.CreateTime = int64(metric.Value)
+			}
+		}
+	}
 }
 
 // NewMetrics creates a Metrics object from a Prometheus response body.
 func NewMetrics(body []byte) (*Metrics, error) {
 	metrics := &Metrics{}
-	// If there's a better way to parse Prometheus metrics, I'd love to know.
-	for _, line := range strings.Split(string(body), "\n") {
-		if match, err := regexp.MatchString("^node_collector_evictions_number{", line); err != nil {
-			return nil, fmt.Errorf("Failed to match node evictions: %v", err)
-		} else if match {
-			err = metrics.parseEvictions(line)
-			if err != nil {
-				return nil, err
-			}
-			break
-		}
+	if err := metrics.parseMetrics(string(body)); err != nil {
+		return nil, fmt.Errorf("Failed to create a new Metrics object: %v", err)
 	}
 	return metrics, nil
 }
@@ -88,7 +94,6 @@ func NewClient(host string, port uint, client *http.Client) (*Client, error) {
 
 // doRequest makes the request to the controller, and returns the body.
 func (c *Client) doRequestAndParse(req *http.Request) (*Metrics, error) {
-	log.Infof("Preparing to perform request: %v", req)
 	response, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
