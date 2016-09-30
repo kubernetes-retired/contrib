@@ -25,4 +25,4 @@ KUBELET_API_SERVER="--api-servers=https://{{ groups['masters'][0] }}:{{ kube_mas
 {{ kubelet_options.append('--network-plugin=cni')|default('', true) -}}
 {% endif -%}
 
-KUBELET_ARGS="--kubeconfig={{ kube_config_dir }}/kubelet.kubeconfig --config={{ kube_manifest_dir }} {{ kubelet_options|join(' ') }}"
+KUBELET_ARGS="--kubeconfig={{ kube_config_dir }}/kubelet.kubeconfig --config={{ kube_manifest_dir }} {{ kubelet_options|join(' ') }} {{ kubelet_args }}"
