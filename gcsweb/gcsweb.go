@@ -232,50 +232,62 @@ type gcsDir struct {
 	CommonPrefixes []Prefix `xml:"CommonPrefixes"`
 }
 
+const header string = `<!doctype html>
+	<html>
+	<head>
+	<link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/pure-min.css">
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>GCS browser</title>
+	</head>
+	<body>`
+const footer string = `</body></html>`
+
+func gridItem(url, name, size, modified string) string {
+	return fmt.Sprintf(`<li class="pure-g">
+		<div class="pure-u-1-3"><a href="%s">%s</a></div>
+		<div class="pure-u-1-3">%s</div>
+		<div class="pure-u-1-3">%s</div>
+		</li>`,
+		url, name, size, modified)
+}
+
 // Render writes HTML representing this gcsDir to the provided output.
 func (dir *gcsDir) Render(out http.ResponseWriter, inPath string) {
-	fmt.Fprintf(out, "<html>\n")
-	fmt.Fprintf(out, "<head>\n")
-	fmt.Fprintf(out, "<title>%s</title>\n", dir.Name)
-	fmt.Fprintf(out, "</head>\n")
-	fmt.Fprintf(out, "<body>\n")
+	fmt.Fprintf(out, header)
+
+	fmt.Fprintf(out, `<header style="margin-left:10px;">`)
 	fmt.Fprintf(out, "<h1>%s</h1>\n", dir.Name)
 	fmt.Fprintf(out, "<h3>%s</h3>\n", inPath)
+	fmt.Fprintf(out, "</header>")
+
+	fmt.Fprintf(out, "<ul>\n")
+	var nextButton string
 	if dir.NextMarker != "" {
-		fmt.Fprintf(out, `<a href="%s?marker=%s">Next page</a>`+"\n", gcsPath+inPath, dir.NextMarker)
+		nextButton = fmt.Sprintf(`<a href="%s?marker=%s" class="pure-button" style="margin: 10px 0;">Next page</a>`+"\n", gcsPath+inPath, dir.NextMarker)
+		fmt.Fprintf(out, nextButton)
 	}
-	fmt.Fprintf(out, "<table>\n")
-	fmt.Fprintf(out, "<tr>"+
-		"<th align='left'  width='30%'>Name</th>"+
-		"<th align='right' width='10%'>Size</th>"+
-		"<th align='right' width='10%'>Modified</th>"+
-		"</tr>")
+	fmt.Fprintf(out, `<li class="pure-g">`+
+		`<div class="pure-u-1-3">Name</div>`+
+		`<div class="pure-u-1-3">Size</div>`+
+		`<div class="pure-u-1-3">Modified</div>`+
+		"</li>")
 	if parent := dirname(inPath); parent != "" {
-		fmt.Fprintf(out, "<tr>\n")
 		url := gcsPath + parent
-		fmt.Fprintf(out, ""+
-			"<td><a href='%s'>%s</a></td>"+
-			"<td align='right'>%s</td>"+
-			"<td align='right'>%s</td>",
-			url, "..", "-", "-")
-		fmt.Fprintf(out, "</tr>\n")
+		fmt.Fprintf(out, gridItem(url, "..", "-", "-"))
 	}
 
 	for i := range dir.CommonPrefixes {
-		fmt.Fprintf(out, "<tr>\n")
 		dir.CommonPrefixes[i].Render(out, inPath)
-		fmt.Fprintf(out, "</tr>\n")
 	}
 	for i := range dir.Contents {
-		fmt.Fprintf(out, "<tr>\n")
 		dir.Contents[i].Render(out, inPath)
-		fmt.Fprintf(out, "</tr>\n")
 	}
-	fmt.Fprintf(out, "</table>\n")
 	if dir.NextMarker != "" {
-		fmt.Fprintf(out, `<a href="%s?marker=%s">Next page</a>`+"\n", gcsPath+inPath, dir.NextMarker)
+		fmt.Fprintf(out, nextButton)
 	}
-	fmt.Fprintf(out, "</body>\n")
+	fmt.Fprintf(out, "</ul>\n")
+	fmt.Fprintf(out, footer)
 }
 
 // Record represents a single "Contents" entry in a GCS bucket.
@@ -301,11 +313,7 @@ func (rec *Record) Render(out http.ResponseWriter, inPath string) {
 		url = gcsBaseURL + inPath + rec.Name
 		size = fmt.Sprintf("%v", rec.Size)
 	}
-	fmt.Fprintf(out, ""+
-		"<td><a href='%s'>%s</a></td>"+
-		"<td align='right'>%s</td>"+
-		"<td align='right'>%s</td>",
-		url, rec.Name, size, mtime)
+	fmt.Fprintf(out, gridItem(url, rec.Name, size, mtime))
 }
 
 // Prefix represents a single "CommonPrefixes" entry in a GCS bucket.
@@ -315,14 +323,8 @@ type Prefix struct {
 
 // Render writes HTML representing this Prefix to the provided output.
 func (pfx *Prefix) Render(out http.ResponseWriter, inPath string) {
-	mtime := "-"
-	size := "-"
 	url := gcsPath + inPath + pfx.Prefix
-	fmt.Fprintf(out, ""+
-		"<td><a href='%s'>%s</a></td>"+
-		"<td align='right'>%s</td>"+
-		"<td align='right'>%s</td>",
-		url, pfx.Prefix, size, mtime)
+	fmt.Fprintf(out, gridItem(url, pfx.Prefix, "-", "-"))
 }
 
 // A logger-wrapper that logs a transaction's metadata.
