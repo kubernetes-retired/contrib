@@ -66,10 +66,12 @@ func (t *Translator) translateEviction(metrics *Metrics) *v3.TimeSeries {
 	}
 
 	now := time.Now().Format(time.RFC3339)
+	createTime := time.Unix(metrics.CreateTime, 0).Format(time.RFC3339)
+
 	point := &v3.Point{
 		Interval: &v3.TimeInterval{
+			StartTime: createTime,
 			EndTime:   now,
-			StartTime: now,
 		},
 		Value: &v3.TypedValue{
 			Int64Value:      monitor.Int64Ptr(metrics.NodeEvictions),
