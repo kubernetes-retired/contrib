@@ -32,7 +32,7 @@ import (
 const gcsBaseURL = "https://storage.googleapis.com"
 const gcsPath = "/gcs" // path for GCS browsing on this server
 
-var flPort = flag.Int("p", 80, "port number on which to listen")
+var flPort = flag.Int("p", 8080, "port number on which to listen")
 
 type strslice []string
 
