@@ -33,6 +33,13 @@ const gcsBaseURL = "https://storage.googleapis.com"
 const gcsPath = "/gcs" // path for GCS browsing on this server
 
 var flPort = flag.Int("p", 8080, "port number on which to listen")
+var flIcons = flag.String("i", "/icons", "path to the icons directory")
+
+const (
+	iconFile = "/icons/file.png"
+	iconDir  = "/icons/dir.png"
+	iconBack = "/icons/back.png"
+)
 
 type strslice []string
 
@@ -66,6 +73,9 @@ func main() {
 			http.Redirect(w, r, allowedBuckets[i]+"/", http.StatusMovedPermanently)
 		})
 	}
+
+	// Serve icons.
+	http.Handle("/icons/", http.StripPrefix("/icons/", http.FileServer(http.Dir(*flIcons))))
 
 	// Serve HTTP.
 	http.HandleFunc("/", otherRequest)
@@ -232,29 +242,38 @@ type gcsDir struct {
 	CommonPrefixes []Prefix `xml:"CommonPrefixes"`
 }
 
-const header string = `<!doctype html>
+func header(name string) string {
+	return fmt.Sprintf(`
+	<!doctype html>
 	<html>
 	<head>
 	<link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/pure-min.css">
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>GCS browser</title>
+	<title>GCS browser: %s</title>
 	</head>
-	<body>`
+	<body>
+	`, name)
+}
+
 const footer string = `</body></html>`
 
-func gridItem(url, name, size, modified string) string {
+func gridItem(icon, url, name, size, modified string) string {
 	return fmt.Sprintf(`<li class="pure-g">
-		<div class="pure-u-1-3"><a href="%s">%s</a></div>
+		<div class="pure-u-1-3"><a href="%s"><img src="%s"> %s</a></div>
 		<div class="pure-u-1-3">%s</div>
 		<div class="pure-u-1-3">%s</div>
 		</li>`,
-		url, name, size, modified)
+		url, icon, name, size, modified)
+}
+
+func nextButton(path, marker string) string {
+	return fmt.Sprintf(`<a href="%s?marker=%s" class="pure-button" style="margin: 10px 0;">Next page</a>`+"\n", path, marker)
 }
 
 // Render writes HTML representing this gcsDir to the provided output.
 func (dir *gcsDir) Render(out http.ResponseWriter, inPath string) {
-	fmt.Fprintf(out, header)
+	fmt.Fprintf(out, header(dir.Name))
 
 	fmt.Fprintf(out, `<header style="margin-left:10px;">`)
 	fmt.Fprintf(out, "<h1>%s</h1>\n", dir.Name)
@@ -262,19 +281,19 @@ func (dir *gcsDir) Render(out http.ResponseWriter, inPath string) {
 	fmt.Fprintf(out, "</header>")
 
 	fmt.Fprintf(out, "<ul>\n")
-	var nextButton string
+	var next string
 	if dir.NextMarker != "" {
-		nextButton = fmt.Sprintf(`<a href="%s?marker=%s" class="pure-button" style="margin: 10px 0;">Next page</a>`+"\n", gcsPath+inPath, dir.NextMarker)
-		fmt.Fprintf(out, nextButton)
+		next = nextButton(gcsPath+inPath, dir.NextMarker)
+		fmt.Fprintf(out, next)
 	}
 	fmt.Fprintf(out, `<li class="pure-g">`+
-		`<div class="pure-u-1-3">Name</div>`+
-		`<div class="pure-u-1-3">Size</div>`+
-		`<div class="pure-u-1-3">Modified</div>`+
+		`<div class="pure-u-1-3"><u>Name</u></div>`+
+		`<div class="pure-u-1-3"><u>Size</u></div>`+
+		`<div class="pure-u-1-3"><u>Modified</u></div>`+
 		"</li>")
 	if parent := dirname(inPath); parent != "" {
 		url := gcsPath + parent
-		fmt.Fprintf(out, gridItem(url, "..", "-", "-"))
+		fmt.Fprintf(out, gridItem(iconBack, url, "..", "-", "-"))
 	}
 
 	for i := range dir.CommonPrefixes {
@@ -283,9 +302,7 @@ func (dir *gcsDir) Render(out http.ResponseWriter, inPath string) {
 	for i := range dir.Contents {
 		dir.Contents[i].Render(out, inPath)
 	}
-	if dir.NextMarker != "" {
-		fmt.Fprintf(out, nextButton)
-	}
+	fmt.Fprintf(out, next)
 	fmt.Fprintf(out, "</ul>\n")
 	fmt.Fprintf(out, footer)
 }
@@ -313,7 +330,7 @@ func (rec *Record) Render(out http.ResponseWriter, inPath string) {
 		url = gcsBaseURL + inPath + rec.Name
 		size = fmt.Sprintf("%v", rec.Size)
 	}
-	fmt.Fprintf(out, gridItem(url, rec.Name, size, mtime))
+	fmt.Fprintf(out, gridItem(iconFile, url, rec.Name, size, mtime))
 }
 
 // Prefix represents a single "CommonPrefixes" entry in a GCS bucket.
@@ -324,7 +341,7 @@ type Prefix struct {
 // Render writes HTML representing this Prefix to the provided output.
 func (pfx *Prefix) Render(out http.ResponseWriter, inPath string) {
 	url := gcsPath + inPath + pfx.Prefix
-	fmt.Fprintf(out, gridItem(url, pfx.Prefix, "-", "-"))
+	fmt.Fprintf(out, gridItem(iconDir, url, pfx.Prefix, "-", "-"))
 }
 
 // A logger-wrapper that logs a transaction's metadata.
