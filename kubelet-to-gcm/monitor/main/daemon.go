@@ -55,8 +55,8 @@ func main() {
 	// First log our starting config, and then set up.
 	flag.Set("logtostderr", "true") // This spoofs glog into teeing logs to stderr.
 	defer log.Flush()
-	log.Infof("Invoked by %v", os.Args)
 	pflag.Parse()
+	log.Infof("Invoked by %v", os.Args)
 
 	resolution := time.Second * time.Duration(*res)
 
