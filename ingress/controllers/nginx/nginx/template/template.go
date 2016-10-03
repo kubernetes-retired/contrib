@@ -29,7 +29,7 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
 	"k8s.io/kubernetes/pkg/util/sysctl"
 )
 
@@ -201,7 +201,7 @@ func buildAuthLocation(input interface{}) string {
 		return ""
 	}
 
-	if location.ExternalAuthURL.URL == "" {
+	if location.ExternalAuth.URL == "" {
 		return ""
 	}
 

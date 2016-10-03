@@ -28,11 +28,11 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
 )
 
 // AddOrUpdateCertAndKey creates a .pem file wth the cert and the key with the specified name
-func (nginx *Manager) AddOrUpdateCertAndKey(name string, cert string, key string) (ingress.SSLCert, error) {
+func AddOrUpdateCertAndKey(name string, cert string, key string) (ingress.SSLCert, error) {
 	temporaryPemFileName := fmt.Sprintf("%v.pem", name)
 	pemFileName := fmt.Sprintf("%v/%v.pem", config.SSLDirectory, name)
 
@@ -51,7 +51,7 @@ func (nginx *Manager) AddOrUpdateCertAndKey(name string, cert string, key string
 		return ingress.SSLCert{}, fmt.Errorf("Couldn't close temp pem file %v: %v", temporaryPemFile.Name(), err)
 	}
 
-	cn, err := nginx.commonNames(temporaryPemFile.Name())
+	cn, err := commonNames(temporaryPemFile.Name())
 	if err != nil {
 		os.Remove(temporaryPemFile.Name())
 		return ingress.SSLCert{}, err
@@ -67,7 +67,7 @@ func (nginx *Manager) AddOrUpdateCertAndKey(name string, cert string, key string
 		CertFileName: cert,
 		KeyFileName:  key,
 		PemFileName:  pemFileName,
-		PemSHA:       nginx.pemSHA1(pemFileName),
+		PemSHA:       pemSHA1(pemFileName),
 		CN:           cn,
 	}, nil
 }
@@ -75,7 +75,7 @@ func (nginx *Manager) AddOrUpdateCertAndKey(name string, cert string, key string
 // commonNames checks if the certificate and key file are valid
 // returning the result of the validation and the list of hostnames
 // contained in the common name/s
-func (nginx *Manager) commonNames(pemFileName string) ([]string, error) {
+func commonNames(pemFileName string) ([]string, error) {
 	pemCerts, err := ioutil.ReadFile(pemFileName)
 	if err != nil {
 		return []string{}, err
@@ -103,7 +103,7 @@ func (nginx *Manager) commonNames(pemFileName string) ([]string, error) {
 // SearchDHParamFile iterates all the secrets mounted inside the /etc/nginx-ssl directory
 // in order to find a file with the name dhparam.pem. If such file exists it will
 // returns the path. If not it just returns an empty string
-func (nginx *Manager) SearchDHParamFile(baseDir string) string {
+func SearchDHParamFile(baseDir string) string {
 	files, _ := ioutil.ReadDir(baseDir)
 	for _, file := range files {
 		if !file.IsDir() {
@@ -123,7 +123,7 @@ func (nginx *Manager) SearchDHParamFile(baseDir string) string {
 
 // pemSHA1 returns the SHA1 of a pem file. This is used to
 // reload NGINX in case a secret with a SSL certificate changed.
-func (nginx *Manager) pemSHA1(filename string) string {
+func pemSHA1(filename string) string {
 	hasher := sha1.New()
 	s, err := ioutil.ReadFile(filename)
 	if err != nil {

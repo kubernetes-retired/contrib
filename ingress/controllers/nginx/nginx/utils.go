@@ -37,34 +37,6 @@ const (
 	skipAccessLogUrls = "skip-access-log-urls"
 )
 
-// getDNSServers returns the list of nameservers located in the file /etc/resolv.conf
-func getDNSServers() ([]string, error) {
-	var nameservers []string
-	file, err := ioutil.ReadFile("/etc/resolv.conf")
-	if err != nil {
-		return nameservers, err
-	}
-
-	// Lines of the form "nameserver 1.2.3.4" accumulate.
-	lines := strings.Split(string(file), "\n")
-	for l := range lines {
-		trimmed := strings.TrimSpace(lines[l])
-		if strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		fields := strings.Fields(trimmed)
-		if len(fields) == 0 {
-			continue
-		}
-		if fields[0] == "nameserver" {
-			nameservers = append(nameservers, fields[1:]...)
-		}
-	}
-
-	glog.V(3).Infof("nameservers to use: %v", nameservers)
-	return nameservers, nil
-}
-
 // getConfigKeyToStructKeyMap returns a map with the ConfigMapKey as key and the StructName as value.
 func getConfigKeyToStructKeyMap() map[string]string {
 	keyMap := map[string]string{}

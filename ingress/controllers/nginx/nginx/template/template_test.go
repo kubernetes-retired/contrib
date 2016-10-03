@@ -20,8 +20,8 @@ import (
 	"strings"
 	"testing"
 
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/rewrite"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/rewrite"
 )
 
 var (

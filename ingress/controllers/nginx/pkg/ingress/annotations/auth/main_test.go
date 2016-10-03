@@ -153,19 +153,19 @@ func TestIngressAuth(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	client := mockClient()
-	nginxAuth, err := ParseAnnotations(client, ing, dir)
+	auth, err := ParseAnnotations(client, ing, dir)
 	if err != nil {
 		t.Errorf("Uxpected error with ingress: %v", err)
 	}
 
-	if nginxAuth.Type != "basic" {
-		t.Errorf("Expected basic as auth type but returned %s", nginxAuth.Type)
+	if auth.Type != "basic" {
+		t.Errorf("Expected basic as auth type but returned %s", auth.Type)
 	}
-	if nginxAuth.Realm != "-realm-" {
-		t.Errorf("Expected -realm- as realm but returned %s", nginxAuth.Realm)
+	if auth.Realm != "-realm-" {
+		t.Errorf("Expected -realm- as realm but returned %s", auth.Realm)
 	}
-	if !nginxAuth.Secured {
-		t.Errorf("Expected true as secured but returned %v", nginxAuth.Secured)
+	if !auth.Secured {
+		t.Errorf("Expected true as secured but returned %v", auth.Secured)
 	}
 }
 

@@ -210,16 +210,16 @@ http {
         {{- if not (empty $authPath) }}
         location = {{ $authPath }} {
             internal;
-            {{ if not $location.ExternalAuthURL.SendBody }}
+            {{ if not $location.ExternalAuth.SendBody }}
             proxy_pass_request_body     off;
             proxy_set_header            Content-Length "";
             {{ end -}}
-            {{ if not (empty $location.ExternalAuthURL.Method) }}           
-            proxy_method {{ $location.ExternalAuthURL.Method }};
+            {{ if not (empty $location.ExternalAuth.Method) }}           
+            proxy_method {{ $location.ExternalAuth.Method }};
             {{ end -}}
             proxy_set_header            Host $host;            
             proxy_pass_request_headers  on;
-            proxy_pass {{ $location.ExternalAuthURL.URL }};
+            proxy_pass {{ $location.ExternalAuth.URL }};
         }
         {{ end }}
         location {{ $path }} {
@@ -244,14 +244,14 @@ http {
             {{- range $limit := $limits }}
             {{ $limit }}{{ end }}
 
-            {{- if $location.Auth.Secured }}
-            {{- if eq $location.Auth.Type "basic" }}
-            auth_basic "{{ $location.Auth.Realm }}";
-            auth_basic_user_file {{ $location.Auth.File }};
+            {{- if $location.BasicDigestAuth.Secured }}
+            {{- if eq $location.BasicDigestAuth.Type "basic" }}
+            auth_basic "{{ $location.BasicDigestAuth.Realm }}";
+            auth_basic_user_file {{ $location.BasicDigestAuth.File }};
             {{ else }}
             #TODO: add nginx-http-auth-digest module
-            auth_digest "{{ $location.Auth.Realm }}";
-            auth_digest_user_file {{ $location.Auth.File }};
+            auth_digest "{{ $location.BasicDigestAuth.Realm }}";
+            auth_digest_user_file {{ $location.BasicDigestAuth.File }};
             {{ end -}}
             proxy_set_header Authorization "";
             {{ end -}}

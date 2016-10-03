@@ -17,14 +17,14 @@ limitations under the License.
 package ingress
 
 import (
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/auth"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/authreq"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ipwhitelist"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ratelimit"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/rewrite"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/auth"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/authreq"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/ipwhitelist"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/ratelimit"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/rewrite"
 )
 
-// Configuration describes an NGINX configuration
+// Configuration describes a configuration
 type Configuration struct {
 	Upstreams    []*Upstream
 	Servers      []*Server
@@ -32,7 +32,7 @@ type Configuration struct {
 	UDPUpstreams []*Location
 }
 
-// Upstream describes an NGINX upstream
+// Upstream describes an upstream
 type Upstream struct {
 	Name     string
 	Backends []UpstreamServer
@@ -48,7 +48,7 @@ func (c UpstreamByNameServers) Less(i, j int) bool {
 	return c[i].Name < c[j].Name
 }
 
-// UpstreamServer describes a server in an NGINX upstream
+// UpstreamServer describes a server in an upstream
 type UpstreamServer struct {
 	Address     string
 	Port        string
@@ -73,7 +73,7 @@ func (c UpstreamServerByAddrPort) Less(i, j int) bool {
 	return iU < jU
 }
 
-// Server describes an NGINX server
+// Server describes a virtual server
 type Server struct {
 	Name              string
 	Locations         []*Location
@@ -92,18 +92,18 @@ func (c ServerByName) Less(i, j int) bool {
 	return c[i].Name < c[j].Name
 }
 
-// Location describes an NGINX location
+// Location describes a server location
 type Location struct {
 	Path            string
 	IsDefBackend    bool
 	Upstream        Upstream
-	Auth            auth.Nginx
+	BasicDigestAuth auth.BasicDigest
 	RateLimit       ratelimit.RateLimit
 	Redirect        rewrite.Redirect
 	SecureUpstream  bool
 	Whitelist       ipwhitelist.SourceRange
 	EnableCORS      bool
-	ExternalAuthURL authreq.Auth
+	ExternalAuth    authreq.External
 }
 
 // LocationByPath sorts location by path
@@ -116,7 +116,7 @@ func (c LocationByPath) Less(i, j int) bool {
 	return c[i].Path > c[j].Path
 }
 
-// SSLCert describes a SSL certificate to be used in NGINX
+// SSLCert describes a SSL certificate to be used in a server
 type SSLCert struct {
 	CertFileName string
 	KeyFileName  string

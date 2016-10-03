@@ -39,8 +39,8 @@ var (
 	ErrMissingAnnotations = errors.New("missing authentication annotations")
 )
 
-// Auth returns external authentication configuration for an Ingress rule
-type Auth struct {
+// External returns external authentication configuration for an Ingress rule
+type External struct {
 	URL      string
 	Method   string
 	SendBody bool
@@ -95,42 +95,42 @@ func validMethod(method string) bool {
 
 // ParseAnnotations parses the annotations contained in the ingress
 // rule used to use an external URL as source for authentication
-func ParseAnnotations(ing *extensions.Ingress) (Auth, error) {
+func ParseAnnotations(ing *extensions.Ingress) (External, error) {
 	if ing.GetAnnotations() == nil {
-		return Auth{}, ErrMissingAnnotations
+		return External{}, ErrMissingAnnotations
 	}
 
 	str, err := ingAnnotations(ing.GetAnnotations()).url()
 	if err != nil {
-		return Auth{}, err
+		return External{}, err
 	}
 	if str == "" {
-		return Auth{}, fmt.Errorf("an empty string is not a valid URL")
+		return External{}, fmt.Errorf("an empty string is not a valid URL")
 	}
 
 	ur, err := url.Parse(str)
 	if err != nil {
-		return Auth{}, err
+		return External{}, err
 	}
 	if ur.Scheme == "" {
-		return Auth{}, fmt.Errorf("url scheme is empty")
+		return External{}, fmt.Errorf("url scheme is empty")
 	}
 	if ur.Host == "" {
-		return Auth{}, fmt.Errorf("url host is empty")
+		return External{}, fmt.Errorf("url host is empty")
 	}
 
 	if strings.Index(ur.Host, "..") != -1 {
-		return Auth{}, fmt.Errorf("invalid url host")
+		return External{}, fmt.Errorf("invalid url host")
 	}
 
 	m := ingAnnotations(ing.GetAnnotations()).method()
 	if len(m) != 0 && !validMethod(m) {
-		return Auth{}, fmt.Errorf("invalid HTTP method")
+		return External{}, fmt.Errorf("invalid HTTP method")
 	}
 
 	sb := ingAnnotations(ing.GetAnnotations()).sendBody()
 
-	return Auth{
+	return External{
 		URL:      str,
 		Method:   m,
 		SendBody: sb,

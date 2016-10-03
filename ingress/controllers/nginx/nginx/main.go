@@ -27,8 +27,10 @@ import (
 	"k8s.io/kubernetes/pkg/util/flowcontrol"
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
 	ngx_template "k8s.io/contrib/ingress/controllers/nginx/nginx/template"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/net/dns"
+	ssl "k8s.io/contrib/ingress/controllers/nginx/pkg/net/ssl"
 )
 
 var (
@@ -75,7 +77,7 @@ func NewManager(kubeClient *client.Client) *Manager {
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(0.1, 1),
 	}
 
-	res, err := getDNSServers()
+	res, err := dns.GetSystemNameServers()
 	if err != nil {
 		glog.Warningf("error reading nameservers: %v", err)
 	}
@@ -83,7 +85,7 @@ func NewManager(kubeClient *client.Client) *Manager {
 
 	ngx.createCertsDir(config.SSLDirectory)
 
-	ngx.sslDHParam = ngx.SearchDHParamFile(config.SSLDirectory)
+	ngx.sslDHParam = ssl.SearchDHParamFile(config.SSLDirectory)
 
 	var onChange func()
 	onChange = func() {

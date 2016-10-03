@@ -14,24 +14,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package controller
 
 import (
 	"fmt"
 	"io/ioutil"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/golang/glog"
+
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
+)
+
+var (
+	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
 )
 
 // StoreToIngressLister makes a Store that lists Ingress.
@@ -112,65 +118,6 @@ func NewTaskQueue(syncFn func(string) error) *taskQueue {
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
 	}
-}
-
-// getPodDetails  returns runtime information about the pod: name, namespace and IP of the node
-func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
-	podName := os.Getenv("POD_NAME")
-	podNs := os.Getenv("POD_NAMESPACE")
-
-	if podName == "" && podNs == "" {
-		return nil, fmt.Errorf("unable to get POD information (missing POD_NAME or POD_NAMESPACE environment variable")
-	}
-
-	err := waitForPodRunning(kubeClient, podNs, podName, time.Millisecond*200, time.Second*30)
-	if err != nil {
-		return nil, err
-	}
-
-	pod, _ := kubeClient.Pods(podNs).Get(podName)
-	if pod == nil {
-		return nil, fmt.Errorf("unable to get POD information")
-	}
-
-	node, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
-	if err != nil {
-		return nil, err
-	}
-
-	var externalIP string
-	for _, address := range node.Status.Addresses {
-		if address.Type == api.NodeExternalIP {
-			if address.Address != "" {
-				externalIP = address.Address
-				break
-			}
-		}
-
-		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
-			externalIP = address.Address
-		}
-	}
-
-	return &podInfo{
-		PodName:      podName,
-		PodNamespace: podNs,
-		NodeIP:       externalIP,
-	}, nil
-}
-
-func isValidService(kubeClient *unversioned.Client, name string) error {
-	if name == "" {
-		return fmt.Errorf("empty string is not a valid service name")
-	}
-
-	parts := strings.Split(name, "/")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid name format (namespace/name) in service '%v'", name)
-	}
-
-	_, err := kubeClient.Services(parts[0]).Get(parts[1])
-	return err
 }
 
 func isHostValid(host string, cns []string) bool {
@@ -298,4 +245,13 @@ func getFakeSSLCert() (string, string) {
 	}
 
 	return string(cert), string(key)
+}
+
+func isDefaultUpstream(ups *ingress.Upstream) bool {
+	if ups == nil || len(ups.Backends) == 0 {
+		return false
+	}
+
+	return ups.Backends[0].Address == "127.0.0.1" &&
+		ups.Backends[0].Port == "8181"
 }

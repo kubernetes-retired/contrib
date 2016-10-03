@@ -43,10 +43,8 @@ func TestAddOrUpdateCertAndKey(t *testing.T) {
 		t.Fatalf("Unexpected error: %+v", err)
 	}
 
-	ngx := &Manager{}
-
 	name := fmt.Sprintf("test-%v", time.Now().UnixNano())
-	ngxCert, err := ngx.AddOrUpdateCertAndKey(name, string(dCrt), string(dKey))
+	ngxCert, err := AddOrUpdateCertAndKey(name, string(dCrt), string(dKey))
 	if err != nil {
 		t.Fatalf("unexpected error checking SSL certificate: %v", err)
 	}

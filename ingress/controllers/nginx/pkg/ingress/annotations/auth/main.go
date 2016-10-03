@@ -38,8 +38,8 @@ const (
 	defAuthRealm = "Authentication Required"
 
 	// DefAuthDirectory default directory used to store files
-	// to authenticate request in NGINX
-	DefAuthDirectory = "/etc/nginx/auth"
+	// to authenticate request
+	DefAuthDirectory = "/etc/ingress-controller/auth"
 )
 
 func init() {
@@ -67,8 +67,8 @@ var (
 	ErrMissingAnnotations = errors.New("missing authentication annotations")
 )
 
-// Nginx returns authentication configuration for an Ingress rule
-type Nginx struct {
+// BasicDigest returns authentication configuration for an Ingress rule
+type BasicDigest struct {
 	Type    string
 	Realm   string
 	File    string
@@ -113,24 +113,24 @@ func (a ingAnnotations) secretName() (string, error) {
 // rule used to add authentication in the paths defined in the rule
 // and generated an htpasswd compatible file to be used as source
 // during the authentication process
-func ParseAnnotations(kubeClient client.Interface, ing *extensions.Ingress, authDir string) (*Nginx, error) {
+func ParseAnnotations(kubeClient client.Interface, ing *extensions.Ingress, authDir string) (*BasicDigest, error) {
 	if ing.GetAnnotations() == nil {
-		return &Nginx{}, ErrMissingAnnotations
+		return &BasicDigest{}, ErrMissingAnnotations
 	}
 
 	at, err := ingAnnotations(ing.GetAnnotations()).authType()
 	if err != nil {
-		return &Nginx{}, err
+		return &BasicDigest{}, err
 	}
 
 	s, err := ingAnnotations(ing.GetAnnotations()).secretName()
 	if err != nil {
-		return &Nginx{}, err
+		return &BasicDigest{}, err
 	}
 
 	secret, err := kubeClient.Secrets(ing.Namespace).Get(s)
 	if err != nil {
-		return &Nginx{}, err
+		return &BasicDigest{}, err
 	}
 
 	realm := ingAnnotations(ing.GetAnnotations()).realm()
@@ -138,10 +138,10 @@ func ParseAnnotations(kubeClient client.Interface, ing *extensions.Ingress, auth
 	passFile := fmt.Sprintf("%v/%v-%v.passwd", authDir, ing.GetNamespace(), ing.GetName())
 	err = dumpSecret(passFile, secret)
 	if err != nil {
-		return &Nginx{}, err
+		return &BasicDigest{}, err
 	}
 
-	return &Nginx{
+	return &BasicDigest{
 		Type:    at,
 		Realm:   realm,
 		File:    passFile,

@@ -28,7 +28,7 @@ import (
 	"k8s.io/kubernetes/pkg/healthz"
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
 )
 
 // Start starts a nginx (master process) and waits. If the process ends
@@ -132,7 +132,7 @@ func (ngx Manager) testTemplate(cfg []byte) error {
 	if err := ngx.shellOut(fmt.Sprintf("nginx -t -c %v", tmpfile.Name())); err != nil {
 		return fmt.Errorf("invalid nginx configuration: %v", err)
 	}
-	// in case of error do not remove temporal file
+	// in case of error do not remove the temporal file
 	defer os.Remove(tmpfile.Name())
 	return nil
 }
