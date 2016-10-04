@@ -29,7 +29,21 @@ import (
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
+
+	"expvar"
 )
+
+// number of reloads performed
+var (
+	reload      = new(expvar.Int)
+	reloadError = new(expvar.Int)
+)
+
+// publish metrics in order to access from path specified in registerHandlers function
+func init() {
+	expvar.Publish("reload", reload)
+	expvar.Publish("reloaderror", reloadError)
+}
 
 // Start starts a nginx (master process) and waits. If the process ends
 // we need to kill the controller process and return the reason.
@@ -75,10 +89,13 @@ func (ngx *Manager) CheckAndReload(cfg config.Configuration, ingressCfg ingress.
 	}
 
 	if changed {
+
 		if err := ngx.shellOut("nginx -s reload"); err != nil {
+			reloadError.Add(1)
 			return fmt.Errorf("error reloading nginx: %v", err)
 		}
 
+		reload.Add(1)
 		glog.Info("change in configuration detected. Reloading...")
 	}
 
