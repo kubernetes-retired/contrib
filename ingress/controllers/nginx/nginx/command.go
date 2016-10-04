@@ -29,6 +29,13 @@ import (
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
+	"expvar"
+)
+
+// number of reload that performed
+var (
+	reload = expvar.NewInt("reload")
+
 )
 
 // Start starts a nginx (master process) and waits. If the process ends
@@ -75,6 +82,8 @@ func (ngx *Manager) CheckAndReload(cfg config.Configuration, ingressCfg ingress.
 	}
 
 	if changed {
+		reload.Add(1)
+
 		if err := ngx.shellOut("nginx -s reload"); err != nil {
 			return fmt.Errorf("error reloading nginx: %v", err)
 		}
