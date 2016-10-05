@@ -1,9 +1,4 @@
-assignees:
+approvers:
 - freehan
 - gmarek
 - lavalamp
-to_migrate_to_approvers:
-  approvers:
-  - freehan
-  - gmarek
-  - lavalamp

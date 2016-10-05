@@ -1,9 +1,4 @@
-assignees:
+approvers:
 - fgrzadkowski
 - mwielgus
 - piosz
-to_migrate_to_approvers:
-  approvers:
-  - fgrzadkowski
-  - mwielgus
-  - piosz

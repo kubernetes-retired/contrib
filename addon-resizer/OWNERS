@@ -1,9 +1,4 @@
-assignees:
-- Q-Lee
+approvers:
 - piosz
+- q-lee
 - wojtek-t
-to_migrate_to_approvers:
-  approvers:
-  - Q-Lee
-  - piosz
-  - wojtek-t

@@ -1,9 +1,4 @@
-assignees:
+approvers:
 - eparis
 - mikedanese
 - raggi
-to_migrate_to_approvers:
-  approvers:
-  - eparis
-  - mikedanese
-  - raggi

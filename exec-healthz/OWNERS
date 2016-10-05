@@ -1,11 +1,5 @@
-assignees:
+approvers:
 - bprashanth
 - luxas
 - mikedanese
 - mrhohn
-to_migrate_to_approvers:
-  approvers:
-  - bprashanth
-  - luxas
-  - mikedanese
-  - mrhohn

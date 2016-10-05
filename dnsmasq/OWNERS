@@ -1,9 +1,4 @@
-assignees:
-- ArtfulCoder
+approvers:
+- artfulcoder
 - girishkalele
 - luxas
-to_migrate_to_approvers:
-  approvers:
-  - ArtfulCoder
-  - girishkalele
-  - luxas

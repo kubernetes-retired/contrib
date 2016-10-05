@@ -1,9 +1,4 @@
-assignees:
+approvers:
 - alekssaul
 - brendandburns
 - roberthbailey
-to_migrate_to_approvers:
-  approvers:
-  - alekssaul
-  - brendandburns
-  - roberthbailey

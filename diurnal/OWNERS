@@ -1,9 +1,4 @@
-assignees:
+approvers:
 - bprashanth
 - eparis
 - mikedanese
-to_migrate_to_approvers:
-  approvers:
-  - bprashanth
-  - eparis
-  - mikedanese

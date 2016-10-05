@@ -1,9 +1,4 @@
-assignees:
-- Random-Liu
+approvers:
 - brendandburns
 - gmarek
-to_migrate_to_approvers:
-  approvers:
-  - Random-Liu
-  - brendandburns
-  - gmarek
+- random-liu
