@@ -3,3 +3,9 @@ assignees:
 - eparis
 - foxish
 - lavalamp
+to_migrate_to_approvers:
+  approvers:
+  - apelisse
+  - eparis
+  - foxish
+  - lavalamp

@@ -2,4 +2,8 @@ assignees:
 - eparis
 - mikedanese
 - pwittrock
-
+to_migrate_to_approvers:
+  approvers:
+  - eparis
+  - mikedanese
+  - pwittrock

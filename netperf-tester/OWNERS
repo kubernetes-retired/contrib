@@ -2,4 +2,8 @@ assignees:
 - BenTheElder
 - eparis
 - mikedanese
-
+to_migrate_to_approvers:
+  approvers:
+  - BenTheElder
+  - eparis
+  - mikedanese

@@ -2,4 +2,8 @@ assignees:
 - bprashanth
 - luxas
 - mikedanese
-
+to_migrate_to_approvers:
+  approvers:
+  - bprashanth
+  - luxas
+  - mikedanese

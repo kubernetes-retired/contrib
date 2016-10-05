@@ -2,4 +2,8 @@ assignees:
 - Q-Lee
 - piosz
 - wojtek-t
-
+to_migrate_to_approvers:
+  approvers:
+  - Q-Lee
+  - piosz
+  - wojtek-t

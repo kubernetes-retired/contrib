@@ -2,4 +2,8 @@ assignees:
 - mikedanese
 - rootfs
 - sgallagher
-
+to_migrate_to_approvers:
+  approvers:
+  - mikedanese
+  - rootfs
+  - sgallagher

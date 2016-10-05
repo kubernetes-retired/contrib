@@ -2,4 +2,8 @@ assignees:
 - 3cky
 - eparis
 - mikedanese
-
+to_migrate_to_approvers:
+  approvers:
+  - 3cky
+  - eparis
+  - mikedanese
