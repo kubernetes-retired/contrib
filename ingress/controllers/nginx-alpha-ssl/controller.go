@@ -280,21 +280,27 @@ func main() {
         }
       }
 
-      if vaultEnabled == "true" && i.Ssl {
+      if vaultEnabled == "true" {
         // Renew token
         tokenPath := "/auth/token/renew-self"
         tokenData, err := vault.Logical().Write(tokenPath, nil)
         if err != nil || tokenData == nil {
           fmt.Printf("Error renewing Vault token %v, %v\n", err, tokenData)
+          continue
         } else {
           fmt.Printf("Successfully renewed Vault token.\n")
         }
+      }
 
+      if i.Ssl {
         vaultPath := "secret/ssl/" + ingressHost
         keySecretData, err := vault.Logical().Read(vaultPath)
-        if err != nil || keySecretData == nil {
-          fmt.Printf("No secret for %v\n", ingressHost)
-          i.Ssl = false
+        if err != nil {
+          fmt.Printf("Error retrieving secret for %v\n", ingressHost)
+          break
+        } else if keySecretData == nil {
+            fmt.Printf("No secret for %v\n", ingressHost)
+            i.Ssl = false
         } else {
           fmt.Printf("Found secret for %v\n", ingressHost)
           var keySecret string = fmt.Sprintf("%v", keySecretData.Data["key"])
