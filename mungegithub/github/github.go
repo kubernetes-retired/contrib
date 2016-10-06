@@ -171,6 +171,9 @@ type Config struct {
 	// When we clear analytics we store the last values here
 	lastAnalytics analytics
 	analytics     analytics
+
+	// Last fetch
+	since time.Time
 }
 
 type analytic struct {
@@ -1787,11 +1790,42 @@ func (obj *MungeObject) MergedAt() *time.Time {
 	return pr.MergedAt
 }
 
+func (config *Config) runMungeFunction(obj *MungeObject, fn MungeFunction) error {
+	if obj.Issue.Number == nil {
+		glog.Infof("Skipping issue with no number, very strange")
+		return nil
+	}
+	if obj.Issue.User == nil || obj.Issue.User.Login == nil {
+		glog.V(2).Infof("Skipping PR %d with no user info %#v.", *obj.Issue.Number, obj.Issue.User)
+		return nil
+	}
+	if *obj.Issue.Number < config.MinPRNumber {
+		glog.V(6).Infof("Dropping %d < %d", *obj.Issue.Number, config.MinPRNumber)
+		return nil
+	}
+	if *obj.Issue.Number > config.MaxPRNumber {
+		glog.V(6).Infof("Dropping %d > %d", *obj.Issue.Number, config.MaxPRNumber)
+		return nil
+	}
+	glog.V(2).Infof("----==== %d ====----", *obj.Issue.Number)
+	glog.V(8).Infof("Issue %d labels: %v isPR: %v", *obj.Issue.Number, obj.Issue.Labels, obj.Issue.PullRequestLinks != nil)
+	if err := fn(obj); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ForEachIssueDo will run for each Issue in the project that matches:
 //   * pr.Number >= minPRNumber
 //   * pr.Number <= maxPRNumber
 func (config *Config) ForEachIssueDo(fn MungeFunction) error {
 	page := 1
+
+	// Using Zero time doesn't work with github
+	if config.since.IsZero() {
+		config.since = time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
+	since := time.Now()
 	for {
 		glog.V(4).Infof("Fetching page %d of issues", page)
 		listOpts := &github.IssueListByRepoOptions{
@@ -1800,6 +1834,7 @@ func (config *Config) ForEachIssueDo(fn MungeFunction) error {
 			Labels:      config.Labels,
 			Direction:   "asc",
 			ListOptions: github.ListOptions{PerPage: 100, Page: page},
+			Since:       config.since,
 		}
 		issues, response, err := config.client.Issues.ListByRepo(config.Org, config.Project, listOpts)
 		config.analytics.ListIssues.Call(config, response)
@@ -1807,32 +1842,14 @@ func (config *Config) ForEachIssueDo(fn MungeFunction) error {
 			return err
 		}
 		for i := range issues {
-			issue := issues[i]
-			if issue.Number == nil {
-				glog.Infof("Skipping issue with no number, very strange")
-				continue
-			}
-			if issue.User == nil || issue.User.Login == nil {
-				glog.V(2).Infof("Skipping PR %d with no user info %#v.", *issue.Number, issue.User)
-				continue
-			}
-			if *issue.Number < config.MinPRNumber {
-				glog.V(6).Infof("Dropping %d < %d", *issue.Number, config.MinPRNumber)
-				continue
-			}
-			if *issue.Number > config.MaxPRNumber {
-				glog.V(6).Infof("Dropping %d > %d", *issue.Number, config.MaxPRNumber)
-				continue
-			}
-			glog.V(2).Infof("----==== %d ====----", *issue.Number)
-			glog.V(8).Infof("Issue %d labels: %v isPR: %v", *issue.Number, issue.Labels, issue.PullRequestLinks != nil)
-			obj := MungeObject{
+			obj := &MungeObject{
 				config:      config,
-				Issue:       issue,
+				Issue:       issues[i],
 				Annotations: map[string]string{},
 			}
-			if err := fn(&obj); err != nil {
-				continue
+			err := config.runMungeFunction(obj, fn)
+			if err != nil {
+				return err
 			}
 		}
 		if response.LastPage == 0 || response.LastPage <= page {
@@ -1840,6 +1857,7 @@ func (config *Config) ForEachIssueDo(fn MungeFunction) error {
 		}
 		page++
 	}
+	config.since = since
 	return nil
 }
 
