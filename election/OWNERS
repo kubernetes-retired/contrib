@@ -1,3 +1,7 @@
 approvers:
 - brendandburns
 - mikedanese
+reviewers:
+- aledbf
+- foxish
+- ingvagabund

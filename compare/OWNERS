@@ -2,3 +2,7 @@ approvers:
 - freehan
 - gmarek
 - mikedanese
+reviewers:
+- foxish
+- gmarek
+- ingvagabund

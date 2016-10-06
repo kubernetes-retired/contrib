@@ -2,3 +2,7 @@ approvers:
 - brendandburns
 - gmarek
 - random-liu
+reviewers:
+- foxish
+- gmarek
+- random-liu

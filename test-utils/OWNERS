@@ -2,3 +2,7 @@ approvers:
 - freehan
 - gmarek
 - lavalamp
+reviewers:
+- freehan
+- gmarek
+- lavalamp
