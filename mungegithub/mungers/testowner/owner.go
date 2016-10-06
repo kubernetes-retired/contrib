@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/gobwas/glob"
 )
 
 var tagRegex = regexp.MustCompile(`\[.*?\]|\{.*?\}`)
@@ -49,10 +50,27 @@ type OwnerList struct {
 // or else the empty string if none is found.
 func (o *OwnerList) TestOwner(testName string) string {
 	name := normalize(testName)
+
+	// exact mapping
 	owner, _ := o.mapping[name]
+
+	// glob matching
+	if owner == "" {
+		var g glob.Glob
+		for k, v := range o.mapping {
+			g = glob.MustCompile(k)
+			if g.Match(name) {
+				owner = v
+				break
+			}
+		}
+	}
+
+	// falls into default
 	if owner == "" {
 		owner, _ = o.mapping["default"]
 	}
+
 	if strings.Contains(owner, "/") {
 		ownerSet := strings.Split(owner, "/")
 		owner = ownerSet[o.rng.Intn(len(ownerSet))]
