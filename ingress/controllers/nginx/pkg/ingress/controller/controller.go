@@ -42,6 +42,7 @@ import (
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
+	cache_store "k8s.io/contrib/ingress/controllers/nginx/pkg/cache"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/auth"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/authreq"
@@ -55,6 +56,7 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/service"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/status"
 	ssl "k8s.io/contrib/ingress/controllers/nginx/pkg/net/ssl"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/task"
 )
 
 const (
@@ -82,17 +84,17 @@ type GenericController struct {
 	secrController *cache.Controller
 	mapController  *cache.Controller
 
-	ingLister  StoreToIngressLister
+	ingLister  cache_store.StoreToIngressLister
 	svcLister  cache.StoreToServiceLister
 	endpLister cache.StoreToEndpointsLister
-	secrLister StoreToSecretsLister
-	mapLister  StoreToConfigmapLister
+	secrLister cache_store.StoreToSecretsLister
+	mapLister  cache_store.StoreToConfigmapLister
 
 	nginx *nginx.Manager
 
 	recorder record.EventRecorder
 
-	syncQueue *taskQueue
+	syncQueue *task.Queue
 
 	syncStatus status.Sync
 
@@ -100,8 +102,8 @@ type GenericController struct {
 	// Needed because we allow stopping through an http endpoint and
 	// allowing concurrent stoppers leads to stack traces.
 	stopLock *sync.Mutex
-	shutdown bool
-	stopCh   chan struct{}
+
+	stopCh chan struct{}
 }
 
 // Configuration ...
@@ -117,6 +119,7 @@ type Configuration struct {
 	UDPConfigMapName      string
 	DefaultSSLCertificate string
 	DefaultHealthzURL     string
+	PublishService        string
 }
 
 // NewLoadBalancer creates a controller for nginx loadbalancer
@@ -127,17 +130,14 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 	eventBroadcaster.StartRecordingToSink(config.Client.Events(config.Namespace))
 
 	ic := GenericController{
-		cfg:        config,
-		stopLock:   &sync.Mutex{},
-		stopCh:     make(chan struct{}),
-		nginx:      nginx.NewManager(config.Client),
-		syncStatus: status.NewStatusSyncer(config.Client, config.ElectionClient),
+		cfg:      config,
+		stopLock: &sync.Mutex{},
+		stopCh:   make(chan struct{}),
+		nginx:    nginx.NewManager(config.Client),
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{
 			Component: "nginx-ingress-controller",
 		}),
 	}
-
-	ic.syncQueue = NewTaskQueue(ic.sync)
 
 	ingEventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -147,7 +147,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 				return
 			}
 			ic.recorder.Eventf(addIng, api.EventTypeNormal, "CREATE", fmt.Sprintf("%s/%s", addIng.Namespace, addIng.Name))
-			ic.syncQueue.enqueue(obj)
+			ic.syncQueue.Enqueue(obj)
 		},
 		DeleteFunc: func(obj interface{}) {
 			delIng := obj.(*extensions.Ingress)
@@ -156,7 +156,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 				return
 			}
 			ic.recorder.Eventf(delIng, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", delIng.Namespace, delIng.Name))
-			ic.syncQueue.enqueue(obj)
+			ic.syncQueue.Enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			curIng := cur.(*extensions.Ingress)
@@ -166,7 +166,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 			if !reflect.DeepEqual(old, cur) {
 				upIng := cur.(*extensions.Ingress)
 				ic.recorder.Eventf(upIng, api.EventTypeNormal, "UPDATE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
-				ic.syncQueue.enqueue(cur)
+				ic.syncQueue.Enqueue(cur)
 			}
 		},
 	}
@@ -176,14 +176,14 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 			addSecr := obj.(*api.Secret)
 			if ic.secrReferenced(addSecr.Namespace, addSecr.Name) {
 				ic.recorder.Eventf(addSecr, api.EventTypeNormal, "CREATE", fmt.Sprintf("%s/%s", addSecr.Namespace, addSecr.Name))
-				ic.syncQueue.enqueue(obj)
+				ic.syncQueue.Enqueue(obj)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			delSecr := obj.(*api.Secret)
 			if ic.secrReferenced(delSecr.Namespace, delSecr.Name) {
 				ic.recorder.Eventf(delSecr, api.EventTypeNormal, "DELETE", fmt.Sprintf("%s/%s", delSecr.Namespace, delSecr.Name))
-				ic.syncQueue.enqueue(obj)
+				ic.syncQueue.Enqueue(obj)
 			}
 		},
 		UpdateFunc: func(old, cur interface{}) {
@@ -191,7 +191,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 				upSecr := cur.(*api.Secret)
 				if ic.secrReferenced(upSecr.Namespace, upSecr.Name) {
 					ic.recorder.Eventf(upSecr, api.EventTypeNormal, "UPDATE", fmt.Sprintf("%s/%s", upSecr.Namespace, upSecr.Name))
-					ic.syncQueue.enqueue(cur)
+					ic.syncQueue.Enqueue(cur)
 				}
 			}
 		},
@@ -199,14 +199,14 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 
 	eventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			ic.syncQueue.enqueue(obj)
+			ic.syncQueue.Enqueue(obj)
 		},
 		DeleteFunc: func(obj interface{}) {
-			ic.syncQueue.enqueue(obj)
+			ic.syncQueue.Enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
-				ic.syncQueue.enqueue(cur)
+				ic.syncQueue.Enqueue(cur)
 			}
 		},
 	}
@@ -219,7 +219,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 				// updates to configuration configmaps can trigger an update
 				if mapKey == ic.cfg.NginxConfigMapName || mapKey == ic.cfg.TCPConfigMapName || mapKey == ic.cfg.UDPConfigMapName {
 					ic.recorder.Eventf(upCmap, api.EventTypeNormal, "UPDATE", mapKey)
-					ic.syncQueue.enqueue(cur)
+					ic.syncQueue.Enqueue(cur)
 				}
 			}
 		},
@@ -262,6 +262,14 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 			WatchFunc: ic.mapWatchFunc(),
 		},
 		&api.ConfigMap{}, ic.cfg.ResyncPeriod, mapEventHandler)
+
+	ic.syncStatus = status.NewStatusSyncer(status.Config{
+		Client:         config.Client,
+		ElectionClient: ic.cfg.ElectionClient,
+		PublishService: ic.cfg.PublishService,
+		IngressLister:  ic.ingLister,
+	})
+	ic.syncQueue = task.NewTaskQueue(ic.sync)
 
 	return ic, nil
 }
@@ -364,7 +372,7 @@ func (ic *GenericController) checkSvcForUpdate(svc *api.Service) error {
 	})
 
 	if err != nil {
-		fmt.Errorf("error searching service pods %v/%v: %v", svc.Namespace, svc.Name, err)
+		return fmt.Errorf("error searching service pods %v/%v: %v", svc.Namespace, svc.Name, err)
 	}
 
 	if len(pods.Items) == 0 {
@@ -424,6 +432,10 @@ func (ic *GenericController) checkSvcForUpdate(svc *api.Service) error {
 }
 
 func (ic *GenericController) sync(key string) error {
+	if ic.syncQueue.IsShuttingDown() {
+		return nil
+	}
+
 	if !ic.controllersInSync() {
 		time.Sleep(podStoreSyncedPollPeriod)
 		return fmt.Errorf("deferring sync till endpoints controller has synced")
@@ -1079,20 +1091,15 @@ func (ic *GenericController) getEndpoints(
 
 // Stop stops the loadbalancer controller.
 func (ic GenericController) Stop() error {
-	// Stop is invoked from the http endpoint.
 	ic.stopLock.Lock()
 	defer ic.stopLock.Unlock()
 
 	// Only try draining the workqueue if we haven't already.
-	if !ic.shutdown {
-		ic.shutdown = true
+	if !ic.syncQueue.IsShuttingDown() {
+		// Stop is invoked from the http endpoint.
 		close(ic.stopCh)
-
-		glog.Infof("Shutting down controller queues.")
-		ic.syncQueue.shutdown()
-
-		ic.syncStatus.Stop()
-
+		glog.Infof("shutting down controller queues")
+		ic.syncQueue.Shutdown()
 		return nil
 	}
 
@@ -1110,8 +1117,9 @@ func (ic GenericController) Start() {
 	go ic.secrController.Run(ic.stopCh)
 	go ic.mapController.Run(ic.stopCh)
 
-	go ic.syncQueue.run(time.Second, ic.stopCh)
-	go ic.syncStatus.Start()
+	go ic.syncQueue.Run(time.Second, ic.stopCh)
+
+	go ic.syncStatus.Run(ic.stopCh)
 
 	<-ic.stopCh
 }

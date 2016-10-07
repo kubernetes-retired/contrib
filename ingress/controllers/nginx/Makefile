@@ -13,8 +13,8 @@ endif
 PKG := "k8s.io/contrib/ingress/controllers/nginx"
 
 controller: clean
-	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix "static" \
-		-ldflags "-X ${PKG}/pkg/version.RELEASE=${RELEASE} -X ${PKG}/pkg/version.COMMIT=${COMMIT} -X ${PKG}/pkg/version.REPO=${REPO_INFO}" \
+	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+		-ldflags "-s -w -X ${PKG}/pkg/version.RELEASE=${RELEASE} -X ${PKG}/pkg/version.COMMIT=${COMMIT} -X ${PKG}/pkg/version.REPO=${REPO_INFO}" \
 		-o nginx-ingress-controller ${PKG}/pkg/cmd/controller 
 
 container: controller

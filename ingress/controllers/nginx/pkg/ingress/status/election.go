@@ -32,11 +32,6 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
-const (
-	startBackoff = time.Second
-	maxBackoff   = time.Minute
-)
-
 func getCurrentLeader(electionID, namespace string, c client.Interface) (string, *api.Endpoints, error) {
 	endpoints, err := c.Endpoints(namespace).Get(electionID)
 	if err != nil {
@@ -47,7 +42,7 @@ func getCurrentLeader(electionID, namespace string, c client.Interface) (string,
 		return "", endpoints, nil
 	}
 	electionRecord := resourcelock.LeaderElectionRecord{}
-	if err := json.Unmarshal([]byte(val), &electionRecord); err != nil {
+	if err = json.Unmarshal([]byte(val), &electionRecord); err != nil {
 		return "", nil, err
 	}
 	return electionRecord.HolderIdentity, endpoints, err
@@ -62,6 +57,7 @@ func NewElection(electionID,
 	callback func(leader string),
 	c client.Interface,
 	leaderElectionClient *clientset.Clientset) (*leaderelection.LeaderElector, error) {
+
 	_, err := c.Endpoints(namespace).Get(electionID)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -77,13 +73,6 @@ func NewElection(electionID,
 			return nil, err
 		}
 	}
-
-	/*
-		leader, _, err := getCurrentLeader(electionID, namespace, c)
-		if err != nil {
-			return nil, err
-		}
-		callback(leader)*/
 
 	callbacks := leaderelection.LeaderCallbacks{
 		OnStartedLeading: func(stop <-chan struct{}) {

@@ -23,6 +23,9 @@ import (
 
 	"github.com/golang/glog"
 
+	cache_store "k8s.io/contrib/ingress/controllers/nginx/pkg/cache"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/task"
+
 	"k8s.io/kubernetes/pkg/api"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/leaderelection"
@@ -30,140 +33,142 @@ import (
 	"k8s.io/kubernetes/pkg/util/wait"
 )
 
+const (
+	updateInterval = 15 * time.Second
+)
+
 // Sync ...
 type Sync interface {
-	Start()
-	Stop()
+	Run(stopCh <-chan struct{})
+}
+
+// Config ...
+type Config struct {
+	Client         *unversioned.Client
+	ElectionClient *clientset.Clientset
+	PublishService string
+	IngressLister  cache_store.StoreToIngressLister
 }
 
 type sync struct {
-	client *unversioned.Client
+	Config
 
 	podInfo *podInfo
 
 	elector *leaderelection.LeaderElector
+
+	syncQueue *task.Queue
 }
 
-// Start ...
-func (s sync) Start() {
+type dummyObject struct {
+	api.ObjectMeta
+}
+
+// Run ...
+func (s sync) Run(stopCh <-chan struct{}) {
 	go wait.Forever(s.elector.Run, 0)
+	go s.syncQueue.Run(time.Second, stopCh)
+	go s.run()
+
+	<-stopCh
+
+	s.syncQueue.Shutdown()
+	// remove IP from Ingress
+	s.removeFromIngress()
 }
 
-// Stop ...
-func (s sync) Stop() {
-	//s.removeFromIngress()
+func (s *sync) run() {
+	err := wait.PollInfinite(updateInterval, func() (bool, error) {
+		if s.syncQueue.IsShuttingDown() {
+			return true, nil
+		}
+		// send a dummy object to the queue to force a sync
+		s.syncQueue.Enqueue(&dummyObject{
+			ObjectMeta: api.ObjectMeta{
+				Name:      "dummy",
+				Namespace: "default",
+			},
+		})
+		return false, nil
+	})
+	if err != nil {
+		glog.Errorf("error waiting shutdown: %v", err)
+	}
+}
+
+func (s *sync) sync(key string) error {
+	if !s.elector.IsLeader() {
+		glog.V(2).Infof("skipping Ingress status update (I am not the current leader)")
+		return nil
+	}
+
+	s.updateIngressStatus()
+	return nil
+}
+
+// callback invoked function when a new leader is elected
+func (s *sync) callback(leader string) {
+	if s.syncQueue.IsShuttingDown() {
+		return
+	}
+
+	glog.V(2).Infof("new leader elected (%v)", leader)
+	if leader == s.podInfo.podName {
+		glog.V(2).Infof("I am the new status update leader")
+	}
 }
 
 // NewStatusSyncer ...
-func NewStatusSyncer(client *unversioned.Client, leaderElectionClient *clientset.Clientset) Sync {
-	podInfo, err := getPodDetails(client)
+func NewStatusSyncer(config Config) Sync {
+	podInfo, err := getPodDetails(config.Client)
 	if err != nil {
 		glog.Fatalf("unexpected error obtaining pod information: %v", err)
 	}
+
 	st := sync{
-		client:  client,
 		podInfo: podInfo,
 	}
+	st.Config = config
+	st.syncQueue = task.NewTaskQueue(st.sync)
 
-	callback := func(leader string) {
-		if leader == podInfo.PodName {
-			st.updateIngressStatus()
-		}
-	}
-
-	le, err := NewElection("leader-ingress-controller", podInfo.PodName, podInfo.PodNamespace, 30*time.Second, callback, client, leaderElectionClient)
+	le, err := NewElection("ingress-controller-leader",
+		podInfo.podName, podInfo.podNamespace, 30*time.Second,
+		st.callback, config.Client, config.ElectionClient)
 	if err != nil {
 		glog.Fatalf("unexpected error starting leader election: %v", err)
 	}
 	st.elector = le
-
 	return st
 }
 
-func (s *sync) updateIngressStatus() error {
+func (s *sync) updateIngressStatus() {
+	if !s.elector.IsLeader() {
+		return
+	}
+
 	glog.Infof("updating status of Ingress rules")
-	/*
-		obj, ingExists, err := lbc.ingLister.Store.GetByKey(key)
-		if err != nil {
-			return err
-		}
-
-		if !ingExists {
-			// TODO: what's the correct behavior here?
-			return nil
-		}
-
-		ing := obj.(*extensions.Ingress)
-
-		ingClient := s.client.Extensions().Ingress(ing.Namespace)
-
-		currIng, err := ingClient.Get(ing.Name)
-		if err != nil {
-			return fmt.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
-		}
-
-			lbIPs := ing.Status.LoadBalancer.Ingress
-			if !s.isStatusIPDefined(lbIPs) {
-				glog.Infof("Updating loadbalancer %v/%v with IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
-				currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress, api.LoadBalancerIngress{
-					IP: lbc.podInfo.NodeIP,
-				})
-				if _, err := ingClient.UpdateStatus(currIng); err != nil {
-					lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
-					return err
-				}
-
-				lbc.recorder.Eventf(currIng, api.EventTypeNormal, "CREATE", "ip: %v", lbc.podInfo.NodeIP)
-			}
-	*/
-	return nil
 }
 
 // removeFromIngress removes the IP address of the node where the Ingres
 // controller is running before shutdown to avoid incorrect status
 // information in Ingress rules
-func (s *sync) removeFromIngress() { //ings []interface{}) {
+func (s *sync) removeFromIngress() {
 	if !s.elector.IsLeader() {
 		return
 	}
-	//glog.Infof("updating %v Ingress rule/s", len(ings))
-	/*for _, cur := range ings {
-		ing := cur.(*extensions.Ingress)
 
-		ingClient := lbc.client.Extensions().Ingress(ing.Namespace)
-		currIng, err := ingClient.Get(ing.Name)
-		if err != nil {
-			glog.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
-			continue
-		}
-
-		lbIPs := ing.Status.LoadBalancer.Ingress
-		if len(lbIPs) > 0 && lbc.isStatusIPDefined(lbIPs) {
-			glog.Infof("Updating loadbalancer %v/%v. Removing IP %v", ing.Namespace, ing.Name, lbc.podInfo.NodeIP)
-
-			for idx, lbStatus := range currIng.Status.LoadBalancer.Ingress {
-				if lbStatus.IP == lbc.podInfo.NodeIP {
-					currIng.Status.LoadBalancer.Ingress = append(currIng.Status.LoadBalancer.Ingress[:idx],
-						currIng.Status.LoadBalancer.Ingress[idx+1:]...)
-					break
-				}
-			}
-
-			if _, err := ingClient.UpdateStatus(currIng); err != nil {
-				lbc.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
-				continue
-			}
-
-			lbc.recorder.Eventf(currIng, api.EventTypeNormal, "DELETE", "ip: %v", lbc.podInfo.NodeIP)
-		}
-	}*/
+	glog.Infof("updating status of Ingress rules (remove)")
+	if s.syncQueue.IsShuttingDown() {
+		glog.Infof("removing my ip (%v)", s.podInfo.nodeIP)
+	}
 }
 
 // podInfo contains runtime information about the pod
 type podInfo struct {
-	PodName      string
-	PodNamespace string
-	NodeIP       string
+	podName      string
+	podNamespace string
+	nodeIP       string
+	labels       map[string]string
 }
 
 // getPodDetails  returns runtime information about the pod: name, namespace and IP of the node
@@ -180,12 +185,30 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 		return nil, fmt.Errorf("unable to get POD information")
 	}
 
-	node, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
+	return &podInfo{
+		podName:      podName,
+		podNamespace: podNs,
+		nodeIP:       getNodeIP(kubeClient, pod.Spec.NodeName),
+		labels:       pod.GetLabels(),
+	}, nil
+}
+
+func (s *sync) isStatusIPDefined(ip string, lbings []api.LoadBalancerIngress) bool {
+	for _, lbing := range lbings {
+		if lbing.IP == ip {
+			return true
+		}
+	}
+	return false
+}
+
+func getNodeIP(kubeClient *unversioned.Client, name string) string {
+	var externalIP string
+	node, err := kubeClient.Nodes().Get(name)
 	if err != nil {
-		return nil, err
+		return externalIP
 	}
 
-	var externalIP string
 	for _, address := range node.Status.Addresses {
 		if address.Type == api.NodeExternalIP {
 			if address.Address != "" {
@@ -198,20 +221,5 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 			externalIP = address.Address
 		}
 	}
-
-	return &podInfo{
-		PodName:      podName,
-		PodNamespace: podNs,
-		NodeIP:       externalIP,
-	}, nil
-}
-
-func (s *sync) isStatusIPDefined(lbings []api.LoadBalancerIngress) bool {
-	/*for _, lbing := range lbings {
-		if lbing.IP == lbc.podInfo.NodeIP {
-			return true
-		}
-	}*/
-
-	return false
+	return externalIP
 }

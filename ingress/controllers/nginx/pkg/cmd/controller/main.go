@@ -57,6 +57,11 @@ func main() {
 		nxgConfigMap = flags.String("nginx-configmap", "",
 			`Name of the ConfigMap that containes the custom nginx configuration to use`)
 
+		publishSvc = flags.String("publish-service", "",
+			`Service fronting the ingress controllers. Takes the form
+ 		namespace/name. The controller will set the endpoint records on the
+ 		ingress objects to reflect those on the service.`)
+
 		tcpConfigMapName = flags.String("tcp-services-configmap", "",
 			`Name of the ConfigMap that containes the definition of the TCP services to expose.
 		The key in the map indicates the external port to be used. The value is the name of the
@@ -112,13 +117,28 @@ func main() {
 
 	leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, "leader-election"))
 	if err != nil {
-		glog.Fatalf("Invalid API configuration: %v", err)
+		glog.Fatalf("vinvalid API configuration: %v", err)
 	}
 
-	if err := isValidService(kubeClient, *defaultSvc); err != nil {
+	_, err = isValidService(kubeClient, *defaultSvc)
+	if err != nil {
 		glog.Fatalf("no service with name %v found: %v", *defaultSvc, err)
 	}
-	glog.Infof("Validated %v as the default backend", *defaultSvc)
+	glog.Infof("validated %v as the default backend", *defaultSvc)
+
+	if *publishSvc != "" {
+		svc, err := isValidService(kubeClient, *publishSvc)
+		if err != nil {
+			glog.Fatalf("no service with name %v found: %v", *publishSvc, err)
+		}
+
+		if len(svc.Status.LoadBalancer.Ingress) == 0 {
+			// We could poll here, but we instead just exit and rely on k8s to restart us
+			glog.Fatalf("service %s does not (yet) have ingress points", *publishSvc)
+		}
+
+		glog.Infof("service %v validated as source of Ingress status", *publishSvc)
+	}
 
 	if *nxgConfigMap != "" {
 		_, _, err = parseNsName(*nxgConfigMap)
@@ -138,6 +158,7 @@ func main() {
 		UDPConfigMapName:      *udpConfigMapName,
 		DefaultSSLCertificate: *defSSLCertificate,
 		DefaultHealthzURL:     *defHealthzURL,
+		PublishService:        *publishSvc,
 	}
 
 	ic, err := controller.NewLoadBalancer(config)
@@ -197,18 +218,17 @@ func handleSigterm(ic controller.IngressController) {
 	os.Exit(exitCode)
 }
 
-func isValidService(kubeClient *unversioned.Client, name string) error {
+func isValidService(kubeClient *unversioned.Client, name string) (*api.Service, error) {
 	if name == "" {
-		return fmt.Errorf("empty string is not a valid service name")
+		return nil, fmt.Errorf("empty string is not a valid service name")
 	}
 
 	parts := strings.Split(name, "/")
 	if len(parts) != 2 {
-		return fmt.Errorf("invalid name format (namespace/name) in service '%v'", name)
+		return nil, fmt.Errorf("invalid name format (namespace/name) in service '%v'", name)
 	}
 
-	_, err := kubeClient.Services(parts[0]).Get(parts[1])
-	return err
+	return kubeClient.Services(parts[0]).Get(parts[1])
 }
 
 func parseNsName(input string) (string, string, error) {
