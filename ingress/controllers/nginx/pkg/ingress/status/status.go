@@ -26,7 +26,6 @@ import (
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/leaderelection"
 	"k8s.io/kubernetes/pkg/client/leaderelection/resourcelock"
-	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 )
 
@@ -52,8 +51,9 @@ func (s sync) Stop() {
 
 // NewStatusSyncer ...
 func NewStatusSyncer(client *unversioned.Client) SyncStatus {
+
 	lecfg := leaderelection.DefaultLeaderElectionConfiguration()
-	leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, "leader-election"))
+	leaderElectionClient, err := clientset.NewForConfig(nil)
 	if err != nil {
 		glog.Fatalf("Invalid API configuration: %v", err)
 	}
@@ -67,7 +67,6 @@ func NewStatusSyncer(client *unversioned.Client) SyncStatus {
 		glog.Fatalf("unable to get hostname: %v", err)
 	}
 
-	// TODO: enable other lock types
 	rl := resourcelock.EndpointsLock{
 		EndpointsMeta: api.ObjectMeta{
 			Namespace: "kube-system",
@@ -82,11 +81,13 @@ func NewStatusSyncer(client *unversioned.Client) SyncStatus {
 
 	leaderelection.RunOrDie(leaderelection.LeaderElectionConfig{
 		Lock:          &rl,
-		LeaseDuration: s.LeaderElection.LeaseDuration.Duration,
-		RenewDeadline: s.LeaderElection.RenewDeadline.Duration,
-		RetryPeriod:   s.LeaderElection.RetryPeriod.Duration,
+		LeaseDuration: lecfg.LeaseDuration.Duration,
+		RenewDeadline: lecfg.RenewDeadline.Duration,
+		RetryPeriod:   lecfg.RetryPeriod.Duration,
 		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: run,
+			OnStartedLeading: func(stop <-chan struct{}) {
+
+			},
 			OnStoppedLeading: func() {
 				glog.Fatalf("lost master")
 			},
