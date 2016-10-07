@@ -27,13 +27,12 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
 
 	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
 )
 
 var (
-	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
 )
 
 // StoreToIngressLister makes a Store that lists Ingress.

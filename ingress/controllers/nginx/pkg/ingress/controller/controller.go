@@ -34,7 +34,6 @@ import (
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/healthz"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -76,11 +75,11 @@ type IngressController interface {
 type GenericController struct {
 	cfg *Configuration
 
-	ingController  *framework.Controller
-	endpController *framework.Controller
-	svcController  *framework.Controller
-	secrController *framework.Controller
-	mapController  *framework.Controller
+	ingController  *cache.Controller
+	endpController *cache.Controller
+	svcController  *cache.Controller
+	secrController *cache.Controller
+	mapController  *cache.Controller
 
 	ingLister  StoreToIngressLister
 	svcLister  cache.StoreToServiceLister
@@ -140,7 +139,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 	ic.syncQueue = NewTaskQueue(ic.sync)
 	//ic.ingQueue = NewTaskQueue(ic.updateIngressStatus)
 
-	ingEventHandler := framework.ResourceEventHandlerFuncs{
+	ingEventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			addIng := obj.(*extensions.Ingress)
 			if !isNGINXIngress(addIng) {
@@ -174,7 +173,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 		},
 	}
 
-	secrEventHandler := framework.ResourceEventHandlerFuncs{
+	secrEventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			addSecr := obj.(*api.Secret)
 			if ic.secrReferenced(addSecr.Namespace, addSecr.Name) {
@@ -200,7 +199,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 		},
 	}
 
-	eventHandler := framework.ResourceEventHandlerFuncs{
+	eventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			ic.syncQueue.enqueue(obj)
 		},
@@ -214,7 +213,7 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 		},
 	}
 
-	mapEventHandler := framework.ResourceEventHandlerFuncs{
+	mapEventHandler := cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
 				upCmap := cur.(*api.ConfigMap)
@@ -228,35 +227,38 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 		},
 	}
 
-	ic.ingLister.Store, ic.ingController = framework.NewInformer(
+	ic.ingLister.Store, ic.ingController = cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc:  ic.ingressListFunc(),
 			WatchFunc: ic.ingressWatchFunc(),
 		},
 		&extensions.Ingress{}, ic.cfg.ResyncPeriod, ingEventHandler)
 
-	ic.endpLister.Store, ic.endpController = framework.NewInformer(
+	ic.endpLister.Store, ic.endpController = cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc:  ic.endpointsListFunc(),
 			WatchFunc: ic.endpointsWatchFunc(),
 		},
 		&api.Endpoints{}, ic.cfg.ResyncPeriod, eventHandler)
 
-	ic.svcLister.Store, ic.svcController = framework.NewInformer(
+	ic.svcLister.Indexer, ic.svcController = cache.NewIndexerInformer(
 		&cache.ListWatch{
 			ListFunc:  ic.serviceListFunc(),
 			WatchFunc: ic.serviceWatchFunc(),
 		},
-		&api.Service{}, ic.cfg.ResyncPeriod, framework.ResourceEventHandlerFuncs{})
+		&api.Service{},
+		ic.cfg.ResyncPeriod,
+		cache.ResourceEventHandlerFuncs{},
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 
-	ic.secrLister.Store, ic.secrController = framework.NewInformer(
+	ic.secrLister.Store, ic.secrController = cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc:  ic.secretsListFunc(),
 			WatchFunc: ic.secretsWatchFunc(),
 		},
 		&api.Secret{}, ic.cfg.ResyncPeriod, secrEventHandler)
 
-	ic.mapLister.Store, ic.mapController = framework.NewInformer(
+	ic.mapLister.Store, ic.mapController = cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc:  ic.mapListFunc(),
 			WatchFunc: ic.mapWatchFunc(),
@@ -528,7 +530,7 @@ func (ic *GenericController) getStreamServices(data map[string]string, proto api
 			continue
 		}
 
-		svcObj, svcExists, err := ic.svcLister.Store.GetByKey(nsName)
+		svcObj, svcExists, err := ic.svcLister.Indexer.GetByKey(nsName)
 		if err != nil {
 			glog.Warningf("error getting service %v: %v", nsName, err)
 			continue
@@ -587,7 +589,7 @@ func (ic *GenericController) getDefaultUpstream() *ingress.Upstream {
 		Name: defUpstreamName,
 	}
 	svcKey := ic.cfg.DefaultService
-	svcObj, svcExists, err := ic.svcLister.Store.GetByKey(svcKey)
+	svcObj, svcExists, err := ic.svcLister.Indexer.GetByKey(svcKey)
 	if err != nil {
 		glog.Warningf("unexpected error searching the default backend %v: %v", ic.cfg.DefaultService, err)
 		upstream.Backends = append(upstream.Backends, nginx.NewDefaultServer())
@@ -827,7 +829,7 @@ func (ic *GenericController) createUpstreams(ngxCfg config.Configuration, data [
 
 func (ic *GenericController) getSvcEndpoints(svcKey, backendPort string,
 	hz *healthcheck.Upstream) ([]ingress.UpstreamServer, error) {
-	svcObj, svcExists, err := ic.svcLister.Store.GetByKey(svcKey)
+	svcObj, svcExists, err := ic.svcLister.Indexer.GetByKey(svcKey)
 
 	var upstreams []ingress.UpstreamServer
 	if err != nil {
