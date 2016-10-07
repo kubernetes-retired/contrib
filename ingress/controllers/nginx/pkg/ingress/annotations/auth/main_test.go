@@ -85,58 +85,12 @@ func mockClient() *testclient.Fake {
 	return testclient.NewSimpleFake(dummySecret())
 }
 
-func TestAnnotations(t *testing.T) {
-	ing := buildIngress()
-
-	_, err := ingAnnotations(ing.GetAnnotations()).authType()
-	if err == nil {
-		t.Error("Expected a validation error")
-	}
-	realm := ingAnnotations(ing.GetAnnotations()).realm()
-	if realm != defAuthRealm {
-		t.Error("Expected default realm")
-	}
-
-	_, err = ingAnnotations(ing.GetAnnotations()).secretName()
-	if err == nil {
-		t.Error("Expected a validation error")
-	}
-
-	data := map[string]string{}
-	data[authType] = "demo"
-	data[authSecret] = "demo-secret"
-	data[authRealm] = "demo"
-	ing.SetAnnotations(data)
-
-	_, err = ingAnnotations(ing.GetAnnotations()).authType()
-	if err == nil {
-		t.Error("Expected a validation error")
-	}
-
-	realm = ingAnnotations(ing.GetAnnotations()).realm()
-	if realm != "demo" {
-		t.Errorf("Expected demo as realm but returned %s", realm)
-	}
-
-	secret, err := ingAnnotations(ing.GetAnnotations()).secretName()
-	if err != nil {
-		t.Error("Unexpec error %v", err)
-	}
-	if secret != "demo-secret" {
-		t.Errorf("Expected demo-secret as realm but returned %s", secret)
-	}
-}
-
 func TestIngressWithoutAuth(t *testing.T) {
 	ing := buildIngress()
 	client := mockClient()
 	_, err := ParseAnnotations(client, ing, "")
 	if err == nil {
 		t.Error("Expected error with ingress without annotations")
-	}
-
-	if err == ErrMissingAuthType {
-		t.Errorf("Expected MissingAuthType error but returned %v", err)
 	}
 }
 

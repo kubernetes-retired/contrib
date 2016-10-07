@@ -59,35 +59,6 @@ func buildIngress() *extensions.Ingress {
 	}
 }
 
-func TestAnnotations(t *testing.T) {
-	ing := buildIngress()
-
-	lip := ingAnnotations(ing.GetAnnotations()).limitIP()
-	if lip != 0 {
-		t.Errorf("Expected 0 in limit by ip but %v was returned", lip)
-	}
-
-	lrps := ingAnnotations(ing.GetAnnotations()).limitRPS()
-	if lrps != 0 {
-		t.Errorf("Expected 0 in limit by rps but %v was returend", lrps)
-	}
-
-	data := map[string]string{}
-	data[limitIP] = "5"
-	data[limitRPS] = "100"
-	ing.SetAnnotations(data)
-
-	lip = ingAnnotations(ing.GetAnnotations()).limitIP()
-	if lip != 5 {
-		t.Errorf("Expected 5 in limit by ip but %v was returend", lip)
-	}
-
-	lrps = ingAnnotations(ing.GetAnnotations()).limitRPS()
-	if lrps != 100 {
-		t.Errorf("Expected 100 in limit by rps but %v was returend", lrps)
-	}
-}
-
 func TestWithoutAnnotations(t *testing.T) {
 	ing := buildIngress()
 	_, err := ParseAnnotations(ing)

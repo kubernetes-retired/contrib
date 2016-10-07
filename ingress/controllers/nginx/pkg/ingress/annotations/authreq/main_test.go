@@ -63,11 +63,6 @@ func buildIngress() *extensions.Ingress {
 func TestAnnotations(t *testing.T) {
 	ing := buildIngress()
 
-	_, err := ingAnnotations(ing.GetAnnotations()).url()
-	if err == nil {
-		t.Error("Expected a validation error")
-	}
-
 	data := map[string]string{}
 	ing.SetAnnotations(data)
 

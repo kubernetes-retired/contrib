@@ -20,6 +20,8 @@ import (
 	"errors"
 	"strings"
 
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
+
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/util/net/sets"
 )
@@ -29,10 +31,6 @@ const (
 )
 
 var (
-	// ErrMissingWhitelist returned error when the ingress does not contains the
-	// whitelist annotation
-	ErrMissingWhitelist = errors.New("whitelist annotation is missing")
-
 	// ErrInvalidCIDR returned error when the whitelist annotation does not
 	// contains a valid IP or network address
 	ErrInvalidCIDR = errors.New("the annotation does not contains a valid IP address or network")
@@ -43,41 +41,31 @@ type SourceRange struct {
 	CIDR []string
 }
 
-type ingAnnotations map[string]string
+// ParseAnnotations parses the annotations contained in the ingress
+// rule used to limit access to certain client addresses or networks.
+// Multiple ranges can specified using commas as separator
+// e.g. `18.0.0.0/8,56.0.0.0/8`
+func ParseAnnotations(whiteList []string, ing *extensions.Ingress) (*SourceRange, error) {
+	cidrs := []string{}
 
-func (a ingAnnotations) whitelist() ([]string, error) {
-	cidrs := make([]string, 0)
-	val, ok := a[whitelist]
-	if !ok {
-		return cidrs, ErrMissingWhitelist
+	if ing.GetAnnotations() == nil {
+		return &SourceRange{cidrs}, parser.ErrMissingAnnotations
+	}
+
+	val, err := parser.GetStringAnnotation(whitelist, ing)
+	if err != nil {
+		return &SourceRange{cidrs}, err
 	}
 
 	values := strings.Split(val, ",")
 	ipnets, err := sets.ParseIPNets(values...)
 	if err != nil {
-		return cidrs, ErrInvalidCIDR
+		return &SourceRange{cidrs}, ErrInvalidCIDR
 	}
 
 	for k := range ipnets {
 		cidrs = append(cidrs, k)
 	}
 
-	return cidrs, nil
-}
-
-// ParseAnnotations parses the annotations contained in the ingress
-// rule used to limit access to certain client addresses or networks.
-// Multiple ranges can specified using commas as separator
-// e.g. `18.0.0.0/8,56.0.0.0/8`
-func ParseAnnotations(whiteList []string, ing *extensions.Ingress) (*SourceRange, error) {
-	if ing.GetAnnotations() == nil {
-		return &SourceRange{whiteList}, ErrMissingWhitelist
-	}
-
-	wl, err := ingAnnotations(ing.GetAnnotations()).whitelist()
-	if err != nil {
-		wl = whiteList
-	}
-
-	return &SourceRange{wl}, err
+	return &SourceRange{cidrs}, nil
 }

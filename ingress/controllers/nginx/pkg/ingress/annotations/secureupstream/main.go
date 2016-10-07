@@ -17,8 +17,7 @@ limitations under the License.
 package secureupstream
 
 import (
-	"errors"
-	"strconv"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
 
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )
@@ -27,24 +26,8 @@ const (
 	secureUpstream = "ingress.kubernetes.io/secure-backends"
 )
 
-type ingAnnotations map[string]string
-
-func (a ingAnnotations) secureUpstream() bool {
-	val, ok := a[secureUpstream]
-	if ok {
-		if b, err := strconv.ParseBool(val); err == nil {
-			return b
-		}
-	}
-	return false
-}
-
 // ParseAnnotations parses the annotations contained in the ingress
 // rule used to indicate if the upstream servers should use SSL
 func ParseAnnotations(ing *extensions.Ingress) (bool, error) {
-	if ing.GetAnnotations() == nil {
-		return false, errors.New("no annotations present")
-	}
-
-	return ingAnnotations(ing.GetAnnotations()).secureUpstream(), nil
+	return parser.GetBoolAnnotation(secureUpstream, ing)
 }

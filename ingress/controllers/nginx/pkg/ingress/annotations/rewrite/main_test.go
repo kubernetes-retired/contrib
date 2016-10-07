@@ -65,35 +65,6 @@ func buildIngress() *extensions.Ingress {
 	}
 }
 
-func TestAnnotations(t *testing.T) {
-	ing := buildIngress()
-
-	r := ingAnnotations(ing.GetAnnotations()).rewriteTo()
-	if r != "" {
-		t.Error("Expected no redirect")
-	}
-
-	f := ingAnnotations(ing.GetAnnotations()).addBaseURL()
-	if f {
-		t.Errorf("Expected false in add-base-url but %v was returend", f)
-	}
-
-	data := map[string]string{}
-	data[rewriteTo] = defRoute
-	data[addBaseURL] = "true"
-	ing.SetAnnotations(data)
-
-	r = ingAnnotations(ing.GetAnnotations()).rewriteTo()
-	if r != defRoute {
-		t.Errorf("Expected %v in rewrite but %v was returend", defRoute, r)
-	}
-
-	f = ingAnnotations(ing.GetAnnotations()).addBaseURL()
-	if !f {
-		t.Errorf("Expected true in add-base-url but %v was returend", f)
-	}
-}
-
 func TestWithoutAnnotations(t *testing.T) {
 	ing := buildIngress()
 	_, err := ParseAnnotations(config.NewDefault(), ing)

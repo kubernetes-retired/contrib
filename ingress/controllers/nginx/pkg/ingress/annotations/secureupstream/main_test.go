@@ -65,9 +65,9 @@ func TestAnnotations(t *testing.T) {
 	data[secureUpstream] = "true"
 	ing.SetAnnotations(data)
 
-	su := ingAnnotations(ing.GetAnnotations()).secureUpstream()
-	if !su {
-		t.Errorf("Expected true in secure-backends but %v was returned", su)
+	_, err := ParseAnnotations(ing)
+	if err != nil {
+		t.Error("Expected error with ingress without annotations")
 	}
 }
 

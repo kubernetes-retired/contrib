@@ -34,6 +34,7 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/version"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/leaderelection"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/healthz"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -129,7 +130,10 @@ func main() {
 		UDPConfigMapName:      *udpConfigMapName,
 		DefaultSSLCertificate: *defSSLCertificate,
 		DefaultHealthzURL:     *defHealthzURL,
+		LeaderElection:        leaderelection.DefaultLeaderElectionConfiguration(),
 	}
+
+	leaderelection.BindFlags(&config.LeaderElection, flags)
 
 	ic, err := controller.NewLoadBalancer(config)
 	if err != nil {

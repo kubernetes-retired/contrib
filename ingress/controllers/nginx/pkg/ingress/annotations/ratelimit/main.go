@@ -19,7 +19,8 @@ package ratelimit
 import (
 	"errors"
 	"fmt"
-	"strconv"
+
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
 
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )
@@ -39,10 +40,6 @@ const (
 var (
 	// ErrInvalidRateLimit is returned when the annotation caontains invalid values
 	ErrInvalidRateLimit = errors.New("invalid rate limit value. Must be > 0")
-
-	// ErrMissingAnnotations is returned when the ingress rule
-	// does not contains annotations related with rate limit
-	ErrMissingAnnotations = errors.New("no annotations present")
 )
 
 // RateLimit returns rate limit configuration for an Ingress rule
@@ -66,39 +63,15 @@ type Zone struct {
 	SharedSize int
 }
 
-type ingAnnotations map[string]string
-
-func (a ingAnnotations) limitIP() int {
-	val, ok := a[limitIP]
-	if ok {
-		if i, err := strconv.Atoi(val); err == nil {
-			return i
-		}
-	}
-
-	return 0
-}
-
-func (a ingAnnotations) limitRPS() int {
-	val, ok := a[limitRPS]
-	if ok {
-		if i, err := strconv.Atoi(val); err == nil {
-			return i
-		}
-	}
-
-	return 0
-}
-
 // ParseAnnotations parses the annotations contained in the ingress
 // rule used to rewrite the defined paths
 func ParseAnnotations(ing *extensions.Ingress) (*RateLimit, error) {
 	if ing.GetAnnotations() == nil {
-		return &RateLimit{}, ErrMissingAnnotations
+		return &RateLimit{}, parser.ErrMissingAnnotations
 	}
 
-	rps := ingAnnotations(ing.GetAnnotations()).limitRPS()
-	conn := ingAnnotations(ing.GetAnnotations()).limitIP()
+	rps, _ := parser.GetIntAnnotation(limitRPS, ing)
+	conn, _ := parser.GetIntAnnotation(limitIP, ing)
 
 	if rps == 0 && conn == 0 {
 		return &RateLimit{

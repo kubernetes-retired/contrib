@@ -23,7 +23,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/golang/glog"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -34,8 +34,6 @@ const (
 	authType   = "ingress.kubernetes.io/auth-type"
 	authSecret = "ingress.kubernetes.io/auth-secret"
 	authRealm  = "ingress.kubernetes.io/auth-realm"
-
-	defAuthRealm = "Authentication Required"
 
 	// DefAuthDirectory default directory used to store files
 	// to authenticate request
@@ -53,18 +51,11 @@ var (
 	// ErrInvalidAuthType is return in case of unsupported authentication type
 	ErrInvalidAuthType = errors.New("invalid authentication type")
 
-	// ErrMissingAuthType is return when the annotation for authentication is missing
-	ErrMissingAuthType = errors.New("authentication type is missing")
-
 	// ErrMissingSecretName is returned when the name of the secret is missing
 	ErrMissingSecretName = errors.New("secret name is missing")
 
 	// ErrMissingAuthInSecret is returned when there is no auth key in secret data
 	ErrMissingAuthInSecret = errors.New("the secret does not contains the auth key")
-
-	// ErrMissingAnnotations is returned when the ingress rule
-	// does not contains annotations related with authentication
-	ErrMissingAnnotations = errors.New("missing authentication annotations")
 )
 
 // BasicDigest returns authentication configuration for an Ingress rule
@@ -75,55 +66,25 @@ type BasicDigest struct {
 	Secured bool
 }
 
-type ingAnnotations map[string]string
-
-func (a ingAnnotations) authType() (string, error) {
-	val, ok := a[authType]
-	if !ok {
-		return "", ErrMissingAuthType
-	}
-
-	if !authTypeRegex.MatchString(val) {
-		glog.Warningf("%v is not a valid authentication type", val)
-		return "", ErrInvalidAuthType
-	}
-
-	return val, nil
-}
-
-func (a ingAnnotations) realm() string {
-	val, ok := a[authRealm]
-	if !ok {
-		return defAuthRealm
-	}
-
-	return val
-}
-
-func (a ingAnnotations) secretName() (string, error) {
-	val, ok := a[authSecret]
-	if !ok {
-		return "", ErrMissingSecretName
-	}
-
-	return val, nil
-}
-
 // ParseAnnotations parses the annotations contained in the ingress
 // rule used to add authentication in the paths defined in the rule
 // and generated an htpasswd compatible file to be used as source
 // during the authentication process
 func ParseAnnotations(kubeClient client.Interface, ing *extensions.Ingress, authDir string) (*BasicDigest, error) {
 	if ing.GetAnnotations() == nil {
-		return &BasicDigest{}, ErrMissingAnnotations
+		return &BasicDigest{}, parser.ErrMissingAnnotations
 	}
 
-	at, err := ingAnnotations(ing.GetAnnotations()).authType()
+	at, err := parser.GetStringAnnotation(authType, ing)
 	if err != nil {
 		return &BasicDigest{}, err
 	}
 
-	s, err := ingAnnotations(ing.GetAnnotations()).secretName()
+	if !authTypeRegex.MatchString(at) {
+		return &BasicDigest{}, ErrInvalidAuthType
+	}
+
+	s, err := parser.GetStringAnnotation(authSecret, ing)
 	if err != nil {
 		return &BasicDigest{}, err
 	}
@@ -133,7 +94,7 @@ func ParseAnnotations(kubeClient client.Interface, ing *extensions.Ingress, auth
 		return &BasicDigest{}, err
 	}
 
-	realm := ingAnnotations(ing.GetAnnotations()).realm()
+	realm, _ := parser.GetStringAnnotation(authRealm, ing)
 
 	passFile := fmt.Sprintf("%v/%v-%v.passwd", authDir, ing.GetNamespace(), ing.GetName())
 	err = dumpSecret(passFile, secret)

@@ -26,11 +26,7 @@ import (
 
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
 
-	"k8s.io/kubernetes/pkg/api"
-	apierrs "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
@@ -164,66 +160,6 @@ func parseNsName(input string) (string, string, error) {
 	}
 
 	return nsName[0], nsName[1], nil
-}
-
-func waitForPodRunning(kubeClient *unversioned.Client, ns, podName string, interval, timeout time.Duration) error {
-	condition := func(pod *api.Pod) (bool, error) {
-		if pod.Status.Phase == api.PodRunning {
-			return true, nil
-		}
-		return false, nil
-	}
-
-	return waitForPodCondition(kubeClient, ns, podName, condition, interval, timeout)
-}
-
-// waitForPodCondition waits for a pod in state defined by a condition (func)
-func waitForPodCondition(kubeClient *unversioned.Client, ns, podName string, condition func(pod *api.Pod) (bool, error),
-	interval, timeout time.Duration) error {
-	return wait.PollImmediate(interval, timeout, func() (bool, error) {
-		pod, err := kubeClient.Pods(ns).Get(podName)
-		if err != nil {
-			if apierrs.IsNotFound(err) {
-				return false, nil
-			}
-		}
-
-		done, err := condition(pod)
-		if err != nil {
-			return false, err
-		}
-		if done {
-			return true, nil
-		}
-
-		return false, nil
-	})
-}
-
-// ingAnnotations represents Ingress annotations.
-type ingAnnotations map[string]string
-
-const (
-	// ingressClassKey picks a specific "class" for the Ingress. The controller
-	// only processes Ingresses with this annotation either unset, or set
-	// to either nginxIngressClass or the empty string.
-	ingressClassKey   = "kubernetes.io/ingress.class"
-	nginxIngressClass = "nginx"
-)
-
-func (ing ingAnnotations) ingressClass() string {
-	val, ok := ing[ingressClassKey]
-	if !ok {
-		return ""
-	}
-	return val
-}
-
-// isNGINXIngress returns true if the given Ingress either doesn't specify the
-// ingress.class annotation, or it's set to "nginx".
-func isNGINXIngress(ing *extensions.Ingress) bool {
-	class := ingAnnotations(ing.ObjectMeta.Annotations).ingressClass()
-	return class == "" || class == nginxIngressClass
 }
 
 const (

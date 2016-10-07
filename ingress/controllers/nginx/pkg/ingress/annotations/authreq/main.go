@@ -17,12 +17,11 @@ limitations under the License.
 package authreq
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
@@ -33,47 +32,11 @@ const (
 	authBody   = "ingress.kubernetes.io/auth-send-body"
 )
 
-var (
-	// ErrMissingAnnotations is returned when the ingress rule
-	// does not contain annotations related with authentication
-	ErrMissingAnnotations = errors.New("missing authentication annotations")
-)
-
 // External returns external authentication configuration for an Ingress rule
 type External struct {
 	URL      string
 	Method   string
 	SendBody bool
-}
-
-type ingAnnotations map[string]string
-
-func (a ingAnnotations) url() (string, error) {
-	val, ok := a[authURL]
-	if !ok {
-		return "", ErrMissingAnnotations
-	}
-
-	return val, nil
-}
-
-func (a ingAnnotations) method() string {
-	val, ok := a[authMethod]
-	if !ok {
-		return ""
-	}
-
-	return val
-}
-
-func (a ingAnnotations) sendBody() bool {
-	val, ok := a[authBody]
-	if ok {
-		if b, err := strconv.ParseBool(val); err == nil {
-			return b
-		}
-	}
-	return false
 }
 
 var (
@@ -97,10 +60,10 @@ func validMethod(method string) bool {
 // rule used to use an external URL as source for authentication
 func ParseAnnotations(ing *extensions.Ingress) (External, error) {
 	if ing.GetAnnotations() == nil {
-		return External{}, ErrMissingAnnotations
+		return External{}, parser.ErrMissingAnnotations
 	}
 
-	str, err := ingAnnotations(ing.GetAnnotations()).url()
+	str, err := parser.GetStringAnnotation(authURL, ing)
 	if err != nil {
 		return External{}, err
 	}
@@ -123,12 +86,12 @@ func ParseAnnotations(ing *extensions.Ingress) (External, error) {
 		return External{}, fmt.Errorf("invalid url host")
 	}
 
-	m := ingAnnotations(ing.GetAnnotations()).method()
+	m, _ := parser.GetStringAnnotation(authMethod, ing)
 	if len(m) != 0 && !validMethod(m) {
 		return External{}, fmt.Errorf("invalid HTTP method")
 	}
 
-	sb := ingAnnotations(ing.GetAnnotations()).sendBody()
+	sb, _ := parser.GetBoolAnnotation(authBody, ing)
 
 	return External{
 		URL:      str,

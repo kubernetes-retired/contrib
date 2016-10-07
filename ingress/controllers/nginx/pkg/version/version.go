@@ -17,10 +17,10 @@ limitations under the License.
 package version
 
 var (
-	// RELEASE return the release version
+	// RELEASE returns the release version
 	RELEASE = "UNKNOWN"
-	// REPO return the git repository URL
+	// REPO returns the git repository URL
 	REPO = "UNKNOWN"
-	// BUILD return the sha from commit
+	// BUILD returns the sha from commit
 	BUILD = "UNKNOWN"
 )

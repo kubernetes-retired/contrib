@@ -29,6 +29,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	podutil "k8s.io/kubernetes/pkg/api/pod"
+	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
@@ -48,6 +49,7 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/cors"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/healthcheck"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/ipwhitelist"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/ratelimit"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/rewrite"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/secureupstream"
@@ -99,7 +101,7 @@ type GenericController struct {
 	// stopLock is used to enforce only a single call to Stop is active.
 	// Needed because we allow stopping through an http endpoint and
 	// allowing concurrent stoppers leads to stack traces.
-	stopLock sync.Mutex
+	stopLock *sync.Mutex
 	shutdown bool
 	stopCh   chan struct{}
 }
@@ -115,6 +117,7 @@ type Configuration struct {
 	UDPConfigMapName      string
 	DefaultSSLCertificate string
 	DefaultHealthzURL     string
+	LeaderElection        componentconfig.LeaderElectionConfiguration
 }
 
 // NewLoadBalancer creates a controller for nginx loadbalancer
@@ -125,9 +128,10 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 	eventBroadcaster.StartRecordingToSink(config.Client.Events(config.Namespace))
 
 	ic := GenericController{
-		cfg:    config,
-		stopCh: make(chan struct{}),
-		nginx:  nginx.NewManager(config.Client),
+		cfg:      config,
+		stopLock: &sync.Mutex{},
+		stopCh:   make(chan struct{}),
+		nginx:    nginx.NewManager(config.Client),
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{
 			Component: "nginx-ingress-controller",
 		}),
@@ -1113,4 +1117,19 @@ func (ic GenericController) Start() {
 	//go ic.ingQueue.run(time.Second, ic.stopCh)
 
 	<-ic.stopCh
+}
+
+const (
+	// ingressClassKey picks a specific "class" for the Ingress. The controller
+	// only processes Ingresses with this annotation either unset, or set
+	// to either nginxIngressClass or the empty string.
+	ingressClassKey   = "kubernetes.io/ingress.class"
+	nginxIngressClass = "nginx"
+)
+
+// isNGINXIngress returns true if the given Ingress either doesn't specify the
+// ingress.class annotation, or it's set to "nginx".
+func isNGINXIngress(ing *extensions.Ingress) bool {
+	class, _ := parser.GetStringAnnotation(ingressClassKey, ing)
+	return class == "" || class == nginxIngressClass
 }

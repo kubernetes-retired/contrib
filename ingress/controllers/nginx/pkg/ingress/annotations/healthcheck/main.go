@@ -17,8 +17,7 @@ limitations under the License.
 package healthcheck
 
 import (
-	"errors"
-	"strconv"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
 
 	"k8s.io/kubernetes/pkg/apis/extensions"
 
@@ -30,54 +29,11 @@ const (
 	upsFailTimeout = "ingress.kubernetes.io/upstream-fail-timeout"
 )
 
-var (
-	// ErrMissingMaxFails returned error when the ingress does not contains the
-	// max-fails annotation
-	ErrMissingMaxFails = errors.New("max-fails annotations is missing")
-
-	// ErrMissingFailTimeout returned error when the ingress does not contains
-	// the fail-timeout annotation
-	ErrMissingFailTimeout = errors.New("fail-timeout annotations is missing")
-
-	// ErrInvalidNumber returned
-	ErrInvalidNumber = errors.New("the annotation does not contains a number")
-)
-
 // Upstream returns the URL and method to use check the status of
 // the upstream server/s
 type Upstream struct {
 	MaxFails    int
 	FailTimeout int
-}
-
-type ingAnnotations map[string]string
-
-func (a ingAnnotations) maxFails() (int, error) {
-	val, ok := a[upsMaxFails]
-	if !ok {
-		return 0, ErrMissingMaxFails
-	}
-
-	mf, err := strconv.Atoi(val)
-	if err != nil {
-		return 0, ErrInvalidNumber
-	}
-
-	return mf, nil
-}
-
-func (a ingAnnotations) failTimeout() (int, error) {
-	val, ok := a[upsFailTimeout]
-	if !ok {
-		return 0, ErrMissingFailTimeout
-	}
-
-	ft, err := strconv.Atoi(val)
-	if err != nil {
-		return 0, ErrInvalidNumber
-	}
-
-	return ft, nil
 }
 
 // ParseAnnotations parses the annotations contained in the ingress
@@ -87,12 +43,12 @@ func ParseAnnotations(cfg config.Configuration, ing *extensions.Ingress) *Upstre
 		return &Upstream{cfg.UpstreamMaxFails, cfg.UpstreamFailTimeout}
 	}
 
-	mf, err := ingAnnotations(ing.GetAnnotations()).maxFails()
+	mf, err := parser.GetIntAnnotation(upsMaxFails, ing)
 	if err != nil {
 		mf = cfg.UpstreamMaxFails
 	}
 
-	ft, err := ingAnnotations(ing.GetAnnotations()).failTimeout()
+	ft, err := parser.GetIntAnnotation(upsFailTimeout, ing)
 	if err != nil {
 		ft = cfg.UpstreamFailTimeout
 	}

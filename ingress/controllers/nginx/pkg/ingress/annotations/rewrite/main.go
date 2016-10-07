@@ -18,11 +18,11 @@ package rewrite
 
 import (
 	"errors"
-	"strconv"
-
-	"k8s.io/kubernetes/pkg/apis/extensions"
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
+
+	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
 const (
@@ -42,49 +42,6 @@ type Redirect struct {
 	SSLRedirect bool
 }
 
-var (
-	// ErrMissingSSLRedirect returned error when the ingress does not contains the
-	// ssl-redirect annotation
-	ErrMissingSSLRedirect = errors.New("ssl-redirect annotations is missing")
-
-	// ErrInvalidBool gets returned when the str value is not convertible to a bool
-	ErrInvalidBool = errors.New("ssl-redirect annotations has invalid value")
-)
-
-type ingAnnotations map[string]string
-
-func (a ingAnnotations) addBaseURL() bool {
-	val, ok := a[addBaseURL]
-	if ok {
-		if b, err := strconv.ParseBool(val); err == nil {
-			return b
-		}
-	}
-	return false
-}
-
-func (a ingAnnotations) rewriteTo() string {
-	val, ok := a[rewriteTo]
-	if ok {
-		return val
-	}
-	return ""
-}
-
-func (a ingAnnotations) sslRedirect() (bool, error) {
-	val, ok := a[sslRedirect]
-	if !ok {
-		return false, ErrMissingSSLRedirect
-	}
-
-	sr, err := strconv.ParseBool(val)
-	if err != nil {
-		return false, ErrInvalidBool
-	}
-
-	return sr, nil
-}
-
 // ParseAnnotations parses the annotations contained in the ingress
 // rule used to rewrite the defined paths
 func ParseAnnotations(cfg config.Configuration, ing *extensions.Ingress) (*Redirect, error) {
@@ -92,15 +49,13 @@ func ParseAnnotations(cfg config.Configuration, ing *extensions.Ingress) (*Redir
 		return &Redirect{}, errors.New("no annotations present")
 	}
 
-	annotations := ingAnnotations(ing.GetAnnotations())
-
-	sslRe, err := annotations.sslRedirect()
+	sslRe, err := parser.GetBoolAnnotation(sslRedirect, ing)
 	if err != nil {
 		sslRe = cfg.SSLRedirect
 	}
 
-	rt := annotations.rewriteTo()
-	abu := annotations.addBaseURL()
+	rt, _ := parser.GetStringAnnotation(rewriteTo, ing)
+	abu, _ := parser.GetBoolAnnotation(addBaseURL, ing)
 	return &Redirect{
 		Target:      rt,
 		AddBaseURL:  abu,

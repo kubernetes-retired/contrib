@@ -61,41 +61,6 @@ func buildIngress() *extensions.Ingress {
 	}
 }
 
-func TestAnnotations(t *testing.T) {
-	ing := buildIngress()
-
-	_, err := ingAnnotations(ing.GetAnnotations()).maxFails()
-	if err == nil {
-		t.Error("Expected a validation error")
-	}
-
-	_, err = ingAnnotations(ing.GetAnnotations()).failTimeout()
-	if err == nil {
-		t.Error("Expected a validation error")
-	}
-
-	data := map[string]string{}
-	data[upsMaxFails] = "1"
-	data[upsFailTimeout] = "1"
-	ing.SetAnnotations(data)
-
-	mf, err := ingAnnotations(ing.GetAnnotations()).maxFails()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-	if mf != 1 {
-		t.Errorf("Expected 1 but returned %v", mf)
-	}
-
-	ft, err := ingAnnotations(ing.GetAnnotations()).failTimeout()
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-	}
-	if ft != 1 {
-		t.Errorf("Expected 1 but returned %v", ft)
-	}
-}
-
 func TestIngressHealthCheck(t *testing.T) {
 	ing := buildIngress()
 
