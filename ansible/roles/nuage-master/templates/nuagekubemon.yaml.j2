@@ -1,0 +1,30 @@
+kubeConfig: {{ nuage_kubeconfig }}
+
+masterConfig: {{ nuage_net_config_yaml_path }} 
+# URL of the VSD Architect
+vsdApiUrl: {{ vsd_api_url }} 
+# API version to query against.  Usually "v3_2"
+vspVersion: {{ vsp_version }} 
+# File containing a VSP license to install.  Only necessary if no license has
+# been installed on the VSD Architect before, only valid for standalone vsd install
+# licenseFile: "/path/to/base_vsp_license.txt"
+# Name of the enterprise in which pods will reside
+enterpriseName: {{ enterprise }} 
+# Name of the domain in which pods will reside
+domainName: {{ domain }}
+# CSP admin user's password
+cspAdminPassword: {{ nuage_master_cspadminpasswd }}
+# Enterprise admin user name
+enterpriseAdminUser: {{ nuage_master_adminusername }}
+# Enterprise admin password
+enterpriseAdminPassword: {{ nuage_master_adminuserpasswd }}
+# Location where logs should be saved
+log_dir: {{ nuage_mon_rest_server_logdir }}
+# Monitor rest server paramters
+# Logging level for the nuage openshift monitor
+# allowed options are: 0 => INFO, 1 => WARNING, 2 => ERROR, 3 => FATAL
+logLevel: {{ nuage_mon_log_level }}
+# Parameters related to the nuage monitor REST server
+nuageMonServer:
+    URL: {{ nuage_mon_rest_server_url }}
+    certificateDirectory: {{ cert_output_dir }} 

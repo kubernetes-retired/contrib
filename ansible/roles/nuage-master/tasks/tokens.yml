@@ -1,0 +1,15 @@
+---
+- name: Run kube-gen-token script to create a nuage token 
+  command: "{{ kube_script_dir }}/kube-gen-token.sh system:nuage"
+  environment:
+    TOKEN_DIR: "{{ kube_token_dir }}"
+
+- name: Get the nuage token 
+  slurp:
+    src: "{{ kube_token_dir }}/system:nuage.token"
+  register: tokens
+  delegate_to: "{{ nuage_ca_master }}"
+
+- name: Set nuage token fact
+  set_fact:
+    nuage_token: "{{ tokens.content|b64decode }}"

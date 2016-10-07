@@ -1,0 +1,20 @@
+nuage_ca_master: "{{ groups['masters'][0] }}"
+nuage_ca_master_crt_dir: /usr/share/nuage-k8s-certificates
+
+nuage_ca_dir: /usr/share/nuage-k8s-ca
+nuage_ca_key: "{{ nuage_ca_dir }}/nuageMonCA.key"
+nuage_ca_crt: "{{ nuage_ca_dir }}/nuageMonCA.crt"
+nuage_ca_serial: "{{ nuage_ca_dir }}/nuageMonCA.serial.txt"
+
+nuage_master_mon_dir: /usr/share/nuage-k8s-monitor
+nuage_node_plugin_dir: /usr/share/vsp-k8s
+nuage_mon_rest_server_port: "{{ nuage_openshift_monitor_rest_server_port | default('9443') }}"
+   
+nuage_cluster_nw_cidr: "{{ nuage_cluster_network_CIDR | default('70.70.0.0/16') }}"
+nuage_mon_config_dir: /usr/share/nuagekubemon
+nuage_kubeconfig: "{{ nuage_mon_config_dir }}/nuage.kubeconfig"
+nuage_node_kubeconfig: "{{ nuage_node_plugin_dir }}/nuage.kubeconfig"
+
+k8s_ca_crt: "{{ kube_ca_crt | default('/etc/kubernetes/certs/ca.crt') }}"
+k8s_api_port: "{{ kube_master_api_port | default('443')}}"
+cert_validity_period: 3650

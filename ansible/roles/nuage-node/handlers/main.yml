@@ -1,0 +1,22 @@
+---
+
+- name: restart daemons
+  command: /bin/true
+  notify:
+    - restart vrs
+    - restart kubelet
+    - restart proxy
+    
+- name: restart vrs
+  service: name=openvswitch state=restarted
+  
+- name: restart kubelet
+  service: name=kubelet state=restarted
+  ignore_errors: yes
+
+- name: restart proxy
+  service: name=kube-proxy state=restarted
+  ignore_errors: yes
+
+- name: save iptables rules
+  command: service iptables save

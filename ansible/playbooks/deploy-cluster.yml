@@ -65,3 +65,24 @@
   roles:
     - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
 
+# install nuage master service 
+- hosts:
+    - masters
+  become: yes
+  serial: 1
+  roles:
+      - { role: nuage-master, when: networking == 'nuage' }
+  tags:
+    - network-service-install
+    - nuage
+
+# install nuage node service 
+- hosts:
+    - nodes
+  become: yes
+  serial: 1
+  roles:
+      - { role: nuage-node, when: networking == 'nuage' }
+  tags:
+    - network-service-install
+    - nuage

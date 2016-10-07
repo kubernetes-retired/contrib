@@ -1,0 +1,101 @@
+---
+- name: Install iptables-services 
+  become: yes
+  yum: name=iptables-services state=present
+
+- name: Install pip
+  become: yes
+  yum: name=python-pip state=present
+
+- name: Install pykube
+  become: yes
+  pip: name=pykube version=0.13.0
+
+- name: Start iptables-service 
+  become: yes
+  service: name=iptables state=started
+ 
+- name: Install Nuage VRS
+  become: yes
+  yum: name={{ vrs_rpm }} state=present
+  
+- name: Set the uplink interface 
+  become: yes
+  lineinfile: dest={{ vrs_config }} regexp=^NETWORK_UPLINK_INTF line='NETWORK_UPLINK_INTF={{ uplink_interface }}'
+
+- name: Set the Active Controller 
+  become: yes
+  lineinfile: dest={{ vrs_config }} regexp=^ACTIVE_CONTROLLER line='ACTIVE_CONTROLLER={{ vsc_active_ip }}'
+
+- name: Set the Standby Controller 
+  become: yes
+  lineinfile: dest={{ vrs_config }} regexp=^STANDBY_CONTROLLER line='STANDBY_CONTROLLER={{ vsc_standby_ip }}'
+  when: vsc_standby_ip is defined
+
+- name: Install plugin rpm
+  become: yes
+  yum: name={{ plugin_rpm }} state=present
+
+- include: certificates.yml
+
+- name: Copy the kubeconfig
+  become: yes
+  copy: src=/tmp/nuage.kubeconfig  dest={{ nuage_node_kubeconfig }}
+
+- name: Get the nuage service token name
+  shell: kubectl get serviceaccounts/nuage -o yaml | grep -o "nuage-token.*"
+  register: nuagetokenname
+  delegate_to: "{{ nuage_ca_master }}"
+
+- name: Get the existing kubelet args 
+  shell: cat /etc/kubernetes/kubelet | grep "^KUBELET_ARGS" | 
+          sed -e "s/--network-plugin=\\S\+//g" | 
+          sed -e "s/--network-plugin-dir=\\S\+//g" | sed -e "s/\"//g" |
+          sed -e "s/^KUBELET_ARGS=//g"
+  register: kubelet_args 
+  ignore_errors: yes
+
+- name: Remove the commented KUBELET_ARGS 
+  lineinfile: dest=/etc/kubernetes/kubelet regexp="^#KUBELET_ARGS" state=absent 
+  ignore_errors: yes
+
+- name: Comment the existing kubelet args line
+  replace: dest=/etc/kubernetes/kubelet regexp="^KUBELET_ARGS" replace="#KUBELET_ARGS"
+  ignore_errors: yes
+
+- name: Add the nuage VSP plugin to the kubelet args
+  lineinfile: dest=/etc/kubernetes/kubelet line="KUBELET_ARGS=\"{{ kubelet_args.stdout }} {{ nuage_plugin_kublet_args }} \""
+  ignore_errors: yes
+
+- name: Get existing proxy args
+  shell: cat /etc/kubernetes/proxy | grep "^KUBE_PROXY_ARGS" | sed -e "s/^KUBE_PROXY_ARGS=//g" | sed -e "s/\"//g" 
+  register: proxy_args
+  ignore_errors: yes
+
+- name: Comment the existing proxy args line
+  replace: dest=/etc/kubernetes/proxy regexp="^KUBE_PROXY_ARGS" replace="#KUBE_PROXY_ARGS"
+  ignore_errors: yes
+
+- name: Add the userspace proxy 
+  lineinfile: dest=/etc/kubernetes/proxy line="KUBE_PROXY_ARGS=\"{{ proxy_args.stdout }} {{ k8s_userspace_proxy_args }} \""
+  ignore_errors: yes
+
+- name: Get the nuage token
+  shell: kubectl describe secret "{{ nuagetokenname.stdout }}" | grep "token:" | awk '{print $2}' 
+  register: nuagetoken
+  delegate_to: "{{ nuage_ca_master }}"
+
+- name: Set nuage token fact
+  set_fact:
+    nuage_token: "{{ nuagetoken.stdout }}"
+    
+- name: Set the vsp-k8s.yaml 
+  become: yes
+  template: src=vsp-k8s.j2 dest={{ vsp_k8s_yaml }} owner=root mode=0644
+
+- include: iptables.yml
+
+- name: restart daemons
+  command: /bin/true
+  notify:
+    - restart daemons

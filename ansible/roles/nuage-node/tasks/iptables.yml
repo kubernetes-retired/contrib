@@ -1,0 +1,30 @@
+---
+- name: IPtables | Get iptables rules
+  command: iptables -L --wait
+  register: iptablesrules
+  always_run: yes
+
+- name: IPtables | Open vxlan with iptables
+  command: /sbin/iptables -w -I INPUT 1 -p udp --dport 4789 -j ACCEPT -m comment --comment "nuage-vxlan"
+  when: "'nuage-vxlan' not in iptablesrules.stdout"
+  notify: save iptables rules
+
+- name: Allow traffic from overlay to underlay
+  command: /sbin/iptables -w -I FORWARD 1 -s {{ nuage_cluster_nw_cidr }} -j ACCEPT -m comment --comment "nuage-overlay-underlay"    
+  when: "'nuage-overlay-underlay' not in iptablesrules.stdout"
+  notify: save iptables rules
+
+- name: Allow traffic from underlay to overlay
+  command: /sbin/iptables -w -I FORWARD 1 -d {{ nuage_cluster_nw_cidr }} -j ACCEPT -m comment --comment "nuage-underlay-overlay"   
+  when: "'nuage-underlay-overlay' not in iptablesrules.stdout"
+  notify: save iptables rules
+
+- name: Allow traffic service ip 
+  command: /sbin/iptables -w -I INPUT 1 -d {{ kube_service_addresses|ipaddr('net')|ipaddr(1)|ipaddr('address') }} -j ACCEPT -m comment --comment "service-ip-allow"
+  when: "'service-ip-allow' not in iptablesrules.stdout"
+  notify: save iptables rules
+
+- name: Allow traffic to kube API server 
+  command: /sbin/iptables -w -I INPUT 1 -p tcp --dport {{ k8s_api_port }} -j ACCEPT -m comment --comment "api-server-allow"
+  when: "'api-server-allow' not in iptablesrules.stdout"
+  notify: save iptables rules

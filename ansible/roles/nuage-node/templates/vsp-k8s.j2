@@ -1,0 +1,21 @@
+# Path to Nuage kubeconfig
+kubeConfig: {{ nuage_node_kubeconfig }}
+# Name of the enterprise in which pods will reside
+enterpriseName: {{ enterprise }} 
+# Name of the domain in which pods will reside
+domainName: {{ domain }}
+# REST server URL 
+nuageMonRestServer: {{ nuage_mon_rest_server_url }}
+# Bridge name for the docker bridge
+dockerBridgeName: {{ docker_bridge }}
+# Certificate for connecting to the kubemon REST API
+nuageMonClientCert: {{ rest_client_cert }}
+# Key to the certificate in restClientCert
+nuageMonClientKey: {{ rest_client_key }} 
+# CA certificate for verifying the master's rest server
+nuageMonServerCA: {{ rest_server_ca_cert }}
+# Nuage vport mtu size
+interfaceMTU: {{ vport_mtu  }}
+# Logging level for the plugin
+# allowed options are: "dbg", "info", "warn", "err", "emer", "off"
+logLevel: {{ plugin_log_level }}

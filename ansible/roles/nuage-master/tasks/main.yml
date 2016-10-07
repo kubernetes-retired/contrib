@@ -1,0 +1,62 @@
+---
+- name: Install iptables-services 
+  become: yes
+  yum: name=iptables-services state=present
+  
+- name: Start iptables-service 
+  become: yes
+  service: name=iptables state=started
+ 
+- name: Create nuage monitor directory 
+  become: yes
+  file: path={{ nuage_mon_config_dir }} state=directory  
+
+- name: Create the log directory
+  become: yes
+  file: path={{ nuage_mon_rest_server_logdir }} state=directory
+
+- name: Install Nuage k8s monitor 
+  become: yes
+  yum: name={{ nuage_monitor_rpm }} state=present
+
+- include: serviceaccount.yml
+
+- include: certificates.yml 
+
+- name: Read ca.crt
+  become: yes
+  shell: cat {{ k8s_ca_crt }}
+  register: k8s_ca_result
+
+- name: Store ca.crt data
+  become: yes
+  set_fact: k8s_ca_crt_data="{{ k8s_ca_result.stdout }}"
+
+- name: Create nuage.kubeconfig
+  become: yes
+  template: src=nuage.kubeconfig.j2 dest={{ nuage_kubeconfig }} owner=root mode=0644
+  when: nuage_custom_kubeconfig is not defined
+
+- name: Copy the kubeconfig
+  become: yes
+  copy: src={{  nuage_custom_kubeconfig }} dest={{ nuage_kubeconfig }} owner=root mode=0644
+  when: nuage_custom_kubeconfig is defined
+
+- name: Download the kubeconfig
+  become: yes
+  fetch: src={{ nuage_kubeconfig }} dest=/tmp/nuage.kubeconfig flat=yes
+
+- name: Create nuagekubemon.yaml
+  become: yes
+  template: src=nuagekubemon.yaml.j2 dest={{ nuage_mon_yaml_path }} owner=root mode=0644
+
+- name: Create net-config.yaml
+  become: yes
+  template: src=net-config.yaml.j2 dest={{ nuage_net_config_yaml_path }} owner=root mode=0644
+
+- include: iptables.yml
+
+- name: restart daemons
+  command: /bin/true
+  notify:
+    - restart daemons

@@ -1,0 +1,26 @@
+---
+- name: restart daemons
+  command: /bin/true
+  notify:
+    - restart apiserver
+    - restart controller-manager
+    - restart scheduler
+    - restart nuagekubemon
+
+- name: restart apiserver
+  service: name=kube-apiserver state=restarted
+  ignore_errors: yes
+
+- name: restart controller-manager
+  service: name=kube-controller-manager state=restarted
+  ignore_errors: yes
+
+- name: restart scheduler
+  service: name=kube-scheduler state=restarted
+  ignore_errors: yes
+
+- name: restart nuagekubemon 
+  service: name=nuagekubemon state=restarted
+
+- name: save iptables rules
+  command: service iptables save

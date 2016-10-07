@@ -1,0 +1,12 @@
+nuage_mon_yaml_path: "{{ nuage_mon_config_dir }}/nuagekubemon.yaml"
+nuage_net_config_yaml_path: "{{ nuage_mon_config_dir }}/net-config.yaml"
+nuage_mon_rest_server_logdir: /var/log/nuagekubemon
+
+cert_output_dir: "{{ nuage_mon_config_dir }}"
+nuage_master_crt_dir: "{{ nuage_mon_config_dir }}"
+nuage_mon_rest_server_crt_dir: "{{ nuage_master_crt_dir }}/{{ ansible_nodename }}"
+nuage_mon_rest_server_host: "{{ ansible_nodename }}"
+nuage_mon_rest_server_url: "0.0.0.0:{{ nuage_mon_rest_server_port }}"
+nuage_ca_master_rest_server_key: "{{ nuage_mon_rest_server_crt_dir }}/nuageMonServer.key"
+nuage_ca_master_rest_server_crt: "{{ nuage_mon_rest_server_crt_dir }}/nuageMonServer.crt"
+

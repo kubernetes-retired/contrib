@@ -1,0 +1,15 @@
+---
+- name: IPtables | Get iptables rules
+  command: iptables -L --wait
+  register: iptablesrules
+  always_run: yes
+
+- name: IPtables | Open Nuage monitor port with iptables
+  command: /sbin/iptables -w -I INPUT 1 -p tcp --dport {{ nuage_mon_rest_server_port }} -j ACCEPT -m comment --comment "nuage-monitor"
+  when: "'nuage-monitor' not in iptablesrules.stdout"
+  notify: save iptables rules
+
+- name: Allow traffic to kube API server 
+  command: /sbin/iptables -w -I INPUT 1 -p tcp --dport {{ k8s_api_port }} -j ACCEPT -m comment --comment "api-server-allow"
+  when: "'api-server-allow' not in iptablesrules.stdout"
+  notify: save iptables rules

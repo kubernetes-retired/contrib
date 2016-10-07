@@ -1,0 +1,19 @@
+vrs_config: /etc/default/openvswitch
+vsp_k8s_dir: /usr/share/vsp-k8s
+nuage_plugin_crt_dir : /usr/share/vsp-k8s
+vsp_k8s_yaml: "{{ vsp_k8s_dir }}/vsp-k8s.yaml"
+nuage_master_cluster_hostname: "{{ groups['masters'][0] }}"
+nuage_mon_rest_server_port: "{{ nuage_monitor_rest_server_port | default('9443') }}"
+nuage_mon_rest_server_url: "https://{{ nuage_master_cluster_hostname }}:{{ nuage_mon_rest_server_port }}"
+docker_bridge: "{{ nuage_docker_bridge | default('docker0') }}"
+rest_client_cert: "{{ vsp_k8s_dir }}/nuageMonClient.crt"
+rest_client_key: "{{ vsp_k8s_dir }}/nuageMonClient.key"
+rest_server_ca_cert: "{{ vsp_k8s_dir }}/nuageMonCA.crt"
+vport_mtu: "{{ nuage_interface_mtu | default('1460') }}"
+plugin_log_level: "{{ nuage_plugin_log_level | default('err') }}"
+
+nuage_plugin_rest_client_crt_dir: "{{ nuage_ca_master_crt_dir }}/{{ ansible_nodename }}"
+nuage_ca_master_plugin_key: "{{ nuage_plugin_rest_client_crt_dir }}/nuageMonClient.key"
+nuage_ca_master_plugin_crt: "{{ nuage_plugin_rest_client_crt_dir }}/nuageMonClient.crt" 
+nuage_plugin_kublet_args: " --network-plugin=vsp-k8s --network-plugin-dir=/usr/libexec/kubernetes/kubelet-plugins/net/exec"
+k8s_userspace_proxy_args: "--proxy-mode=userspace"
