@@ -19,87 +19,69 @@ package status
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/golang/glog"
 
 	"k8s.io/kubernetes/pkg/api"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/leaderelection"
-	"k8s.io/kubernetes/pkg/client/leaderelection/resourcelock"
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/util/wait"
 )
 
-// SyncStatus ...
-type SyncStatus interface {
+// Sync ...
+type Sync interface {
 	Start()
 	Stop()
 }
 
 type sync struct {
 	client *unversioned.Client
+
+	podInfo *podInfo
+
+	elector *leaderelection.LeaderElector
 }
 
 // Start ...
 func (s sync) Start() {
-
+	go wait.Forever(s.elector.Run, 0)
 }
 
 // Stop ...
 func (s sync) Stop() {
-
+	//s.removeFromIngress()
 }
 
 // NewStatusSyncer ...
-func NewStatusSyncer(client *unversioned.Client) SyncStatus {
-
-	lecfg := leaderelection.DefaultLeaderElectionConfiguration()
-	leaderElectionClient, err := clientset.NewForConfig(nil)
+func NewStatusSyncer(client *unversioned.Client, leaderElectionClient *clientset.Clientset) Sync {
+	podInfo, err := getPodDetails(client)
 	if err != nil {
-		glog.Fatalf("Invalid API configuration: %v", err)
+		glog.Fatalf("unexpected error obtaining pod information: %v", err)
+	}
+	st := sync{
+		client:  client,
+		podInfo: podInfo,
 	}
 
-	if !lecfg.LeaderElect {
-		glog.Fatal("this statement is unreachable")
+	callback := func(leader string) {
+		if leader == podInfo.PodName {
+			st.updateIngressStatus()
+		}
 	}
 
-	id, err := os.Hostname()
+	le, err := NewElection("leader-ingress-controller", podInfo.PodName, podInfo.PodNamespace, 30*time.Second, callback, client, leaderElectionClient)
 	if err != nil {
-		glog.Fatalf("unable to get hostname: %v", err)
+		glog.Fatalf("unexpected error starting leader election: %v", err)
 	}
+	st.elector = le
 
-	rl := resourcelock.EndpointsLock{
-		EndpointsMeta: api.ObjectMeta{
-			Namespace: "kube-system",
-			Name:      "kube-scheduler",
-		},
-		Client: leaderElectionClient,
-		LockConfig: resourcelock.ResourceLockConfig{
-			Identity: id,
-			//EventRecorder: config.Recorder,
-		},
-	}
-
-	leaderelection.RunOrDie(leaderelection.LeaderElectionConfig{
-		Lock:          &rl,
-		LeaseDuration: lecfg.LeaseDuration.Duration,
-		RenewDeadline: lecfg.RenewDeadline.Duration,
-		RetryPeriod:   lecfg.RetryPeriod.Duration,
-		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(stop <-chan struct{}) {
-
-			},
-			OnStoppedLeading: func() {
-				glog.Fatalf("lost master")
-			},
-		},
-	})
-
-	return sync{
-		client: client,
-	}
+	return st
 }
 
-func (s *sync) updateIngressStatus(key string) error {
+func (s *sync) updateIngressStatus() error {
+	glog.Infof("updating status of Ingress rules")
 	/*
 		obj, ingExists, err := lbc.ingLister.Store.GetByKey(key)
 		if err != nil {
@@ -140,8 +122,11 @@ func (s *sync) updateIngressStatus(key string) error {
 // removeFromIngress removes the IP address of the node where the Ingres
 // controller is running before shutdown to avoid incorrect status
 // information in Ingress rules
-func removeFromIngress(ings []interface{}) {
-	glog.Infof("updating %v Ingress rule/s", len(ings))
+func (s *sync) removeFromIngress() { //ings []interface{}) {
+	if !s.elector.IsLeader() {
+		return
+	}
+	//glog.Infof("updating %v Ingress rule/s", len(ings))
 	/*for _, cur := range ings {
 		ing := cur.(*extensions.Ingress)
 
@@ -189,11 +174,6 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 	if podName == "" && podNs == "" {
 		return nil, fmt.Errorf("unable to get POD information (missing POD_NAME or POD_NAMESPACE environment variable")
 	}
-	/*
-		err := waitForPodRunning(kubeClient, podNs, podName, time.Millisecond*200, time.Second*30)
-		if err != nil {
-			return nil, err
-		}*/
 
 	pod, _ := kubeClient.Pods(podNs).Get(podName)
 	if pod == nil {

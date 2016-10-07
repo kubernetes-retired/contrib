@@ -34,7 +34,8 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/version"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/leaderelection"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/healthz"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -90,22 +91,28 @@ func main() {
 	flags.Parse(os.Args)
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
-	glog.Infof("Using build version %v from repo %v commit %v", version.RELEASE, version.REPO, version.BUILD)
+	glog.Infof("Using build version %v from repo %v commit %v", version.RELEASE, version.REPO, version.COMMIT)
 
 	if *defaultSvc == "" {
 		glog.Fatalf("Please specify --default-backend-service")
 	}
 
-	kubeClient, err := unversioned.NewInCluster()
+	kubeconfig, err := restclient.InClusterConfig()
 	if err != nil {
-		config, err := clientConfig.ClientConfig()
+		kubeconfig, err = clientConfig.ClientConfig()
 		if err != nil {
 			glog.Fatalf("error configuring the client: %v", err)
 		}
-		kubeClient, err = unversioned.New(config)
-		if err != nil {
-			glog.Fatalf("failed to create client: %v", err)
-		}
+	}
+
+	kubeClient, err := unversioned.New(kubeconfig)
+	if err != nil {
+		glog.Fatalf("failed to create client: %v", err)
+	}
+
+	leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, "leader-election"))
+	if err != nil {
+		glog.Fatalf("Invalid API configuration: %v", err)
 	}
 
 	if err := isValidService(kubeClient, *defaultSvc); err != nil {
@@ -122,6 +129,7 @@ func main() {
 
 	config := &controller.Configuration{
 		Client:                kubeClient,
+		ElectionClient:        leaderElectionClient,
 		ResyncPeriod:          *resyncPeriod,
 		DefaultService:        *defaultSvc,
 		Namespace:             *watchNamespace,
@@ -130,10 +138,7 @@ func main() {
 		UDPConfigMapName:      *udpConfigMapName,
 		DefaultSSLCertificate: *defSSLCertificate,
 		DefaultHealthzURL:     *defHealthzURL,
-		LeaderElection:        leaderelection.DefaultLeaderElectionConfiguration(),
 	}
-
-	leaderelection.BindFlags(&config.LeaderElection, flags)
 
 	ic, err := controller.NewLoadBalancer(config)
 	if err != nil {
@@ -157,7 +162,7 @@ func registerHandlers(enableProfiling bool, port int, ic controller.IngressContr
 
 	mux.HandleFunc("/build", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "build version %v from repo %v commit %v", version.RELEASE, version.REPO, version.BUILD)
+		fmt.Fprintf(w, "build version %v from repo %v commit %v", version.RELEASE, version.REPO, version.COMMIT)
 	})
 
 	mux.HandleFunc("/stop", func(w http.ResponseWriter, r *http.Request) {

@@ -29,9 +29,9 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	podutil "k8s.io/kubernetes/pkg/api/pod"
-	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/record"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/healthz"
@@ -53,6 +53,7 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/rewrite"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/secureupstream"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/service"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/status"
 	ssl "k8s.io/contrib/ingress/controllers/nginx/pkg/net/ssl"
 )
 
@@ -93,9 +94,7 @@ type GenericController struct {
 
 	syncQueue *taskQueue
 
-	// taskQueue used to update the status of the Ingress rules.
-	// this avoids a sync execution in the ResourceEventHandlerFuncs
-	ingQueue *taskQueue
+	syncStatus status.Sync
 
 	// stopLock is used to enforce only a single call to Stop is active.
 	// Needed because we allow stopping through an http endpoint and
@@ -107,7 +106,9 @@ type GenericController struct {
 
 // Configuration ...
 type Configuration struct {
-	Client                *client.Client
+	Client         *client.Client
+	ElectionClient *clientset.Clientset
+
 	ResyncPeriod          time.Duration
 	DefaultService        string
 	Namespace             string
@@ -116,7 +117,6 @@ type Configuration struct {
 	UDPConfigMapName      string
 	DefaultSSLCertificate string
 	DefaultHealthzURL     string
-	LeaderElection        componentconfig.LeaderElectionConfiguration
 }
 
 // NewLoadBalancer creates a controller for nginx loadbalancer
@@ -127,17 +127,17 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 	eventBroadcaster.StartRecordingToSink(config.Client.Events(config.Namespace))
 
 	ic := GenericController{
-		cfg:      config,
-		stopLock: &sync.Mutex{},
-		stopCh:   make(chan struct{}),
-		nginx:    nginx.NewManager(config.Client),
+		cfg:        config,
+		stopLock:   &sync.Mutex{},
+		stopCh:     make(chan struct{}),
+		nginx:      nginx.NewManager(config.Client),
+		syncStatus: status.NewStatusSyncer(config.Client, config.ElectionClient),
 		recorder: eventBroadcaster.NewRecorder(api.EventSource{
 			Component: "nginx-ingress-controller",
 		}),
 	}
 
 	ic.syncQueue = NewTaskQueue(ic.sync)
-	//ic.ingQueue = NewTaskQueue(ic.updateIngressStatus)
 
 	ingEventHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -147,7 +147,6 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 				return
 			}
 			ic.recorder.Eventf(addIng, api.EventTypeNormal, "CREATE", fmt.Sprintf("%s/%s", addIng.Namespace, addIng.Name))
-			//ic.ingQueue.enqueue(obj)
 			ic.syncQueue.enqueue(obj)
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -167,7 +166,6 @@ func NewLoadBalancer(config *Configuration) (IngressController, error) {
 			if !reflect.DeepEqual(old, cur) {
 				upIng := cur.(*extensions.Ingress)
 				ic.recorder.Eventf(upIng, api.EventTypeNormal, "UPDATE", fmt.Sprintf("%s/%s", upIng.Namespace, upIng.Name))
-				//ic.ingQueue.enqueue(cur)
 				ic.syncQueue.enqueue(cur)
 			}
 		},
@@ -1090,13 +1088,10 @@ func (ic GenericController) Stop() error {
 		ic.shutdown = true
 		close(ic.stopCh)
 
-		//ings := ic.ingLister.Store.List()
-		//glog.Infof("removing IP address %v from ingress rules", ic.podInfo.NodeIP)
-		//ic.removeFromIngress(ings)
-
 		glog.Infof("Shutting down controller queues.")
 		ic.syncQueue.shutdown()
-		//ic.ingQueue.shutdown()
+
+		ic.syncStatus.Stop()
 
 		return nil
 	}
@@ -1104,9 +1099,9 @@ func (ic GenericController) Stop() error {
 	return fmt.Errorf("shutdown already in progress")
 }
 
-// Start starts the loadbalancer controller.
+// Start starts the Ingress controller.
 func (ic GenericController) Start() {
-	glog.Infof("starting NGINX loadbalancer controller")
+	glog.Infof("starting NGINX Ingress controller")
 	go ic.nginx.Start()
 
 	go ic.ingController.Run(ic.stopCh)
@@ -1116,7 +1111,7 @@ func (ic GenericController) Start() {
 	go ic.mapController.Run(ic.stopCh)
 
 	go ic.syncQueue.run(time.Second, ic.stopCh)
-	//go ic.ingQueue.run(time.Second, ic.stopCh)
+	go ic.syncStatus.Start()
 
 	<-ic.stopCh
 }

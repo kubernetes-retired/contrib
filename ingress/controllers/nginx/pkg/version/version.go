@@ -21,6 +21,6 @@ var (
 	RELEASE = "UNKNOWN"
 	// REPO returns the git repository URL
 	REPO = "UNKNOWN"
-	// BUILD returns the sha from commit
-	BUILD = "UNKNOWN"
+	// COMMIT returns the short sha from git
+	COMMIT = "UNKNOWN"
 )
