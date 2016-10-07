@@ -63,12 +63,14 @@ type KubeProxyConfiguration struct {
 	// Must be greater than 0. Only applicable for proxyMode=userspace.
 	UDPIdleTimeout unversioned.Duration `json:"udpTimeoutMilliseconds"`
 	// conntrackMax is the maximum number of NAT connections to track (0 to
-	// leave as-is).  This takes precedence over conntrackMaxPerCore.
+	// leave as-is).  This takes precedence over conntrackMaxPerCore and conntrackMin.
 	ConntrackMax int32 `json:"conntrackMax"`
 	// conntrackMaxPerCore is the maximum number of NAT connections to track
-	// per CPU core (0 to leave as-is).  This value is only considered if
-	// conntrackMax == 0.
+	// per CPU core (0 to leave the limit as-is and ignore conntrackMin).
 	ConntrackMaxPerCore int32 `json:"conntrackMaxPerCore"`
+	// conntrackMin is the minimum value of connect-tracking records to allocate,
+	// regardless of conntrackMaxPerCore (set conntrackMaxPerCore=0 to leave the limit as-is).
+	ConntrackMin int32 `json:"conntrackMin"`
 	// conntrackTCPEstablishedTimeout is how long an idle TCP connection will be kept open
 	// (e.g. '250ms', '2s').  Must be greater than 0.
 	ConntrackTCPEstablishedTimeout unversioned.Duration `json:"conntrackTCPEstablishedTimeout"`
@@ -422,10 +424,6 @@ type KubeletConfiguration struct {
 	// run docker daemon with version  < 1.9 or an Aufs storage backend.
 	// Issue #10959 has more details.
 	SerializeImagePulls *bool `json:"serializeImagePulls"`
-	// experimentalFlannelOverlay enables experimental support for starting the
-	// kubelet with the default overlay network (flannel). Assumes flanneld
-	// is already running in client mode.
-	ExperimentalFlannelOverlay bool `json:"experimentalFlannelOverlay"`
 	// outOfDiskTransitionFrequency is duration for which the kubelet has to
 	// wait before transitioning out of out-of-disk node condition status.
 	OutOfDiskTransitionFrequency unversioned.Duration `json:"outOfDiskTransitionFrequency"`
@@ -459,12 +457,12 @@ type KubeletConfiguration struct {
 	// A set of ResourceName=ResourceQuantity (e.g. cpu=200m,memory=150G) pairs
 	// that describe resources reserved for non-kubernetes components.
 	// Currently only cpu and memory are supported. [default=none]
-	// See http://releases.k8s.io/release-1.4/docs/user-guide/compute-resources.md for more detail.
+	// See http://kubernetes.io/docs/user-guide/compute-resources for more detail.
 	SystemReserved map[string]string `json:"systemReserved"`
 	// A set of ResourceName=ResourceQuantity (e.g. cpu=200m,memory=150G) pairs
 	// that describe resources reserved for kubernetes system components.
 	// Currently only cpu and memory are supported. [default=none]
-	// See http://releases.k8s.io/release-1.4/docs/user-guide/compute-resources.md for more detail.
+	// See http://kubernetes.io/docs/user-guide/compute-resources for more detail.
 	KubeReserved map[string]string `json:"kubeReserved"`
 	// Default behaviour for kernel tuning
 	ProtectKernelDefaults bool `json:"protectKernelDefaults"`
@@ -483,4 +481,7 @@ type KubeletConfiguration struct {
 	// Whitelist of unsafe sysctls or sysctl patterns (ending in *). Use these at your own risk.
 	// Resource isolation might be lacking and pod might influence each other on the same node.
 	AllowedUnsafeSysctls []string `json:"allowedUnsafeSysctls,omitempty"`
+	// How to integrate with runtime. If set to CRI, kubelet will switch to
+	// using the new Container Runtine Interface.
+	ExperimentalRuntimeIntegrationType string `json:"experimentalRuntimeIntegrationType,omitempty"`
 }

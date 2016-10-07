@@ -34,6 +34,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/federation/apis/federation"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/events"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/apps"
@@ -150,7 +151,7 @@ type ResourcePrinter interface {
 	HandledResources() []string
 	//Can be used to print out warning/clarifications if needed
 	//after all objects were printed
-	FinishPrint(io.Writer, string) error
+	AfterPrint(io.Writer, string) error
 }
 
 // ResourcePrinterFunc is a function that can print objects
@@ -166,7 +167,7 @@ func (fn ResourcePrinterFunc) HandledResources() []string {
 	return []string{}
 }
 
-func (fn ResourcePrinterFunc) FinishPrint(io.Writer, string) error {
+func (fn ResourcePrinterFunc) AfterPrint(io.Writer, string) error {
 	return nil
 }
 
@@ -187,7 +188,7 @@ func NewVersionedPrinter(printer ResourcePrinter, converter runtime.ObjectConver
 	}
 }
 
-func (p *VersionedPrinter) FinishPrint(w io.Writer, res string) error {
+func (p *VersionedPrinter) AfterPrint(w io.Writer, res string) error {
 	return nil
 }
 
@@ -214,7 +215,7 @@ type NamePrinter struct {
 	Typer   runtime.ObjectTyper
 }
 
-func (p *NamePrinter) FinishPrint(w io.Writer, res string) error {
+func (p *NamePrinter) AfterPrint(w io.Writer, res string) error {
 	return nil
 }
 
@@ -266,7 +267,7 @@ func (p *NamePrinter) HandledResources() []string {
 type JSONPrinter struct {
 }
 
-func (p *JSONPrinter) FinishPrint(w io.Writer, res string) error {
+func (p *JSONPrinter) AfterPrint(w io.Writer, res string) error {
 	return nil
 }
 
@@ -274,7 +275,13 @@ func (p *JSONPrinter) FinishPrint(w io.Writer, res string) error {
 func (p *JSONPrinter) PrintObj(obj runtime.Object, w io.Writer) error {
 	switch obj := obj.(type) {
 	case *runtime.Unknown:
-		_, err := w.Write(obj.Raw)
+		var buf bytes.Buffer
+		err := json.Indent(&buf, obj.Raw, "", "    ")
+		if err != nil {
+			return err
+		}
+		buf.WriteRune('\n')
+		_, err = buf.WriteTo(w)
 		return err
 	}
 
@@ -300,7 +307,7 @@ type YAMLPrinter struct {
 	converter runtime.ObjectConvertor
 }
 
-func (p *YAMLPrinter) FinishPrint(w io.Writer, res string) error {
+func (p *YAMLPrinter) AfterPrint(w io.Writer, res string) error {
 	return nil
 }
 
@@ -447,62 +454,54 @@ func (h *HumanReadablePrinter) HandledResources() []string {
 	return keys
 }
 
-func (h *HumanReadablePrinter) FinishPrint(output io.Writer, res string) error {
-	if !h.options.NoHeaders && !h.options.ShowAll && h.hiddenObjNum > 0 {
-		_, err := fmt.Fprintf(output, "  info: %d completed object(s) was(were) not shown in %s list. Pass --show-all to see all objects.\n\n", h.hiddenObjNum, res)
-		return err
-	}
+func (h *HumanReadablePrinter) AfterPrint(output io.Writer, res string) error {
 	return nil
 }
 
 // NOTE: When adding a new resource type here, please update the list
 // pkg/kubectl/cmd/get.go to reflect the new resource type.
-var podColumns = []string{"NAME", "READY", "STATUS", "RESTARTS", "AGE"}
-var podTemplateColumns = []string{"TEMPLATE", "CONTAINER(S)", "IMAGE(S)", "PODLABELS"}
-var replicationControllerColumns = []string{"NAME", "DESIRED", "CURRENT", "READY", "AGE"}
-var replicaSetColumns = []string{"NAME", "DESIRED", "CURRENT", "READY", "AGE"}
-var jobColumns = []string{"NAME", "DESIRED", "SUCCESSFUL", "AGE"}
-var scheduledJobColumns = []string{"NAME", "SCHEDULE", "SUSPEND", "ACTIVE", "LAST-SCHEDULE"}
-var serviceColumns = []string{"NAME", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"}
-var ingressColumns = []string{"NAME", "HOSTS", "ADDRESS", "PORTS", "AGE"}
-var petSetColumns = []string{"NAME", "DESIRED", "CURRENT", "AGE"}
-var endpointColumns = []string{"NAME", "ENDPOINTS", "AGE"}
-var nodeColumns = []string{"NAME", "STATUS", "AGE"}
-var daemonSetColumns = []string{"NAME", "DESIRED", "CURRENT", "NODE-SELECTOR", "AGE"}
-var eventColumns = []string{"LASTSEEN", "FIRSTSEEN", "COUNT", "NAME", "KIND", "SUBOBJECT", "TYPE", "REASON", "SOURCE", "MESSAGE"}
-var limitRangeColumns = []string{"NAME", "AGE"}
-var resourceQuotaColumns = []string{"NAME", "AGE"}
-var namespaceColumns = []string{"NAME", "STATUS", "AGE"}
-var secretColumns = []string{"NAME", "TYPE", "DATA", "AGE"}
-var serviceAccountColumns = []string{"NAME", "SECRETS", "AGE"}
-var persistentVolumeColumns = []string{"NAME", "CAPACITY", "ACCESSMODES", "RECLAIMPOLICY", "STATUS", "CLAIM", "REASON", "AGE"}
-var persistentVolumeClaimColumns = []string{"NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESSMODES", "AGE"}
-var componentStatusColumns = []string{"NAME", "STATUS", "MESSAGE", "ERROR"}
-var thirdPartyResourceColumns = []string{"NAME", "DESCRIPTION", "VERSION(S)"}
-var roleColumns = []string{"NAME", "AGE"}
-var roleBindingColumns = []string{"NAME", "AGE"}
-var clusterRoleColumns = []string{"NAME", "AGE"}
-var clusterRoleBindingColumns = []string{"NAME", "AGE"}
-var storageClassColumns = []string{"NAME", "TYPE"}
+var (
+	podColumns                   = []string{"NAME", "READY", "STATUS", "RESTARTS", "AGE"}
+	podTemplateColumns           = []string{"TEMPLATE", "CONTAINER(S)", "IMAGE(S)", "PODLABELS"}
+	replicationControllerColumns = []string{"NAME", "DESIRED", "CURRENT", "READY", "AGE"}
+	replicaSetColumns            = []string{"NAME", "DESIRED", "CURRENT", "READY", "AGE"}
+	jobColumns                   = []string{"NAME", "DESIRED", "SUCCESSFUL", "AGE"}
+	scheduledJobColumns          = []string{"NAME", "SCHEDULE", "SUSPEND", "ACTIVE", "LAST-SCHEDULE"}
+	serviceColumns               = []string{"NAME", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"}
+	ingressColumns               = []string{"NAME", "HOSTS", "ADDRESS", "PORTS", "AGE"}
+	petSetColumns                = []string{"NAME", "DESIRED", "CURRENT", "AGE"}
+	endpointColumns              = []string{"NAME", "ENDPOINTS", "AGE"}
+	nodeColumns                  = []string{"NAME", "STATUS", "AGE"}
+	daemonSetColumns             = []string{"NAME", "DESIRED", "CURRENT", "NODE-SELECTOR", "AGE"}
+	eventColumns                 = []string{"LASTSEEN", "FIRSTSEEN", "COUNT", "NAME", "KIND", "SUBOBJECT", "TYPE", "REASON", "SOURCE", "MESSAGE"}
+	limitRangeColumns            = []string{"NAME", "AGE"}
+	resourceQuotaColumns         = []string{"NAME", "AGE"}
+	namespaceColumns             = []string{"NAME", "STATUS", "AGE"}
+	secretColumns                = []string{"NAME", "TYPE", "DATA", "AGE"}
+	serviceAccountColumns        = []string{"NAME", "SECRETS", "AGE"}
+	persistentVolumeColumns      = []string{"NAME", "CAPACITY", "ACCESSMODES", "RECLAIMPOLICY", "STATUS", "CLAIM", "REASON", "AGE"}
+	persistentVolumeClaimColumns = []string{"NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESSMODES", "AGE"}
+	componentStatusColumns       = []string{"NAME", "STATUS", "MESSAGE", "ERROR"}
+	thirdPartyResourceColumns    = []string{"NAME", "DESCRIPTION", "VERSION(S)"}
+	roleColumns                  = []string{"NAME", "AGE"}
+	roleBindingColumns           = []string{"NAME", "AGE"}
+	clusterRoleColumns           = []string{"NAME", "AGE"}
+	clusterRoleBindingColumns    = []string{"NAME", "AGE"}
+	storageClassColumns          = []string{"NAME", "TYPE"}
 
-// TODO: consider having 'KIND' for third party resource data
-var thirdPartyResourceDataColumns = []string{"NAME", "LABELS", "DATA"}
-var horizontalPodAutoscalerColumns = []string{"NAME", "REFERENCE", "TARGET", "CURRENT", "MINPODS", "MAXPODS", "AGE"}
-var withNamespacePrefixColumns = []string{"NAMESPACE"} // TODO(erictune): print cluster name too.
-var deploymentColumns = []string{"NAME", "DESIRED", "CURRENT", "UP-TO-DATE", "AVAILABLE", "AGE"}
-var configMapColumns = []string{"NAME", "DATA", "AGE"}
-var podSecurityPolicyColumns = []string{"NAME", "PRIV", "CAPS", "VOLUMEPLUGINS", "SELINUX", "RUNASUSER"}
-var clusterColumns = []string{"NAME", "STATUS", "AGE"}
-var networkPolicyColumns = []string{"NAME", "POD-SELECTOR", "AGE"}
-var certificateSigningRequestColumns = []string{"NAME", "AGE", "REQUESTOR", "CONDITION"}
+	// TODO: consider having 'KIND' for third party resource data
+	thirdPartyResourceDataColumns    = []string{"NAME", "LABELS", "DATA"}
+	horizontalPodAutoscalerColumns   = []string{"NAME", "REFERENCE", "TARGET", "CURRENT", "MINPODS", "MAXPODS", "AGE"}
+	withNamespacePrefixColumns       = []string{"NAMESPACE"} // TODO(erictune): print cluster name too.
+	deploymentColumns                = []string{"NAME", "DESIRED", "CURRENT", "UP-TO-DATE", "AVAILABLE", "AGE"}
+	configMapColumns                 = []string{"NAME", "DATA", "AGE"}
+	podSecurityPolicyColumns         = []string{"NAME", "PRIV", "CAPS", "VOLUMEPLUGINS", "SELINUX", "RUNASUSER"}
+	clusterColumns                   = []string{"NAME", "STATUS", "AGE"}
+	networkPolicyColumns             = []string{"NAME", "POD-SELECTOR", "AGE"}
+	certificateSigningRequestColumns = []string{"NAME", "AGE", "REQUESTOR", "CONDITION"}
+)
 
 func (h *HumanReadablePrinter) printPod(pod *api.Pod, w io.Writer, options PrintOptions) error {
-	reason := string(pod.Status.Phase)
-	// if not printing all pods, skip terminated pods (default)
-	if !options.ShowAll && (reason == string(api.PodSucceeded) || reason == string(api.PodFailed)) {
-		h.hiddenObjNum++
-		return nil
-	}
 	if err := printPodBase(pod, w, options); err != nil {
 		return err
 	}
@@ -512,13 +511,6 @@ func (h *HumanReadablePrinter) printPod(pod *api.Pod, w io.Writer, options Print
 
 func (h *HumanReadablePrinter) printPodList(podList *api.PodList, w io.Writer, options PrintOptions) error {
 	for _, pod := range podList.Items {
-		reason := string(pod.Status.Phase)
-		// if not printing all pods, skip terminated pods (default)
-		if !options.ShowAll && (reason == string(api.PodSucceeded) || reason == string(api.PodFailed)) {
-			h.hiddenObjNum++
-			continue
-		}
-
 		if err := printPodBase(&pod, w, options); err != nil {
 			return err
 		}
@@ -1629,7 +1621,7 @@ func printEvent(event *api.Event, w io.Writer, options PrintOptions) error {
 
 // Sorts and prints the EventList in a human-friendly format.
 func printEventList(list *api.EventList, w io.Writer, options PrintOptions) error {
-	sort.Sort(SortableEvents(list.Items))
+	sort.Sort(events.SortableEvents(list.Items))
 	for i := range list.Items {
 		if err := printEvent(&list.Items[i], w, options); err != nil {
 			return err
@@ -2256,7 +2248,7 @@ func NewTemplatePrinter(tmpl []byte) (*TemplatePrinter, error) {
 	}, nil
 }
 
-func (p *TemplatePrinter) FinishPrint(w io.Writer, res string) error {
+func (p *TemplatePrinter) AfterPrint(w io.Writer, res string) error {
 	return nil
 }
 
@@ -2407,7 +2399,7 @@ func NewJSONPathPrinter(tmpl string) (*JSONPathPrinter, error) {
 	return &JSONPathPrinter{tmpl, j}, nil
 }
 
-func (j *JSONPathPrinter) FinishPrint(w io.Writer, res string) error {
+func (j *JSONPathPrinter) AfterPrint(w io.Writer, res string) error {
 	return nil
 }
 
