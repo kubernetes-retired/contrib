@@ -23,7 +23,6 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -31,6 +30,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/controller"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/k8s"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/version"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -120,14 +120,14 @@ func main() {
 		glog.Fatalf("vinvalid API configuration: %v", err)
 	}
 
-	_, err = isValidService(kubeClient, *defaultSvc)
+	_, err = k8s.IsValidService(kubeClient, *defaultSvc)
 	if err != nil {
 		glog.Fatalf("no service with name %v found: %v", *defaultSvc, err)
 	}
 	glog.Infof("validated %v as the default backend", *defaultSvc)
 
 	if *publishSvc != "" {
-		svc, err := isValidService(kubeClient, *publishSvc)
+		svc, err := k8s.IsValidService(kubeClient, *publishSvc)
 		if err != nil {
 			glog.Fatalf("no service with name %v found: %v", *publishSvc, err)
 		}
@@ -141,7 +141,7 @@ func main() {
 	}
 
 	if *nxgConfigMap != "" {
-		_, _, err = parseNsName(*nxgConfigMap)
+		_, _, err = k8s.ParseNameNS(*nxgConfigMap)
 		if err != nil {
 			glog.Fatalf("configmap error: %v", err)
 		}
@@ -173,7 +173,7 @@ func main() {
 
 	for {
 		glog.Infof("Handled quit, awaiting pod deletion")
-		time.Sleep(30 * time.Second)
+		time.Sleep(60 * time.Second)
 	}
 }
 
@@ -216,26 +216,4 @@ func handleSigterm(ic controller.IngressController) {
 
 	glog.Infof("Exiting with %v", exitCode)
 	os.Exit(exitCode)
-}
-
-func isValidService(kubeClient *unversioned.Client, name string) (*api.Service, error) {
-	if name == "" {
-		return nil, fmt.Errorf("empty string is not a valid service name")
-	}
-
-	parts := strings.Split(name, "/")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid name format (namespace/name) in service '%v'", name)
-	}
-
-	return kubeClient.Services(parts[0]).Get(parts[1])
-}
-
-func parseNsName(input string) (string, string, error) {
-	nsName := strings.Split(input, "/")
-	if len(nsName) != 2 {
-		return "", "", fmt.Errorf("invalid format (namespace/name) found in '%v'", input)
-	}
-
-	return nsName[0], nsName[1], nil
 }

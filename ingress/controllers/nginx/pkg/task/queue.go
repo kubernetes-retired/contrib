@@ -85,6 +85,7 @@ func (t *Queue) Shutdown() {
 	<-t.workerDone
 }
 
+// IsShuttingDown returns if the method Shutdown was invoked
 func (t *Queue) IsShuttingDown() bool {
 	return t.queue.ShuttingDown()
 }

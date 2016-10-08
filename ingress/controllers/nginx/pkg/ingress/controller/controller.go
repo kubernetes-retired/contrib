@@ -28,14 +28,12 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/kubernetes/pkg/api"
-	podutil "k8s.io/kubernetes/pkg/api/pod"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/record"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/healthz"
-	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/watch"
@@ -49,12 +47,12 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/cors"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/healthcheck"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/ipwhitelist"
-	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/ratelimit"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/rewrite"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/secureupstream"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/service"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/status"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/k8s"
 	ssl "k8s.io/contrib/ingress/controllers/nginx/pkg/net/ssl"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/task"
 )
@@ -360,77 +358,6 @@ func (ic GenericController) Check() healthz.HealthzChecker {
 	return *ic.nginx
 }
 
-// checkSvcForUpdate verifies if one of the running pods for a service contains
-// named port. If the annotation in the service does not exists or is not equals
-// to the port mapping obtained from the pod the service must be updated to reflect
-// the current state
-func (ic *GenericController) checkSvcForUpdate(svc *api.Service) error {
-	// get the pods associated with the service
-	// TODO: switch this to a watch
-	pods, err := ic.cfg.Client.Pods(svc.Namespace).List(api.ListOptions{
-		LabelSelector: labels.Set(svc.Spec.Selector).AsSelector(),
-	})
-
-	if err != nil {
-		return fmt.Errorf("error searching service pods %v/%v: %v", svc.Namespace, svc.Name, err)
-	}
-
-	if len(pods.Items) == 0 {
-		return nil
-	}
-
-	// we need to check only one pod searching for named ports
-	pod := &pods.Items[0]
-	glog.V(4).Infof("checking pod %v/%v for named port information", pod.Namespace, pod.Name)
-	for i := range svc.Spec.Ports {
-		servicePort := &svc.Spec.Ports[i]
-
-		_, err := strconv.Atoi(servicePort.TargetPort.StrVal)
-		if err != nil {
-			portNum, err := podutil.FindPort(pod, servicePort)
-			if err != nil {
-				glog.V(4).Infof("failed to find port for service %s/%s: %v", portNum, svc.Namespace, svc.Name, err)
-				continue
-			}
-
-			if servicePort.TargetPort.StrVal == "" {
-				continue
-			}
-
-			//namedPorts[servicePort.TargetPort.StrVal] = fmt.Sprintf("%v", portNum)
-		}
-	}
-
-	if svc.ObjectMeta.Annotations == nil {
-		svc.ObjectMeta.Annotations = map[string]string{}
-	}
-	/*
-		curNamedPort := svc.ObjectMeta.Annotations[namedPortAnnotation]
-		if len(namedPorts) > 0 && !reflect.DeepEqual(curNamedPort, namedPorts) {
-			data, _ := json.Marshal(namedPorts)
-
-			newSvc, err := ic.cfg.Client.Services(svc.Namespace).Get(svc.Name)
-			if err != nil {
-				return namedPorts, fmt.Errorf("error getting service %v/%v: %v", svc.Namespace, svc.Name, err)
-			}
-
-			if newSvc.ObjectMeta.Annotations == nil {
-				newSvc.ObjectMeta.Annotations = map[string]string{}
-			}
-
-			newSvc.ObjectMeta.Annotations[namedPortAnnotation] = string(data)
-			glog.Infof("updating service %v with new named port mappings", svc.Name)
-			_, err = ic.cfg.Client.Services(svc.Namespace).Update(newSvc)
-			if err != nil {
-				return fmt.Errorf("error syncing service %v/%v: %v", svc.Namespace, svc.Name, err)
-			}
-
-			return newSvc.ObjectMeta.Annotations, nil
-		}*/
-
-	return nil
-}
-
 func (ic *GenericController) sync(key string) error {
 	if ic.syncQueue.IsShuttingDown() {
 		return nil
@@ -447,7 +374,7 @@ func (ic *GenericController) sync(key string) error {
 	if ic.cfg.NginxConfigMapName != "" {
 		// Search for custom configmap (defined in main args)
 		var err error
-		ns, name, _ := parseNsName(ic.cfg.NginxConfigMapName)
+		ns, name, _ := k8s.ParseNameNS(ic.cfg.NginxConfigMapName)
 		cfg, err = ic.getConfigMap(ns, name)
 		if err != nil {
 			return fmt.Errorf("unexpected error searching configmap %v: %v", ic.cfg.NginxConfigMapName, err)
@@ -474,7 +401,7 @@ func (ic *GenericController) getTCPServices() []*ingress.Location {
 		return []*ingress.Location{}
 	}
 
-	ns, name, err := parseNsName(ic.cfg.TCPConfigMapName)
+	ns, name, err := k8s.ParseNameNS(ic.cfg.TCPConfigMapName)
 	if err != nil {
 		glog.Warningf("%v", err)
 		return []*ingress.Location{}
@@ -494,7 +421,7 @@ func (ic *GenericController) getUDPServices() []*ingress.Location {
 		return []*ingress.Location{}
 	}
 
-	ns, name, err := parseNsName(ic.cfg.UDPConfigMapName)
+	ns, name, err := k8s.ParseNameNS(ic.cfg.UDPConfigMapName)
 	if err != nil {
 		glog.Warningf("%v", err)
 		return []*ingress.Location{}
@@ -534,7 +461,7 @@ func (ic *GenericController) getStreamServices(data map[string]string, proto api
 		nsName := nsSvcPort[0]
 		svcPort := nsSvcPort[1]
 
-		svcNs, svcName, err := parseNsName(nsName)
+		svcNs, svcName, err := k8s.ParseNameNS(nsName)
 		if err != nil {
 			glog.Warningf("%v", err)
 			continue
@@ -882,7 +809,7 @@ func (ic *GenericController) createServers(data []interface{}, upstreams map[str
 
 	if ic.cfg.DefaultSSLCertificate == "" {
 		// use system certificated generated at image build time
-		cert, key := getFakeSSLCert()
+		cert, key := ssl.GetFakeSSLCert()
 		ngxCert, err = ssl.AddOrUpdateCertAndKey("system-snake-oil-certificate", cert, key)
 	} else {
 		ngxCert, err = ic.getPemCertificate(ic.cfg.DefaultSSLCertificate)
@@ -1131,10 +1058,3 @@ const (
 	ingressClassKey   = "kubernetes.io/ingress.class"
 	nginxIngressClass = "nginx"
 )
-
-// isNGINXIngress returns true if the given Ingress either doesn't specify the
-// ingress.class annotation, or it's set to "nginx".
-func isNGINXIngress(ing *extensions.Ingress) bool {
-	class, _ := parser.GetStringAnnotation(ingressClassKey, ing)
-	return class == "" || class == nginxIngressClass
-}

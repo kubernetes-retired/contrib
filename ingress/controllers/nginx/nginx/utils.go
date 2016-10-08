@@ -69,7 +69,7 @@ func (ngx *Manager) ReadConfig(conf *api.ConfigMap) config.Configuration {
 		Metadata:         metadata,
 	})
 
-	cErrors := make([]int, 0)
+	cErrors := []int{}
 	if val, ok := conf.Data[customHTTPErrors]; ok {
 		delete(conf.Data, customHTTPErrors)
 		for _, i := range strings.Split(val, ",") {
@@ -82,7 +82,7 @@ func (ngx *Manager) ReadConfig(conf *api.ConfigMap) config.Configuration {
 		}
 	}
 
-	cSkipUrls := make([]string, 0)
+	cSkipUrls := []string{}
 	if val, ok := conf.Data[skipAccessLogUrls]; ok {
 		delete(conf.Data, skipAccessLogUrls)
 		cSkipUrls = strings.Split(val, ",")
@@ -122,7 +122,7 @@ func (ngx *Manager) ReadConfig(conf *api.ConfigMap) config.Configuration {
 }
 
 func (ngx *Manager) filterErrors(errCodes []int) []int {
-	fa := make([]int, 0)
+	fa := []int{}
 	for _, errCode := range errCodes {
 		if errCode > 299 && errCode < 600 {
 			fa = append(fa, errCode)

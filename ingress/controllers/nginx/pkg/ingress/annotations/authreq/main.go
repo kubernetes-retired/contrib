@@ -82,7 +82,7 @@ func ParseAnnotations(ing *extensions.Ingress) (External, error) {
 		return External{}, fmt.Errorf("url host is empty")
 	}
 
-	if strings.Index(ur.Host, "..") != -1 {
+	if strings.Contains(ur.Host, "..") {
 		return External{}, fmt.Errorf("invalid url host")
 	}
 

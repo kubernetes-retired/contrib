@@ -133,3 +133,24 @@ func pemSHA1(filename string) string {
 	hasher.Write(s)
 	return hex.EncodeToString(hasher.Sum(nil))
 }
+
+const (
+	snakeOilPem = "/etc/ssl/certs/ssl-cert-snakeoil.pem"
+	snakeOilKey = "/etc/ssl/private/ssl-cert-snakeoil.key"
+)
+
+// GetFakeSSLCert returns the snake oil ssl certificate created by the command
+// make-ssl-cert generate-default-snakeoil --force-overwrite
+func GetFakeSSLCert() (string, string) {
+	cert, err := ioutil.ReadFile(snakeOilPem)
+	if err != nil {
+		return "", ""
+	}
+
+	key, err := ioutil.ReadFile(snakeOilKey)
+	if err != nil {
+		return "", ""
+	}
+
+	return string(cert), string(key)
+}

@@ -136,3 +136,5 @@ datasource
 local-data-dir
 tracing
 jenkins-job
+publish-service
+

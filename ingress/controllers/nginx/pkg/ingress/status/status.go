@@ -17,19 +17,21 @@ limitations under the License.
 package status
 
 import (
-	"fmt"
-	"os"
+	"sort"
 	"time"
 
 	"github.com/golang/glog"
 
 	cache_store "k8s.io/contrib/ingress/controllers/nginx/pkg/cache"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/k8s"
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/task"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/leaderelection"
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/wait"
 )
 
@@ -52,14 +54,17 @@ type Config struct {
 
 type sync struct {
 	Config
-
-	podInfo *podInfo
+	// pod contains runtime information about this pod
+	pod *k8s.PodInfo
 
 	elector *leaderelection.LeaderElector
-
+	// workqueue used to keep in sync the status IP/s
+	// in the Ingress rules
 	syncQueue *task.Queue
 }
 
+// dummyObject is used as a helper to interact with the
+// workqueue without real Kubernetes API Objects
 type dummyObject struct {
 	api.ObjectMeta
 }
@@ -74,7 +79,23 @@ func (s sync) Run(stopCh <-chan struct{}) {
 
 	s.syncQueue.Shutdown()
 	// remove IP from Ingress
-	s.removeFromIngress()
+	if !s.elector.IsLeader() {
+		return
+	}
+
+	ips, err := s.getRunningIPs()
+	if err != nil {
+		return
+	}
+
+	if len(ips) > 1 {
+		// leave the job to the next leader
+		return
+	}
+
+	glog.Infof("updating status of Ingress rules (remove)")
+	glog.Infof("removing my ip (%v)", ips)
+	s.updateStatus(sliceToStatus(ips))
 }
 
 func (s *sync) run() {
@@ -102,7 +123,12 @@ func (s *sync) sync(key string) error {
 		return nil
 	}
 
-	s.updateIngressStatus()
+	ips, err := s.getRunningIPs()
+	if err != nil {
+		return err
+	}
+	s.updateStatus(sliceToStatus(ips))
+
 	return nil
 }
 
@@ -113,26 +139,26 @@ func (s *sync) callback(leader string) {
 	}
 
 	glog.V(2).Infof("new leader elected (%v)", leader)
-	if leader == s.podInfo.podName {
+	if leader == s.pod.Name {
 		glog.V(2).Infof("I am the new status update leader")
 	}
 }
 
 // NewStatusSyncer ...
 func NewStatusSyncer(config Config) Sync {
-	podInfo, err := getPodDetails(config.Client)
+	pod, err := k8s.GetPodDetails(config.Client)
 	if err != nil {
 		glog.Fatalf("unexpected error obtaining pod information: %v", err)
 	}
 
 	st := sync{
-		podInfo: podInfo,
+		pod: pod,
 	}
 	st.Config = config
 	st.syncQueue = task.NewTaskQueue(st.sync)
 
 	le, err := NewElection("ingress-controller-leader",
-		podInfo.podName, podInfo.podNamespace, 30*time.Second,
+		pod.Name, pod.Namespace, 30*time.Second,
 		st.callback, config.Client, config.ElectionClient)
 	if err != nil {
 		glog.Fatalf("unexpected error starting leader election: %v", err)
@@ -141,85 +167,103 @@ func NewStatusSyncer(config Config) Sync {
 	return st
 }
 
-func (s *sync) updateIngressStatus() {
-	if !s.elector.IsLeader() {
-		return
-	}
-
-	glog.Infof("updating status of Ingress rules")
-}
-
-// removeFromIngress removes the IP address of the node where the Ingres
-// controller is running before shutdown to avoid incorrect status
-// information in Ingress rules
-func (s *sync) removeFromIngress() {
-	if !s.elector.IsLeader() {
-		return
-	}
-
-	glog.Infof("updating status of Ingress rules (remove)")
-	if s.syncQueue.IsShuttingDown() {
-		glog.Infof("removing my ip (%v)", s.podInfo.nodeIP)
-	}
-}
-
-// podInfo contains runtime information about the pod
-type podInfo struct {
-	podName      string
-	podNamespace string
-	nodeIP       string
-	labels       map[string]string
-}
-
-// getPodDetails  returns runtime information about the pod: name, namespace and IP of the node
-func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
-	podName := os.Getenv("POD_NAME")
-	podNs := os.Getenv("POD_NAMESPACE")
-
-	if podName == "" && podNs == "" {
-		return nil, fmt.Errorf("unable to get POD information (missing POD_NAME or POD_NAMESPACE environment variable")
-	}
-
-	pod, _ := kubeClient.Pods(podNs).Get(podName)
-	if pod == nil {
-		return nil, fmt.Errorf("unable to get POD information")
-	}
-
-	return &podInfo{
-		podName:      podName,
-		podNamespace: podNs,
-		nodeIP:       getNodeIP(kubeClient, pod.Spec.NodeName),
-		labels:       pod.GetLabels(),
-	}, nil
-}
-
-func (s *sync) isStatusIPDefined(ip string, lbings []api.LoadBalancerIngress) bool {
-	for _, lbing := range lbings {
-		if lbing.IP == ip {
-			return true
-		}
-	}
-	return false
-}
-
-func getNodeIP(kubeClient *unversioned.Client, name string) string {
-	var externalIP string
-	node, err := kubeClient.Nodes().Get(name)
-	if err != nil {
-		return externalIP
-	}
-
-	for _, address := range node.Status.Addresses {
-		if address.Type == api.NodeExternalIP {
-			if address.Address != "" {
-				externalIP = address.Address
-				break
-			}
+func (s *sync) getRunningIPs() ([]string, error) {
+	ips := []string{}
+	if s.PublishService != "" {
+		ns, name, _ := k8s.ParseNameNS(s.PublishService)
+		svc, err := s.Client.Services(ns).Get(name)
+		if err != nil {
+			return nil, err
 		}
 
-		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
-			externalIP = address.Address
+		for _, ip := range svc.Status.LoadBalancer.Ingress {
+			ips = append(ips, ip.IP)
+		}
+	} else {
+		// get information about all the pods running the ingress controller
+		pods, err := s.Client.Pods(s.pod.Namespace).List(api.ListOptions{
+			LabelSelector: labels.SelectorFromSet(s.pod.Labels),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for _, pod := range pods.Items {
+			ips = append(ips, pod.Status.HostIP)
 		}
 	}
-	return externalIP
+
+	return ips, nil
+}
+
+func sliceToStatus(ips []string) []api.LoadBalancerIngress {
+	lbi := []api.LoadBalancerIngress{}
+	for _, ip := range ips {
+		lbi = append(lbi, api.LoadBalancerIngress{IP: ip})
+	}
+
+	sort.Sort(LoadBalancerIngressByIP(lbi))
+	return lbi
+}
+
+func (s *sync) updateStatus(newIPs []api.LoadBalancerIngress) {
+	ings := s.IngressLister.List()
+	glog.Infof("updating %v Ingress rule/s", len(ings))
+	for _, cur := range ings {
+		ing := cur.(*extensions.Ingress)
+
+		ingClient := s.Client.Extensions().Ingress(ing.Namespace)
+		currIng, err := ingClient.Get(ing.Name)
+		if err != nil {
+			glog.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
+			continue
+		}
+
+		curIPs := ing.Status.LoadBalancer.Ingress
+		sort.Sort(LoadBalancerIngressByIP(curIPs))
+
+		if ingressSliceEqual(newIPs, curIPs) {
+			continue
+		}
+
+		glog.Infof("updating Ingress status %v/%v to %v", ing.Namespace, ing.Name, newIPs)
+		currIng.Status.LoadBalancer.Ingress = newIPs
+
+		if _, err := ingClient.UpdateStatus(currIng); err != nil {
+			//s.recorder.Eventf(currIng, api.EventTypeWarning, "UPDATE", "error: %v", err)
+			glog.Infof("update error: %v", err)
+			//continue
+		}
+	}
+}
+
+func ingressSliceEqual(lhs, rhs []api.LoadBalancerIngress) bool {
+	if len(lhs) != len(rhs) {
+		return false
+	}
+	for i := range lhs {
+		if !ingressEqual(&lhs[i], &rhs[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func ingressEqual(lhs, rhs *api.LoadBalancerIngress) bool {
+	if lhs.IP != rhs.IP {
+		return false
+	}
+	if lhs.Hostname != rhs.Hostname {
+		return false
+	}
+	return true
+}
+
+// LoadBalancerIngressByIP sorts LoadBalancerIngress using the field IP
+type LoadBalancerIngressByIP []api.LoadBalancerIngress
+
+func (c LoadBalancerIngressByIP) Len() int      { return len(c) }
+func (c LoadBalancerIngressByIP) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+func (c LoadBalancerIngressByIP) Less(i, j int) bool {
+	return c[i].IP < c[j].IP
 }

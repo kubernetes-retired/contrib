@@ -17,11 +17,11 @@ limitations under the License.
 package controller
 
 import (
-	"fmt"
-	"io/ioutil"
 	"strings"
 
 	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/parser"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
 func isHostValid(host string, cns []string) bool {
@@ -61,36 +61,6 @@ func matchHostnames(pattern, host string) bool {
 	return true
 }
 
-func parseNsName(input string) (string, string, error) {
-	nsName := strings.Split(input, "/")
-	if len(nsName) != 2 {
-		return "", "", fmt.Errorf("invalid format (namespace/name) found in '%v'", input)
-	}
-
-	return nsName[0], nsName[1], nil
-}
-
-const (
-	snakeOilPem = "/etc/ssl/certs/ssl-cert-snakeoil.pem"
-	snakeOilKey = "/etc/ssl/private/ssl-cert-snakeoil.key"
-)
-
-// getFakeSSLCert returns the snake oil ssl certificate created by the command
-// make-ssl-cert generate-default-snakeoil --force-overwrite
-func getFakeSSLCert() (string, string) {
-	cert, err := ioutil.ReadFile(snakeOilPem)
-	if err != nil {
-		return "", ""
-	}
-
-	key, err := ioutil.ReadFile(snakeOilKey)
-	if err != nil {
-		return "", ""
-	}
-
-	return string(cert), string(key)
-}
-
 func isDefaultUpstream(ups *ingress.Upstream) bool {
 	if ups == nil || len(ups.Backends) == 0 {
 		return false
@@ -98,4 +68,11 @@ func isDefaultUpstream(ups *ingress.Upstream) bool {
 
 	return ups.Backends[0].Address == "127.0.0.1" &&
 		ups.Backends[0].Port == "8181"
+}
+
+// isNGINXIngress returns true if the given Ingress either doesn't specify the
+// ingress.class annotation, or it's set to "nginx".
+func isNGINXIngress(ing *extensions.Ingress) bool {
+	class, _ := parser.GetStringAnnotation(ingressClassKey, ing)
+	return class == "" || class == nginxIngressClass
 }
