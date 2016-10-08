@@ -107,6 +107,8 @@ func main() {
 			if err := mungers.InitializeMungers(&config.Config, &config.Features); err != nil {
 				glog.Fatalf("unable to initialize mungers: %v", err)
 			}
+			config.HookHandler.Initialize()
+			go config.HookHandler.Listen()
 			return doMungers(config)
 		},
 	}
