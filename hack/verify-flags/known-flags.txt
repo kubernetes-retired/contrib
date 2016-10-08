@@ -49,6 +49,8 @@ gcm-endpoint
 gcs-bucket
 gcs-logs-dir
 generated-files-config
+github-key
+listener-url
 health-check-path
 healthz-port
 history-url
