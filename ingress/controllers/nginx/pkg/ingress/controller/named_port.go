@@ -17,10 +17,14 @@ limitations under the License.
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 
 	"github.com/golang/glog"
+
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress/annotations/service"
 
 	"k8s.io/kubernetes/pkg/api"
 	podutil "k8s.io/kubernetes/pkg/api/pod"
@@ -46,6 +50,8 @@ func (ic *GenericController) checkSvcForUpdate(svc *api.Service) error {
 		return nil
 	}
 
+	namedPorts := map[string]string{}
+
 	// we need to check only one pod searching for named ports
 	pod := &pods.Items[0]
 	glog.V(4).Infof("checking pod %v/%v for named port information", pod.Namespace, pod.Name)
@@ -64,36 +70,36 @@ func (ic *GenericController) checkSvcForUpdate(svc *api.Service) error {
 				continue
 			}
 
-			//namedPorts[servicePort.TargetPort.StrVal] = fmt.Sprintf("%v", portNum)
+			namedPorts[servicePort.TargetPort.StrVal] = fmt.Sprintf("%v", portNum)
 		}
 	}
 
 	if svc.ObjectMeta.Annotations == nil {
 		svc.ObjectMeta.Annotations = map[string]string{}
 	}
-	/*
-		curNamedPort := svc.ObjectMeta.Annotations[namedPortAnnotation]
-		if len(namedPorts) > 0 && !reflect.DeepEqual(curNamedPort, namedPorts) {
-			data, _ := json.Marshal(namedPorts)
 
-			newSvc, err := ic.cfg.Client.Services(svc.Namespace).Get(svc.Name)
-			if err != nil {
-				return namedPorts, fmt.Errorf("error getting service %v/%v: %v", svc.Namespace, svc.Name, err)
-			}
+	curNamedPort := svc.ObjectMeta.Annotations[service.NamedPortAnnotation]
+	if len(namedPorts) > 0 && !reflect.DeepEqual(curNamedPort, namedPorts) {
+		data, _ := json.Marshal(namedPorts)
 
-			if newSvc.ObjectMeta.Annotations == nil {
-				newSvc.ObjectMeta.Annotations = map[string]string{}
-			}
+		newSvc, err := ic.cfg.Client.Services(svc.Namespace).Get(svc.Name)
+		if err != nil {
+			return fmt.Errorf("error getting service %v/%v: %v", svc.Namespace, svc.Name, err)
+		}
 
-			newSvc.ObjectMeta.Annotations[namedPortAnnotation] = string(data)
-			glog.Infof("updating service %v with new named port mappings", svc.Name)
-			_, err = ic.cfg.Client.Services(svc.Namespace).Update(newSvc)
-			if err != nil {
-				return fmt.Errorf("error syncing service %v/%v: %v", svc.Namespace, svc.Name, err)
-			}
+		if newSvc.ObjectMeta.Annotations == nil {
+			newSvc.ObjectMeta.Annotations = map[string]string{}
+		}
 
-			return newSvc.ObjectMeta.Annotations, nil
-		}*/
+		newSvc.ObjectMeta.Annotations[service.NamedPortAnnotation] = string(data)
+		glog.Infof("updating service %v with new named port mappings", svc.Name)
+		_, err = ic.cfg.Client.Services(svc.Namespace).Update(newSvc)
+		if err != nil {
+			return fmt.Errorf("error syncing service %v/%v: %v", svc.Namespace, svc.Name, err)
+		}
+
+		return nil
+	}
 
 	return nil
 }

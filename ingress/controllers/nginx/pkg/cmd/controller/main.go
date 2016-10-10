@@ -171,14 +171,21 @@ func main() {
 	}
 
 	go registerHandlers(*profiling, *healthzPort, ic)
-	go handleSigterm(ic)
 
 	ic.Start()
 
-	for {
-		glog.Infof("Handled quit, awaiting pod deletion")
-		time.Sleep(60 * time.Second)
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGTERM)
+	<-signalChan
+	glog.Infof("The process received the a signal (SIGTERM), shutting down...")
+	exitCode := 0
+	if err := ic.Stop(); err != nil {
+		glog.Infof("Error during shutdown %v", err)
+		exitCode = 1
 	}
+
+	glog.Infof("Exiting with %v", exitCode)
+	os.Exit(exitCode)
 }
 
 func registerHandlers(enableProfiling bool, port int, ic controller.IngressController) {
@@ -205,19 +212,4 @@ func registerHandlers(enableProfiling bool, port int, ic controller.IngressContr
 		Handler: mux,
 	}
 	glog.Fatal(server.ListenAndServe())
-}
-
-func handleSigterm(ic controller.IngressController) {
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGTERM)
-	<-signalChan
-	glog.Infof("The process received the a signal (SIGTERM), shutting down...")
-	exitCode := 0
-	if err := ic.Stop(); err != nil {
-		glog.Infof("Error during shutdown %v", err)
-		exitCode = 1
-	}
-
-	glog.Infof("Exiting with %v", exitCode)
-	os.Exit(exitCode)
 }

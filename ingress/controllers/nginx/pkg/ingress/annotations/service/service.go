@@ -27,7 +27,8 @@ import (
 )
 
 const (
-	namedPortAnnotation = "ingress.kubernetes.io/named-ports"
+	// NamedPortAnnotation annotation used to map named port in services
+	NamedPortAnnotation = "ingress.kubernetes.io/named-ports"
 )
 
 type namedPortMapping map[string]string
@@ -40,7 +41,7 @@ func (npm namedPortMapping) getPort(name string) (string, bool) {
 
 // getPortMappings returns a map containing the mapping of named ports names and number
 func (npm namedPortMapping) getPortMappings() map[string]string {
-	data := npm[namedPortAnnotation]
+	data := npm[NamedPortAnnotation]
 	var mapping map[string]string
 	if data == "" {
 		return mapping

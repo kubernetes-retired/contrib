@@ -18,7 +18,7 @@ package status
 
 import (
 	"sort"
-	go_sync "sync"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -38,12 +38,13 @@ import (
 )
 
 const (
-	updateInterval = 15 * time.Second
+	updateInterval = 30 * time.Second
 )
 
 // Sync ...
 type Sync interface {
 	Run(stopCh <-chan struct{})
+	Shutdown()
 }
 
 // Config ...
@@ -54,7 +55,7 @@ type Config struct {
 	IngressLister  cache_store.StoreToIngressLister
 }
 
-type sync struct {
+type statusSync struct {
 	Config
 	// pod contains runtime information about this pod
 	pod *k8s.PodInfo
@@ -64,9 +65,7 @@ type sync struct {
 	// in the Ingress rules
 	syncQueue *task.Queue
 
-	ingQueue *task.Queue
-
-	runLock *go_sync.Mutex
+	runLock *sync.Mutex
 }
 
 // dummyObject is used as a helper to interact with the
@@ -76,37 +75,41 @@ type dummyObject struct {
 }
 
 // Run ...
-func (s sync) Run(stopCh <-chan struct{}) {
+func (s statusSync) Run(stopCh <-chan struct{}) {
 	go wait.Forever(s.elector.Run, 0)
 	go s.run()
 
 	go s.syncQueue.Run(time.Second, stopCh)
-	go s.ingQueue.Run(time.Second, stopCh)
 
 	<-stopCh
+}
 
-	s.syncQueue.Shutdown()
+func (s statusSync) Shutdown() {
+	go s.syncQueue.Shutdown()
 	// remove IP from Ingress
 	if !s.elector.IsLeader() {
 		return
 	}
 
+	glog.Infof("updating status of Ingress rules (remove)")
+
 	ips, err := s.getRunningIPs()
 	if err != nil {
+		glog.Errorf("error obtaining running IPs: %v", ips)
 		return
 	}
 
 	if len(ips) > 1 {
 		// leave the job to the next leader
+		glog.Infof("leaving status update for next leader (%v)", len(ips))
 		return
 	}
 
-	glog.Infof("updating status of Ingress rules (remove)")
 	glog.Infof("removing my ip (%v)", ips)
-	s.updateStatus(sliceToStatus(ips))
+	s.updateStatus([]api.LoadBalancerIngress{})
 }
 
-func (s *sync) run() {
+func (s *statusSync) run() {
 	err := wait.PollInfinite(updateInterval, func() (bool, error) {
 		if s.syncQueue.IsShuttingDown() {
 			return true, nil
@@ -125,7 +128,7 @@ func (s *sync) run() {
 	}
 }
 
-func (s *sync) sync(key interface{}) error {
+func (s *statusSync) sync(key interface{}) error {
 	s.runLock.Lock()
 	defer s.runLock.Unlock()
 
@@ -144,7 +147,7 @@ func (s *sync) sync(key interface{}) error {
 }
 
 // callback invoked function when a new leader is elected
-func (s *sync) callback(leader string) {
+func (s *statusSync) callback(leader string) {
 	if s.syncQueue.IsShuttingDown() {
 		return
 	}
@@ -166,13 +169,12 @@ func NewStatusSyncer(config Config) Sync {
 		glog.Fatalf("unexpected error obtaining pod information: %v", err)
 	}
 
-	st := sync{
+	st := statusSync{
 		pod:     pod,
-		runLock: &go_sync.Mutex{},
+		runLock: &sync.Mutex{},
 	}
 	st.Config = config
 	st.syncQueue = task.NewTaskQueue(st.sync)
-	st.ingQueue = task.NewCustomTaskQueue(st.updateIngress, objKeyFunc)
 
 	le, err := NewElection("ingress-controller-leader",
 		pod.Name, pod.Namespace, 30*time.Second,
@@ -184,8 +186,7 @@ func NewStatusSyncer(config Config) Sync {
 	return st
 }
 
-func (s *sync) getRunningIPs() ([]string, error) {
-	ips := []string{}
+func (s *statusSync) getRunningIPs() ([]string, error) {
 	if s.PublishService != "" {
 		ns, name, _ := k8s.ParseNameNS(s.PublishService)
 		svc, err := s.Client.Services(ns).Get(name)
@@ -193,25 +194,28 @@ func (s *sync) getRunningIPs() ([]string, error) {
 			return nil, err
 		}
 
+		ips := []string{}
 		for _, ip := range svc.Status.LoadBalancer.Ingress {
 			ips = append(ips, ip.IP)
 		}
-	} else {
-		// get information about all the pods running the ingress controller
-		pods, err := s.Client.Pods(s.pod.Namespace).List(api.ListOptions{
-			LabelSelector: labels.SelectorFromSet(s.pod.Labels),
-		})
-		if err != nil {
-			return nil, err
-		}
 
-		for _, pod := range pods.Items {
-			if !strings.StringInSlice(pod.Status.HostIP, ips) {
-				ips = append(ips, pod.Status.HostIP)
-			}
-		}
+		return ips, nil
 	}
 
+	// get information about all the pods running the ingress controller
+	pods, err := s.Client.Pods(s.pod.Namespace).List(api.ListOptions{
+		LabelSelector: labels.SelectorFromSet(s.pod.Labels),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ips := []string{}
+	for _, pod := range pods.Items {
+		if !strings.StringInSlice(pod.Status.HostIP, ips) {
+			ips = append(ips, pod.Status.HostIP)
+		}
+	}
 	return ips, nil
 }
 
@@ -225,42 +229,45 @@ func sliceToStatus(ips []string) []api.LoadBalancerIngress {
 	return lbi
 }
 
-func (s *sync) updateStatus(newIPs []api.LoadBalancerIngress) {
+func (s *statusSync) updateStatus(newIPs []api.LoadBalancerIngress) {
 	ings := s.IngressLister.List()
+	var wg sync.WaitGroup
+	wg.Add(len(ings))
 	for _, cur := range ings {
 		ing := cur.(*extensions.Ingress)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			ingClient := s.Client.Extensions().Ingress(ing.Namespace)
+			currIng, err := ingClient.Get(ing.Name)
+			if err != nil {
+				glog.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
+				return
+			}
 
-		ingClient := s.Client.Extensions().Ingress(ing.Namespace)
-		currIng, err := ingClient.Get(ing.Name)
-		if err != nil {
-			glog.Errorf("unexpected error searching Ingress %v/%v: %v", ing.Namespace, ing.Name, err)
-			continue
-		}
+			curIPs := ing.Status.LoadBalancer.Ingress
+			sort.Sort(LoadBalancerIngressByIP(curIPs))
+			if ingressSliceEqual(newIPs, curIPs) {
+				glog.V(3).Infof("skipping update of Ingress %v/%v (there is no change)", currIng.Namespace, currIng.Name)
+				return
+			}
 
-		curIPs := ing.Status.LoadBalancer.Ingress
-		sort.Sort(LoadBalancerIngressByIP(curIPs))
-
-		if ingressSliceEqual(newIPs, curIPs) {
-			continue
-		}
-
-		glog.Infof("updating Ingress status %v/%v to %v", ing.Namespace, ing.Name, newIPs)
-		currIng.Status.LoadBalancer.Ingress = newIPs
-		s.ingQueue.Enqueue(currIng)
+			glog.Infof("updating Ingress %v/%v status to %v", currIng.Namespace, currIng.Name, newIPs)
+			currIng.Status.LoadBalancer.Ingress = newIPs
+			_, err = ingClient.UpdateStatus(currIng)
+			if err != nil {
+				glog.Warningf("error updating ingress rule: %v", err)
+			}
+		}(&wg)
 	}
-}
 
-func (s *sync) updateIngress(key interface{}) error {
-	ing := key.(*extensions.Ingress)
-	ingClient := s.Client.Extensions().Ingress(ing.Namespace)
-	_, err := ingClient.UpdateStatus(ing)
-	return err
+	wg.Wait()
 }
 
 func ingressSliceEqual(lhs, rhs []api.LoadBalancerIngress) bool {
 	if len(lhs) != len(rhs) {
 		return false
 	}
+
 	for i := range lhs {
 		if !ingressEqual(&lhs[i], &rhs[i]) {
 			return false

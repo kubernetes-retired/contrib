@@ -62,6 +62,12 @@ const (
 	defServerName            = "_"
 	podStoreSyncedPollPeriod = 1 * time.Second
 	rootLocation             = "/"
+
+	// ingressClassKey picks a specific "class" for the Ingress. The controller
+	// only processes Ingresses with this annotation either unset, or set
+	// to either nginxIngressClass or the empty string.
+	ingressClassKey   = "kubernetes.io/ingress.class"
+	nginxIngressClass = "nginx"
 )
 
 // IngressController ...
@@ -1023,10 +1029,10 @@ func (ic GenericController) Stop() error {
 
 	// Only try draining the workqueue if we haven't already.
 	if !ic.syncQueue.IsShuttingDown() {
-		// Stop is invoked from the http endpoint.
-		close(ic.stopCh)
 		glog.Infof("shutting down controller queues")
-		ic.syncQueue.Shutdown()
+		close(ic.stopCh)
+		go ic.syncQueue.Shutdown()
+		ic.syncStatus.Shutdown()
 		return nil
 	}
 
@@ -1047,14 +1053,4 @@ func (ic GenericController) Start() {
 	go ic.syncQueue.Run(time.Second, ic.stopCh)
 
 	go ic.syncStatus.Run(ic.stopCh)
-
-	<-ic.stopCh
 }
-
-const (
-	// ingressClassKey picks a specific "class" for the Ingress. The controller
-	// only processes Ingresses with this annotation either unset, or set
-	// to either nginxIngressClass or the empty string.
-	ingressClassKey   = "kubernetes.io/ingress.class"
-	nginxIngressClass = "nginx"
-)
