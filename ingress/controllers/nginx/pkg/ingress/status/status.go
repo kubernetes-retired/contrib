@@ -55,6 +55,11 @@ type Config struct {
 	IngressLister  cache_store.StoreToIngressLister
 }
 
+// statusSync keeps the status IP in each Ingress rule updated executing a periodic check
+// in all the defined rules. To simplify the process leader election is used so the update
+// is executed only in one node (Ingress controllers can be scaled to more than one)
+// If the controller is running with the flag --publish-service (with a valid service)
+// the IP address behind the service is used, if not the source is the IP/s of the node/s
 type statusSync struct {
 	Config
 	// pod contains runtime information about this pod
@@ -74,7 +79,7 @@ type dummyObject struct {
 	api.ObjectMeta
 }
 
-// Run ...
+// Run starts the loop to keep the status in sync
 func (s statusSync) Run(stopCh <-chan struct{}) {
 	go wait.Forever(s.elector.Run, 0)
 	go s.run()
@@ -84,6 +89,8 @@ func (s statusSync) Run(stopCh <-chan struct{}) {
 	<-stopCh
 }
 
+// Shutdown stop the sync. In case the instance is the leader it will remove the current IP
+// if there is no other instances running.
 func (s statusSync) Shutdown() {
 	go s.syncQueue.Shutdown()
 	// remove IP from Ingress
@@ -162,7 +169,7 @@ func objKeyFunc(obj interface{}) (interface{}, error) {
 	return obj, nil
 }
 
-// NewStatusSyncer ...
+// NewStatusSyncer returns a new Sync instance
 func NewStatusSyncer(config Config) Sync {
 	pod, err := k8s.GetPodDetails(config.Client)
 	if err != nil {

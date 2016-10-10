@@ -41,10 +41,6 @@ import (
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-func init() {
-	flag.Set("logtostderr", "true")
-}
-
 func main() {
 	const (
 		healthPort = 10254
@@ -99,6 +95,8 @@ func main() {
 	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
+
+	flag.Set("logtostderr", "true")
 
 	glog.Infof("Using build version %v from repo %v commit %v", version.RELEASE, version.REPO, version.COMMIT)
 

@@ -219,7 +219,8 @@ http {
             {{ end -}}
             proxy_set_header            Host $host;            
             proxy_pass_request_headers  on;
-            proxy_pass {{ $location.ExternalAuth.URL }};
+            set $target {{ $location.ExternalAuth.URL }};
+            proxy_pass $target;
         }
         {{ end }}
         location {{ $path }} {
