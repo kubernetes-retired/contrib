@@ -17,6 +17,7 @@ limitations under the License.
 package task
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/golang/glog"
@@ -35,9 +36,11 @@ type Queue struct {
 	// queue is the work queue the worker polls
 	queue workqueue.RateLimitingInterface
 	// sync is called for each item in the queue
-	sync func(string) error
+	sync func(interface{}) error
 	// workerDone is closed when the worker exits
 	workerDone chan struct{}
+
+	fn func(obj interface{}) (interface{}, error)
 }
 
 // Run ...
@@ -47,16 +50,25 @@ func (t *Queue) Run(period time.Duration, stopCh <-chan struct{}) {
 
 // Enqueue enqueues ns/name of the given api object in the task queue.
 func (t *Queue) Enqueue(obj interface{}) {
-	key, err := keyFunc(obj)
+	key, err := t.fn(obj)
 	if err != nil {
-		glog.Infof("could not get key for object %+v: %v", obj, err)
+		glog.Errorf("%v", err)
 		return
 	}
 	t.queue.Add(key)
 }
 
-func (t *Queue) requeue(key string) {
+func (t *Queue) requeue(key interface{}) {
 	t.queue.AddRateLimited(key)
+}
+
+func (t *Queue) defaultKeyFunc(obj interface{}) (interface{}, error) {
+	key, err := keyFunc(obj)
+	if err != nil {
+		return "", fmt.Errorf("could not get key for object %+v: %v", obj, err)
+	}
+
+	return key, nil
 }
 
 // worker processes work in the queue through sync.
@@ -68,9 +80,9 @@ func (t *Queue) worker() {
 			return
 		}
 		glog.V(3).Infof("syncing %v", key)
-		if err := t.sync(key.(string)); err != nil {
+		if err := t.sync(key); err != nil {
 			glog.Warningf("requeuing %v, err %v", key, err)
-			t.requeue(key.(string))
+			t.requeue(key)
 		} else {
 			t.queue.Forget(key)
 		}
@@ -92,10 +104,22 @@ func (t *Queue) IsShuttingDown() bool {
 
 // NewTaskQueue creates a new task queue with the given sync function.
 // The sync function is called for every element inserted into the queue.
-func NewTaskQueue(syncFn func(string) error) *Queue {
-	return &Queue{
+func NewTaskQueue(syncFn func(interface{}) error) *Queue {
+	return NewCustomTaskQueue(syncFn, nil)
+}
+
+// NewCustomTaskQueue ...
+func NewCustomTaskQueue(syncFn func(interface{}) error, fn func(interface{}) (interface{}, error)) *Queue {
+	q := &Queue{
 		queue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
+		fn:         fn,
 	}
+
+	if fn == nil {
+		q.fn = q.defaultKeyFunc
+	}
+
+	return q
 }

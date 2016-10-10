@@ -336,7 +336,7 @@ func buildRateLimit(input interface{}) []string {
 func sysctlSomaxconn() int {
 	maxConns, err := sysctl.New().GetSysctl("net/core/somaxconn")
 	if err != nil || maxConns < 512 {
-		glog.Warningf("system net.core.somaxconn=%v. Using NGINX default (511)", maxConns)
+		glog.V(3).Infof("system net.core.somaxconn=%v. Using NGINX default (511)", maxConns)
 		return 511
 	}
 

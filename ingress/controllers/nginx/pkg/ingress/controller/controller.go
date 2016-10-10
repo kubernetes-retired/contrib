@@ -358,7 +358,7 @@ func (ic GenericController) Check() healthz.HealthzChecker {
 	return *ic.nginx
 }
 
-func (ic *GenericController) sync(key string) error {
+func (ic *GenericController) sync(key interface{}) error {
 	if ic.syncQueue.IsShuttingDown() {
 		return nil
 	}

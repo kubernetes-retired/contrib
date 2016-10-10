@@ -41,6 +41,10 @@ import (
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
+func init() {
+	flag.Set("logtostderr", "true")
+}
+
 func main() {
 	const (
 		healthPort = 10254
