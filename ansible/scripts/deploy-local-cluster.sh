@@ -17,6 +17,7 @@
 . ./init.sh
 
 inventory=${INVENTORY_DIR}/localhost.ini
+check_inventory ${inventory}
 
 # use localhost inventory
 # run etcd playbook
