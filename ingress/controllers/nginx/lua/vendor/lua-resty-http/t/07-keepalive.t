@@ -180,3 +180,61 @@ connection must be closed
 --- no_error_log
 [error]
 [warn]
+
+
+=== TEST 5: Generic interface, HTTP 1.0, no connection header. Test we don't try to keepalive, but also that subsequent connections can keepalive.
+--- http_config eval: $::HttpConfig
+--- config
+    location = /a {
+        content_by_lua '
+            local http = require "resty.http"
+            local httpc = http.new()
+            httpc:connect("127.0.0.1", 12345)
+
+            local res, err = httpc:request{
+                version = 1.0,
+                path = "/b"
+            }
+
+            local body = res:read_body()
+            ngx.print(body)
+
+            ngx.say(res.headers["Connection"])
+
+            local r, e = httpc:set_keepalive()
+            ngx.say(r)
+            ngx.say(e)
+
+            httpc:connect("127.0.0.1", ngx.var.server_port)
+            ngx.say(httpc:get_reused_times())
+
+            httpc:set_keepalive()
+
+            httpc:connect("127.0.0.1", ngx.var.server_port)
+            ngx.say(httpc:get_reused_times())
+        ';
+    }
+    location = /b {
+        content_by_lua '
+            ngx.say("OK")
+        ';
+    }
+--- request
+GET /a
+--- tcp_listen: 12345
+--- tcp_reply
+HTTP/1.0 200 OK
+Date: Fri, 08 Aug 2016 08:12:31 GMT
+Server: OpenResty
+
+OK
+--- response_body
+OK
+nil
+2
+connection must be closed
+0
+1
+--- no_error_log
+[error]
+[warn]

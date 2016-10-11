@@ -83,7 +83,7 @@ OK
 [warn]
 
 
-=== TEST 3: Status code
+=== TEST 3: Status code and reason phrase
 --- http_config eval: $::HttpConfig
 --- config
     location = /a {
@@ -97,6 +97,7 @@ OK
             }
 
             ngx.status = res.status
+            ngx.say(res.reason)
             ngx.print(res:read_body())
             
             httpc:close()
@@ -111,6 +112,7 @@ OK
 --- request
 GET /a
 --- response_body
+Not Found
 OK
 --- error_code: 404
 --- no_error_log

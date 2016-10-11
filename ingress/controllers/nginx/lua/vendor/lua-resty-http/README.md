@@ -1,21 +1,21 @@
 # lua-resty-http
 
-Lua HTTP client cosocket driver for [OpenResty](http://openresty.org/) / [ngx_lua](https://github.com/chaoslawful/lua-nginx-module).
+Lua HTTP client cosocket driver for [OpenResty](http://openresty.org/) / [ngx_lua](https://github.com/openresty/lua-nginx-module).
 
 # Status
 
-Ready for testing. Probably production ready in most cases, though not yet proven in the wild. Please check the issues list and let me know if you have any problems / questions.
+Production ready.
 
 # Features
 
 * HTTP 1.0 and 1.1
-* Streaming interface to reading bodies using coroutines, for predictable memory usage in Lua land.
-* Alternative simple interface for singleshot requests without manual connection step.
-* Headers treated case insensitively.
-* Chunked transfer encoding.
-* Keepalive.
-* Pipelining.
-* Trailers.
+* SSL
+* Streaming interface to the response body, for predictable memory usage
+* Alternative simple interface for singleshot requests without manual connection step
+* Chunked and non-chunked transfer encodings
+* Keepalive
+* Pipelining
+* Trailers
 
 
 # API
@@ -222,6 +222,7 @@ The `params` table accepts the following fields:
 When the request is successful, `res` will contain the following fields:
 
 * `status` The status code.
+* `reason` The status reason phrase.
 * `headers` A table of headers. Multiple headers with the same field name will be presented as a table of values.
 * `has_body` A boolean flag indicating if there is a body to be read. 
 * `body_reader` An iterator function for reading the body in a streaming fashion.
@@ -291,7 +292,7 @@ repeat
     ngx.log(ngx.ERR, err)
     break
   end
-  
+
   if chunk then
     -- process
   end
@@ -410,7 +411,7 @@ Originally started life based on https://github.com/bakins/lua-resty-http-simple
 
 This module is licensed under the 2-clause BSD license.
 
-Copyright (c) 2013, James Hurst <james@pintsized.co.uk>
+Copyright (c) 2013-2016, James Hurst <james@pintsized.co.uk>
 
 All rights reserved.
 
