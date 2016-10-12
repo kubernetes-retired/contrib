@@ -92,6 +92,14 @@ func flakecomment(id int, createdAt time.Time) *github.IssueComment {
 }
 
 func TestAutoPrioritize(t *testing.T) {
+	var p0Comments []*github.IssueComment
+
+	//simulates 50 test flakes/comments in the last 50 hours
+	for i := 0; i < 50; i++ {
+		p0Comments = append(p0Comments, flakecomment(1, time.Now().Add(-time.Duration(i)*time.Hour)))
+	}
+
+
 	testcases := []struct {
 		comments       []*github.IssueComment
 		issueCreatedAt time.Time
@@ -101,14 +109,14 @@ func TestAutoPrioritize(t *testing.T) {
 		{
 			comments:       []*github.IssueComment{},
 			issueCreatedAt: time.Now(),
-			expectPriority: 2,
+			expectPriority: 3,
 		},
 		{
 			comments: []*github.IssueComment{
 				flakecomment(1, time.Now()),
 			},
 			issueCreatedAt: time.Now().Add(-1 * 29 * 24 * time.Hour),
-			expectPriority: 1,
+			expectPriority: 3,
 		},
 		{
 			comments: []*github.IssueComment{
@@ -117,12 +125,20 @@ func TestAutoPrioritize(t *testing.T) {
 				flakecomment(1, time.Now().Add(-1*6*24*time.Hour)),
 			},
 			issueCreatedAt: time.Now().Add(-1 * 30 * 24 * time.Hour),
-			expectPriority: 0,
+			expectPriority: 2,
 		},
 		{
 			comments: []*github.IssueComment{
 				flakecomment(1, time.Now()),
+				flakecomment(1, time.Now().Add(-1*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-2*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-3*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-4*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-5*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-6*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-7*24*time.Hour)),
 				flakecomment(1, time.Now().Add(-8*24*time.Hour)),
+				flakecomment(1, time.Now().Add(-9*24*time.Hour)),
 			},
 			issueCreatedAt: time.Now().Add(-1 * 29 * 24 * time.Hour),
 			expectPriority: 1,
@@ -135,13 +151,10 @@ func TestAutoPrioritize(t *testing.T) {
 				flakecomment(1, time.Now().Add(-20*24*time.Hour)),
 			},
 			issueCreatedAt: time.Now().Add(-1 * 29 * 24 * time.Hour),
-			expectPriority: 1,
+			expectPriority: 2,
 		},
 		{
-			comments: []*github.IssueComment{
-				flakecomment(1, time.Now()),
-				flakecomment(1, time.Now().Add(-1*3*24*time.Hour)),
-			},
+			comments: p0Comments,
 			issueCreatedAt: time.Now().Add(-1 * 6 * 24 * time.Hour),
 			expectPriority: 0,
 		},
