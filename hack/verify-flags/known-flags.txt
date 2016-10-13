@@ -136,3 +136,11 @@ datasource
 local-data-dir
 tracing
 jenkins-job
+dnsmasq-addr
+dnsmasq-poll-interval-ms
+dnsmasq-port
+prometheus-addr
+prometheus-namespace
+prometheus-path
+prometheus-port
+prometheus-subsystem
