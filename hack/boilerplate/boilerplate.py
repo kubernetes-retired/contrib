@@ -17,16 +17,30 @@
 from __future__ import print_function
 
 import argparse
+import difflib
 import glob
 import json
+import logging
 import mmap
 import os
 import re
 import sys
 
 parser = argparse.ArgumentParser()
-parser.add_argument("filenames", help="list of files to check, all files if unspecified", nargs='*')
+parser.add_argument(
+    "filenames",
+    help="list of files to check, all files if unspecified",
+    nargs='*')
+parser.add_argument(
+    "-v", "--verbose",
+    help="give verbose output regarding why a file does not pass",
+    action="store_true")
 args = parser.parse_args()
+
+logger = logging.getLogger('boilerplate')
+logging.basicConfig(
+    level=logging.INFO if args.verbose else logging.WARNING,
+    format="NOTE: %(message)s")
 
 rootdir = os.path.dirname(__file__) + "/../../"
 rootdir = os.path.abspath(rootdir)
@@ -47,6 +61,7 @@ def file_passes(filename, refs, regexs):
     try:
         f = open(filename, 'r')
     except:
+        logger.info('Unable to open %s', filename)
         return False
 
     data = f.read()
@@ -69,6 +84,7 @@ def file_passes(filename, refs, regexs):
 
     # if our test file is smaller than the reference it surely fails!
     if len(ref) > len(data):
+        logger.info('File smaller than reference (%d < %d)', len(data), len(ref))
         return False
 
     # trim our file to the same number of lines as the reference file
@@ -77,6 +93,7 @@ def file_passes(filename, refs, regexs):
     p = regexs["year"]
     for d in data:
         if p.search(d):
+            logger.info('Missing year')
             return False
 
     # Replace all occurrences of the regex "2016|2015|2014" with "YEAR"
@@ -88,6 +105,9 @@ def file_passes(filename, refs, regexs):
 
     # if we don't match the reference at this point, fail
     if ref != data:
+        logger.info('Header does not match reference, diff:')
+        for line in difflib.context_diff(ref, data, 'reference', 'actual'):
+            logger.info(line)
         return False
 
     return True
