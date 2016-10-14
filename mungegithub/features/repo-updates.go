@@ -36,14 +36,14 @@ import (
 )
 
 const (
-	ownerFilename = "OWNERS" // file which contains owners and assignees
+	ownerFilename = "OWNERS" // file which contains approvers and reviewers
 	// RepoFeatureName is how mungers should indicate this is required
 	RepoFeatureName = "gitrepos"
 )
 
 type assignmentConfig struct {
-	Assignees []string `json:assignees yaml:assignees`
-	//Owners []string `json:owners`
+	Reviewers []string `json:reviewers yaml:reviewers`
+	Approvers []string `json:approvers yaml:approvers`
 }
 
 // RepoInfo provides information about users in OWNERS files in a git repo
@@ -53,9 +53,9 @@ type RepoInfo struct {
 
 	enabled    bool
 	projectDir string
-	assignees  map[string]sets.String
+	reviewers  map[string]sets.String
 	config     *github.Config
-	//owners   map[string]sets.String
+	approvers  map[string]sets.String
 }
 
 func init() {
@@ -87,7 +87,7 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 
 	c := &assignmentConfig{}
 
-	// '.md' files may contain assignees at the top of the file in a yaml header
+	// '.md' files may contain reviewers at the top of the file in a yaml header
 	// Flag guarded because this is only enabled in some repos
 	if o.EnableMdYaml && filename != ownerFilename && strings.HasSuffix(filename, "md") {
 		// Parse the yaml header from the file if it exists and marshal into the config
@@ -96,14 +96,14 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 			return err
 		}
 
-		// Set assignees for this file using the relative path if they were found
+		// Set reviewers for this file using the relative path if they were found
 		path, err = filepath.Rel(o.projectDir, path)
 		if err != nil {
 			glog.Errorf("Unable to find relative path between %q and %q: %v", o.projectDir, path, err)
 			return err
 		}
-		if len(c.Assignees) > 0 {
-			o.assignees[path] = sets.NewString(c.Assignees...)
+		if len(c.Reviewers) > 0 {
+			o.reviewers[path] = sets.NewString(c.Reviewers...)
 		}
 		return nil
 	}
@@ -134,12 +134,12 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 	if path == "." {
 		path = "/"
 	}
-	if len(c.Assignees) > 0 {
-		o.assignees[path] = sets.NewString(c.Assignees...)
+	if len(c.Reviewers) > 0 {
+		o.reviewers[path] = sets.NewString(c.Reviewers...)
 	}
-	//if len(c.Owners) > 0 {
-	//o.owners[path] = sets.NewString(c.Owners...)
-	//}
+	if len(c.Approvers) > 0 {
+		o.approvers[path] = sets.NewString(c.Approvers...)
+	}
 	return nil
 }
 
@@ -174,15 +174,15 @@ func (o *RepoInfo) updateRepoUsers() error {
 	}
 	sha := out
 
-	o.assignees = map[string]sets.String{}
-	//o.owners = map[string]sets.String{}
+	o.reviewers = map[string]sets.String{}
+	o.approvers = map[string]sets.String{}
 	err = filepath.Walk(o.projectDir, o.walkFunc)
 	if err != nil {
 		glog.Errorf("Got error %v", err)
 	}
 	glog.Infof("Loaded config from %s:%s", o.projectDir, sha)
-	glog.V(5).Infof("assignees: %v", o.assignees)
-	//glog.V(5).Infof("owners: %v", o.owners)
+	glog.V(5).Infof("reviewers: %v", o.reviewers)
+	glog.V(5).Infof("approvers: %v", o.approvers)
 	return nil
 }
 
@@ -244,7 +244,7 @@ func (o *RepoInfo) EachLoop() error {
 // AddFlags will add any request flags to the cobra `cmd`
 func (o *RepoInfo) AddFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&o.BaseDir, "repo-dir", "", "Path to perform checkout of repository")
-	cmd.Flags().BoolVar(&o.EnableMdYaml, "enable-md-yaml", false, "If true, look for assignees in md yaml headers.")
+	cmd.Flags().BoolVar(&o.EnableMdYaml, "enable-md-yaml", false, "If true, look for reviewers in md yaml headers.")
 }
 
 // GitCommand will execute the git command with the `args` within the project directory.
@@ -287,24 +287,30 @@ func peopleForPath(path string, people map[string]sets.String, leafOnly bool, en
 	return out
 }
 
-// LeafAssignees returns a set of users who are the closest assginees to the
+// LeafReviewers returns a set of users who are the closest assginees to the
 // requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
 // will only return user2 for the path pkg/util/sets/file.go
-func (o *RepoInfo) LeafAssignees(path string) sets.String {
-	return peopleForPath(path, o.assignees, true, o.EnableMdYaml)
+func (o *RepoInfo) LeafReviewers(path string) sets.String {
+	return peopleForPath(path, o.reviewers, true, o.EnableMdYaml)
 }
 
-// Assignees returns a set of users who are the closest assginees to the
+// Reviewers returns a set of users who are the closest reviewers to the
 // requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
 // will return both user1 and user2 for the path pkg/util/sets/file.go
-func (o *RepoInfo) Assignees(path string) sets.String {
-	return peopleForPath(path, o.assignees, false, o.EnableMdYaml)
+func (o *RepoInfo) Reviewers(path string) sets.String {
+	return peopleForPath(path, o.reviewers, false, o.EnableMdYaml)
 }
 
-//func (o *RepoInfo) LeafOwners(path string) sets.String {
-//return people(path, o.owners, true)
-//}
+// LeafApprovers returns a set of users who are the closest assginees to the
+// requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
+// will only return user2 for the path pkg/util/sets/file.go
+func (o *RepoInfo) LeafApprovers(path string) sets.String {
+	return peopleForPath(path, o.approvers, true, o.EnableMdYaml)
+}
 
-//func (o *RepoInfo) Owners(path string) sets.String {
-//return people(path, o.owners, false)
-//}
+// Approvers returns a set of users who are the closest approvers to the
+// requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
+// will return both user1 and user2 for the path pkg/util/sets/file.go
+func (o *RepoInfo) Approvers(path string) sets.String {
+	return peopleForPath(path, o.approvers, false, o.EnableMdYaml)
+}
