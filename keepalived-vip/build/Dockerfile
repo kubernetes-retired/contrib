@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/google_containers/ubuntu-slim:0.4
+FROM gcr.io/google_containers/ubuntu-slim:0.5
 
 RUN apt-get update && apt-get install -y --no-install-recommends bash
 
 COPY build.sh /build.sh
 
-ENV VERSION 1.2.23
-ENV SHA256 43a321964bd83a9080ee2d486f8cd1fa47dd29f9c4e6411c2ec39bd81ec2076f
+ENV VERSION 1.2.24
+ENV SHA256 b508d4591c1c0173f1bf1274d69eed139fa875ff51f5429f4f714e5c72cf06b4
 
 RUN /build.sh
