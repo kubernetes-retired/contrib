@@ -69,7 +69,7 @@ const (
 
 var (
 	// SSLDirectory contains the mounted secrets with SSL certificates, keys and
-	SSLDirectory = "/etc/nginx-ssl"
+	SSLDirectory = "/etc/ingress-controller/ssl"
 )
 
 // Configuration represents the content of nginx.conf file

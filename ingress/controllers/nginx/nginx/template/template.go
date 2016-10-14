@@ -29,7 +29,7 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
-	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
+	"k8s.io/contrib/ingress/controllers/nginx/pkg/ingress"
 	"k8s.io/kubernetes/pkg/util/sysctl"
 )
 
@@ -201,7 +201,7 @@ func buildAuthLocation(input interface{}) string {
 		return ""
 	}
 
-	if location.ExternalAuthURL.URL == "" {
+	if location.ExternalAuth.URL == "" {
 		return ""
 	}
 
@@ -336,7 +336,7 @@ func buildRateLimit(input interface{}) []string {
 func sysctlSomaxconn() int {
 	maxConns, err := sysctl.New().GetSysctl("net/core/somaxconn")
 	if err != nil || maxConns < 512 {
-		glog.Warningf("system net.core.somaxconn=%v. Using NGINX default (511)", maxConns)
+		glog.V(3).Infof("system net.core.somaxconn=%v. Using NGINX default (511)", maxConns)
 		return 511
 	}
 

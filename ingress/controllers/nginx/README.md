@@ -16,6 +16,7 @@ This is an nginx Ingress controller that uses [ConfigMap](https://github.com/kub
 * [TCP Services](#exposing-tcp-services)
 * [UDP Services](#exposing-udp-services)
 * [Proxy Protocol](#proxy-protocol)
+* [Service Integration](#service-integration)
 * [NGINX customization](configuration.md)
 * [NGINX status page](#nginx-status-page)
 * [Running multiple ingress controllers](#running-multiple-ingress-controllers)
@@ -323,6 +324,12 @@ If you are using a L4 proxy to forward the traffic to the NGINX pods and termina
 Amongst others [ELBs in AWS](http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/enable-proxy-protocol.html) and [HAProxy](http://www.haproxy.org/) support Proxy Protocol.
 
 Please check the [proxy-protocol](examples/proxy-protocol/) example
+
+
+## Service Integration
+
+On clouds like AWS or GCE, using a service with `Type=LoadBalancer` allows the default kubernetes integration, which can save a lot of work.
+By passing the `--publish-service` argument to the controller, the ingress status will be updated with the load balancer configuration of the service, rather than the IP/s of the node/s.
 
 
 ### Custom errors
