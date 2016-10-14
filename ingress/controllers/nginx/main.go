@@ -51,6 +51,9 @@ var (
     namespace/name. The controller uses the first node port of this Service for
     the default backend.`)
 
+	nginxIngressClass = flags.String("ingress-class", defaultIngressClass,
+		`Name of the ingress class to route through this controller.`)
+
 	nxgConfigMap = flags.String("nginx-configmap", "",
 		`Name of the ConfigMap that containes the custom nginx configuration to use`)
 
@@ -77,7 +80,7 @@ var (
 
 	profiling = flags.Bool("profiling", true, `Enable profiling via web interface host:port/debug/pprof/`)
 
-	defSSLCertificate = flags.String("default-ssl-certificate", "", `Name of the secret that contains a SSL 
+	defSSLCertificate = flags.String("default-ssl-certificate", "", `Name of the secret that contains a SSL
 		certificate to be used as default for a HTTPS catch-all server`)
 
 	defHealthzURL = flags.String("health-check-path", "/ingress-controller-healthz", `Defines the URL to
@@ -90,6 +93,7 @@ func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
 	glog.Infof("Using build: %v - %v", gitRepo, version)
+	glog.Infof("Watching for ingress class: %s", *nginxIngressClass)
 
 	if *defaultSvc == "" {
 		glog.Fatalf("Please specify --default-backend-service")

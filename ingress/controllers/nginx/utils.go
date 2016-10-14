@@ -260,8 +260,8 @@ const (
 	// ingressClassKey picks a specific "class" for the Ingress. The controller
 	// only processes Ingresses with this annotation either unset, or set
 	// to either nginxIngressClass or the empty string.
-	ingressClassKey   = "kubernetes.io/ingress.class"
-	nginxIngressClass = "nginx"
+	ingressClassKey     = "kubernetes.io/ingress.class"
+	defaultIngressClass = "nginx"
 )
 
 func (ing ingAnnotations) ingressClass() string {
@@ -273,10 +273,21 @@ func (ing ingAnnotations) ingressClass() string {
 }
 
 // isNGINXIngress returns true if the given Ingress either doesn't specify the
-// ingress.class annotation, or it's set to "nginx".
+// ingress.class annotation, or it's set to the value of nginxIngressClass.
 func isNGINXIngress(ing *extensions.Ingress) bool {
 	class := ingAnnotations(ing.ObjectMeta.Annotations).ingressClass()
-	return class == "" || class == nginxIngressClass
+
+	// class is equal to --ingress-class -> true
+	if *nginxIngressClass == class {
+		return true
+	}
+
+	// class is empty and --ingress-class is default -> true
+	if class == "" && *nginxIngressClass == defaultIngressClass {
+		return true
+	}
+
+	return false
 }
 
 const (
