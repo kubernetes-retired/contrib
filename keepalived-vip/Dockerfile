@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   kmod \
   ca-certificates \
   iproute2 \
+  curl \
   ipvsadm \
   bash && \
   apt-get clean && \

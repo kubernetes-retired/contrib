@@ -10,7 +10,7 @@ spec:
     spec:
       hostNetwork: true
       containers:
-        - image: registry.soficom.cl/soficom/haproxy-self-reload:0.1
+        - image: aledbf/haproxy-self-reload:0.1
           name: haproxy-self-reload
           livenessProbe:
             httpGet:
@@ -22,7 +22,7 @@ spec:
           volumeMounts:
             - name: haproxy
               mountPath: /etc/haproxy
-        - image: registry.soficom.cl/soficom/keepalived:1.0
+        - image: aledbf/kube-keepalived-vip:0.10
           name: kube-keepalived-vip
           securityContext:
             privileged: true
