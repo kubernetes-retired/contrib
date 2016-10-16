@@ -45,6 +45,13 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provider "aws"
   config.vm.provider "openstack"
 
+  # By default, Vagrant itself assumes that sudo requires no
+  # password, therefore it does not need a tty. Some OS images
+  # instead require a tty in order to run sudo.
+  # Below configuration enable the tty on Vagrant 1.4+
+  # See https://goo.gl/fC5sPW for details
+  config.ssh.pty = true
+
   def set_openstack_box(config)
     case $os_image
     when :centos7
