@@ -26,9 +26,9 @@ import (
 // SourceConfig is the set of data required to configure a kubernetes
 // data source (e.g., kubelet or kube-controller).
 type SourceConfig struct {
-	Zone, Project, Cluster, Host string
-	Port                         uint
-	Resolution                   time.Duration
+	Zone, Project, Cluster, Host, Instance string
+	Port                                   uint
+	Resolution                             time.Duration
 }
 
 // MetricsSource is an object that provides kubernetes metrics in
