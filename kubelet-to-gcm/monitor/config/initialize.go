@@ -33,7 +33,7 @@ const (
 
 // NewConfigs returns the SourceConfigs for all monitored endpoints, and
 // hits the GCE Metadata server if required.
-func NewConfigs(zone, projectID, cluster, host string, kubeletPort, ctrlPort uint, resolution time.Duration) (*monitor.SourceConfig, *monitor.SourceConfig, error) {
+func NewConfigs(zone, projectID, cluster, host, instance string, kubeletPort, ctrlPort uint, resolution time.Duration) (*monitor.SourceConfig, *monitor.SourceConfig, error) {
 	zone, err := getZone(zone)
 	if err != nil {
 		return nil, nil, err
@@ -54,11 +54,17 @@ func NewConfigs(zone, projectID, cluster, host string, kubeletPort, ctrlPort uin
 		return nil, nil, err
 	}
 
+	instance, err = getInstance(instance)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return &monitor.SourceConfig{
 			Zone:       zone,
 			Project:    projectID,
 			Cluster:    cluster,
 			Host:       host,
+			Instance:   instance,
 			Port:       kubeletPort,
 			Resolution: resolution,
 		}, &monitor.SourceConfig{
@@ -66,6 +72,7 @@ func NewConfigs(zone, projectID, cluster, host string, kubeletPort, ctrlPort uin
 			Project:    projectID,
 			Cluster:    cluster,
 			Host:       host,
+			Instance:   instance,
 			Port:       ctrlPort,
 			Resolution: resolution,
 		}, nil
@@ -146,4 +153,16 @@ func getKubeletHost(kubeletHost string) (string, error) {
 		kubeletHost = string(body)
 	}
 	return kubeletHost, nil
+}
+
+// getInstance returns the instance name if given, or the hostname from gce.
+func getInstance(instance string) (string, error) {
+	if instance == "use-gce" {
+		body, err := getGCEMetaData(metaDataURI("/instance/hostname"))
+		if err != nil {
+			return "", fmt.Errorf("Failed to get hostname from GCE: %v", err)
+		}
+		instance = string(body)
+	}
+	return instance, nil
 }

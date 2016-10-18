@@ -55,6 +55,7 @@ jenkins-host
 jenkins-jobs
 kube-api-content-type
 kubelet-host
+kubelet-instance
 kubelet-port
 label-file
 last-release-pr
