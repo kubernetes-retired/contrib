@@ -783,7 +783,7 @@ func (sq *SubmitQueue) getMetaData() []byte {
 const (
 	unknown                 = "unknown failure"
 	noCLA                   = "PR is missing CLA label; needs one of " + claYesLabel + ", " + cncfClaYesLabel + " or " + claHumanLabel
-	noLGTM                  = "PR does not have LGTM."
+	noLGTM                  = "PR does not have LGTM or Approved Label (needs at least one)."
 	lgtmEarly               = "The PR was changed after the LGTM label was added."
 	unmergeable             = "PR is unable to be automatically merged. Needs rebase."
 	undeterminedMergability = "Unable to determine is PR is mergeable. Will try again later."
@@ -866,7 +866,7 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	}
 
 	// Clearly
-	if !obj.HasLabel(lgtmLabel) {
+	if !(obj.HasLabel(lgtmLabel) || obj.HasLabel(approvedLabel)) {
 		sq.SetMergeStatus(obj, noLGTM)
 		return false
 	}
@@ -874,14 +874,26 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	// PR cannot change since LGTM was added
 	lastModifiedTime := obj.LastModifiedTime()
 	lgtmTime := obj.LabelTime(lgtmLabel)
+	approvedTime := obj.LabelTime(approvedLabel)
 
-	if lastModifiedTime == nil || lgtmTime == nil {
+	if lastModifiedTime == nil || (lgtmTime == nil && approvedTime == nil) {
 		glog.Errorf("PR %d was unable to determine when LGTM was added or when last modified", *obj.Issue.Number)
 		sq.SetMergeStatus(obj, unknown)
 		return false
 	}
 
-	if lastModifiedTime.After(*lgtmTime) {
+	var timeToCompare *time.Time
+	if lgtmTime == nil {
+		timeToCompare = approvedTime
+	} else if approvedTime == nil {
+		timeToCompare = lgtmTime
+	} else if lgtmTime < approvedTime {
+		timeToCompare = lgtmTime
+	} else {
+		timeToCompare = approvedTime
+	}
+
+	if lastModifiedTime.After(*timeToCompare) {
 		sq.SetMergeStatus(obj, lgtmEarly)
 		return false
 	}
