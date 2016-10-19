@@ -800,9 +800,10 @@ const (
 	unmergeableMilestone    = "Milestone is for a future release and cannot be merged"
 )
 
-// getEarliestApprovedTime expects that lgtmTime and approvedTime are not both
-// nil.  If both of them ARE nil, it will return a nil pointer
-func getEarliestApprovedTime(lgtmTime, approvedTime *time.Time) *time.Time {
+func getEarliestApprovedTime(obj *github.MungeObject) *time.Time {
+	lgtmTime := obj.LabelTime(lgtmLabel)
+	approvedTime := obj.LabelTime(approvedLabel)
+	// if both lgtmTime and approvedTime are nil, this func will return nil pointer
 	if lgtmTime == nil {
 		return approvedTime
 	} else if approvedTime == nil {
@@ -887,17 +888,15 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 
 	// PR cannot change since LGTM was added
 	lastModifiedTime := obj.LastModifiedTime()
-	lgtmTime := obj.LabelTime(lgtmLabel)
-	approvedTime := obj.LabelTime(approvedLabel)
 
-	if lastModifiedTime == nil || (lgtmTime == nil && approvedTime == nil) {
+	// lgtmTime and approvedTime cannot both be nil at this point (see check above)
+	earliestApproved := getEarliestApprovedTime(obj)
+
+	if lastModifiedTime == nil || earliestApproved == nil {
 		glog.Errorf("PR %d was unable to determine when LGTM was added or when last modified", *obj.Issue.Number)
 		sq.SetMergeStatus(obj, unknown)
 		return false
 	}
-
-	// lgtmTime and approvedTime cannot both be nil at this point (see check above)
-	earliestApproved := getEarliestApprovedTime(lgtmTime, approvedTime)
 
 	if lastModifiedTime.After(*earliestApproved) {
 		sq.SetMergeStatus(obj, lgtmEarly)
