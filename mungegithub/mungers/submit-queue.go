@@ -800,6 +800,18 @@ const (
 	unmergeableMilestone    = "Milestone is for a future release and cannot be merged"
 )
 
+func getEarliestApprovedTime(lgtmTime, approvedTime *time.Time) *time.Time {
+	if lgtmTime == nil {
+		return approvedTime
+	} else if approvedTime == nil {
+		return lgtmTime
+	} else if lgtmTime < approvedTime {
+		return lgtmTime
+	} else {
+		return approvedTime
+	}
+}
+
 // validForMerge is the base logic about what PR can be automatically merged.
 // PRs must pass this logic to be placed on the queue and they must pass this
 // logic a second time to be retested/merged after they get to the top of
@@ -882,18 +894,10 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 		return false
 	}
 
-	var timeToCompare *time.Time
-	if lgtmTime == nil {
-		timeToCompare = approvedTime
-	} else if approvedTime == nil {
-		timeToCompare = lgtmTime
-	} else if lgtmTime < approvedTime {
-		timeToCompare = lgtmTime
-	} else {
-		timeToCompare = approvedTime
-	}
+	// either lgtmTime or approvedTime cannot both be nil at this point
+	earliestApproved := getEarliestApprovedTime(lgtmTime, approvedTime)
 
-	if lastModifiedTime.After(*timeToCompare) {
+	if lastModifiedTime.After(*earliestApproved) {
 		sq.SetMergeStatus(obj, lgtmEarly)
 		return false
 	}
