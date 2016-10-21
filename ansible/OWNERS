@@ -1,4 +1,7 @@
-assignees:
+approvers:
 - eparis
 - ingvagabund
-
+reviewers:
+- ingvagabund
+- rutsky
+- stephenrlouie

@@ -1,4 +1,7 @@
-assignees:
+approvers:
 - mikedanese
 - paulbakker
-
+reviewers:
+- aledbf
+- foxish
+- gregory-lyons

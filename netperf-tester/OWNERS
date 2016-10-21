@@ -1,5 +1,7 @@
-assignees:
-- BenTheElder
+approvers:
+- bentheelder
 - eparis
 - mikedanese
-
+reviewers:
+- foxish
+- ingvagabund

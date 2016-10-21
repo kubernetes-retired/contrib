@@ -1,5 +1,8 @@
-assignees:
+approvers:
 - mikedanese
 - rootfs
 - sgallagher
-
+reviewers:
+- derekwaynecarr
+- foxish
+- rootfs

@@ -1,4 +1,7 @@
-assignees:
+approvers:
 - emaildanwilson
 - zoidbergwill
-
+reviewers:
+- emaildanwilson
+- foxish
+- ingvagabund

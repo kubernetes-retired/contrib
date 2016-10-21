@@ -1,4 +1,7 @@
-assignees:
+approvers:
 - caesarxuchao
 - thockin
-
+reviewers:
+- foxish
+- ingvagabund
+- thockin
