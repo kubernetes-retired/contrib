@@ -63,6 +63,7 @@ max-pr-number
 max-sync-failures
 max-nodes-total
 min-pr-number
+min-replica-count
 network-config
 nonblocking-jenkins-jobs
 nginx-configmap
