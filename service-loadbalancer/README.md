@@ -51,7 +51,7 @@ $ kubectl get svc --all-namespaces -o yaml  | grep -i "selfLink"
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-heapster
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-influxdb
 ```
-These are all the [cluster addon](https://github.com/kubernetes/kubernetes/tree/master/cluster/addons) services in `namespace=kube-system`.
+These are all the [cluster addon](https://github.com/kubernetes/kubernetes/tree/master/cluster/addons) services in all namespaces `--all-namespaces`.
 
 #### Create a loadbalancer
 * Loadbalancers are created via a ReplicationController.
