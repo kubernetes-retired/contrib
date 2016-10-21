@@ -114,8 +114,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       _config['security_group'] = []
     end
 
-    config.ssh.username = "fedora"
-    config.ssh.private_key_path = "~/.ssh/id_rsa"
+    config.ssh.username = _config["os_instance_username"]
+    config.ssh.private_key_path = _config['os_ssh_pub_key_path']
     config.vm.boot_timeout = 60*10
 
     ### The below parameters need to be modified per your openstack instance.
