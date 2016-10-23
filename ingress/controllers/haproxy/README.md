@@ -97,6 +97,6 @@ To create all Ingress examples follow this steps:
 1. create the [balancer](./examples/balancer/README.md)
 2. create the [backends](./examples/backends/README.md)
 3. create the [ingress](./examples/ingress/README.md)
-4. create the [TLS](./tls/examples/README.md)
+4. create the [TLS](./examples/tls/README.md)
 
 Each of those the documents above contains an explanation of the resources created at each step
