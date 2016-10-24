@@ -142,6 +142,8 @@ patch -p1 < $BUILD_PATH/nginx__dynamic_tls_records.patch
   --with-http_v2_module \
   --with-stream \
   --with-stream_ssl_module \
+  --with-stream_ssl_preread_module \
+  --with-stream_geoip_module \
   --with-threads \
   --with-file-aio \
   --without-mail_pop3_module \
