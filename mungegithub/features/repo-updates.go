@@ -44,6 +44,7 @@ const (
 type assignmentConfig struct {
 	Assignees []string `json:assignees yaml:assignees`
 	Approvers []string `json:approvers yaml:approvers`
+
 	//Reviewers []string `json:reviewers yaml:reviewers`
 	//Owners []string `json:owners`
 }
@@ -144,7 +145,8 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 	o.assignees[path] = sets.NewString()
 	if len(c.Assignees) > 0 {
 		o.assignees[path] = o.assignees[path].Union(sets.NewString(c.Assignees...))
-	} else if len(c.Approvers) > 0 {
+	}
+	if len(c.Approvers) > 0 {
 		o.assignees[path] = o.assignees[path].Union(sets.NewString(c.Approvers...))
 	}
 	//if len(c.Owners) > 0 {
@@ -269,9 +271,15 @@ func (o *RepoInfo) gitCommandDir(args []string, cmdDir string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
+// peopleForPath returns a set of users who are assignees to the
+// requested file.  The path variable should be a full path to a filename
+// and not directory as the final directory will be discounted if enableMdYaml is true
+// leafOnly indicates whether only the OWNERS deepest in the tree (closest to the file)
+// should be returned or if all OWNERS in filepath should be returned
 func peopleForPath(path string, people map[string]sets.String, leafOnly bool, enableMdYaml bool) sets.String {
 	d := path
 	if !enableMdYaml {
+		//if path is a directory, this will remove the leaf directory
 		d = filepath.Dir(path)
 	}
 
