@@ -17,7 +17,6 @@ limitations under the License.
 package mungers
 
 import (
-	"path"
 	"strings"
 
 	"k8s.io/contrib/mungegithub/features"
@@ -28,8 +27,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 )
-
-const maxDepth = 3
 
 // ApprovalHandler will try to add "approved" label once
 // all files of change has been approved by approvers.
@@ -64,15 +61,15 @@ func (*ApprovalHandler) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
 // Munge is the workhorse the will actually make updates to the PR
 // The algorithm goes as:
-// - Initially, we set up approverSet
-//   - Go through all comments after latest commit. If any approver said "/approve", add him to approverSet.
+// - Initially, we build an approverSet as follows
+//   - Go through all comments after latest commit. If anyone said "/approve", add him to approverSet.
 // - For each file, we see if any approver of this file is in approverSet.
 //   - An approver of a file is defined as:
 //     - It's known that each dir has a list of approvers. (This might not hold true. For usability, current situation is enough.)
 //     - Approver of a dir is also the approver of child dirs.
-//   - We look at top N (default 3) level dir approvers. For example, for file "/a/b/c/d/e", we might search for approver from
-//     "/", "/a/", "/a/b/"
-// - Iff all files has been approved, the bot will add "approved" label.
+// - Iff all files have been approved, the bot will add the "approved" label.
+// - Iff a valid approver comments /approve cancel, we remove the approve label and the process must be completed
+// again
 func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
 		return
@@ -91,6 +88,7 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 
 	approverSet := sets.String{}
 
+	cancelSet := sets.String{}
 	// from oldest to latest
 	for i := len(comments) - 1; i >= 0; i-- {
 		c := comments[i]
@@ -108,37 +106,28 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 
 		if len(fields) == 2 && strings.ToLower(fields[0]) == "/approve" && strings.ToLower(fields[1]) == "cancel" {
 			approverSet.Delete(*c.User.Login)
+			cancelSet.Insert(*c.User.Login)
 		}
 	}
+	glog.Infof("This is the cancel set %v", cancelSet)
 
+	//Checks that no valid approver has commented to cancel the approve label since last commit
+	//Checks that all files have an approver in the approverSet
 	for _, file := range files {
-		if !h.hasApproval(*file.Filename, approverSet, maxDepth) {
+		fileOwners := h.features.Repos.Assignees(*file.Filename)
+		if fileOwners.Intersection(cancelSet).Len() > 0 {
+			// a valid approver applied a cancel command since the last commit
+			glog.Infof("Canceling the approve label because %v canceled", fileOwners.Intersection(cancelSet).List()[0])
+			if obj.HasLabel(approvedLabel) {
+				obj.RemoveLabel(approvedLabel)
+			}
+			return
+		} else if fileOwners.Intersection(approverSet).Len() == 0 {
+			glog.Infof("File %v does not have approval, and thus PR %v cannot be approved", *file.Filename, obj.Number())
 			return
 		}
 	}
+
+	//every file has been approved by a valid approver
 	obj.AddLabel(approvedLabel)
-}
-
-func (h *ApprovalHandler) hasApproval(filename string, approverSet sets.String, depth int) bool {
-	paths := strings.Split(filename, "/")
-	p := ""
-	for i := 0; i < len(paths) && i < depth; i++ {
-		fileOwners := h.features.Repos.LeafAssignees(p)
-		if fileOwners.Len() == 0 {
-			glog.Warningf("Couldn't find an owner for path (%s)", p)
-			continue
-		}
-
-		if h.features.Aliases != nil && h.features.Aliases.IsEnabled {
-			fileOwners = h.features.Aliases.Expand(fileOwners)
-		}
-
-		for _, owner := range fileOwners.List() {
-			if approverSet.Has(owner) {
-				return true
-			}
-		}
-		p = path.Join(p, paths[i])
-	}
-	return false
 }
