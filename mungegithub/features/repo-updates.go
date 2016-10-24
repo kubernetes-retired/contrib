@@ -257,9 +257,15 @@ func (o *RepoInfo) gitCommandDir(args []string, cmdDir string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
+// peopleForPath returns a set of users who are assignees to the
+// requested file.  The path variable should be a full path to a filename
+// and not directory as the final directory will be discounted if enableMdYaml is true
+// leafOnly indicates whether only the OWNERS deepest in the tree (closest to the file)
+// should be returned or if all OWNERS in filepath should be returned
 func peopleForPath(path string, people map[string]sets.String, leafOnly bool, enableMdYaml bool) sets.String {
 	d := path
 	if !enableMdYaml {
+		//if path is a directory, this will remove the leaf directory
 		d = filepath.Dir(path)
 	}
 

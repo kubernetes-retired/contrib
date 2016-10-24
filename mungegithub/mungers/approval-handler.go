@@ -17,20 +17,26 @@ limitations under the License.
 package mungers
 
 import (
-	"path"
 	"strings"
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
+	mungeComment "k8s.io/contrib/mungegithub/mungers/matchers/comment"
 	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"bytes"
+	"fmt"
+	"sort"
+
 	"github.com/golang/glog"
-	githubapi "github.com/google/go-github/github"
+	goGithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
-const maxDepth = 3
+const (
+	approvalNotificationName = "ApprovalNotifier"
+)
 
 // ApprovalHandler will try to add "approved" label once
 // all files of change has been approved by approvers.
@@ -65,15 +71,16 @@ func (*ApprovalHandler) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
 // Munge is the workhorse the will actually make updates to the PR
 // The algorithm goes as:
-// - Initially, we set up approverSet
-//   - Go through all comments after latest commit. If any approver said "/approve", add him to approverSet.
-// - For each file, we see if any approver of this file is in approverSet.
+// - Initially, we build an approverSet
+//   - Go through all comments after latest commit.
+//	- If anyone said "/approve", add them to approverSet.
+// - Then, for each file, we see if any approver of this file is in approverSet and keep track of files without approval
 //   - An approver of a file is defined as:
-//     - It's known that each dir has a list of approvers. (This might not hold true. For usability, current situation is enough.)
-//     - Approver of a dir is also the approver of child dirs.
-//   - We look at top N (default 3) level dir approvers. For example, for file "/a/b/c/d/e", we might search for approver from
-//     "/", "/a/", "/a/b/"
-// - Iff all files has been approved, the bot will add "approved" label.
+//     - Someone listed as an "approver" in an OWNERS file in the files directory OR
+//     - in one of the file's parent directorie
+// - Iff all files have been approved, the bot will add the "approved" label.
+// - Iff the approved label has been added and a cancel command is found, that reviewer will be removed from the approverSet
+// 	and the munger will remove the approved label
 func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
 		return
@@ -90,12 +97,89 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 		return
 	}
 
+	approverSet := createApproverSet(comments)
+	needsApproval := h.getApprovalNeededFiles(files, approverSet)
+
+	if err := updateNotification(obj, needsApproval); err != nil {
+		return
+	}
+	if needsApproval.Len() > 0 {
+		if obj.HasLabel(approvedLabel) {
+			glog.Infof("Canceling the approve label because these files %v have no valid approvers", needsApproval)
+			obj.RemoveLabel(approvedLabel)
+		}
+	} else if !obj.HasLabel(approvedLabel) {
+		obj.AddLabel(approvedLabel)
+	}
+}
+
+func updateNotification(obj *github.MungeObject, needsApproval sets.String) error {
+	notificationMatcher := mungeComment.MungerNotificationName(approvalNotificationName)
+	comments, err := obj.ListComments()
+	if err != nil {
+		glog.Error("Could not list the comments for PR%v", obj.Issue.Number)
+		return err
+	}
+	latestNotification := mungeComment.FilterComments(comments, notificationMatcher).GetLast()
+	latestApprove := mungeComment.FilterComments(comments, mungeComment.CommandName("approve")).GetLast()
+	if latestNotification == nil {
+		return createMessage(obj, needsApproval)
+	}
+	if latestApprove == nil {
+		// there was already a bot notification and nothing has changed since
+		return nil
+	}
+	if latestApprove.CreatedAt.After(*latestNotification.CreatedAt) {
+		// there has been approval since last notification
+		obj.DeleteComment(latestNotification)
+		return createMessage(obj, needsApproval)
+	}
+	lastModified := obj.LastModifiedTime()
+	if latestNotification.CreatedAt.Before(*lastModified) {
+		obj.DeleteComment(latestNotification)
+		return createMessage(obj, needsApproval)
+	}
+	return nil
+}
+
+func createMessage(obj *github.MungeObject, filesNeedApproval sets.String) error {
+	files, err := obj.ListFiles()
+	if err != nil {
+		glog.Error("Could not list the files for PR%v", obj.Issue.Number)
+		return err
+	}
+	approvedFiles := sets.String{}
+	for _, fn := range files {
+		if !filesNeedApproval.Has(*fn.Filename) {
+			approvedFiles.Insert(*fn.Filename)
+		}
+	}
+	approvedList := approvedFiles.List()
+	sort.Strings(approvedList)
+	needsApprovalList := filesNeedApproval.List()
+	sort.Strings(needsApprovalList)
+
+	context := bytes.NewBufferString("The following files have been approved:\n")
+	fileFmt := "- %s\n"
+	for _, fn := range approvedList {
+		context.WriteString(fmt.Sprintf(fileFmt, fn))
+	}
+	context.WriteString("\n")
+	context.WriteString("The following files REQUIRE approval:\n")
+	for _, fn := range needsApprovalList {
+		context.WriteString(fmt.Sprintf(fileFmt, fn))
+	}
+	context.WriteString("\n")
+	return mungeComment.Notification{approvalNotificationName, "", context.String()}.Post(obj)
+}
+
+// createApproverSet iterates through the list of comments on a PR
+// and identifies all of the people that have said /approve and adds
+// them to the approverSet.  The function uses the latest approve or cancel comment
+// to determine the Users intention
+func createApproverSet(comments []*goGithub.IssueComment) sets.String {
 	approverSet := sets.String{}
-
-	// from oldest to latest
-	for i := len(comments) - 1; i >= 0; i-- {
-		c := comments[i]
-
+	for _, c := range comments {
 		if !mungerutil.IsValidUser(c.User) {
 			continue
 		}
@@ -104,48 +188,34 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 
 		if len(fields) == 1 && strings.ToLower(fields[0]) == "/approve" {
 			approverSet.Insert(*c.User.Login)
-			continue
-		}
-
-		if len(fields) == 2 && strings.ToLower(fields[0]) == "/approve" && strings.ToLower(fields[1]) == "cancel" {
-			approverSet.Delete(*c.User.Login)
-		}
-	}
-
-	for _, file := range files {
-		if !h.hasApproval(*file.Filename, approverSet, maxDepth) {
-			return
-		}
-	}
-	obj.AddLabel(approvedLabel)
-}
-
-func (h *ApprovalHandler) hasApproval(filename string, approverSet sets.String, depth int) bool {
-	paths := strings.Split(filename, "/")
-	p := ""
-	for i := 0; i < len(paths) && i < depth; i++ {
-		fileOwners := h.features.Repos.Approvers(p)
-		if fileOwners.Len() == 0 {
-			glog.Warningf("Couldn't find an owner for path (%s)", p)
-			continue
-		}
-
-		if h.features.Aliases != nil && h.features.Aliases.IsEnabled {
-			fileOwners = h.features.Aliases.Expand(fileOwners)
-		}
-
-		for _, owner := range fileOwners.List() {
-			if approverSet.Has(owner) {
-				return true
+		} else if len(fields) == 2 && strings.ToLower(fields[0]) == "/approve" && strings.ToLower(fields[1]) == "cancel" {
+			if approverSet.Has(*c.User.Login) {
+				approverSet.Delete(*c.User.Login)
 			}
 		}
-		p = path.Join(p, paths[i])
 	}
-	return false
+	return approverSet
 }
 
-func getCommentsAfterLastModified(obj *github.MungeObject) ([]*githubapi.IssueComment, error) {
-	afterLastModified := func(opt *githubapi.IssueListCommentsOptions) *githubapi.IssueListCommentsOptions {
+// getApprovalNeededFiles identifies the files that still need approval from someone in their OWNERS files
+func (h ApprovalHandler) getApprovalNeededFiles(files []*goGithub.CommitFile, approverSet sets.String) sets.String {
+	needsApproval := sets.String{}
+	for _, file := range files {
+		if !h.isApproved(file, approverSet) {
+			needsApproval.Insert(*file.Filename)
+		}
+	}
+	return needsApproval
+}
+
+// isApproved indicates whether or not someone from the list of OWNERS for a file has approved the PR
+func (h ApprovalHandler) isApproved(someFile *goGithub.CommitFile, approverSet sets.String) bool {
+	fileOwners := h.features.Repos.Approvers(*someFile.Filename)
+	return fileOwners.Intersection(approverSet).Len() > 0
+}
+
+func getCommentsAfterLastModified(obj *github.MungeObject) ([]*goGithub.IssueComment, error) {
+	afterLastModified := func(opt *goGithub.IssueListCommentsOptions) *goGithub.IssueListCommentsOptions {
 		// Only comments updated at or after this time are returned.
 		// One possible case is that reviewer might "/lgtm" first, contributor updated PR, and reviewer updated "/lgtm".
 		// This is still valid. We don't recommend user to update it.
