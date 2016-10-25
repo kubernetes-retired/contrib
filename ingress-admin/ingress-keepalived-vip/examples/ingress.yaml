@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  namespace: "kube-system"
+  name: "ingress-test1"
+  labels:
+    run: "ingress"
+spec:
+  replicas: 2
+  selector:
+    run: "ingress"
+  template:
+   metadata:
+    labels:
+      run: "ingress"
+   spec:
+    hostNetwork: true
+    containers:
+      - image: "index.caicloud.io/caicloud/ingress-keepalived-vip:v0.0.1"
+        imagePullPolicy: "Always"
+        name: "haproxy-keepalived"
+        resources:
+          limits:
+            cpu: 50m
+            memory: 100Mi
+          requests:
+            cpu: 10m
+            memory: 10Mi
+        securityContext:
+          privileged: true
+        env:
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: SERVICE_NAME
+            value: "ingress"
+      - image: "index.caicloud.io/caicloud/haproxy-ingress-controller:0.0"
+        imagePullPolicy: "Always"
+        name: "haproxy-ingress-controller"
+        resources:
+          limits:
+            cpu: 10m
+            memory: 10Mi
+          requests:
+            cpu: 10m
+            memory: 10Mi
+        env:
+          - name: KEEPALIVED_VIRTUAL_IP
+            value: "10.244.100.100"
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
