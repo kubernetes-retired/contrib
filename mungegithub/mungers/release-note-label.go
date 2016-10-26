@@ -130,17 +130,21 @@ func (r *ReleaseNoteLabel) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	labelToAdd := releaseNoteProcessFollowed(obj)
-	if labelToAdd == "" {
+	labelToAdd := determineReleaseNoteLabel(obj)
+	if labelToAdd == releaseNoteLabelNeeded {
+		if !obj.HasLabel(releaseNoteLabelNeeded) {
+			obj.AddLabel(releaseNoteLabelNeeded)
+		}
+		if !obj.HasLabel(doNotMergeLabel) {
+			obj.AddLabel(doNotMergeLabel)
+		}
+	} else {
+		//going to apply some other release-note-label
 		if obj.HasLabel(releaseNoteLabelNeeded) {
 			obj.RemoveLabel(releaseNoteLabelNeeded)
 		}
 		obj.AddLabel(labelToAdd)
 		return
-	}
-
-	if !obj.HasLabel(releaseNoteLabelNeeded) {
-		obj.AddLabel(releaseNoteLabelNeeded)
 	}
 
 	if !obj.HasLabel(lgtmLabel) {
@@ -155,26 +159,40 @@ func (r *ReleaseNoteLabel) Munge(obj *github.MungeObject) {
 	obj.AddLabel(doNotMergeLabel)
 }
 
-// releaseNoteProcessFollowed returns the label to be added if
-// correctly implemented in the PR template.  returns nil otherwise
-func releaseNoteProcessFollowed(obj *github.MungeObject) string {
+// getReleaseNote returns the release note from a PR body
+// assumes that the PR body followed the PR template
+func getReleaseNote(body string) string {
 	noteMatcher := regexp.MustCompile("Release note.*```(.*)```")
-	potentialMatch := noteMatcher.FindString(*obj.Issue.Body)
-	if potentialMatch == "" {
+	potentialMatch := noteMatcher.FindStringSubmatch(body)
+	glog.Infof("Found %v as the release note", potentialMatch)
+	if potentialMatch == nil || len(potentialMatch) < 2 {
 		glog.Infof("The release note section was probably deleted")
 		return ""
 	}
-	release_note := strings.ToLower(strings.Trim(potentialMatch, " "))
-	if release_note == noReleaseNoteComment {
+	return potentialMatch[1]
+}
+
+func chooseLabel(composedReleaseNote string) string {
+	composedReleaseNote = strings.ToLower(strings.Trim(composedReleaseNote, " "))
+
+	if composedReleaseNote == "" {
+		return releaseNoteLabelNeeded
+	}
+	if composedReleaseNote == noReleaseNoteComment {
 		return releaseNoteNone
 	}
-
-	if strings.Contains(release_note, actionRequiredNote) {
+	if strings.Contains(composedReleaseNote, actionRequiredNote) {
 		return releaseNoteActionRequired
 	}
-
 	return releaseNote
+}
 
+// determineReleaseNoteLabel returns the label to be added if
+// correctly implemented in the PR template.  returns nil otherwise
+func determineReleaseNoteLabel(obj *github.MungeObject) string {
+	potentialMatch := getReleaseNote(*obj.Issue.Body)
+	//if no regexp doesn't match at all or no regex capture gropu
+	return chooseLabel(potentialMatch)
 }
 
 func releaseNoteAlreadyAdded(obj *github.MungeObject) bool {
