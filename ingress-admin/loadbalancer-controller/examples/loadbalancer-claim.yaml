@@ -1,0 +1,11 @@
+apiVersion: k8s.io/v1
+kind: Loadbalancerclaim
+metadata:
+  namespace: "kube-system"
+  name: "loadbalancer-claim-test"
+  annotations:
+    ingress.alpha.k8s.io/provisioning-required: "required"
+    ingress.alpha.k8s.io/ingress-class: "ingress.alpha.k8s.io/ingress-nginx"
+    ingress.alpha.k8s.io/ingress-cpu: "50m"
+    ingress.alpha.k8s.io/ingress-mem: "50Mi"
+    ingress.alpha.k8s.io/ingress-vip: "127.192.0.1"
