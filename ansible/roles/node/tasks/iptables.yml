@@ -8,8 +8,12 @@
   service: name=iptables enabled=yes state=started
 
 - name: Open kubelet port with iptables
-  command: /sbin/iptables -I INPUT 1 -p tcp --dport 10250 -j ACCEPT -m comment --comment "kubelet"
-  when: "'kubelet' not in iptablesrules.stdout"
+  command: /sbin/iptables -I INPUT 1 -p tcp --dport {{ kubelet_port }} -j ACCEPT -m comment --comment "kubelet"
+  when: "'kubelet' not in iptablesrules.stdout and open_kubelet_port"
+
+- name: Close kubelet port with iptables
+  command: /sbin/iptables -I INPUT 1 -p tcp --dport {{ kubelet_port }} -j DROP -m comment --comment "kubelet-drop"
+  when: "'kubelet-drop' in iptablesrules.stdout and not open_kubelet_port"
 
 # this is needed if the kube-proxy is running in userspace mode
 - name: Allow redirected service traffic

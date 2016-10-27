@@ -1,21 +1,23 @@
 ---
 - name: Open firewalld port for the kubelet
-  firewalld: port=10250/tcp permanent=false state=enabled
+  firewalld: port={{ kubelet_port }}/tcp permanent=false state=enabled
   ignore_errors: yes
+  when: open_kubelet_port
 
 - name: Save firewalld port for the kubelet
-  firewalld: port=10250/tcp permanent=true state=enabled
+  firewalld: port={{ kubelet_port }}/tcp permanent=true state=enabled
   ignore_errors: yes
+  when: open_kubelet_port
 
 - name: Open firewalld port for the cadvisor
-  firewalld: port=4194/tcp permanent=false state=enabled
+  firewalld: port={{ kubelet_cadvisor_port }}/tcp permanent=false state=enabled
   ignore_errors: yes
-  when: open_cadvisor_port
+  when: open_cadvisor_port and kubelet_cadvisor_port > 0
 
 - name: Save firewalld port for the cadvisor
-  firewalld: port=4194/tcp permanent=true state=enabled
+  firewalld: port={{ kubelet_cadvisor_port }}/tcp permanent=true state=enabled
   ignore_errors: yes
-  when: open_cadvisor_port
+  when: open_cadvisor_port and kubelet_cadvisor_port > 0
 
 # this is needed if the kube-proxy is running in userspace mode
 - name: Open redirected service traffic

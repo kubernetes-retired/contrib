@@ -45,6 +45,9 @@ kube_token_dir: "{{ kube_config_dir }}/tokens"
 # pods on startup
 kube_manifest_dir: "{{ kube_config_dir }}/manifests"
 
+# This is the username that the cert creation scripts chown the
+# cert files to. Not really changeable...
+kube_cert_user: kube
 # This is the group that the cert creation scripts chgrp the
 # cert files to. Not really changeable...
 kube_cert_group: kube-cert
@@ -61,3 +64,25 @@ dns_domain: "{{ cluster_name }}"
 # the range specified as kube_service_addresses. This magic will actually
 # pick the 10th ip address in the kube_service_addresses range and use that.
 dns_server: "{{ kube_service_addresses|ipaddr('net')|ipaddr(10)|ipaddr('address') }}"
+
+open_cadvisor_port: false
+open_kubelet_port: false
+
+# Zero means doesn't listen cadvisor port at all, default port 4194
+kubelet_cadvisor_port: 4194
+
+# apiserver should use ssh tunnell in case when you use private interface, see enable_kube_apiserver_ssh
+kubelet_bind_address: "0.0.0.0"
+#kubelet_bind_address: "127.0.0.1"
+#kubelet_bind_address: "{{ hostvars[inventory_hostname]['ansible_'+private_interface]['ipv4']['address'] }}"
+
+# Port which kubelet should listen
+kubelet_port: 10250
+# Zero means doesn't listen kubelet read-only port at all, default port 10255
+kubelet_read_only_port: 10255
+
+# When "kubelet_bind_address" is unreachable outside the node
+# (open_kubelet_port is true or kubelet_bind_address is "127.0.0.1") we will use ssh tunnel.
+# In case when kubelet listens localhost, "exec" and "logs" commands could be inaccessible
+# until https://github.com/kubernetes/kubernetes/pull/35693 PR is merged
+enable_kube_apiserver_ssh: true

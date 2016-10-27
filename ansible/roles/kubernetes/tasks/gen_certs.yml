@@ -38,11 +38,19 @@
     HTTP_PROXY: "{{ http_proxy|default('') }}"
     HTTPS_PROXY: "{{ https_proxy|default('') }}"
 
+# FIXME This only generates a cert for one master...
+- name: Run create ssh key script on master
+  command:
+    "ssh-keygen -q -t rsa -N '' -C '{{ kube_cert_user }}@{{ ansible_hostname }}' -f '{{ kube_cert_dir }}/id_rsa'"
+  args:
+    creates: "{{ kube_cert_dir }}/id_rsa"
+  when: enable_kube_apiserver_ssh
+
 - name: Verify certificate permissions
   file:
     path={{ item }}
     group={{ kube_cert_group }}
-    owner=kube
+    owner={{ kube_cert_user }}
     mode=0440
   with_items:
     - "{{ kube_cert_dir }}/ca.crt"
