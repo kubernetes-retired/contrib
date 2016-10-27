@@ -20,6 +20,7 @@ import (
 	"math"
 	"math/rand"
 
+	goGithub "github.com/google/go-github/github"
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 
@@ -84,6 +85,42 @@ func printChance(owners weightMap, total int64) {
 	}
 }
 
+func getPotentialOwners(obj *github.MungeObject, feats *features.Features, files []*goGithub.CommitFile) (weightMap, int64) {
+
+	potentialOwners := weightMap{}
+	weightSum := int64(0)
+	issue := obj.Issue
+	aliases := feats.Aliases
+	for _, file := range files {
+		fileWeight := int64(1)
+		if file.Changes != nil && *file.Changes != 0 {
+			fileWeight = int64(*file.Changes)
+		}
+		// Judge file size on a log scale-- effectively this
+		// makes three buckets, we shouldn't have many 10k+
+		// line changes.
+		fileWeight = int64(math.Log10(float64(fileWeight))) + 1
+		fileOwners := feats.Repos.LeafAssignees(*file.Filename)
+		if fileOwners.Len() == 0 {
+			glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
+		}
+
+		if aliases != nil && aliases.IsEnabled {
+			fileOwners = aliases.Expand(fileOwners)
+		}
+
+		for _, owner := range fileOwners.List() {
+			if owner == *issue.User.Login {
+				continue
+			}
+			potentialOwners[owner] = potentialOwners[owner] + fileWeight
+			weightSum += fileWeight
+		}
+	}
+
+	return potentialOwners, weightSum
+}
+
 // Munge is the workhorse the will actually make updates to the PR
 func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
@@ -101,34 +138,7 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	potentialOwners := weightMap{}
-	weightSum := int64(0)
-	for _, file := range files {
-		fileWeight := int64(1)
-		if file.Changes != nil && *file.Changes != 0 {
-			fileWeight = int64(*file.Changes)
-		}
-		// Judge file size on a log scale-- effectively this
-		// makes three buckets, we shouldn't have many 10k+
-		// line changes.
-		fileWeight = int64(math.Log10(float64(fileWeight))) + 1
-		fileOwners := b.features.Repos.LeafAssignees(*file.Filename)
-		if fileOwners.Len() == 0 {
-			glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
-		}
-
-		if b.features.Aliases != nil && b.features.Aliases.IsEnabled {
-			fileOwners = b.features.Aliases.Expand(fileOwners)
-		}
-
-		for _, owner := range fileOwners.List() {
-			if owner == *issue.User.Login {
-				continue
-			}
-			potentialOwners[owner] = potentialOwners[owner] + fileWeight
-			weightSum += fileWeight
-		}
-	}
+	potentialOwners, weightSum := getPotentialOwners(obj, b.features, files)
 	if len(potentialOwners) == 0 {
 		glog.Errorf("No owners found for PR %d", *issue.Number)
 		return
