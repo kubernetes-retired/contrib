@@ -726,12 +726,17 @@ func (obj *MungeObject) AddLabel(label string) error {
 func (obj *MungeObject) AddLabels(labels []string) error {
 	config := obj.config
 	prNum := *obj.Issue.Number
-	config.analytics.AddLabels.Call(config, nil)
 	glog.Infof("Adding labels %v to PR %d", labels, prNum)
 	if len(labels) == 0 {
 		glog.Info("No labels to add: quitting")
 		return nil
 	}
+	if obj.LabelSet().IsSuperset(sets.NewString(labels...)) {
+		glog.Info("Labels are already set: quitting")
+		return nil
+	}
+
+	config.analytics.AddLabels.Call(config, nil)
 
 	if config.DryRun {
 		return nil
@@ -753,6 +758,11 @@ func (obj *MungeObject) AddLabels(labels []string) error {
 func (obj *MungeObject) RemoveLabel(label string) error {
 	config := obj.config
 	prNum := *obj.Issue.Number
+
+	if !obj.LabelSet().Has(label) {
+		glog.Info("Removing label that is not set: quitting")
+		return nil
+	}
 
 	which := -1
 	for i, l := range obj.Issue.Labels {
