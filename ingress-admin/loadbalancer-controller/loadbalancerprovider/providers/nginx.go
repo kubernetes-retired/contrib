@@ -38,11 +38,11 @@ import (
 var keepalibedImage, nginxIngressImage string
 
 func init() {
-	keepalibedImage = os.Getenv("INGRESS-KEEPALIVED-IMAGE")
+	keepalibedImage = os.Getenv("INGRESS_KEEPALIVED_IMAGE")
 	if keepalibedImage == "" {
 		keepalibedImage = "index.caicloud.io/caicloud/ingress-keepalived-vip:v0.0.1"
 	}
-	nginxIngressImage = os.Getenv("INGRESS-NGINX-IMAGE")
+	nginxIngressImage = os.Getenv("INGRESS_NGINX_IMAGE")
 	if nginxIngressImage == "" {
 		nginxIngressImage = "index.caicloud.io/caicloud/nginx-ingress-controller:v0.0.1"
 	}
@@ -154,9 +154,6 @@ func (p *nginxLoadbalancerProvisioner) getService() *v1.Service {
 	return &v1.Service{
 		ObjectMeta: v1.ObjectMeta{
 			Name: p.options.LoadBalancerName,
-			Labels: map[string]string{
-				"kubernetes.io/cluster-service": "true",
-			},
 			Annotations: map[string]string{
 				controller.IngressParameterVIPKey: p.options.LoadBalancerVIP,
 				"kubernetes.io/createdby":         "loadbalancer-nginx-dynamic-provisioner",
@@ -164,8 +161,7 @@ func (p *nginxLoadbalancerProvisioner) getService() *v1.Service {
 		},
 		Spec: v1.ServiceSpec{
 			Selector: map[string]string{
-				"k8s-app":                       p.options.LoadBalancerName,
-				"kubernetes.io/cluster-service": "true",
+				"k8s-app": p.options.LoadBalancerName,
 			},
 			Ports: []v1.ServicePort{
 				{
@@ -197,8 +193,7 @@ func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.Replicatio
 			{
 				LabelSelector: &unversioned.LabelSelector{
 					MatchLabels: map[string]string{
-						"k8s-app":                       p.options.LoadBalancerName,
-						"kubernetes.io/cluster-service": "true",
+						"k8s-app": p.options.LoadBalancerName,
 					},
 				},
 				TopologyKey: unversioned.LabelHostname,
@@ -211,8 +206,7 @@ func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.Replicatio
 		ObjectMeta: v1.ObjectMeta{
 			Name: p.options.LoadBalancerName,
 			Labels: map[string]string{
-				"k8s-app":                       p.options.LoadBalancerName,
-				"kubernetes.io/cluster-service": "true",
+				"k8s-app": p.options.LoadBalancerName,
 			},
 			Annotations: map[string]string{
 				"kubernetes.io/createdby": "loadbalancer-nginx-dynamic-provisioner",
@@ -223,8 +217,7 @@ func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.Replicatio
 			Template: &v1.PodTemplateSpec{
 				ObjectMeta: v1.ObjectMeta{
 					Labels: map[string]string{
-						"k8s-app":                       p.options.LoadBalancerName,
-						"kubernetes.io/cluster-service": "true",
+						"k8s-app": p.options.LoadBalancerName,
 					},
 					Annotations: map[string]string{
 						api.TolerationsAnnotationKey: string(lbTolerations),
