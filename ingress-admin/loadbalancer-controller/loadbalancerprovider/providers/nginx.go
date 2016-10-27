@@ -18,6 +18,7 @@ package nginx
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/golang/glog"
 	tprapi "k8s.io/contrib/ingress-admin/loadbalancer-controller/api"
@@ -33,6 +34,19 @@ import (
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/util/intstr"
 )
+
+var keepalibedImage, nginxIngressImage string
+
+func init() {
+	keepalibedImage = os.Getenv("INGRESS-KEEPALIVED-IMAGE")
+	if keepalibedImage == "" {
+		keepalibedImage = "index.caicloud.io/caicloud/ingress-keepalived-vip:v0.0.1"
+	}
+	nginxIngressImage = os.Getenv("INGRESS-NGINX-IMAGE")
+	if nginxIngressImage == "" {
+		nginxIngressImage = "index.caicloud.io/caicloud/nginx-ingress-controller:v0.0.1"
+	}
+}
 
 func ProbeLoadBalancerPlugin() loadbalancerprovider.LoadBalancerPlugin {
 	return &nginxLoadBalancerPlugin{}
@@ -223,7 +237,7 @@ func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.Replicatio
 					Containers: []v1.Container{
 						{
 							Name:            "keepalived",
-							Image:           "index.caicloud.io/caicloud/ingress-keepalived-vip:v0.0.1",
+							Image:           keepalibedImage,
 							ImagePullPolicy: v1.PullAlways,
 							Resources: v1.ResourceRequirements{
 								Requests: v1.ResourceList{
@@ -263,7 +277,7 @@ func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.Replicatio
 						},
 						{
 							Name:            "nginx-ingress-lb",
-							Image:           "index.caicloud.io/caicloud/nginx-ingress-controller:v0.0.1",
+							Image:           nginxIngressImage,
 							ImagePullPolicy: v1.PullAlways,
 							Resources:       p.options.Resources,
 							ReadinessProbe: &v1.Probe{
