@@ -26,6 +26,7 @@ import (
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
+	pkg_runtime "k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
@@ -115,7 +116,8 @@ func ScaleDown(
 	predicateChecker *simulator.PredicateChecker,
 	oldHints map[string]string,
 	usageTracker *simulator.UsageTracker,
-	recorder kube_record.EventRecorder) (ScaleDownResult, error) {
+	recorder kube_record.EventRecorder,
+	objForCaEvents pkg_runtime.Object) (ScaleDownResult, error) {
 
 	now := time.Now()
 	candidates := make([]*kube_api.Node, 0)
@@ -157,6 +159,8 @@ func ScaleDown(
 		glog.Infof("No candidates for scale down")
 		return ScaleDownNoUnneeded, nil
 	}
+	recorder.Eventf(objForCaEvents, kube_api.EventTypeNormal, clusterAutoscalerEventReason,
+		"Found %d candidates for scale down", len(candidates))
 
 	// We look for only 1 node so new hints may be incomplete.
 	nodesToRemove, _, err := simulator.FindNodesToRemove(candidates, nodes, pods, client, predicateChecker, 1, false,
@@ -171,6 +175,8 @@ func ScaleDown(
 	}
 	nodeToRemove := nodesToRemove[0]
 	glog.Infof("Removing %s", nodeToRemove.Name)
+	recorder.Eventf(objForCaEvents, kube_api.EventTypeNormal, clusterAutoscalerEventReason,
+		"Removing node %s", nodeToRemove.Name)
 
 	nodeGroup, err := cloudProvider.NodeGroupForNode(nodeToRemove)
 	if err != nil {
@@ -188,7 +194,7 @@ func ScaleDown(
 	}
 
 	recorder.Eventf(nodeToRemove, kube_api.EventTypeNormal, "ScaleDown",
-		"node removed by cluster autoscaler")
+		"Node removed by cluster autoscaler")
 
 	return ScaleDownNodeDeleted, nil
 }
