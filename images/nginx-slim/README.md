@@ -4,7 +4,6 @@ nginx 1.11.x base image using [ubuntu-slim](https://github.com/kubernetes/contri
 nginx [engine x] is an HTTP and reverse proxy server, a mail proxy server, and a generic TCP proxy server.
 
 This custom nginx image contains:
-- SPDY support in addition to HTTP/2
 - [lua](https://github.com/openresty/lua-nginx-module) support
 - [stream](http://nginx.org/en/docs/stream/ngx_stream_core_module.html) tcp support for upstreams
 - nginx stats [nginx-module-vts](https://github.com/vozlt/nginx-module-vts)
@@ -16,7 +15,7 @@ This image does provides a default configuration file with no backend servers.
 
 *Using docker*
 ```
-$ docker run -v /some/nginx.con:/etc/nginx/nginx.conf:ro gcr.io/google_containers/nginx-slim:0.9
+$ docker run -v /some/nginx.con:/etc/nginx/nginx.conf:ro gcr.io/google_containers/nginx-slim:0.11
 ```
 
 *Creating a replication controller*
