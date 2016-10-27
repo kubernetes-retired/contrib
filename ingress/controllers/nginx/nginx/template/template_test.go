@@ -35,34 +35,40 @@ var (
 		"invalid redirect / to /": {"/", "/", "/", "proxy_pass http://upstream-name;", false},
 		"redirect / to /jenkins": {"/", "/jenkins", "~* /",
 			`
+	rewrite ^ $request_uri;
 	rewrite /(.*) /jenkins/$1 break;
-	proxy_pass http://upstream-name;
+	proxy_pass http://upstream-name$uri;
 	`, false},
 		"redirect /something to /": {"/something", "/", "~* /something", `
+	rewrite ^ $request_uri;
 	rewrite /something/(.*) /$1 break;
 	rewrite /something / break;
-	proxy_pass http://upstream-name;
+	proxy_pass http://upstream-name$uri;
 	`, false},
 		"redirect /something-complex to /not-root": {"/something-complex", "/not-root", "~* /something-complex", `
+	rewrite ^ $request_uri;
 	rewrite /something-complex/(.*) /not-root/$1 break;
-	proxy_pass http://upstream-name;
+	proxy_pass http://upstream-name$uri;
 	`, false},
 		"redirect / to /jenkins and rewrite": {"/", "/jenkins", "~* /", `
+	rewrite ^ $request_uri;
 	rewrite /(.*) /jenkins/$1 break;
-	proxy_pass http://upstream-name;
+	proxy_pass http://upstream-name$uri;
 	subs_filter '<head(.*)>' '<head$1><base href="$scheme://$server_name/jenkins/">' r;
 	subs_filter '<HEAD(.*)>' '<HEAD$1><base href="$scheme://$server_name/jenkins/">' r;
 	`, true},
 		"redirect /something to / and rewrite": {"/something", "/", "~* /something", `
+	rewrite ^ $request_uri;
 	rewrite /something/(.*) /$1 break;
 	rewrite /something / break;
-	proxy_pass http://upstream-name;
+	proxy_pass http://upstream-name$uri;
 	subs_filter '<head(.*)>' '<head$1><base href="$scheme://$server_name/">' r;
 	subs_filter '<HEAD(.*)>' '<HEAD$1><base href="$scheme://$server_name/">' r;
 	`, true},
 		"redirect /something-complex to /not-root and rewrite": {"/something-complex", "/not-root", "~* /something-complex", `
+	rewrite ^ $request_uri;
 	rewrite /something-complex/(.*) /not-root/$1 break;
-	proxy_pass http://upstream-name;
+	proxy_pass http://upstream-name$uri;
 	subs_filter '<head(.*)>' '<head$1><base href="$scheme://$server_name/not-root/">' r;
 	subs_filter '<HEAD(.*)>' '<HEAD$1><base href="$scheme://$server_name/not-root/">' r;
 	`, true},

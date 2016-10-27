@@ -251,19 +251,24 @@ func buildProxyPass(input interface{}) string {
 	`, bPath, bPath)
 		}
 
+		// Rewrites with $request_uri and $uri necessary for preserving url encoding
+		// as detailed here:
+		// http://stackoverflow.com/questions/28684300/nginx-pass-proxy-subdirectory-without-url-decoding/37584637#37584637
 		if location.Redirect.Target == slash {
 			// special case redirect to /
 			// ie /something to /
 			return fmt.Sprintf(`
+	rewrite ^ $request_uri;
 	rewrite %s(.*) /$1 break;
 	rewrite %s / break;
-	proxy_pass %s://%s;
+	proxy_pass %s://%s$uri;
 	%v`, path, location.Path, proto, location.Upstream.Name, abu)
 		}
 
 		return fmt.Sprintf(`
+	rewrite ^ $request_uri;
 	rewrite %s(.*) %s/$1 break;
-	proxy_pass %s://%s;
+	proxy_pass %s://%s$uri;
 	%v`, path, location.Redirect.Target, proto, location.Upstream.Name, abu)
 	}
 
