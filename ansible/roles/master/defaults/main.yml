@@ -7,6 +7,15 @@ admission_controllers: NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuo
 kube_apiserver_bind_address: "0.0.0.0"
 kube_apiserver_insecure_bind_address: "127.0.0.1"
 
+kube_scheduler_bind_address: "127.0.0.1"
+kube_scheduler_profiling: false
+
+kube_scheduler_bind_address: "127.0.0.1"
+kube_scheduler_profiling: false
+
+kube_controller_manager_bind_address: "127.0.0.1"
+kube_controller_manager_profiling: false
+
 services_enabled: true
 apiserver_modified: false
 controller_manager_modified: false
