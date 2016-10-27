@@ -25,10 +25,11 @@ import (
 	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 
 	"github.com/golang/glog"
-	githubapi "github.com/google/go-github/github"
+	goGithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
-	"k8s.io/contrib/mungegithub/mungers/matchers/comment"
 )
+
+const OWNER = "kubernetes"
 
 // DibsNackHandler will
 // - apply LGTM label if reviewer has commented "/lgtm", or
@@ -36,7 +37,6 @@ import (
 type DibsNackHandler struct {
 	features *features.Features
 }
-
 func init() {
 	l := DibsNackHandler{}
 	RegisterMungerOrDie(l)
@@ -67,7 +67,7 @@ func (h DibsNackHandler) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	comments, err := obj.ListComments(obj)
+	comments, err := obj.ListComments()
 	if err != nil {
 		glog.Errorf("unexpected error getting comments: %v", err)
 		return
@@ -83,7 +83,7 @@ func (h DibsNackHandler) Munge(obj *github.MungeObject) {
 	h.removeIfNack(obj, comments, events, reviewers)
 }
 
-func (h *DibsNackHandler) assignIfDibs(obj *github.MungeObject, comments []*githubapi.IssueComment, events []*githubapi.IssueEvent, reviewers mungerutil.UserSet) {
+func (h *DibsNackHandler) assignIfDibs(obj *github.MungeObject, comments []*goGithub.IssueComment, events []*goGithub.IssueEvent, reviewers mungerutil.UserSet) {
 	// Get the last time when the someone applied lgtm manually.
 	removeLGTMTime := e.LastEvent(events, e.And{e.RemoveLabel{}, e.LabelName(lgtmLabel), e.HumanActor()}, nil)
 
@@ -97,7 +97,11 @@ func (h *DibsNackHandler) assignIfDibs(obj *github.MungeObject, comments []*gith
 		}
 
 		fields := getFields(*comment.Body)
-		potential_owners, _ := getPotentialOwners(obj, h.features, obj.ListFiles())
+		fileList, err := obj.ListFiles()
+		if err != nil {
+			glog.Error("Could not list the files for PR %v", obj.Issue.Number)
+		}
+		potential_owners, _ := getPotentialOwners(obj, h.features, fileList)
 		if isDibsComment(fields) {
 			//check if they are a valid reviewer if so, assign the user. if not, explain why
 			if _, ok := potential_owners[comment.User.String()]; ok {
@@ -110,12 +114,15 @@ func (h *DibsNackHandler) assignIfDibs(obj *github.MungeObject, comments []*gith
 			}
 		}
 
-		if !isNackComment(fields) {
+		if isNackComment(fields) {
 			//check if they are already an assigned reviewer. if so, remove them.  if not, do nothing.
 			glog.Infof("Removing %v as an reviewer for PR#%v", *comment.User.Login, obj.Issue.Number)
-			for assignee := range obj.Issue.Assignees {
-				if comment.User == assignee {
-					//remove the assignee
+			for _, assignee := range obj.Issue.Assignees {
+				//remove the assignee
+				if comment.User.ID == assignee.ID{
+					is := goGithub.IssuesService{}
+					toDelete := []string{*comment.User.Name}
+					is.RemoveAssignees(OWNER, *obj.Issue.Repository.Name, *obj.Issue.Number, toDelete)
 				}
 			}
 			continue
@@ -135,7 +142,7 @@ func (h *DibsNackHandler) assignIfDibs(obj *github.MungeObject, comments []*gith
 }
 
 
-func (h *DibsNackHandler) removeIfNack(obj *github.MungeObject, comments []*githubapi.IssueComment, events []*githubapi.IssueEvent, reviewers mungerutil.UserSet) {
+func (h *DibsNackHandler) removeIfNack(obj *github.MungeObject, comments []*goGithub.IssueComment, events []*goGithub.IssueEvent, reviewers mungerutil.UserSet) {
 	// Get the last time when the someone applied lgtm manually.
 	removeLGTMTime := e.LastEvent(events, e.And{e.RemoveLabel{}, e.LabelName(lgtmLabel), e.HumanActor()}, nil)
 
