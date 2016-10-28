@@ -35,7 +35,7 @@ import (
 )
 
 const (
-  version = "1.6.7"
+  version = "1.6.9"
   nginxConf = `
 daemon off;
 
@@ -58,6 +58,7 @@ http {
   ssl_ciphers HIGH:!aNULL:!MD5;
   ssl_session_cache shared:SSL:100m;
   ssl_session_timeout 30m;
+  proxy_read_timeout 180s;
 
   log_format proxied_combined '"$http_x_forwarded_for" - $remote_user [$time_local] "$request" '
                       '$status $body_bytes_sent "$http_referer" '
