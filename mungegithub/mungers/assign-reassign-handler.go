@@ -22,18 +22,18 @@ import (
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/contrib/mungegithub/mungers/mungerutil"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
 	goGithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
-	"k8s.io/contrib/mungegithub/mungers/matchers/comment"
 	"fmt"
 )
 
 const (
 	OWNER = "kubernetes"
-	assign_keyword = "assign"
-	reassign_keyword = "reassign"
+	assign_command = "/assign"
+	reassign_command = "/reassign"
 
 	notReviewerInTree = "%v commented /assign on a PR but it looks you are not list in the OWNERs file as a reviewer for the files in this PR"
 )
@@ -43,6 +43,7 @@ const (
 // - will unassign a github user to a PR if they comment "/reassign"
 type AssignReassignHandler struct {
 	features *features.Features
+	checkValid bool
 }
 func init() {
 	dh := AssignReassignHandler{}
@@ -62,15 +63,13 @@ func (AssignReassignHandler) Initialize(config *github.Config, features *feature
 func (AssignReassignHandler) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (AssignReassignHandler) AddFlags(cmd *cobra.Command, config *github.Config) {}
+func (h AssignReassignHandler) AddFlags(cmd *cobra.Command, config *github.Config) {
+	cmd.Flags().BoolVar(&h.checkValid, "check-valid-reviewer", true, "Flag indicating whether to allow any one to be assigned or just OWNERs files reviewers")
+}
 
 // Munge is the workhorse the will actually make updates to the PR
 func (h AssignReassignHandler) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
-		return
-	}
-	reviewers := getReviewers(obj)
-	if len(reviewers) == 0 {
 		return
 	}
 
@@ -80,22 +79,38 @@ func (h AssignReassignHandler) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	h.assignOrRemove(obj, comments, reviewers)
+	toAssign, toUnassign, err := h.assignOrRemove(obj, comments, true)
+	if err != nil {
+		return
+	}
+	//assign and unassign reviewers as necessary
+	for _, username := range toAssign.List(){
+		obj.AssignPR(username)
+	}
+	if len(toUnassign) > 0 {
+		is := goGithub.IssuesService{}
+		is.RemoveAssignees(OWNER, *obj.Issue.Repository.Name, *obj.Issue.Number, toUnassign.List())
+	}
 }
 
 //assignOrRemove checks to see when someone comments "/assign" or "/reassign"
 // "/assign" self assigns the PR
 // "/reassign" unassignes the commenter and reassigns to someone else
 // [TODO] "/reassign <github handle>" reassign to this person
-func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments []*goGithub.IssueComment, reviewers mungerutil.UserSet) {
+func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments []*goGithub.IssueComment, checkValid bool) (toAssign, toUnassign sets.String, _ error){
 
-	fileList, err := obj.ListFiles()
-	if err != nil {
-		glog.Error("Could not list the files for PR %v", obj.Issue.Number)
-		return
+	toAssign = sets.String{}
+	toUnassign = sets.String{}
+	potential_owners := weightMap{}
+	if checkValid {
+		fileList, err := obj.ListFiles()
+		if err != nil {
+			glog.Error("Could not list the files for PR %v", obj.Issue.Number)
+			return toAssign, toUnassign, err
+		}
+		//get all the people that could potentially own the file based on the blunderbuss.go implementation
+		potential_owners, _ = getPotentialOwners(obj, h.features, fileList)
 	}
-	//get all the people that could potentially own the file based on the blunderbuss.go implementation
-	potential_owners, _ := getPotentialOwners(obj, h.features, fileList)
 	for i := len(comments) - 1; i >= 0; i-- {
 		comment := comments[i]
 		if !mungerutil.IsValidUser(comment.User) {
@@ -105,25 +120,23 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 		fields := getFields(*comment.Body)
 		if isDibsComment(fields) {
 			//check if they are a valid reviewer if so, assign the user. if not, explain why
-			if isValidReviewer(potential_owners, comment.User){
+			if !checkValid || isValidReviewer(potential_owners, comment.User){
 				glog.Infof("Assigning %v to review PR#%v", *comment.User.Login, obj.Issue.Number)
-				obj.AssignPR(comment.User.String())
-				return
+				toAssign.Insert(*comment.User.Login)
 			} else {
 				//inform user that they are not a valid reviewer
 				obj.WriteComment(fmt.Sprintf(notReviewerInTree, comment.User.String()))
 			}
 		}
-
 		if isReassignComment(fields) && isAssignee(obj.Issue.Assignees, comment.User) {
 			//check if they are already an assigned reviewer. if so, remove them.  if not, do nothing.
 			glog.Infof("Removing %v as an reviewer for PR#%v", *comment.User.Login, obj.Issue.Number)
-			is := goGithub.IssuesService{}
-			is.RemoveAssignees(OWNER, *obj.Issue.Repository.Name, *obj.Issue.Number, []string{*comment.User.Name})
+			toUnassign.Insert(*comment.User.Login)
 		}
 
 
 	}
+	return toAssign, toUnassign, nil
 }
 
 func isValidReviewer(potential_owners weightMap, commenter *goGithub.User) bool{
@@ -136,7 +149,10 @@ func isValidReviewer(potential_owners weightMap, commenter *goGithub.User) bool{
 func isAssignee(assignees []*goGithub.User, someUser *goGithub.User) bool{
 	for _, assignee := range assignees {
 		//remove the assignee
-		if someUser.ID == assignee.ID {
+		if assignee.Login == nil || someUser.Login == nil{
+			continue
+		}
+		if *assignee.Login == *someUser.Login && someUser.ID == assignee.ID {
 			return true
 		}
 	}
@@ -145,12 +161,12 @@ func isAssignee(assignees []*goGithub.User, someUser *goGithub.User) bool{
 
 func isDibsComment(fields []string) bool {
 	// Note: later we'd probably move all the bot-command parsing code to its own package.
-	return len(fields) == 1 && strings.ToLower(fields[0]) == "/" + assign_keyword
+	return len(fields) == 1 && strings.ToLower(fields[0]) == assign_command
 }
 
 
 func isReassignComment(fields []string) bool {
 	// Note: later we'd probably move all the bot-command parsing code to its own package.
-	return len(fields) == 1 && strings.ToLower(fields[0]) == "/" + reassign_keyword
+	return len(fields) == 1 && strings.ToLower(fields[0]) == reassign_command
 }
 
