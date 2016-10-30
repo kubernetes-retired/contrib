@@ -156,7 +156,7 @@ func removeServices() {
 }
 
 func removeService(serviceName string) {
-	args := []string{"delete", "rc/" + serviceName}
+	args := []string{"delete", "deployments/" + serviceName}
 	err := runCommandInShell(kubectl, args)
 	if err != nil {
 		logger.Printf("Error running command: %v", err)
