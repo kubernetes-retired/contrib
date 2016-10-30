@@ -78,7 +78,7 @@ var (
 	defSSLCertificate = flags.String("default-ssl-certificate", "", `Name of the secret that contains a SSL
 		certificate to be used as default for a HTTPS catch-all server`)
 
-	defHealthzURL = flags.String("health-check-path", "/healthz", `Defines the URL to
+	defHealthzURL = flags.String("health-check-path", "/ingress-controller-healthz", `Defines the URL to
 		be used as health check inside in the default server in NGINX.`)
 
 	apiServerHost = flag.String("apiserver-host", "", "The address of the Kubernetes Apiserver "+
