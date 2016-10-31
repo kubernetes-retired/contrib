@@ -8,6 +8,7 @@ blunderbuss-config
 blunderbuss-reassign
 change-permissions
 chart-url
+check-valid-reviewer
 cla-status-context
 cloud-config
 cloud-provider

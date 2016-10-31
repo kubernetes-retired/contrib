@@ -24,15 +24,15 @@ import (
 	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"fmt"
 	"github.com/golang/glog"
 	goGithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
-	"fmt"
 )
 
 const (
-	OWNER = "kubernetes"
-	assign_command = "/assign"
+	OWNER            = "kubernetes"
+	assign_command   = "/assign"
 	reassign_command = "/reassign"
 
 	notReviewerInTree = "%v commented /assign on a PR but it looks you are not list in the OWNERs file as a reviewer for the files in this PR"
@@ -42,9 +42,10 @@ const (
 // - will assign a github user to a PR if they comment "/assign"
 // - will unassign a github user to a PR if they comment "/reassign"
 type AssignReassignHandler struct {
-	features *features.Features
+	features   *features.Features
 	checkValid bool
 }
+
 func init() {
 	dh := AssignReassignHandler{}
 	RegisterMungerOrDie(dh)
@@ -57,7 +58,9 @@ func (AssignReassignHandler) Name() string { return "assign-reassign-handler" }
 func (AssignReassignHandler) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
-func (AssignReassignHandler) Initialize(config *github.Config, features *features.Features) error { return nil }
+func (AssignReassignHandler) Initialize(config *github.Config, features *features.Features) error {
+	return nil
+}
 
 // EachLoop is called at the start of every munge loop
 func (AssignReassignHandler) EachLoop() error { return nil }
@@ -84,7 +87,7 @@ func (h AssignReassignHandler) Munge(obj *github.MungeObject) {
 		return
 	}
 	//assign and unassign reviewers as necessary
-	for _, username := range toAssign.List(){
+	for _, username := range toAssign.List() {
 		obj.AssignPR(username)
 	}
 	if len(toUnassign) > 0 {
@@ -97,7 +100,7 @@ func (h AssignReassignHandler) Munge(obj *github.MungeObject) {
 // "/assign" self assigns the PR
 // "/reassign" unassignes the commenter and reassigns to someone else
 // [TODO] "/reassign <github handle>" reassign to this person
-func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments []*goGithub.IssueComment, checkValid bool) (toAssign, toUnassign sets.String, _ error){
+func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments []*goGithub.IssueComment, checkValid bool) (toAssign, toUnassign sets.String, _ error) {
 
 	toAssign = sets.String{}
 	toUnassign = sets.String{}
@@ -120,7 +123,7 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 		fields := getFields(*comment.Body)
 		if isDibsComment(fields) {
 			//check if they are a valid reviewer if so, assign the user. if not, explain why
-			if !checkValid || isValidReviewer(potential_owners, comment.User){
+			if !checkValid || isValidReviewer(potential_owners, comment.User) {
 				glog.Infof("Assigning %v to review PR#%v", *comment.User.Login, obj.Issue.Number)
 				toAssign.Insert(*comment.User.Login)
 			} else {
@@ -134,22 +137,21 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 			toUnassign.Insert(*comment.User.Login)
 		}
 
-
 	}
 	return toAssign, toUnassign, nil
 }
 
-func isValidReviewer(potential_owners weightMap, commenter *goGithub.User) bool{
+func isValidReviewer(potential_owners weightMap, commenter *goGithub.User) bool {
 	if _, ok := potential_owners[commenter.String()]; ok {
 		return true
 	}
 	return false
 }
 
-func isAssignee(assignees []*goGithub.User, someUser *goGithub.User) bool{
+func isAssignee(assignees []*goGithub.User, someUser *goGithub.User) bool {
 	for _, assignee := range assignees {
 		//remove the assignee
-		if assignee.Login == nil || someUser.Login == nil{
+		if assignee.Login == nil || someUser.Login == nil {
 			continue
 		}
 		if *assignee.Login == *someUser.Login && someUser.ID == assignee.ID {
@@ -164,9 +166,7 @@ func isDibsComment(fields []string) bool {
 	return len(fields) == 1 && strings.ToLower(fields[0]) == assign_command
 }
 
-
 func isReassignComment(fields []string) bool {
 	// Note: later we'd probably move all the bot-command parsing code to its own package.
 	return len(fields) == 1 && strings.ToLower(fields[0]) == reassign_command
 }
-

@@ -29,71 +29,70 @@ import (
 
 var (
 	testUsername = "test-user"
-	testUser = goGithub.User{ID:intPtr(-1), Name: &testUsername}
+	testUser     = goGithub.User{ID: intPtr(-1), Name: &testUsername}
 )
 
 func TestAssignComment(t *testing.T) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	tests := []struct {
-		testName        string
-		comments    []*goGithub.IssueComment
+		testName          string
+		comments          []*goGithub.IssueComment
 		existingAssignees []*goGithub.User
-		newAssignees   sets.String
-		removedAssignees   sets.String
+		newAssignees      sets.String
+		removedAssignees  sets.String
 	}{
 		{
-			testName:  "Assign cmd should add to existing assignees",
+			testName: "Assign cmd should add to existing assignees",
 			comments: []*goGithub.IssueComment{
 				github_test.IssueComment(1, assign_command, "user 1", 0),
 			},
-			existingAssignees:  []*goGithub.User{},
-			newAssignees:   sets.NewString("user 1"),
-			removedAssignees:   sets.NewString(),
+			existingAssignees: []*goGithub.User{},
+			newAssignees:      sets.NewString("user 1"),
+			removedAssignees:  sets.NewString(),
 		},
 		{
-			testName:  "Assign cmd should add to existing assignees",
+			testName: "Assign cmd should add to existing assignees",
 			comments: []*goGithub.IssueComment{
 				github_test.IssueComment(1, assign_command, "user 1", 0),
 			},
-			existingAssignees:  []*goGithub.User{ {Login: testUser.Name}},
-			newAssignees:   sets.NewString("user 1"),
-			removedAssignees:   sets.NewString(),
+			existingAssignees: []*goGithub.User{{Login: testUser.Name}},
+			newAssignees:      sets.NewString("user 1"),
+			removedAssignees:  sets.NewString(),
 		},
 		{
-			testName:  "Unassign should remove existing assignee",
+			testName: "Unassign should remove existing assignee",
 			comments: []*goGithub.IssueComment{
 				github_test.IssueComment(1, reassign_command, *testUser.Name, 0),
 			},
-			existingAssignees:  []*goGithub.User{ {Login: testUser.Name}},
-			newAssignees:   sets.NewString(""),
-			removedAssignees:   sets.NewString(*testUser.Name),
+			existingAssignees: []*goGithub.User{{Login: testUser.Name}},
+			newAssignees:      sets.NewString(""),
+			removedAssignees:  sets.NewString(*testUser.Name),
 		},
 		{
-			testName:  "Reassign by someone else should leave assignees in tact",
+			testName: "Reassign by someone else should leave assignees in tact",
 			comments: []*goGithub.IssueComment{
 				//github_test.IssueComment(1, "This PR seems to work", "user 1", 0),
 				github_test.IssueComment(2, reassign_command, "NotAUser", 1),
 			},
-			existingAssignees:  []*goGithub.User{ {Login: testUser.Name}},
-			newAssignees:   sets.NewString(),
-			removedAssignees:   sets.NewString(),
+			existingAssignees: []*goGithub.User{{Login: testUser.Name}},
+			newAssignees:      sets.NewString(),
+			removedAssignees:  sets.NewString(),
 		},
 	}
 
 	for testNum, test := range tests {
 		pr := github.MungeObject{}
-		pr.Issue= &goGithub.Issue{}
+		pr.Issue = &goGithub.Issue{}
 		pr.Issue.Assignees = test.existingAssignees
 		ah := AssignReassignHandler{}
 		assignees, unassignees, _ := ah.assignOrRemove(&pr, test.comments, false)
-		if assignees.Difference(test.newAssignees).Len() != 0{
+		if assignees.Difference(test.newAssignees).Len() != 0 {
 			t.Errorf("For test %v, the expected new assignees did not match the returned new assignees %v %v", testNum, test.newAssignees, assignees)
 		}
-		if unassignees.Difference(test.removedAssignees).Len() != 0{
+		if unassignees.Difference(test.removedAssignees).Len() != 0 {
 			t.Errorf("Existing Assignees %v", *pr.Issue.Assignees[0])
 			t.Errorf("For test %v, the expected removed assignees %v actual removed assignees %v", testNum, test.removedAssignees, unassignees)
 		}
 	}
 }
-

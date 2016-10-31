@@ -20,10 +20,9 @@ import (
 	"math"
 	"math/rand"
 
+	goGithub "github.com/google/go-github/github"
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
-	goGithub "github.com/google/go-github/github"
-
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
