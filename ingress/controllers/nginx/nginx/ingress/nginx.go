@@ -22,6 +22,7 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ipwhitelist"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ratelimit"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/rewrite"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/timeout"
 )
 
 // Configuration describes an NGINX configuration
@@ -104,6 +105,7 @@ type Location struct {
 	Whitelist       ipwhitelist.SourceRange
 	EnableCORS      bool
 	ExternalAuthURL authreq.Auth
+	Timeout         timeout.Timeout
 }
 
 // LocationByPath sorts location by path

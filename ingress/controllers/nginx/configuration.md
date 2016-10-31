@@ -50,6 +50,9 @@ The following annotations are supported:
 |[ingress.kubernetes.io/upstream-max-fails](#custom-nginx-upstream-checks)|number|
 |[ingress.kubernetes.io/upstream-fail-timeout](#custom-nginx-upstream-checks)|number|
 |[ingress.kubernetes.io/whitelist-source-range](#whitelist-source-range)|CIDR|
+|[ingress.kubernetes.io/proxy-connect-timeout](#proxy-connect-timeout)|number|
+|[ingress.kubernetes.io/proxy-read-timeout](#proxy-read-timeout)|number|
+|[ingress.kubernetes.io/proxy-send-timeout](#proxy-send-timeout)|number|
 
 
 
@@ -169,6 +172,25 @@ For a global restriction (any URL) is possible to use `whitelist-source-range` i
 
 Please check the [whitelist](examples/whitelist/README.md) example
 
+### Timeouts
+
+NGINX exposes some flags in order to customize the timeouts:
+
+ - [proxy_connect_timeout](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_connect_timeout)
+ - [proxy_send_timeout](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_send_timeout)
+ - [proxy_read_timeout](http://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_read_timeout)
+ 
+The ingress controller allows custom `proxy_connect_timeout`, `proxy_send_timeout` and `proxy_read_timeout` parameters in a global context using `proxy-connect-timeout` or `proxy-send-timeout` or `proxy-read-timeout` in the NGINX config map or in a particular Ingress rule. 
+
+To use custom values in an Ingress rule define these annotations:
+
+`ingress.kubernetes.io/proxy-connect-timeout`: time in seconds of a timeout for establishing a connection with a proxied server
+
+`ingress.kubernetes.io/proxy-read-timeout`: time in seconds of a timeout for reading a response from the proxied server
+
+`ingress.kubernetes.io/proxy-send-timeout`: time in seconds of a timeout for transmitting a request to the proxied server
+
+Please check the [custom timeout](examples/custom-timeout/README.md) example
 
 
 ### **Allowed parameters in configuration config map:**
