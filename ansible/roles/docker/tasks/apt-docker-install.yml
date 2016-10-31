@@ -14,4 +14,4 @@
   action: "{{ ansible_pkg_mgr }}"
   args:
     name: docker-engine
-    state: latest
+    state: present

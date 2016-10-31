@@ -9,8 +9,8 @@
 - name: Install Flannel with package manager
   action: "{{ ansible_pkg_mgr }}"
   args:
-        name: flannel
-        state: latest
+    name: flannel
+    state: present
   when: not is_atomic and flannel_source_type != "github-release"
 
 - set_fact: 

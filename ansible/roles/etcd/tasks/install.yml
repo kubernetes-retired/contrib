@@ -54,8 +54,8 @@
 - name: Install etcd via package manager
   action: "{{ ansible_pkg_mgr }}"
   args:
-        name: etcd
-        state: latest
+    name: etcd
+    state: present
   when: etcd_source_type == "package-manager"
 
 - name: Set the etcd_modified fact to true
