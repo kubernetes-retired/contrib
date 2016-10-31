@@ -90,9 +90,31 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 
 	approverSet := sets.String{}
-	approverSet.Insert(*obj.Issue.User.Name)
+	if obj.Issue.User.Name != nil {
+		approverSet.Insert(*obj.Issue.User.Name)
+	}
 
 	// from oldest to latest
+	approverSet = approverSet.Union(createApproverSet(comments))
+	//Checks that no valid approver has commented to cancel the approve label since last commit
+	//Checks that all files have an approver in the approverSet
+	needsApproval := h.getApprovalNeededFiles(files, approverSet)
+
+	//every file has been approved by a valid approver
+	if needsApproval.Len() > 0 {
+		//need to selectively write a comment explaining why approved not added
+		glog.Infof("Canceling the approve label because these files %v have no valid approvers", needsApproval)
+		if obj.HasLabel(approvedLabel) {
+			obj.RemoveLabel(approvedLabel)
+		}
+	} else {
+		obj.AddLabel(approvedLabel)
+	}
+
+}
+func createApproverSet(comments []*goGithub.IssueComment) sets.String {
+
+	approverSet := sets.String{}
 	for i := len(comments) - 1; i >= 0; i-- {
 		c := comments[i]
 
@@ -110,29 +132,16 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 			}
 		}
 	}
-
-	//Checks that no valid approver has commented to cancel the approve label since last commit
-	//Checks that all files have an approver in the approverSet
+	return approverSet
+}
+func (h ApprovalHandler) getApprovalNeededFiles(files []*goGithub.CommitFile, approverSet sets.String) sets.String {
 	needsApproval := sets.String{}
 	for _, file := range files {
 		if !h.isApproved(file, approverSet) {
-			//no valid approvers
 			needsApproval.Insert(*file.Filename)
-			if obj.HasLabel(approvedLabel) {
-				obj.RemoveLabel(approvedLabel)
-			}
-			return
 		}
 	}
-
-	//every file has been approved by a valid approver
-	if needsApproval.Len() > 0 {
-		//need to selectively write a comment explaining why approved not added
-		glog.Infof("Canceling the approve label because these files %v have no valid approvers", needsApproval)
-	} else {
-		obj.AddLabel(approvedLabel)
-	}
-
+	return needsApproval
 }
 
 func (h ApprovalHandler) isApproved(someFile *goGithub.CommitFile, approverSet sets.String) bool {
