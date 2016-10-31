@@ -25,6 +25,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
+	goGithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -89,8 +90,8 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 
 	approverSet := sets.String{}
+	approverSet.Insert(*obj.Issue.User.Name)
 
-	cancelSet := sets.String{}
 	// from oldest to latest
 	for i := len(comments) - 1; i >= 0; i-- {
 		c := comments[i]
@@ -104,29 +105,31 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 		if len(fields) == 1 && strings.ToLower(fields[0]) == "/approve" {
 			approverSet.Insert(*c.User.Login)
 		} else if len(fields) == 2 && strings.ToLower(fields[0]) == "/approve" && strings.ToLower(fields[1]) == "cancel" {
-			approverSet.Delete(*c.User.Login)
-			cancelSet.Insert(*c.User.Login)
+			if approverSet.Has(*c.User.Login) {
+				approverSet.Delete(*c.User.Login)
+			}
 		}
 	}
-	glog.Infof("This is the cancel set %v", cancelSet)
 
 	//Checks that no valid approver has commented to cancel the approve label since last commit
 	//Checks that all files have an approver in the approverSet
 	for _, file := range files {
-		fileOwners := h.features.Repos.Assignees(*file.Filename)
-		if fileOwners.Intersection(cancelSet).Len() > 0 {
-			// a valid approver applied a cancel command since the last commit
-			glog.Infof("Canceling the approve label because %v canceled", fileOwners.Intersection(cancelSet).List()[0])
+		if !h.isApproved(file, approverSet) {
+			//no valid approvers
 			if obj.HasLabel(approvedLabel) {
+				glog.Infof("Canceling the approve label because %v file has no valid approvers", *file.Filename)
 				obj.RemoveLabel(approvedLabel)
 			}
-			return
-		} else if fileOwners.Intersection(approverSet).Len() == 0 {
-			glog.Infof("File %v does not have approval, and thus PR %v cannot be approved", *file.Filename, obj.Number())
 			return
 		}
 	}
 
 	//every file has been approved by a valid approver
 	obj.AddLabel(approvedLabel)
+}
+
+func (h ApprovalHandler) isApproved(someFile *goGithub.CommitFile, approverSet sets.String) bool {
+
+	fileOwners := h.features.Repos.Assignees(*someFile.Filename)
+	return fileOwners.Intersection(approverSet).Len() > 0
 }
