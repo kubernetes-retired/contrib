@@ -113,11 +113,12 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 
 	//Checks that no valid approver has commented to cancel the approve label since last commit
 	//Checks that all files have an approver in the approverSet
+	needsApproval := sets.String{}
 	for _, file := range files {
 		if !h.isApproved(file, approverSet) {
 			//no valid approvers
+			needsApproval.Insert(*file.Filename)
 			if obj.HasLabel(approvedLabel) {
-				glog.Infof("Canceling the approve label because %v file has no valid approvers", *file.Filename)
 				obj.RemoveLabel(approvedLabel)
 			}
 			return
@@ -125,7 +126,13 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 
 	//every file has been approved by a valid approver
-	obj.AddLabel(approvedLabel)
+	if needsApproval.Len() > 0 {
+		//need to selectively write a comment explaining why approved not added
+		glog.Infof("Canceling the approve label because these files %v have no valid approvers", needsApproval)
+	} else {
+		obj.AddLabel(approvedLabel)
+	}
+
 }
 
 func (h ApprovalHandler) isApproved(someFile *goGithub.CommitFile, approverSet sets.String) bool {
