@@ -22,10 +22,14 @@ import (
     "time"
     "io"
     "io/ioutil"
+    "net/http"
     "log"
     "os"
     "reflect"
     "text/template"
+    "strings"
+    "strconv"
+    "crypto/tls"
 
     vault "github.com/hashicorp/vault/api"
 
@@ -37,6 +41,7 @@ import (
 
 const (
     version = "1.7.0"
+    serviceDomain = ".svc.cluster.local"
     nginxConf = `
 daemon off;
 
@@ -67,7 +72,7 @@ http {
 
     error_log /dev/stderr info;
     access_log /dev/stdout proxied_combined;
-
+    include {{ nginxConfDir }}/conf.d/*.conf;
     server {
 
         listen 443 ssl default_server;
@@ -93,28 +98,28 @@ http {
             stub_status on;
         }
 
-    }`
-    nginxServerConf=`{{range $i := .}}
-
-    server {
-        server_name {{$i.Host}};
-{{if $i.Ssl}}
-        listen 443 ssl;
-        ssl_certificate     /etc/nginx/certs/{{$i.Host}}.crt;
-        ssl_certificate_key /etc/nginx/certs/{{$i.Host}}.key;
-
-{{end}}
-{{if $i.Nonssl}}        listen 80;{{end}}
-{{ range $path := $i.Paths }}
-        location {{$path.Location}} {
-            proxy_set_header Host $host;
-            proxy_pass {{$i.Scheme}}://{{$path.Service}}.{{$i.Namespace}}.svc.cluster.local:{{$path.Port}};
-        }
-{{end}}
-    }{{end}}
+    }
 }`
+    nginxServerConf=`{{range $i := .}}
+server {
+    server_name {{$i.Host}};
+{{if $i.Ssl}}
+    listen 443 ssl;
+    ssl_certificate     /etc/nginx/certs/{{$i.Host}}.crt;
+    ssl_certificate_key /etc/nginx/certs/{{$i.Host}}.key;
+
+{{end}}
+{{if $i.Nonssl}}    listen 80;{{end}}
+{{ range $path := $i.Paths }}
+    location {{$path.Location}} {
+        proxy_set_header Host $host;
+        proxy_pass {{$i.Scheme}}://{{$path.Service}}.{{$i.Namespace}}.svc.cluster.local:{{$path.Port}};
+    }
+{{end}}
+}{{end}}`
 
     nginxConfDir = "/etc/nginx"
+    nginxConfFile = nginxConfDir + "/nginx.conf"
     nginxCommand = "nginx"
 )
 
@@ -187,6 +192,30 @@ func renewVaultToken(vault *vault.Client, scheduled *time.Ticker) {
     }
 }
 
+func testServiceEndpoint(scheme string, host string, port string) bool {
+    requestString := scheme + "://" + host + ":" + port + "/"
+
+    if strings.ToLower(scheme) == "https" {
+        tr := &http.Transport{
+            TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+        }
+        client := &http.Client{Transport: tr}
+        _, err := client.Get(requestString)
+        if err != nil {
+    		return false
+    	} else {
+            return true
+        }
+    } else {
+        _, err := http.Get(requestString)
+        if err != nil {
+    		return false
+    	} else {
+            return true
+        }
+    }
+}
+
 func main() {
     var ingClient client.IngressInterface
     if kubeClient, err := client.NewInCluster(); err != nil {
@@ -204,6 +233,7 @@ func main() {
     VAULT_ENABLED = "false"
     */
     nginxTemplate := nginxConf
+    nginxServerTemplate := nginxConf
     vaultEnabledFlag := os.Getenv("VAULT_ENABLED")
     vaultAddress := os.Getenv("VAULT_ADDR")
     vaultToken := os.Getenv("VAULT_TOKEN")
@@ -250,6 +280,17 @@ func main() {
     tmpl, _ := template.New("nginx").Parse(nginxTemplate)
     rateLimiter := flowcontrol.NewTokenBucketRateLimiter(0.1, 1)
     known := &extensions.IngressList{}
+
+    if w, err := os.Create(nginxConfDir + "/nginx.conf"); err != nil {
+        fmt.Printf("failed to open %v: %v\n", nginxConfFile, err)
+    } else if err := tmpl.Execute(w, tmpl); err != nil {
+        fmt.Printf("failed to write template %v, %v\n", nginxConfFile,  err)
+    }
+
+    if debug    == "true" {
+        conf, _ := ioutil.ReadFile(nginxConfFile)
+        fmt.Printf(string(conf))
+    }
 
     // Controller loop
     for {
@@ -323,12 +364,14 @@ func main() {
             if i.Ssl {
                 vaultPath := "secret/ssl/" + ingressHost
                 keySecretData, err := vault.Logical().Read(vaultPath)
+                crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
+                keyFileName := nginxConfDir + "/certs/" + ingressHost + ".key"
                 if err != nil {
                     fmt.Printf("Error retrieving secret for %v\n", ingressHost)
                     break
                 } else if keySecretData == nil {
-                        fmt.Printf("No secret for %v\n", ingressHost)
-                        i.Ssl = false
+                    fmt.Printf("No secret for %v\n", ingressHost)
+                    i.Ssl = false
                 } else {
                     fmt.Printf("Found secret for %v\n", ingressHost)
                     var keySecret string = fmt.Sprintf("%v", keySecretData.Data["key"])
@@ -337,9 +380,8 @@ func main() {
                         i.Ssl = false
                     } else {
                         fmt.Printf("Found key for %v\n", ingressHost)
-                        keyFileName := nginxConfDir + "/certs/" + ingressHost + ".key"
                         if err := ioutil.WriteFile(keyFileName, []byte(keySecret), 0400); err != nil {
-                            log.Fatalf("failed to write file %v: %v\n", keyFileName, err)
+                            fmt.Printf("failed to write file %v: %v\n", keyFileName, err)
                             i.Ssl = false
                         } else {
                             var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
@@ -348,11 +390,21 @@ func main() {
                                 i.Ssl = false
                             } else {
                                 fmt.Printf("Found crt for %v\n", ingressHost)
-                                crtFileName := nginxConfDir + "/certs/" + ingressHost + ".crt"
                                 if err := ioutil.WriteFile(crtFileName, []byte(crtSecret), 0400); err != nil {
-                                    log.Fatalf("failed to write file %v: %v\n", crtFileName, err)
+                                    fmt.Printf("failed to write file %v: %v\n", crtFileName, err)
                                     i.Ssl = false
                                 }
+                            }
+                        }
+
+                        // Validate keypair
+                        if i.Ssl == true {
+                            _, err := tls.LoadX509KeyPair(crtFileName, keyFileName)
+                            if err != nil {
+                                fmt.Printf("WARN %v invalid- keypair does not load.\n", ingressHost)
+                                break
+                            } else {
+                                fmt.Printf("Keypair correct for %v.\n", ingressHost)
                             }
                         }
                     }
@@ -360,23 +412,40 @@ func main() {
             } else {
                 fmt.Printf("SSL not selected for %v\n", ingressHost)
             }
+
+            // Validate Backend
+            for _, p := range(i.Paths) {
+                scheme := i.Scheme
+                host := p.Service + "." + i.Namespace + serviceDomain
+                port := strconv.Itoa(int(p.Port))
+                backendAddress := scheme + "://" + host + ":" + port + "/"
+                if testServiceEndpoint(scheme, host, port) != true {
+                    fmt.Printf("WARN %v invalid- service address not responding: %v\n", ingressHost, backendAddress)
+                    break
+                } else {
+                    fmt.Printf("Service address responding for %v: %v\n", ingressHost, backendAddress)
+                }
+            }
+
             ingresslist = append(ingresslist, i)
-
         }
+
         // Validate and create configs
-
-
         if freezeConfig != true {
-            if w, err := os.Create(nginxConfDir + "/nginx.conf"); err != nil {
-                log.Fatalf("failed to open %v: %v\n", nginxTemplate, err)
-            } else if err := tmpl.Execute(w, ingresslist); err != nil {
-                    log.Fatalf("failed to write template %v\n", err)
+            for _, i := range(ingresslist) {
+                tmpl, _ := template.New(i.Host).Parse(nginxServerTemplate)
+                ingressConfFile := nginxConfDir + "/conf.d/" + i.Host + ".conf"
+                if w, err := os.Create(ingressConfFile); err != nil {
+                    fmt.Printf("failed to open %v: %v\n", ingressConfFile, err)
+                } else if err := tmpl.Execute(w, i); err != nil {
+                    fmt.Printf("failed to write template %v, %v\n", ingressConfFile, err)
+                }
             }
+        }
 
-            if debug    == "true" {
-                conf, _ := ioutil.ReadFile(nginxConfDir + "/nginx.conf")
-                fmt.Printf(string(conf))
-            }
+        if debug    == "true" {
+            conf, _ := ioutil.ReadFile(nginxConfDir + "/nginx.conf")
+            fmt.Printf(string(conf))
         }
 
         verifyArgs := []string{
@@ -384,6 +453,7 @@ func main() {
             "-c",
             nginxConfDir + "/nginx.conf",
         }
+
         reloadArgs := []string{
             "-s",
             "reload",
