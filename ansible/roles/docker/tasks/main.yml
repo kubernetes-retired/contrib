@@ -75,6 +75,12 @@
     - restart docker
   tags: configure
 
+- name: Write docker daemon.conf file
+  copy: src=daemon.json dest=/etc/docker/daemon.json
+  notify:
+    - reload docker
+  tags: configure
+
 - name: Enable Docker
   service: name=docker enabled=yes
   notify:
