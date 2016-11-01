@@ -17,8 +17,8 @@ limitations under the License.
 package controller
 
 import (
-	"time"
 	"fmt"
+	"time"
 
 	"github.com/golang/glog"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
@@ -51,8 +51,7 @@ var (
 
 type ProvisionController struct {
 	clientset     *kubernetes.Clientset
-
-	dynamicClient   *dynamic.Client
+	dynamicClient *dynamic.Client
 
 	claimController *cache.Controller
 	claimStore      cache.Store
@@ -97,6 +96,7 @@ func NewProvisionController(clientset *kubernetes.Clientset, dynamicClient *dyna
 func (pc *ProvisionController) enqueueClaim(obj interface{}) {
 	item := *obj.(*runtime.Unstructured)
 	if !isProvisioningNeeded(item.GetAnnotations()) {
+		glog.Infof("provision is not needed since annotation is %v", item.GetAnnotations())
 		return
 	}
 	key, err := keyFunc(obj)
@@ -104,6 +104,7 @@ func (pc *ProvisionController) enqueueClaim(obj interface{}) {
 		glog.Errorf("Couldn't get key for object %+v: %v", obj, err)
 		return
 	}
+	glog.Infof("add %v into work queue", key)
 	pc.queue.Add(key)
 }
 
@@ -127,39 +128,42 @@ func (pc *ProvisionController) worker() {
 			}
 			defer pc.queue.Done(key)
 			if err := pc.syncHandler(key.(string)); err != nil {
+				glog.Errorf("failed to sync %v due to %v", key, err)
 				pc.queue.Add(key)
 			}
 		}()
 	}
 }
 
-
 func (pc *ProvisionController) syncClaim(key string) error {
 	obj, exists, err := pc.claimStore.GetByKey(key)
 	if !exists {
-		glog.Infof("IngressServiceClaim has been deleted %v", key)
+		glog.Errorf("loadbalancerclaim has been deleted %v", key)
 		return nil
 	}
 	if err != nil {
-		glog.Infof("Unable to get obj from local store due to: %v", err)
+		glog.Errorf("Unable to get obj from local store due to: %v", err)
 		return err
 	}
 
 	claim, err := tpapi.ToLoadbalancerClaim(obj.(*runtime.Unstructured))
 	if err != nil {
-		glog.Infof("Unable to convert obj to runtime.Unstructured due to: %v", err)
+		glog.Errorf("Unable to convert obj to runtime.Unstructured due to: %v", err)
 		return err
 	}
 
 	if !isProvisioningNeeded(claim.GetAnnotations()) {
+		glog.Infof("provision is not needed for %v", claim.Name)
 		return nil
 	}
 
 	lbName, provisionErr := pc.provosion(claim)
+	if provisionErr != nil {
+		glog.Errorf("failed to provision %v due to %v", key, provisionErr)
+	}
 
 	return pc.updateLoadBalancerClaimStatus(claim, lbName, provisionErr)
 }
-
 
 func (pc *ProvisionController) provosion(claim *tpapi.LoadBalancerClaim) (string, error) {
 	plugin, err := pc.pluginMgr.FindPluginBySpec(claim)
@@ -184,8 +188,8 @@ func (pc *ProvisionController) provosion(claim *tpapi.LoadBalancerClaim) (string
 	return provisioner.Provision(pc.clientset, pc.dynamicClient)
 }
 
-func(pc *ProvisionController) updateLoadBalancerClaimStatus(claim *tpapi.LoadBalancerClaim, lbName string, provisionErr error) error {
-	for i:=0; i<updateLoadBalancerClaimRetryCount; i++ {
+func (pc *ProvisionController) updateLoadBalancerClaimStatus(claim *tpapi.LoadBalancerClaim, lbName string, provisionErr error) error {
+	for i := 0; i < updateLoadBalancerClaimRetryCount; i++ {
 		if err := func() error {
 			unstructed, err := pc.dynamicClient.Resource(lbcresource, claim.Namespace).Get(claim.Name)
 			if err != nil {
