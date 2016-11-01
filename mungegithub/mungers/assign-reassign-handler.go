@@ -31,10 +31,9 @@ import (
 )
 
 const (
-	OWNER            = "kubernetes"
-	assign_command   = "/assign"
-	reassign_command = "/reassign"
-
+	repoOwner            = "kubernetes"
+	assignCommand   = "/assign"
+	reassignCommand = "/reassign"
 	notReviewerInTree = "%v commented /assign on a PR but it looks you are not list in the OWNERs file as a reviewer for the files in this PR"
 )
 
@@ -92,7 +91,7 @@ func (h AssignReassignHandler) Munge(obj *github.MungeObject) {
 	}
 	if len(toUnassign) > 0 {
 		is := goGithub.IssuesService{}
-		is.RemoveAssignees(OWNER, *obj.Issue.Repository.Name, *obj.Issue.Number, toUnassign.List())
+		is.RemoveAssignees(repoOwner, *obj.Issue.Repository.Name, *obj.Issue.Number, toUnassign.List())
 	}
 }
 
@@ -104,7 +103,7 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 
 	toAssign = sets.String{}
 	toUnassign = sets.String{}
-	potential_owners := weightMap{}
+	potentialOwners := weightMap{}
 	if checkValid {
 		fileList, err := obj.ListFiles()
 		if err != nil {
@@ -112,7 +111,7 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 			return toAssign, toUnassign, err
 		}
 		//get all the people that could potentially own the file based on the blunderbuss.go implementation
-		potential_owners, _ = getPotentialOwners(obj, h.features, fileList)
+		potentialOwners, _ = getPotentialOwners(obj, h.features, fileList)
 	}
 	for i := len(comments) - 1; i >= 0; i-- {
 		comment := comments[i]
@@ -123,7 +122,7 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 		fields := getFields(*comment.Body)
 		if isDibsComment(fields) {
 			//check if they are a valid reviewer if so, assign the user. if not, explain why
-			if !checkValid || isValidReviewer(potential_owners, comment.User) {
+			if !checkValid || isValidReviewer(potentialOwners, comment.User) {
 				glog.Infof("Assigning %v to review PR#%v", *comment.User.Login, obj.Issue.Number)
 				toAssign.Insert(*comment.User.Login)
 			} else {
@@ -141,8 +140,8 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 	return toAssign, toUnassign, nil
 }
 
-func isValidReviewer(potential_owners weightMap, commenter *goGithub.User) bool {
-	if _, ok := potential_owners[commenter.String()]; ok {
+func isValidReviewer(potentialOwners weightMap, commenter *goGithub.User) bool {
+	if _, ok := potentialOwners[commenter.String()]; ok {
 		return true
 	}
 	return false
@@ -163,10 +162,10 @@ func isAssignee(assignees []*goGithub.User, someUser *goGithub.User) bool {
 
 func isDibsComment(fields []string) bool {
 	// Note: later we'd probably move all the bot-command parsing code to its own package.
-	return len(fields) == 1 && strings.ToLower(fields[0]) == assign_command
+	return len(fields) == 1 && strings.ToLower(fields[0]) == assignCommand
 }
 
 func isReassignComment(fields []string) bool {
 	// Note: later we'd probably move all the bot-command parsing code to its own package.
-	return len(fields) == 1 && strings.ToLower(fields[0]) == reassign_command
+	return len(fields) == 1 && strings.ToLower(fields[0]) == reassignCommand
 }
