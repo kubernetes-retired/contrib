@@ -69,7 +69,7 @@ open_cadvisor_port: false
 open_kubelet_port: false
 
 # Zero means doesn't listen cadvisor port at all, default port 4194
-kubelet_cadvisor_port: 4194
+kubelet_cadvisor_port: 0
 
 # apiserver should use ssh tunnell in case when you use private interface, see enable_kube_apiserver_ssh
 kubelet_bind_address: "0.0.0.0"
@@ -79,7 +79,7 @@ kubelet_bind_address: "0.0.0.0"
 # Port which kubelet should listen
 kubelet_port: 10250
 # Zero means doesn't listen kubelet read-only port at all, default port 10255
-kubelet_read_only_port: 10255
+kubelet_read_only_port: 0
 
 # When "kubelet_bind_address" is unreachable outside the node
 # (open_kubelet_port is true or kubelet_bind_address is "127.0.0.1") we will use ssh tunnel.
