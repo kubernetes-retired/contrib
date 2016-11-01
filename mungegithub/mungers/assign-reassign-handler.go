@@ -25,15 +25,16 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"fmt"
+
 	"github.com/golang/glog"
 	goGithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
 const (
-	repoOwner            = "kubernetes"
-	assignCommand   = "/assign"
-	reassignCommand = "/reassign"
+	repoOwner         = "kubernetes"
+	assignCommand     = "/assign"
+	reassignCommand   = "/reassign"
 	notReviewerInTree = "%v commented /assign on a PR but it looks you are not list in the OWNERs file as a reviewer for the files in this PR"
 )
 
@@ -81,10 +82,17 @@ func (h AssignReassignHandler) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	toAssign, toUnassign, err := h.assignOrRemove(obj, comments, true)
+	fileList, err := obj.ListFiles()
 	if err != nil {
+		glog.Errorf("Could not list the files for PR %v: %v", obj.Issue.Number, err)
 		return
 	}
+
+	//get all the people that could potentially own the file based on the blunderbuss.go implementation
+	potentialOwners, _ := getPotentialOwners(obj, h.features, fileList)
+
+	toAssign, toUnassign := h.assignOrRemove(obj, comments, fileList, potentialOwners)
+
 	//assign and unassign reviewers as necessary
 	for _, username := range toAssign.List() {
 		obj.AssignPR(username)
@@ -99,20 +107,10 @@ func (h AssignReassignHandler) Munge(obj *github.MungeObject) {
 // "/assign" self assigns the PR
 // "/reassign" unassignes the commenter and reassigns to someone else
 // [TODO] "/reassign <github handle>" reassign to this person
-func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments []*goGithub.IssueComment, checkValid bool) (toAssign, toUnassign sets.String, _ error) {
-
+func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments []*goGithub.IssueComment, fileList []*goGithub.CommitFile, potentialOwners weightMap) (toAssign, toUnassign sets.String) {
 	toAssign = sets.String{}
 	toUnassign = sets.String{}
-	potentialOwners := weightMap{}
-	if checkValid {
-		fileList, err := obj.ListFiles()
-		if err != nil {
-			glog.Error("Could not list the files for PR %v", obj.Issue.Number)
-			return toAssign, toUnassign, err
-		}
-		//get all the people that could potentially own the file based on the blunderbuss.go implementation
-		potentialOwners, _ = getPotentialOwners(obj, h.features, fileList)
-	}
+
 	for i := len(comments) - 1; i >= 0; i-- {
 		comment := comments[i]
 		if !mungerutil.IsValidUser(comment.User) {
@@ -122,7 +120,7 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 		fields := getFields(*comment.Body)
 		if isDibsComment(fields) {
 			//check if they are a valid reviewer if so, assign the user. if not, explain why
-			if !checkValid || isValidReviewer(potentialOwners, comment.User) {
+			if isValidReviewer(potentialOwners, comment.User) {
 				glog.Infof("Assigning %v to review PR#%v", *comment.User.Login, obj.Issue.Number)
 				toAssign.Insert(*comment.User.Login)
 			} else {
@@ -137,11 +135,14 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 		}
 
 	}
-	return toAssign, toUnassign, nil
+	return toAssign, toUnassign
 }
 
 func isValidReviewer(potentialOwners weightMap, commenter *goGithub.User) bool {
-	if _, ok := potentialOwners[commenter.String()]; ok {
+	if commenter == nil || commenter.Login == nil {
+		return false
+	}
+	if _, ok := potentialOwners[*commenter.Login]; ok {
 		return true
 	}
 	return false

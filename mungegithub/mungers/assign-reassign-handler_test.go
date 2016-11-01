@@ -45,7 +45,7 @@ func TestAssignComment(t *testing.T) {
 		{
 			testName: "Assign cmd should add to existing assignees",
 			comments: []*goGithub.IssueComment{
-				github_test.IssueComment(1, assign_command, "user 1", 0),
+				github_test.IssueComment(1, assignCommand, "user 1", 0),
 			},
 			existingAssignees: []*goGithub.User{},
 			newAssignees:      sets.NewString("user 1"),
@@ -54,7 +54,7 @@ func TestAssignComment(t *testing.T) {
 		{
 			testName: "Assign cmd should add to existing assignees",
 			comments: []*goGithub.IssueComment{
-				github_test.IssueComment(1, assign_command, "user 1", 0),
+				github_test.IssueComment(1, assignCommand, "user 1", 0),
 			},
 			existingAssignees: []*goGithub.User{{Login: testUser.Name}},
 			newAssignees:      sets.NewString("user 1"),
@@ -63,7 +63,7 @@ func TestAssignComment(t *testing.T) {
 		{
 			testName: "Unassign should remove existing assignee",
 			comments: []*goGithub.IssueComment{
-				github_test.IssueComment(1, reassign_command, *testUser.Name, 0),
+				github_test.IssueComment(1, reassignCommand, *testUser.Name, 0),
 			},
 			existingAssignees: []*goGithub.User{{Login: testUser.Name}},
 			newAssignees:      sets.NewString(""),
@@ -73,7 +73,7 @@ func TestAssignComment(t *testing.T) {
 			testName: "Reassign by someone else should leave assignees in tact",
 			comments: []*goGithub.IssueComment{
 				//github_test.IssueComment(1, "This PR seems to work", "user 1", 0),
-				github_test.IssueComment(2, reassign_command, "NotAUser", 1),
+				github_test.IssueComment(2, reassignCommand, "NotAUser", 1),
 			},
 			existingAssignees: []*goGithub.User{{Login: testUser.Name}},
 			newAssignees:      sets.NewString(),
@@ -86,7 +86,7 @@ func TestAssignComment(t *testing.T) {
 		pr.Issue = &goGithub.Issue{}
 		pr.Issue.Assignees = test.existingAssignees
 		ah := AssignReassignHandler{}
-		assignees, unassignees, _ := ah.assignOrRemove(&pr, test.comments, false)
+		assignees, unassignees := ah.assignOrRemove(&pr, test.comments, []*goGithub.CommitFile{}, weightMap{"user 1": 1})
 		if assignees.Difference(test.newAssignees).Len() != 0 {
 			t.Errorf("For test %v, the expected new assignees did not match the returned new assignees %v %v", testNum, test.newAssignees, assignees)
 		}
