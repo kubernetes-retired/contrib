@@ -100,23 +100,23 @@ http {
 
     }
 }`
-    nginxServerConf=`{{range $i := .}}
-server {
-    server_name {{$i.Host}};
-{{if $i.Ssl}}
+    nginxServerConf=`server {
+    server_name {{ .Host }};
+{{ if .Ssl }}
     listen 443 ssl;
-    ssl_certificate     /etc/nginx/certs/{{$i.Host}}.crt;
-    ssl_certificate_key /etc/nginx/certs/{{$i.Host}}.key;
+    ssl_certificate     /etc/nginx/certs/{{ .Host }}.crt;
+    ssl_certificate_key /etc/nginx/certs/{{ .Host }}.key;
 
 {{end}}
-{{if $i.Nonssl}}    listen 80;{{end}}
-{{ range $path := $i.Paths }}
-    location {{$path.Location}} {
+{{ if .Timeout }}    proxy_read_timeout {{ .Timeout }};{{end}}
+{{ if .Nonssl }}    listen 80;{{end}}
+{{ range $path := .Paths }}
+    location {{ $path.Location }} {
         proxy_set_header Host $host;
-        proxy_pass {{$i.Scheme}}://{{$path.Service}}.{{$i.Namespace}}.svc.cluster.local:{{$path.Port}};
+        proxy_pass {{ $.Scheme }}://{{ $path.Service }}.{{ $.Namespace }}.svc.cluster.local:{{ $path.Port }};
     }
 {{end}}
-}{{end}}`
+}`
 
     nginxConfDir = "/etc/nginx"
     nginxConfFile = nginxConfDir + "/nginx.conf"
@@ -136,6 +136,8 @@ type Ingress struct {
     Ssl         bool
     Nonssl      bool
     Scheme      string
+    Timeout     string
+    Valid       bool
 }
 
 // shellOut runs an external command.
@@ -248,7 +250,7 @@ func main() {
     // Vault prep
     vaultEnabled := "true"
 
-    fmt.Printf("\n Ingress Controller version: %v\n", version)
+    fmt.Printf("\nIngress Controller version: %v\n", version)
 
     if vaultEnabledFlag == "" {
         vaultEnabled = "true"
@@ -316,11 +318,8 @@ func main() {
         if reflect.DeepEqual(ingresses.Items, known.Items) {
             continue
         }
+
         known = ingresses
-
-        type IngressList []*Ingress
-
-        var ingresslist IngressList = IngressList{}
 
         for _, ingress := range ingresses.Items {
 
@@ -334,6 +333,9 @@ func main() {
             i.Ssl = false
             i.Nonssl = true
             i.Scheme = "http"
+            i.Valid = true
+
+            ingressConfFile := nginxConfDir + "/conf.d/" + i.Host + ".conf"
 
             // Parse labels
             l := ingress.GetLabels()
@@ -346,6 +348,9 @@ func main() {
                 }
                 if k == "httpsBackend" && v == "true" {
                     i.Scheme = "https"
+                }
+                if k == "timeout" {
+                    i.Timeout = v
                 }
             }
 
@@ -380,7 +385,7 @@ func main() {
                     } else {
                         fmt.Printf("Found key for %v\n", ingressHost)
                         if err := ioutil.WriteFile(keyFileName, []byte(keySecret), 0400); err != nil {
-                            fmt.Printf("failed to write file %v: %v\n", keyFileName, err)
+                            fmt.Printf("Failed to write file %v: %v\n", keyFileName, err)
                             i.Ssl = false
                         } else {
                             var crtSecret string = fmt.Sprintf("%v", keySecretData.Data["crt"])
@@ -390,7 +395,7 @@ func main() {
                             } else {
                                 fmt.Printf("Found crt for %v\n", ingressHost)
                                 if err := ioutil.WriteFile(crtFileName, []byte(crtSecret), 0400); err != nil {
-                                    fmt.Printf("failed to write file %v: %v\n", crtFileName, err)
+                                    fmt.Printf("Failed to write file %v: %v\n", crtFileName, err)
                                     i.Ssl = false
                                 }
                             }
@@ -401,7 +406,9 @@ func main() {
                             _, err := tls.LoadX509KeyPair(crtFileName, keyFileName)
                             if err != nil {
                                 fmt.Printf("WARN %v invalid- keypair does not load.\n", ingressHost)
-                                break
+                                _ = os.Remove(ingressConfFile)
+                                i.Valid = false
+                                continue
                             } else {
                                 fmt.Printf("Keypair correct for %v.\n", ingressHost)
                             }
@@ -419,25 +426,22 @@ func main() {
                 port := strconv.Itoa(int(p.Port))
                 backendAddress := scheme + "://" + host + ":" + port + "/"
                 if testServiceEndpoint(scheme, host, port) != true {
-                    fmt.Printf("WARN %v invalid- service address not responding: %v\n", ingressHost, backendAddress)
+                    fmt.Printf("WARN %v invalid- service address not responding: %v: %v\n", ingressHost, backendAddress)
+                    _ = os.Remove(ingressConfFile)
+                    i.Valid = false
                     break
                 } else {
-                    fmt.Printf("Service address responding for %v: %v\n", ingressHost, backendAddress)
+                    fmt.Printf("Service address responding for %v.\n", ingressHost)
                 }
             }
 
-            ingresslist = append(ingresslist, i)
-        }
-
-        // Validate and create configs
-        if freezeConfig != true {
-            for _, i := range(ingresslist) {
+            // Create configs
+            if freezeConfig != true && i.Valid {
                 tmpl, _ := template.New(i.Host).Parse(nginxServerConf)
-                ingressConfFile := nginxConfDir + "/conf.d/" + i.Host + ".conf"
                 if w, err := os.Create(ingressConfFile); err != nil {
-                    fmt.Printf("failed to open %v: %v\n", ingressConfFile, err)
+                    fmt.Printf("Failed to open %v: %v\n", ingressConfFile, err)
                 } else if err := tmpl.Execute(w, i); err != nil {
-                    fmt.Printf("failed to write template %v, %v\n", ingressConfFile, err)
+                    fmt.Printf("Failed to write template %v, %v\n", ingressConfFile, err)
                 }
             }
         }
