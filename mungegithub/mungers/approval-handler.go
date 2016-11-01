@@ -21,12 +21,19 @@ import (
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
+	mungeComment "k8s.io/contrib/mungegithub/mungers/matchers/comment"
 	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"bytes"
+	"fmt"
 	"github.com/golang/glog"
 	goGithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
+)
+
+const (
+	approvalNotificationName = "ApprovalNotifier"
 )
 
 // ApprovalHandler will try to add "approved" label once
@@ -62,17 +69,16 @@ func (*ApprovalHandler) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
 // Munge is the workhorse the will actually make updates to the PR
 // The algorithm goes as:
-// - Initially, we build two sets, an approverSet and a cancelSet
+// - Initially, we build an approverSet
 //   - Go through all comments after latest commit.
 //	- If anyone said "/approve", add them to approverSet.
-//	- If anyone said "/approve cancel", add them to cancelSet.
-// - Then, for each file, we see if any approver of this file is in approverSet or cancelSet
+// - Then, for each file, we see if any approver of this file is in approverSet and keep track of files without approval
 //   - An approver of a file is defined as:
 //     - Someone listed as an "approver" in an OWNERS file in the files directory OR
-//     - in one of the file's parent directories
-//   - If a valid approver is in cancelSet, we remove the approve label (if there is one) and return immediately
+//     - in one of the file's parent directorie
 // - Iff all files have been approved, the bot will add the "approved" label.
-// - This implies that if any file doesn't have "approved" from a valid approver, the approval label will not be applied
+// - Iff the approved label has been added and a cancel command is found, that reviewer will be removed from the approverSet
+// 	and the munger will remove the approved label
 func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
 		return
@@ -98,8 +104,11 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	needsApproval := h.getApprovalNeededFiles(files, approverSet)
 
 	if needsApproval.Len() > 0 {
-		//need to selectively write a comment explaining why approved not added
 		glog.Infof("Canceling the approve label because these files %v have no valid approvers", needsApproval)
+		//if latest notification stale, update it
+		if notificationNeedsUpdate(obj) {
+			createMessage(obj, needsApproval)
+		}
 		if obj.HasLabel(approvedLabel) {
 			obj.RemoveLabel(approvedLabel)
 		}
@@ -107,6 +116,60 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 		obj.AddLabel(approvedLabel)
 	}
 
+}
+
+func notificationNeedsUpdate(obj *github.MungeObject) bool {
+	notificationMatcher := mungeComment.MungerNotificationName(approvalNotificationName)
+	comments, err := obj.ListComments()
+	if err != nil {
+		glog.Error("Could not list the comments for PR%v", obj.Issue.Number)
+		return false
+	}
+	latestNotification := mungeComment.FilterComments(comments, notificationMatcher).GetLast()
+	latestApprove := mungeComment.FilterComments(comments, mungeComment.CommandName("approve")).GetLast()
+	if latestNotification == nil {
+		return true
+	}
+	if latestApprove == nil {
+		// there was already a bot notitication and nothing has changed since
+		return false
+	}
+	if latestApprove.CreatedAt.After(*latestNotification.CreatedAt) {
+		// there has been approval since last notification
+		obj.DeleteComment(latestNotification)
+		return true
+	}
+	lastModified := obj.LastModifiedTime()
+	if latestApprove.CreatedAt.Before(*lastModified) {
+		obj.DeleteComment(latestNotification)
+		return true
+	}
+	return false
+}
+
+func createMessage(obj *github.MungeObject, filesNeedApproval sets.String) {
+	files, err := obj.ListFiles()
+	if err != nil {
+		glog.Error("Could not list the files for PR%v", obj.Issue.Number)
+		return
+	}
+	approvedFiles := sets.String{}
+	for _, fn := range files {
+		if !filesNeedApproval.Has(*fn.Filename) {
+			approvedFiles.Insert(*fn.Filename)
+		}
+	}
+	context := bytes.Buffer{}
+	context.WriteString("The following files have been approved:\n")
+	fileFmt := "\t%s"
+	for _, fn := range approvedFiles {
+		context.WriteString(fmt.Sprintf(fileFmt, fn))
+	}
+	context.WriteString("The following files REQUIRE approval:\n")
+	for _, fn := range filesNeedApproval {
+		context.WriteString(fmt.Sprintf(fileFmt, fn))
+	}
+	mungeComment.Notification{approvalNotificationName, "", context.String()}.Post(obj)
 }
 
 // createApproverSet iterates through the list of comments on a PR
