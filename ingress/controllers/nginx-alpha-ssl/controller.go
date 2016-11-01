@@ -72,7 +72,7 @@ http {
 
     error_log /dev/stderr info;
     access_log /dev/stdout proxied_combined;
-    include {{ nginxConfDir }}/conf.d/*.conf;
+    include /etc/nginx/conf.d/*.conf;
     server {
 
         listen 443 ssl default_server;
@@ -232,8 +232,7 @@ func main() {
     Se the following to disable Vault integration entirely:
     VAULT_ENABLED = "false"
     */
-    nginxTemplate := nginxConf
-    nginxServerTemplate := nginxConf
+
     vaultEnabledFlag := os.Getenv("VAULT_ENABLED")
     vaultAddress := os.Getenv("VAULT_ADDR")
     vaultToken := os.Getenv("VAULT_TOKEN")
@@ -277,11 +276,11 @@ func main() {
     // goroutine to renew vault token periodically
     go renewVaultToken(vault, time.NewTicker(time.Minute * 10))
 
-    tmpl, _ := template.New("nginx").Parse(nginxTemplate)
+    tmpl, _ := template.New("nginx").Parse(nginxConf)
     rateLimiter := flowcontrol.NewTokenBucketRateLimiter(0.1, 1)
     known := &extensions.IngressList{}
 
-    if w, err := os.Create(nginxConfDir + "/nginx.conf"); err != nil {
+    if w, err := os.Create(nginxConfFile); err != nil {
         fmt.Printf("failed to open %v: %v\n", nginxConfFile, err)
     } else if err := tmpl.Execute(w, tmpl); err != nil {
         fmt.Printf("failed to write template %v, %v\n", nginxConfFile,  err)
@@ -433,7 +432,7 @@ func main() {
         // Validate and create configs
         if freezeConfig != true {
             for _, i := range(ingresslist) {
-                tmpl, _ := template.New(i.Host).Parse(nginxServerTemplate)
+                tmpl, _ := template.New(i.Host).Parse(nginxServerConf)
                 ingressConfFile := nginxConfDir + "/conf.d/" + i.Host + ".conf"
                 if w, err := os.Create(ingressConfFile); err != nil {
                     fmt.Printf("failed to open %v: %v\n", ingressConfFile, err)
