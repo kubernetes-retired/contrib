@@ -250,7 +250,7 @@ func main() {
     // Vault prep
     vaultEnabled := "true"
 
-    fmt.Printf("\nIngress Controller version: %v\n", version)
+    fmt.Printf("\nIngress Controller version: %v\n\n", version)
 
     if vaultEnabledFlag == "" {
         vaultEnabled = "true"
@@ -372,7 +372,7 @@ func main() {
                 keyFileName := nginxConfDir + "/certs/" + ingressHost + ".key"
                 if err != nil {
                     fmt.Printf("Error retrieving secret for %v\n", ingressHost)
-                    break
+                    continue
                 } else if keySecretData == nil {
                     fmt.Printf("No secret for %v\n", ingressHost)
                     i.Ssl = false
