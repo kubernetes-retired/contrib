@@ -34,7 +34,7 @@ import (
 const (
 	repoOwner         = "kubernetes"
 	assignCommand     = "/assign"
-	reassignCommand   = "/reassign"
+	unassignCommand   = "/unassign"
 	notReviewerInTree = "%v commented /assign on a PR but it looks you are not list in the OWNERs file as a reviewer for the files in this PR"
 )
 
@@ -43,7 +43,6 @@ const (
 // - will unassign a github user to a PR if they comment "/reassign"
 type AssignReassignHandler struct {
 	features   *features.Features
-	checkValid bool
 }
 
 func init() {
@@ -67,7 +66,6 @@ func (AssignReassignHandler) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (h AssignReassignHandler) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().BoolVar(&h.checkValid, "check-valid-reviewer", true, "Flag indicating whether to allow any one to be assigned or just OWNERs files reviewers")
 }
 
 // Munge is the workhorse the will actually make updates to the PR
@@ -118,7 +116,7 @@ func (h *AssignReassignHandler) assignOrRemove(obj *github.MungeObject, comments
 		}
 
 		fields := getFields(*comment.Body)
-		if isDibsComment(fields) {
+		if isAssignComment(fields) {
 			//check if they are a valid reviewer if so, assign the user. if not, explain why
 			if isValidReviewer(potentialOwners, comment.User) {
 				glog.Infof("Assigning %v to review PR#%v", *comment.User.Login, obj.Issue.Number)
@@ -161,12 +159,12 @@ func isAssignee(assignees []*goGithub.User, someUser *goGithub.User) bool {
 	return false
 }
 
-func isDibsComment(fields []string) bool {
+func isAssignComment(fields []string) bool {
 	// Note: later we'd probably move all the bot-command parsing code to its own package.
 	return len(fields) == 1 && strings.ToLower(fields[0]) == assignCommand
 }
 
 func isReassignComment(fields []string) bool {
 	// Note: later we'd probably move all the bot-command parsing code to its own package.
-	return len(fields) == 1 && strings.ToLower(fields[0]) == reassignCommand
+	return len(fields) == 1 && strings.ToLower(fields[0]) == unassignCommand
 }
