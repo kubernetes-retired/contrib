@@ -1321,6 +1321,24 @@ func (obj *MungeObject) GetPR() (*github.PullRequest, error) {
 	obj.pr = pr
 	return pr, nil
 }
+// Unassign will unassign `prNum` to the `owner` where the `owner` is asignee's github login
+func (obj *MungeObject) Unassign(owner... string) error {
+	if len(owner) == 0 {
+		return nil
+	}
+	config := obj.config
+	prNum := *obj.Issue.Number
+	config.analytics.AssignPR.Call(config, nil)
+	glog.Infof("Assigning PR# %d  to %v", prNum, owner)
+	if config.DryRun {
+		return nil
+	}
+	if _, _, err := config.client.Issues.RemoveAssignees(config.Org, config.Project, prNum, owner); err != nil {
+		glog.Errorf("Error assigning issue# %d to %v: %v", prNum, owner, err)
+		return err
+	}
+	return nil
+}
 
 // AssignPR will assign `prNum` to the `owner` where the `owner` is asignee's github login
 func (obj *MungeObject) AssignPR(owner string) error {
