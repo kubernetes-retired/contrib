@@ -70,7 +70,7 @@ manifest-run pods or pods created by daemonsets).
 * There are no pods with local storage. Applications with local storage would lose their 
 data if a node is deleted, even if they are replicated.
 
-If a node is not needed for more than 10 min (configurable) then it can be deleted. Cluster Autoscaler
+If a node is not needed for more than 10 minutes then it can be deleted. Cluster Autoscaler
 deletes one node at a time to reduce the risk of creating new unschedulable pods. The next node 
 can be deleted when it is also not needed for more than 10 min. It may happen just after
 the previous node is fully deleted or after some longer time.
