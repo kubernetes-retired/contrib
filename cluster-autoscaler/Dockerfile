@@ -15,6 +15,9 @@
 FROM gcr.io/google_containers/ubuntu-slim:0.1
 MAINTAINER Marcin Wielgus "mwielgus@google.com"
 
+RUN apt-get update  
+RUN apt-get install -y ca-certificates
+
 ADD cluster-autoscaler cluster-autoscaler
 
 CMD ./cluster-autoscaler
