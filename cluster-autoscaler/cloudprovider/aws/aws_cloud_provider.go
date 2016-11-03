@@ -22,8 +22,16 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/golang/glog"
+
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	kube_api "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/fields"
+	"k8s.io/kubernetes/pkg/labels"
 )
 
 // AwsCloudProvider implements CloudProvider interface.
@@ -38,6 +46,15 @@ func BuildAwsCloudProvider(awsManager *AwsManager, specs []string) (*AwsCloudPro
 		awsManager: awsManager,
 		asgs:       make([]*Asg, 0),
 	}
+
+	if len(specs) == 0 {
+		err := aws.autoDiscoverASG()
+		if err != nil {
+			return nil, err
+		}
+		return aws, nil
+	}
+
 	for _, spec := range specs {
 		if err := aws.addNodeGroup(spec); err != nil {
 			return nil, err
@@ -196,6 +213,91 @@ func (asg *Asg) Id() string {
 // Debug returns a debug string for the Asg.
 func (asg *Asg) Debug() string {
 	return fmt.Sprintf("%s (%d:%d)", asg.Id(), asg.MinSize(), asg.MaxSize())
+}
+
+func (aws *AwsCloudProvider) autoDiscoverASG() error {
+	var nodesList []*string
+	client, err := unversioned.NewInCluster()
+	if err != nil {
+		glog.Errorf("err: %s\n", err)
+
+		return nil
+	}
+
+	listAll := kube_api.ListOptions{LabelSelector: labels.Everything(), FieldSelector: fields.Everything()}
+	nl, err := client.Nodes().List(listAll)
+	if err != nil {
+		glog.Errorf("err: %s\n", err)
+
+		return err
+	}
+	for _, n := range nl.Items {
+		if _, ok := n.Labels["master"]; !ok {
+			nodesList = append(nodesList, &n.Name)
+		}
+	}
+	//given the name of an ASG, fetch the information regarding min and max
+	sess := session.New()
+	if err != nil {
+		glog.Errorf("err: %s\n", err)
+		return err
+	}
+
+	svc := ec2.New(sess)
+	hostname := "private-dns-name"
+	params := &ec2.DescribeInstancesInput{
+		Filters: []*ec2.Filter{
+			{
+				Name:   &hostname,
+				Values: nodesList,
+			},
+		},
+	}
+	instances, err := svc.DescribeInstances(params)
+	if err != nil {
+		glog.Errorf("Error describing EC2 instances: %s\n", err)
+		return err
+	}
+
+	//make a "uniq" on the names so that we don't consider autoscaling groups twice
+	asgs := make(map[string]bool, 0)
+	names := make([]*string, 0)
+	for idx, _ := range instances.Reservations {
+		for _, inst := range instances.Reservations[idx].Instances {
+			for _, tag := range inst.Tags {
+				if *(tag.Key) == "aws:autoscaling:groupName" {
+					if _, ok := asgs[*(tag.Value)]; !ok {
+						names = append(names, tag.Value)
+					}
+					asgs[*(tag.Value)] = true
+				}
+			}
+		}
+	}
+
+	request := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: names,
+	}
+	autoscalingSvc := autoscaling.New(sess)
+	asgGroups, err := autoscalingSvc.DescribeAutoScalingGroups(request)
+	if err != nil {
+		glog.Errorf("Error describing autoscaling groups: %s\n", err)
+		return err
+	}
+
+	for _, group := range asgGroups.AutoScalingGroups {
+		fmt.Println(group.AutoScalingGroupName)
+		asg := Asg{
+			awsManager: aws.awsManager,
+			AwsRef:     AwsRef{Name: *group.AutoScalingGroupName},
+			maxSize:    int(*group.MaxSize),
+			minSize:    int(*group.MinSize),
+		}
+		aws.asgs = append(aws.asgs, &asg)
+		aws.awsManager.RegisterAsg(&asg)
+	}
+
+	return nil
 }
 
 func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
