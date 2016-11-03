@@ -27,6 +27,7 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/aws"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/gce"
+	"k8s.io/contrib/cluster-autoscaler/cloudprovider/openstack_heat"
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
@@ -165,6 +166,25 @@ func run(_ <-chan struct{}) {
 		cloudProvider, err = aws.BuildAwsCloudProvider(awsManager, nodeGroupsFlag)
 		if err != nil {
 			glog.Fatalf("Failed to create AWS cloud provider: %v", err)
+		}
+	}
+
+	if *cloudProviderFlag == "openstack-heat" {
+		var heatManager *openstack_heat.HeatManager
+		if *cloudConfig != "" {
+			config, fileErr := os.Open(*cloudConfig)
+			if fileErr != nil {
+				glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", *cloudConfig, err)
+			}
+			defer config.Close()
+			heatManager, err = openstack_heat.CreateHeatManager(config)
+			if err != nil {
+				glog.Fatalf("Failed to create Openstack Heat manager: %v", err)
+			}
+		}
+		cloudProvider, err = openstack_heat.BuildOpenstackHeatCloudProvider(heatManager, nodeGroupsFlag)
+		if err != nil {
+			glog.Fatalf("Failed to create Openstack Heat provider: %v", err)
 		}
 	}
 
