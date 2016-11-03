@@ -224,7 +224,13 @@ func (aws *AwsCloudProvider) autoDiscoverASG() error {
 		return nil
 	}
 
-	listAll := kube_api.ListOptions{LabelSelector: labels.Everything(), FieldSelector: fields.Everything()}
+	selector, err := labels.Parse("master!=true")
+	if err != nil {
+		glog.Errorf("err: %s\n", err)
+		return err
+	}
+
+	listAll := kube_api.ListOptions{LabelSelector: selector, FieldSelector: fields.Everything()}
 	nl, err := client.Nodes().List(listAll)
 	if err != nil {
 		glog.Errorf("err: %s\n", err)
@@ -232,10 +238,10 @@ func (aws *AwsCloudProvider) autoDiscoverASG() error {
 		return err
 	}
 	for _, n := range nl.Items {
-		if _, ok := n.Labels["master"]; !ok {
-			nodesList = append(nodesList, &n.Name)
-		}
+		glog.V(4).Infof("Considering node: %s", &n.Name)
+		nodesList = append(nodesList, &n.Name)
 	}
+
 	//given the name of an ASG, fetch the information regarding min and max
 	sess := session.New()
 	if err != nil {
@@ -286,7 +292,7 @@ func (aws *AwsCloudProvider) autoDiscoverASG() error {
 	}
 
 	for _, group := range asgGroups.AutoScalingGroups {
-		fmt.Println(group.AutoScalingGroupName)
+		glog.V(4).Infof("Adding ASG: %s, with min: %d, max %d\n", *group.AutoScalingGroupName, *group.MinSize, *group.MaxSize)
 		asg := Asg{
 			awsManager: aws.awsManager,
 			AwsRef:     AwsRef{Name: *group.AutoScalingGroupName},
