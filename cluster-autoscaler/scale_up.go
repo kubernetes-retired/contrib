@@ -25,6 +25,7 @@ import (
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
+	pkg_runtime "k8s.io/kubernetes/pkg/runtime"
 
 	"github.com/golang/glog"
 )
@@ -39,7 +40,8 @@ type ExpansionOption struct {
 // false if it didn't and error if an error occured. Assumes that all nodes in the cluster are
 // ready and in sync with instance groups.
 func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, cloudProvider cloudprovider.CloudProvider, kubeClient *kube_client.Client,
-	predicateChecker *simulator.PredicateChecker, recorder kube_record.EventRecorder, maxNodesTotal int) (bool, error) {
+	predicateChecker *simulator.PredicateChecker, recorder kube_record.EventRecorder,
+	objForCaEvents pkg_runtime.Object, maxNodesTotal int) (bool, error) {
 
 	// From now on we only care about unschedulable pods that were marked after the newest
 	// node became available for the scheduler.
@@ -106,7 +108,6 @@ func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, cloudPro
 		nodeInfo, found := nodeInfos[bestOption.nodeGroup.Id()]
 		if !found {
 			return false, fmt.Errorf("no sample node for: %s", bestOption.nodeGroup.Id())
-
 		}
 		node := nodeInfo.Node()
 		estimate, report := bestOption.estimator.Estimate(node)
@@ -116,6 +117,8 @@ func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, cloudPro
 
 		currentSize, err := bestOption.nodeGroup.TargetSize()
 		if err != nil {
+			recorder.Eventf(objForCaEvents, kube_api.EventTypeWarning, clusterAutoscalerEventReason,
+				"Failed to get node group size: %v", err)
 			return false, fmt.Errorf("failed to get node group size: %v", err)
 		}
 		newSize := currentSize + estimate
@@ -128,26 +131,33 @@ func ScaleUp(unschedulablePods []*kube_api.Pod, nodes []*kube_api.Node, cloudPro
 			glog.V(1).Infof("Capping size to max cluster total size (%d)", maxNodesTotal)
 			newSize = maxNodesTotal - len(nodes) + currentSize
 			if newSize < currentSize {
-				return false, fmt.Errorf("max node total count already reached")
+				recorder.Eventf(objForCaEvents, kube_api.EventTypeWarning, clusterAutoscalerEventReason,
+					"Max total node count reached")
+				return false, fmt.Errorf("max total node count reached")
 			}
 		}
 
-		glog.V(1).Infof("Setting %s size to %d", bestOption.nodeGroup.Id(), newSize)
+		glog.V(1).Infof("Scaling up - setting %s size to %d", bestOption.nodeGroup.Id(), newSize)
+		recorder.Eventf(objForCaEvents, kube_api.EventTypeNormal, clusterAutoscalerEventReason,
+			"Scaling up, setting %s size to %d", bestOption.nodeGroup.Id(), newSize)
 
 		if err := bestOption.nodeGroup.IncreaseSize(newSize - currentSize); err != nil {
+			recorder.Eventf(objForCaEvents, kube_api.EventTypeWarning, clusterAutoscalerEventReason,
+				"Failed to increase node group size: %v", err)
+
 			return false, fmt.Errorf("failed to increase node group size: %v", err)
 		}
 
 		for pod := range bestOption.estimator.FittingPods {
 			recorder.Eventf(pod, kube_api.EventTypeNormal, "TriggeredScaleUp",
-				"pod triggered scale-up, group: %s, sizes (current/new): %d/%d", bestOption.nodeGroup.Id(), currentSize, newSize)
+				"Pod triggered scale-up, group: %s, sizes (current/new): %d/%d", bestOption.nodeGroup.Id(), currentSize, newSize)
 		}
 
 		return true, nil
 	}
 	for pod := range podsRemainUnshedulable {
 		recorder.Event(pod, kube_api.EventTypeNormal, "NotTriggerScaleUp",
-			"pod didn't trigger scale-up (it wouldn't fit if a new node is added)")
+			"Pod didn't trigger scale-up (it wouldn't fit if a new node is added)")
 	}
 
 	return false, nil

@@ -78,6 +78,10 @@ var (
 	cloudProviderFlag = flag.String("cloud-provider", "gce", "Cloud provider type. Allowed values: gce, aws")
 )
 
+const (
+	clusterAutoscalerEventReason = "ClusterAutoscaler"
+)
+
 func createKubeClient() *kube_client.Client {
 	url, err := url.Parse(*kubernetes)
 	if err != nil {
@@ -168,6 +172,11 @@ func run(_ <-chan struct{}) {
 		}
 	}
 
+	objForEvents, err := kubeClient.Namespaces().Get("kube-system")
+	if err != nil {
+		glog.Fatalf("No kube-system namespace, configuration not supported")
+	}
+
 	for {
 		select {
 		case <-time.After(*scanInterval):
@@ -178,27 +187,38 @@ func run(_ <-chan struct{}) {
 				nodes, err := nodeLister.List()
 				if err != nil {
 					glog.Errorf("Failed to list nodes: %v", err)
+					recorder.Eventf(objForEvents, kube_api.EventTypeWarning, clusterAutoscalerEventReason,
+						"Failed to list nodes: %v", err)
 					continue
 				}
 				if len(nodes) == 0 {
 					glog.Errorf("No nodes in the cluster")
+					recorder.Eventf(objForEvents, kube_api.EventTypeWarning, clusterAutoscalerEventReason,
+						"No nodes in the cluster")
 					continue
 				}
 
 				if err := CheckGroupsAndNodes(nodes, cloudProvider); err != nil {
 					glog.Warningf("Cluster is not ready for autoscaling: %v", err)
+					recorder.Eventf(objForEvents, kube_api.EventTypeWarning, clusterAutoscalerEventReason,
+						"Cluster is not ready for autoscaling: %v", err)
 					continue
 				}
 
 				allUnschedulablePods, err := unschedulablePodLister.List()
 				if err != nil {
 					glog.Errorf("Failed to list unscheduled pods: %v", err)
+					recorder.Eventf(objForEvents, kube_api.EventTypeWarning, clusterAutoscalerEventReason,
+						"Failed to list unscheduled pods: %v", err)
+
 					continue
 				}
 
 				allScheduled, err := scheduledPodLister.List()
 				if err != nil {
 					glog.Errorf("Failed to list scheduled pods: %v", err)
+					recorder.Eventf(objForEvents, kube_api.EventTypeWarning, clusterAutoscalerEventReason,
+						"Failed to list scheduled pods: %v", err)
 					continue
 				}
 
@@ -227,21 +247,32 @@ func run(_ <-chan struct{}) {
 					newUnschedulablePodsToHelp := FilterOutSchedulable(unschedulablePodsToHelp, nodes, allScheduled, predicateChecker)
 
 					if len(newUnschedulablePodsToHelp) != len(unschedulablePodsToHelp) {
+						recorder.Eventf(objForEvents, kube_api.EventTypeNormal, clusterAutoscalerEventReason,
+							"%d not scheduled pods should be scheduled soon",
+							len(unschedulablePodsToHelp)-len(newUnschedulablePodsToHelp))
+
 						glog.V(2).Info("Schedulable pods present")
 						schedulablePodsPresent = true
 					}
 					unschedulablePodsToHelp = newUnschedulablePodsToHelp
 				}
 
+				if len(unschedulablePodsToHelp) > 0 {
+					recorder.Eventf(objForEvents, kube_api.EventTypeNormal, clusterAutoscalerEventReason,
+						"%d unshedulable pods present", len(unschedulablePodsToHelp))
+				}
+
 				if len(unschedulablePodsToHelp) == 0 {
 					glog.V(1).Info("No unschedulable pods")
 				} else if *maxNodesTotal > 0 && len(nodes) >= *maxNodesTotal {
 					glog.V(1).Info("Max total nodes in cluster reached")
+					recorder.Eventf(objForEvents, kube_api.EventTypeNormal, clusterAutoscalerEventReason,
+						"%d unshedulable pods present but max total cluster size reached", len(unschedulablePodsToHelp))
 				} else {
 					scaleUpStart := time.Now()
 					updateLastTime("scaleup")
 					scaledUp, err := ScaleUp(unschedulablePodsToHelp, nodes, cloudProvider, kubeClient, predicateChecker, recorder,
-						*maxNodesTotal)
+						objForEvents, *maxNodesTotal)
 
 					updateDuration("scaleup", scaleUpStart)
 
@@ -306,7 +337,8 @@ func run(_ <-chan struct{}) {
 							predicateChecker,
 							podLocationHints,
 							usageTracker,
-							recorder)
+							recorder,
+							objForEvents)
 
 						updateDuration("scaledown", scaleDownStart)
 
