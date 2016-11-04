@@ -74,6 +74,7 @@ var (
 		"How often scale down possiblity is check")
 	scanInterval  = flag.Duration("scan-interval", 10*time.Second, "How often cluster is reevaluated for scale up or down")
 	maxNodesTotal = flag.Int("max-nodes-total", 0, "Maximum number of nodes in all node groups. Cluster autoscaler will not grow the cluster beyond this number.")
+	maxScaleUp    = flag.Int("max-scale-up", 100, "Maximum number of nodes that can be requested in a single scale-up")
 
 	cloudProviderFlag = flag.String("cloud-provider", "gce", "Cloud provider type. Allowed values: gce, aws")
 )
@@ -240,8 +241,15 @@ func run(_ <-chan struct{}) {
 				} else {
 					scaleUpStart := time.Now()
 					updateLastTime("scaleup")
-					scaledUp, err := ScaleUp(unschedulablePodsToHelp, nodes, cloudProvider, kubeClient, predicateChecker, recorder,
-						*maxNodesTotal)
+					scaledUp, err := ScaleUp(
+						unschedulablePodsToHelp,
+						nodes,
+						cloudProvider,
+						kubeClient,
+						predicateChecker,
+						recorder,
+						*maxNodesTotal,
+						*maxScaleUp)
 
 					updateDuration("scaleup", scaleUpStart)
 

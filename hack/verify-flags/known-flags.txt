@@ -61,6 +61,7 @@ label-file
 last-release-pr
 left-build-number
 max-pr-number
+max-scale-up
 max-sync-failures
 max-nodes-total
 min-pr-number
