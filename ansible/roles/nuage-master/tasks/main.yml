@@ -56,6 +56,10 @@
 
 - include: iptables.yml
 
+- name: Install jq
+  become: yes
+  package: name=jq state=present
+
 - name: restart daemons
   command: /bin/true
   notify:

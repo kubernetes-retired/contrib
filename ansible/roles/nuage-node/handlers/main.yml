@@ -4,18 +4,18 @@
   command: /bin/true
   notify:
     - restart vrs
+    - systemctl daemon-reload
     - restart kubelet
-    - restart proxy
     
 - name: restart vrs
   service: name=openvswitch state=restarted
   
-- name: restart kubelet
-  service: name=kubelet state=restarted
+- name: systemctl daemon-reload 
+  command: systemctl daemon-reload 
   ignore_errors: yes
 
-- name: restart proxy
-  service: name=kube-proxy state=restarted
+- name: restart kubelet
+  service: name=kubelet state=restarted
   ignore_errors: yes
 
 - name: save iptables rules
