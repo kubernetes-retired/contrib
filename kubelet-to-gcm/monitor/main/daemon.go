@@ -40,12 +40,13 @@ const (
 
 var (
 	// Flags to identify the Kubelet.
-	zone        = pflag.String("zone", "use-gce", "The zone where this kubelet lives.")
-	project     = pflag.String("project", "use-gce", "The project where this kubelet's host lives.")
-	cluster     = pflag.String("cluster", "use-gce", "The cluster where this kubelet holds membership.")
-	kubeletHost = pflag.String("kubelet-host", "use-gce", "The kubelet's host name.")
-	kubeletPort = pflag.Uint("kubelet-port", 10255, "The kubelet's port.")
-	ctrlPort    = pflag.Uint("controller-manager-port", 10252, "The kube-controller's port.")
+	zone            = pflag.String("zone", "use-gce", "The zone where this kubelet lives.")
+	project         = pflag.String("project", "use-gce", "The project where this kubelet's host lives.")
+	cluster         = pflag.String("cluster", "use-gce", "The cluster where this kubelet holds membership.")
+	kubeletInstance = pflag.String("kubelet-instance", "use-gce", "The instance name the kubelet resides on.")
+	kubeletHost     = pflag.String("kubelet-host", "use-gce", "The kubelet's host name.")
+	kubeletPort     = pflag.Uint("kubelet-port", 10255, "The kubelet's port.")
+	ctrlPort        = pflag.Uint("controller-manager-port", 10252, "The kube-controller's port.")
 	// Flags to control runtime behavior.
 	res         = pflag.Uint("resolution", 10, "The time, in seconds, to poll the Kubelet.")
 	gcmEndpoint = pflag.String("gcm-endpoint", "", "The GCM endpoint to hit. Defaults to the default endpoint.")
@@ -61,7 +62,7 @@ func main() {
 	resolution := time.Second * time.Duration(*res)
 
 	// Initialize the configuration.
-	kubeletCfg, ctrlCfg, err := config.NewConfigs(*zone, *project, *cluster, *kubeletHost, *kubeletPort, *ctrlPort, resolution)
+	kubeletCfg, ctrlCfg, err := config.NewConfigs(*zone, *project, *cluster, *kubeletHost, *kubeletInstance, *kubeletPort, *ctrlPort, resolution)
 	if err != nil {
 		log.Fatalf("Failed to initialize configuration: %v", err)
 	}

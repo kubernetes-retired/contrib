@@ -55,6 +55,7 @@ jenkins-host
 jenkins-jobs
 kube-api-content-type
 kubelet-host
+kubelet-instance
 kubelet-port
 label-file
 last-release-pr
@@ -63,6 +64,7 @@ max-pr-number
 max-sync-failures
 max-nodes-total
 min-pr-number
+min-replica-count
 network-config
 nonblocking-jenkins-jobs
 nginx-configmap
@@ -100,6 +102,7 @@ source-file
 ssl-ca-cert
 ssl-cert
 start-from
+state-machine-enabled
 stats-port
 sync-period
 test-owners-csv
@@ -136,3 +139,11 @@ datasource
 local-data-dir
 tracing
 jenkins-job
+dnsmasq-addr
+dnsmasq-poll-interval-ms
+dnsmasq-port
+prometheus-addr
+prometheus-namespace
+prometheus-path
+prometheus-port
+prometheus-subsystem

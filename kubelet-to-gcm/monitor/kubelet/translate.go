@@ -205,7 +205,7 @@ func (t *Translator) translateContainers(pods []stats.PodStats) ([]*v3.TimeSerie
 			uptimePoint := &v3.Point{
 				Interval: &v3.TimeInterval{
 					EndTime:   now.Format(time.RFC3339),
-					StartTime: now.Add(-1 * t.resolution).Format(time.RFC3339),
+					StartTime: container.StartTime.Time.Format(time.RFC3339),
 				},
 				Value: &v3.TypedValue{
 					DoubleValue:     monitor.Float64Ptr(float64(time.Since(container.StartTime.Time).Seconds())),

@@ -17,7 +17,7 @@
 
 set -e
 
-export NGINX_VERSION=1.11.3
+export NGINX_VERSION=1.11.5
 export NDK_VERSION=0.3.0
 export VTS_VERSION=0.1.10
 export SETMISC_VERSION=0.31
@@ -69,7 +69,7 @@ apt-get update && apt-get install --no-install-recommends -y \
   linux-headers-generic || exit 1
 
 # download, verify and extract the source files
-get_src 4a667f40f9f3917069db1dea1f2d5baa612f1fa19378aadf71502e846a424610 \
+get_src 223f8a2345a75f891098cf26ccdf208b293350388f51ce69083674c9432db6f6 \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
 get_src 88e05a99a8a7419066f5ae75966fb1efc409bad4522d14986da074554ae61619 \
@@ -107,18 +107,13 @@ get_src 8eabbcd5950fdcc718bb0ef9165206c2ed60f67cd9da553d7bc3e6fe4e338461 \
 
 
 #https://blog.cloudflare.com/optimizing-tls-over-tcp-to-reduce-latency/
-curl -sSL -o nginx__dynamic_tls_records.patch https://raw.githubusercontent.com/cloudflare/sslconfig/master/patches/nginx__dynamic_tls_records.patch
-
-# Add SPDY support back to Nginx with HTTP/2
-# https://github.com/cloudflare/sslconfig
-curl -sSL -o nginx_1_9_15_http2_spdy.patch https://raw.githubusercontent.com/felixbuenemann/sslconfig/7c23d2791857f0b07e3008ba745bcf48d8d6b170/patches/nginx_1_9_15_http2_spdy.patch
+curl -sSL -o nginx__dynamic_tls_records.patch https://raw.githubusercontent.com/cloudflare/sslconfig/master/patches/nginx__1.11.5_dynamic_tls_records.patch
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
 
 echo "Applying tls nginx patches..."
 patch -p1 < $BUILD_PATH/nginx__dynamic_tls_records.patch
-patch -p1 < $BUILD_PATH/nginx_1_9_15_http2_spdy.patch 
 
 ./configure \
   --prefix=/usr/share/nginx \
@@ -145,7 +140,6 @@ patch -p1 < $BUILD_PATH/nginx_1_9_15_http2_spdy.patch
   --with-http_gzip_static_module \
   --with-http_sub_module \
   --with-http_v2_module \
-  --with-http_spdy_module \
   --with-stream \
   --with-stream_ssl_module \
   --with-threads \

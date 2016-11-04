@@ -32,7 +32,6 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	"k8s.io/kubernetes/pkg/util/exec"
@@ -47,7 +46,7 @@ const (
 )
 
 var (
-	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
 )
 
 type service struct {
@@ -106,8 +105,8 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 // services from LVS throgh ipvsadmin.
 type ipvsControllerController struct {
 	client            *unversioned.Client
-	epController      *framework.Controller
-	svcController     *framework.Controller
+	epController      *cache.Controller
+	svcController     *cache.Controller
 	svcLister         cache.StoreToServiceLister
 	epLister          cache.StoreToEndpointsLister
 	reloadRateLimiter flowcontrol.RateLimiter
@@ -179,7 +178,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 		}
 
 		nsSvc := fmt.Sprintf("%v/%v", ns, svc)
-		svcObj, svcExists, err := ipvsc.svcLister.Store.GetByKey(nsSvc)
+		svcObj, svcExists, err := ipvsc.svcLister.Indexer.GetByKey(nsSvc)
 		if err != nil {
 			glog.Warningf("error getting service %v: %v", nsSvc, err)
 			continue
@@ -336,7 +335,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		glog.Fatalf("Error loading keepalived template: %v", err)
 	}
 
-	eventHandlers := framework.ResourceEventHandlerFuncs{
+	eventHandlers := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			ipvsc.syncQueue.enqueue(obj)
 		},
@@ -350,12 +349,15 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		},
 	}
 
-	ipvsc.svcLister.Store, ipvsc.svcController = framework.NewInformer(
+	ipvsc.svcLister.Indexer, ipvsc.svcController = cache.NewIndexerInformer(
 		cache.NewListWatchFromClient(
 			ipvsc.client, "services", namespace, fields.Everything()),
-		&api.Service{}, resyncPeriod, eventHandlers)
+		&api.Service{},
+		resyncPeriod,
+		eventHandlers,
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 
-	ipvsc.epLister.Store, ipvsc.epController = framework.NewInformer(
+	ipvsc.epLister.Store, ipvsc.epController = cache.NewInformer(
 		cache.NewListWatchFromClient(
 			ipvsc.client, "endpoints", namespace, fields.Everything()),
 		&api.Endpoints{}, resyncPeriod, eventHandlers)
