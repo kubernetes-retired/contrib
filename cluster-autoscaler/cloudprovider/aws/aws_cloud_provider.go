@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	aws_util "github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -250,11 +251,10 @@ func (aws *AwsCloudProvider) autoDiscoverASG() error {
 	}
 
 	svc := ec2.New(sess)
-	hostname := "private-dns-name"
 	params := &ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
 			{
-				Name:   &hostname,
+				Name:   aws_util.String("private-dns-name"),
 				Values: nodesList,
 			},
 		},
