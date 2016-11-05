@@ -60,6 +60,7 @@ kubelet-port
 label-file
 last-release-pr
 left-build-number
+max-empty-bulk-delete
 max-pr-number
 max-sync-failures
 max-nodes-total
