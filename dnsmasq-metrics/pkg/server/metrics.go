@@ -19,6 +19,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
@@ -87,6 +88,10 @@ func InitializeMetrics(options *Options) {
 	defineMetrics(options)
 
 	http.Handle(options.PrometheusPath, prometheus.Handler())
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
+		fmt.Fprintf(w, "ok (%v)\n", time.Now())
+	})
+
 	go func() {
 		err := http.ListenAndServe(
 			fmt.Sprintf("%s:%d", options.PrometheusAddr, options.PrometheusPort), nil)
