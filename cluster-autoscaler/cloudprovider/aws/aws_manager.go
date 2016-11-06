@@ -27,6 +27,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
+
 	"github.com/golang/glog"
 	provider_aws "k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
 	"k8s.io/kubernetes/pkg/util/wait"
@@ -48,12 +50,17 @@ type autoScaling interface {
 	TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error)
 }
 
+type kubeEC2 interface {
+	DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
+}
+
 // AwsManager is handles aws communication and data caching.
 type AwsManager struct {
 	asgs     []*asgInformation
 	asgCache map[AwsRef]*Asg
 
 	service    autoScaling
+	ec2Service kubeEC2
 	cacheMutex sync.Mutex
 }
 
@@ -66,12 +73,14 @@ func CreateAwsManager(configReader io.Reader) (*AwsManager, error) {
 			return nil, err
 		}
 	}
-
-	service := autoscaling.New(session.New())
+	session := session.New()
+	service := autoscaling.New(session)
+	ec2Service := ec2.New(session)
 	manager := &AwsManager{
-		asgs:     make([]*asgInformation, 0),
-		service:  service,
-		asgCache: make(map[AwsRef]*Asg),
+		asgs:       make([]*asgInformation, 0),
+		service:    service,
+		ec2Service: ec2Service,
+		asgCache:   make(map[AwsRef]*Asg),
 	}
 
 	go wait.Forever(func() {

@@ -21,6 +21,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	kube_api "k8s.io/kubernetes/pkg/api"
@@ -28,6 +29,28 @@ import (
 
 type AutoScalingMock struct {
 	mock.Mock
+}
+
+type EC2Mock struct {
+	mock.Mock
+}
+
+func (e *EC2Mock) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
+	return &ec2.DescribeInstancesOutput{
+		Reservations: []*ec2.Reservation{
+			{Instances: []*ec2.Instance{
+				{
+					InstanceId: aws.String("test-instance-id"),
+					Tags: []*ec2.Tag{{
+						Key:   aws.String("asg"),
+						Value: aws.String("name_of_asg"),
+					},
+					},
+				},
+			},
+			},
+		},
+	}, nil
 }
 
 func (a *AutoScalingMock) DescribeAutoScalingGroups(i *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error) {
@@ -59,9 +82,10 @@ func (a *AutoScalingMock) TerminateInstanceInAutoScalingGroup(input *autoscaling
 }
 
 var testAwsManager = &AwsManager{
-	asgs:     make([]*asgInformation, 0),
-	service:  &AutoScalingMock{},
-	asgCache: make(map[AwsRef]*Asg),
+	asgs:       make([]*asgInformation, 0),
+	service:    &AutoScalingMock{},
+	ec2Service: &EC2Mock{},
+	asgCache:   make(map[AwsRef]*Asg),
 }
 
 func testProvider(t *testing.T, m *AwsManager) *AwsCloudProvider {
@@ -275,4 +299,9 @@ func TestBuildAsg(t *testing.T) {
 	assert.Equal(t, 111, asg.MinSize())
 	assert.Equal(t, 222, asg.MaxSize())
 	assert.Equal(t, "test-name", asg.Name)
+}
+
+func TestAutoDiscoverASG(t *testing.T) {
+	provider := testProvider(t, testAwsManager)
+	provider.autoDiscoverASG()
 }

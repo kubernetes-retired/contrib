@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	aws_util "github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
@@ -243,14 +242,6 @@ func (aws *AwsCloudProvider) autoDiscoverASG() error {
 		nodesList = append(nodesList, &n.Name)
 	}
 
-	//given the name of an ASG, fetch the information regarding min and max
-	sess := session.New()
-	if err != nil {
-		glog.Errorf("err: %s\n", err)
-		return err
-	}
-
-	svc := ec2.New(sess)
 	params := &ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
 			{
@@ -259,7 +250,7 @@ func (aws *AwsCloudProvider) autoDiscoverASG() error {
 			},
 		},
 	}
-	instances, err := svc.DescribeInstances(params)
+	instances, err := aws.awsManager.ec2Service.DescribeInstances(params)
 	if err != nil {
 		glog.Errorf("Error describing EC2 instances: %s\n", err)
 		return err
@@ -268,7 +259,7 @@ func (aws *AwsCloudProvider) autoDiscoverASG() error {
 	//make a "uniq" on the names so that we don't consider autoscaling groups twice
 	asgs := make(map[string]bool, 0)
 	names := make([]*string, 0)
-	for idx, _ := range instances.Reservations {
+	for idx := range instances.Reservations {
 		for _, inst := range instances.Reservations[idx].Instances {
 			for _, tag := range inst.Tags {
 				if *(tag.Key) == "aws:autoscaling:groupName" {
@@ -284,8 +275,7 @@ func (aws *AwsCloudProvider) autoDiscoverASG() error {
 	request := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: names,
 	}
-	autoscalingSvc := autoscaling.New(sess)
-	asgGroups, err := autoscalingSvc.DescribeAutoScalingGroups(request)
+	asgGroups, err := aws.awsManager.service.DescribeAutoScalingGroups(request)
 	if err != nil {
 		glog.Errorf("Error describing autoscaling groups: %s\n", err)
 		return err
