@@ -44,6 +44,7 @@ extra-storage
 fake-e2e
 fixes-issue-reassign
 forward-services
+gate-approved
 gcm-endpoint
 gcs-bucket
 gcs-logs-dir
@@ -144,6 +145,7 @@ use-cluster-credentials
 use-ip
 use-kubernetes-cluster-service
 use-real-cloud
+use-reviewers
 use-unicast
 user-whitelist
 verify-unschedulable-pods
