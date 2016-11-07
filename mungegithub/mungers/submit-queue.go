@@ -783,7 +783,7 @@ func (sq *SubmitQueue) getMetaData() []byte {
 const (
 	unknown                 = "unknown failure"
 	noCLA                   = "PR is missing CLA label; needs one of " + claYesLabel + ", " + cncfClaYesLabel + " or " + claHumanLabel
-	noLGTM                  = "PR does not have " + lgtmLabel + " label or " + approvedLabel + " label (needs at least one)."
+	noLgtmOrApproved        = "PR is missing the " + lgtmLabel + " label or the " + approvedLabel + " label."
 	lgtmEarly               = "The PR was changed after the LGTM label was added."
 	unmergeable             = "PR is unable to be automatically merged. Needs rebase."
 	undeterminedMergability = "Unable to determine is PR is mergeable. Will try again later."
@@ -880,9 +880,9 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 		}
 	}
 
-	// Clearly
-	if !(obj.HasLabel(lgtmLabel) || obj.HasLabel(approvedLabel)) {
-		sq.SetMergeStatus(obj, noLGTM)
+	// Clearly, if obj is missing either label, do not merge
+	if !obj.HasLabel(lgtmLabel) || !obj.HasLabel(approvedLabel) {
+		sq.SetMergeStatus(obj, noLgtmOrApproved)
 		return false
 	}
 
