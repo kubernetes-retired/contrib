@@ -30,6 +30,7 @@ import (
 	"github.com/golang/glog"
 	goGithub "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
+	"sort"
 )
 
 const (
@@ -115,7 +116,6 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	} else if !obj.HasLabel(approvedLabel) {
 		obj.AddLabel(approvedLabel)
 	}
-
 }
 
 func notificationNeedsUpdate(obj *github.MungeObject) bool {
@@ -159,14 +159,18 @@ func createMessage(obj *github.MungeObject, filesNeedApproval sets.String) {
 			approvedFiles.Insert(*fn.Filename)
 		}
 	}
-	context := bytes.Buffer{}
-	context.WriteString("The following files have been approved:\n")
+	approvedList := approvedFiles.List()
+	sort.Strings(approvedList)
+	needsApprovalList := filesNeedApproval.List()
+	sort.Strings(needsApprovalList)
+
+	context := bytes.NewBufferString("The following files have been approved:\n")
 	fileFmt := "\t%s"
-	for _, fn := range approvedFiles {
+	for _, fn := range approvedList {
 		context.WriteString(fmt.Sprintf(fileFmt, fn))
 	}
 	context.WriteString("The following files REQUIRE approval:\n")
-	for _, fn := range filesNeedApproval {
+	for _, fn := range needsApprovalList {
 		context.WriteString(fmt.Sprintf(fileFmt, fn))
 	}
 	mungeComment.Notification{approvalNotificationName, "", context.String()}.Post(obj)
