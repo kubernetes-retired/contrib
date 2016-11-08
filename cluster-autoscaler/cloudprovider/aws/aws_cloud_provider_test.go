@@ -85,10 +85,10 @@ func (a *AutoScalingMock) TerminateInstanceInAutoScalingGroup(input *autoscaling
 }
 
 var testAwsManager = &AwsManager{
-	asgs:       make([]*asgInformation, 0),
-	service:    &AutoScalingMock{},
-	ec2Service: &EC2Mock{},
-	asgCache:   make(map[AwsRef]*Asg),
+	asgs:               make([]*asgInformation, 0),
+	autoscalingService: &AutoScalingMock{},
+	ec2Service:         &EC2Mock{},
+	asgCache:           make(map[AwsRef]*Asg),
 }
 
 func testProvider(t *testing.T, m *AwsManager) *AwsCloudProvider {
@@ -197,9 +197,9 @@ func TestTargetSize(t *testing.T) {
 func TestIncreaseSize(t *testing.T) {
 	service := &AutoScalingMock{}
 	m := &AwsManager{
-		asgs:     make([]*asgInformation, 0),
-		service:  service,
-		asgCache: make(map[AwsRef]*Asg),
+		asgs:               make([]*asgInformation, 0),
+		autoscalingService: service,
+		asgCache:           make(map[AwsRef]*Asg),
 	}
 	provider := testProvider(t, m)
 	err := provider.addNodeGroup("1:5:test-asg")
@@ -243,9 +243,9 @@ func TestBelongs(t *testing.T) {
 func TestDeleteNodes(t *testing.T) {
 	service := &AutoScalingMock{}
 	m := &AwsManager{
-		asgs:     make([]*asgInformation, 0),
-		service:  service,
-		asgCache: make(map[AwsRef]*Asg),
+		asgs:               make([]*asgInformation, 0),
+		autoscalingService: service,
+		asgCache:           make(map[AwsRef]*Asg),
 	}
 
 	service.On("TerminateInstanceInAutoScalingGroup", &autoscaling.TerminateInstanceInAutoScalingGroupInput{

@@ -44,13 +44,13 @@ type asgInformation struct {
 	basename string
 }
 
-type autoScaling interface {
+type autoscalingIFace interface {
 	DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error)
 	SetDesiredCapacity(input *autoscaling.SetDesiredCapacityInput) (*autoscaling.SetDesiredCapacityOutput, error)
 	TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error)
 }
 
-type kubeEC2 interface {
+type ec2Iface interface {
 	DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
 }
 
@@ -59,9 +59,9 @@ type AwsManager struct {
 	asgs     []*asgInformation
 	asgCache map[AwsRef]*Asg
 
-	service    autoScaling
-	ec2Service kubeEC2
-	cacheMutex sync.Mutex
+	autoscalingService autoscalingIFace
+	ec2Service         ec2Iface
+	cacheMutex         sync.Mutex
 }
 
 // CreateAwsManager constructs awsManager object.
@@ -77,10 +77,10 @@ func CreateAwsManager(configReader io.Reader) (*AwsManager, error) {
 	service := autoscaling.New(session)
 	ec2Service := ec2.New(session)
 	manager := &AwsManager{
-		asgs:       make([]*asgInformation, 0),
-		service:    service,
-		ec2Service: ec2Service,
-		asgCache:   make(map[AwsRef]*Asg),
+		asgs:               make([]*asgInformation, 0),
+		autoscalingService: service,
+		ec2Service:         ec2Service,
+		asgCache:           make(map[AwsRef]*Asg),
 	}
 
 	go wait.Forever(func() {
@@ -110,7 +110,7 @@ func (m *AwsManager) GetAsgSize(asgConfig *Asg) (int64, error) {
 		AutoScalingGroupNames: []*string{aws.String(asgConfig.Name)},
 		MaxRecords:            aws.Int64(1),
 	}
-	groups, err := m.service.DescribeAutoScalingGroups(params)
+	groups, err := m.autoscalingService.DescribeAutoScalingGroups(params)
 
 	if err != nil {
 		return -1, err
@@ -130,7 +130,7 @@ func (m *AwsManager) SetAsgSize(asg *Asg, size int64) error {
 		DesiredCapacity:      aws.Int64(size),
 		HonorCooldown:        aws.Bool(false),
 	}
-	_, err := m.service.SetDesiredCapacity(params)
+	_, err := m.autoscalingService.SetDesiredCapacity(params)
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (m *AwsManager) DeleteInstances(instances []*AwsRef) error {
 			InstanceId:                     aws.String(instance.Name),
 			ShouldDecrementDesiredCapacity: aws.Bool(true),
 		}
-		resp, err := m.service.TerminateInstanceInAutoScalingGroup(params)
+		resp, err := m.autoscalingService.TerminateInstanceInAutoScalingGroup(params)
 		if err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func (m *AwsManager) regenerateCache() error {
 			AutoScalingGroupNames: []*string{aws.String(asg.config.Name)},
 			MaxRecords:            aws.Int64(1),
 		}
-		groups, err := m.service.DescribeAutoScalingGroups(params)
+		groups, err := m.autoscalingService.DescribeAutoScalingGroups(params)
 		if err != nil {
 			glog.V(4).Infof("Failed ASG info request for %s: %v", asg.config.Name, err)
 			return err

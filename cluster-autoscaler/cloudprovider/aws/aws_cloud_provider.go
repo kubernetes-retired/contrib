@@ -276,7 +276,7 @@ func (aws *AwsCloudProvider) autoDiscoverASG(nl *kube_api.NodeList) error {
 	request := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: names,
 	}
-	asgGroups, err := aws.awsManager.service.DescribeAutoScalingGroups(request)
+	asgGroups, err := aws.awsManager.autoscalingService.DescribeAutoScalingGroups(request)
 	if err != nil {
 		glog.Errorf("Error describing autoscaling groups: %s\n", err)
 		return err
