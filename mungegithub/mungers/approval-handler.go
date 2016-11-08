@@ -107,6 +107,10 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	if needsApproval.Len() > 0 {
 		glog.Infof("Canceling the approve label because these files %v have no valid approvers", needsApproval)
 		//if latest notification stale, update it
+		oldNotif := findObscoleteNotification(obj)
+		if oldNotif != nil {
+			obj.DeleteComment(oldNotif)
+		}
 		if notificationNeedsUpdate(obj) {
 			createMessage(obj, needsApproval)
 		}
@@ -118,6 +122,30 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 }
 
+func findObscoleteNotification(obj *github.MungeObject) *goGithub.IssueComment {
+	notificationMatcher := mungeComment.MungerNotificationName(approvalNotificationName)
+	comments, err := obj.ListComments()
+	if err != nil {
+		glog.Error("Could not list the comments for PR%v", obj.Issue.Number)
+		return nil
+	}
+	latestNotification := mungeComment.FilterComments(comments, notificationMatcher).GetLast()
+	latestApprove := mungeComment.FilterComments(comments, mungeComment.CommandName("approve")).GetLast()
+	if latestNotification == nil || latestApprove == nil {
+		return nil
+	}
+	if latestApprove.CreatedAt.After(*latestNotification.CreatedAt) {
+		// there has been approval since last notification
+		return latestNotification
+	}
+	lastModified := obj.LastModifiedTime()
+	if latestApprove.CreatedAt.Before(*lastModified) {
+		// a commit has changed since the last approval
+		return latestNotification
+	}
+	return nil
+
+}
 func notificationNeedsUpdate(obj *github.MungeObject) bool {
 	notificationMatcher := mungeComment.MungerNotificationName(approvalNotificationName)
 	comments, err := obj.ListComments()
@@ -131,17 +159,15 @@ func notificationNeedsUpdate(obj *github.MungeObject) bool {
 		return true
 	}
 	if latestApprove == nil {
-		// there was already a bot notitication and nothing has changed since
+		// there was already a bot notification and nothing has changed since
 		return false
 	}
 	if latestApprove.CreatedAt.After(*latestNotification.CreatedAt) {
 		// there has been approval since last notification
-		obj.DeleteComment(latestNotification)
 		return true
 	}
 	lastModified := obj.LastModifiedTime()
 	if latestApprove.CreatedAt.Before(*lastModified) {
-		obj.DeleteComment(latestNotification)
 		return true
 	}
 	return false
