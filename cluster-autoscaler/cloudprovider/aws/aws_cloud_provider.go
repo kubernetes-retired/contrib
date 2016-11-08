@@ -47,8 +47,28 @@ func BuildAwsCloudProvider(awsManager *AwsManager, specs []string) (*AwsCloudPro
 		asgs:       make([]*Asg, 0),
 	}
 
-	if len(specs) == 0 {
-		err := aws.autoDiscoverASG()
+	if specs != nil && len(specs) == 0 {
+
+		client, err := unversioned.NewInCluster()
+		if err != nil {
+			glog.Errorf("err: %s\n", err)
+			return nil, err
+		}
+
+		selector, err := labels.Parse("master!=true")
+		if err != nil {
+			glog.Errorf("err: %s\n", err)
+			return nil, err
+		}
+
+		listAll := kube_api.ListOptions{LabelSelector: selector, FieldSelector: fields.Everything()}
+		nl, err := client.Nodes().List(listAll)
+		if err != nil {
+			glog.Errorf("err: %s\n", err)
+			return nil, err
+		}
+
+		err = aws.autoDiscoverASG(nl)
 		if err != nil {
 			return nil, err
 		}
@@ -215,28 +235,9 @@ func (asg *Asg) Debug() string {
 	return fmt.Sprintf("%s (%d:%d)", asg.Id(), asg.MinSize(), asg.MaxSize())
 }
 
-func (aws *AwsCloudProvider) autoDiscoverASG() error {
+func (aws *AwsCloudProvider) autoDiscoverASG(nl *kube_api.NodeList) error {
 	var nodesList []*string
-	client, err := unversioned.NewInCluster()
-	if err != nil {
-		glog.Errorf("err: %s\n", err)
 
-		return nil
-	}
-
-	selector, err := labels.Parse("master!=true")
-	if err != nil {
-		glog.Errorf("err: %s\n", err)
-		return err
-	}
-
-	listAll := kube_api.ListOptions{LabelSelector: selector, FieldSelector: fields.Everything()}
-	nl, err := client.Nodes().List(listAll)
-	if err != nil {
-		glog.Errorf("err: %s\n", err)
-
-		return err
-	}
 	for _, n := range nl.Items {
 		glog.V(4).Infof("Considering node: %s", &n.Name)
 		nodesList = append(nodesList, &n.Name)

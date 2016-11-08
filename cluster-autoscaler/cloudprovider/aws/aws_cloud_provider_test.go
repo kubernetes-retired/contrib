@@ -42,8 +42,8 @@ func (e *EC2Mock) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.Des
 				{
 					InstanceId: aws.String("test-instance-id"),
 					Tags: []*ec2.Tag{{
-						Key:   aws.String("asg"),
-						Value: aws.String("name_of_asg"),
+						Key:   aws.String("aws:autoscaling:groupNam"),
+						Value: aws.String("test-asg"),
 					},
 					},
 				},
@@ -57,7 +57,10 @@ func (a *AutoScalingMock) DescribeAutoScalingGroups(i *autoscaling.DescribeAutoS
 	return &autoscaling.DescribeAutoScalingGroupsOutput{
 		AutoScalingGroups: []*autoscaling.Group{
 			{
-				DesiredCapacity: aws.Int64(2),
+				AutoScalingGroupName: aws.String("test-asg"),
+				MinSize:              aws.Int64(1),
+				MaxSize:              aws.Int64(10),
+				DesiredCapacity:      aws.Int64(2),
 				Instances: []*autoscaling.Instance{
 					{
 						InstanceId: aws.String("test-instance-id"),
@@ -303,5 +306,21 @@ func TestBuildAsg(t *testing.T) {
 
 func TestAutoDiscoverASG(t *testing.T) {
 	provider := testProvider(t, testAwsManager)
-	provider.autoDiscoverASG()
+
+	nl := kube_api.NodeList{
+
+		Items: []kube_api.Node{
+			{
+				Spec: kube_api.NodeSpec{
+					ProviderID: "aws:///us-east-1a/test-instance-id",
+				},
+			},
+		},
+	}
+
+	err := provider.autoDiscoverASG(&nl)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, provider.asgs[0].MinSize())
+	assert.Equal(t, 10, provider.asgs[0].MaxSize())
+	assert.Equal(t, "test-asg", provider.asgs[0].Name)
 }
