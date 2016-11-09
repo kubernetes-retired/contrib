@@ -187,12 +187,7 @@ func buildLocation(input interface{}) string {
 		return slash
 	}
 
-	path := location.Path
-	if len(location.Redirect.Target) > 0 && location.Redirect.Target != path {
-		return fmt.Sprintf("~* %s", path)
-	}
-
-	return path
+	return location.Path
 }
 
 func buildAuthLocation(input interface{}) string {
