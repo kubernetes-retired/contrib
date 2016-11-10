@@ -1322,8 +1322,9 @@ func (obj *MungeObject) GetPR() (*github.PullRequest, error) {
 	obj.pr = pr
 	return pr, nil
 }
+
 // UnassignPR will unassign `prNum` to the `owner` where the `owner` is asignee's github login
-func (obj *MungeObject) UnassignPR(owner... string) error {
+func (obj *MungeObject) UnassignPR(owner ...string) error {
 	if len(owner) == 0 {
 		return nil
 	}
