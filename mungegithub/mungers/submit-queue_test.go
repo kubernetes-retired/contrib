@@ -91,7 +91,7 @@ func LGTMApprovedIssue() *github.Issue {
 }
 
 func DoNotMergeIssue() *github.Issue {
-	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, doNotMergeLabel}, true)
+	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, approvedLabel, doNotMergeLabel}, true)
 }
 
 func DoNotMergeMilestoneIssue() *github.Issue {
@@ -112,7 +112,7 @@ func NoLGTMIssue() *github.Issue {
 }
 
 func NoRetestIssue() *github.Issue {
-	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, retestNotRequiredLabel}, true)
+	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, approvedLabel, retestNotRequiredLabel}, true)
 }
 
 func OldLGTMEvents() []*github.IssueEvent {
