@@ -133,6 +133,7 @@ func (h *AssignUnassignHandler) assignOrRemove(obj *github.MungeObject, comments
 		}
 		if isAssignee(obj.Issue.Assignees, cmt.User) {
 			glog.Infof("Removing %v as an reviewer for PR#%v", *cmt.User.Login, obj.Issue.Number)
+			obj.DeleteComment(cmt)
 			toUnassign.Insert(*cmt.User.Login)
 		}
 	}
