@@ -16,5 +16,5 @@ nuage_kubeconfig: "{{ nuage_mon_config_dir }}/nuage.kubeconfig"
 nuage_node_kubeconfig: "{{ nuage_node_plugin_dir }}/nuage.kubeconfig"
 
 k8s_ca_crt: "{{ kube_ca_crt | default('/etc/kubernetes/pki/ca.pem') }}"
-k8s_api_port: "{{ kube_master_api_port | default('443')}}"
+k8s_api_port: "{{ kube_master_api_port | default('6443')}}"
 cert_validity_period: 3650
