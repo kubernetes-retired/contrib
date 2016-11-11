@@ -528,6 +528,15 @@ func (config *Config) GetObject(num int) (*MungeObject, error) {
 	return obj, nil
 }
 
+// GetFilesForPR gets the files associated with a particular PR
+func (config *Config) GetFilesForPR(num int) ([]*github.CommitFile, error) {
+	files, _, err := config.client.PullRequests.ListFiles(config.Org, config.Project, num, &github.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
 // NewIssue will file a new issue and return an object for it.
 // If "owner" is not empty, the issue will be assigned to "owner".
 func (config *Config) NewIssue(title, body string, labels []string, owner string) (*MungeObject, error) {
