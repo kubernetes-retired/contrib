@@ -19,12 +19,14 @@ package mungers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
+	github_api "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -38,8 +40,9 @@ func init() {
 type FileToPRMap struct {
 	config *github.Config
 	// protects the map
-	lock     sync.Mutex
-	fileToPR map[string]int
+	lock         sync.Mutex
+	fileToPR     map[string][]int
+	nextFileToPR map[string][]int
 }
 
 // Munge implements the Munger interface
@@ -59,35 +62,40 @@ func (f *FileToPRMap) Munge(obj *github.MungeObject) {
 		glog.Errorf("unexpected error getting files: %v", err)
 		return
 	}
+	f.updateFiles(files, *pr.Number)
+}
+
+func (f *FileToPRMap) updateFiles(files []*github_api.CommitFile, prNumber int) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	for _, file := range files {
 		if file.Filename != nil {
-			f.fileToPR[*file.Filename] = *pr.Number
+			f.nextFileToPR[*file.Filename] = append(f.nextFileToPR[*file.Filename], prNumber)
 		}
 	}
 }
 
 // AddFlags implements the Munger interface
-func (b *FileToPRMap) AddFlags(cmd *cobra.Command, config *github.Config) {
+func (f *FileToPRMap) AddFlags(cmd *cobra.Command, config *github.Config) {
 }
 
 // Name implements the Munger interface
-func (b *FileToPRMap) Name() string {
+func (f *FileToPRMap) Name() string {
 	return "bulk-lgtm"
 }
 
 // RequiredFeatures implements the Munger interface
-func (b *FileToPRMap) RequiredFeatures() []string {
+func (f *FileToPRMap) RequiredFeatures() []string {
 	return nil
 }
 
 // Initialize implements the Munger interface
-func (b *FileToPRMap) Initialize(config *github.Config, features *features.Features) error {
-	b.config = config
+func (f *FileToPRMap) Initialize(config *github.Config, features *features.Features) error {
+	f.config = config
+	f.nextFileToPR = map[string][]int{}
 
 	if len(config.Address) > 0 {
-		http.HandleFunc("/file2pr/prs", b.ServePRs)
+		http.HandleFunc("/file2pr/prs", f.ServePRs)
 
 		go http.ListenAndServe(config.Address, nil)
 	}
@@ -96,15 +104,28 @@ func (b *FileToPRMap) Initialize(config *github.Config, features *features.Featu
 }
 
 // EachLoop implements the Munger interface
-func (b *FileToPRMap) EachLoop() error {
+func (f *FileToPRMap) EachLoop() error {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	f.fileToPR = f.nextFileToPR
+	f.nextFileToPR = map[string][]int{}
+
 	return nil
 }
 
 // ServePRs serves the current PR list over HTTP
-func (b *FileToPRMap) ServePRs(res http.ResponseWriter, req *http.Request) {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-	data, err := json.Marshal(b.fileToPR)
+func (f *FileToPRMap) ServePRs(res http.ResponseWriter, req *http.Request) {
+	prefix := req.URL.Query().Get("prefix")
+	f.lock.Lock()
+	defer f.lock.Unlock()
+	output := map[string][]int{}
+	for file, prNum := range f.fileToPR {
+		if strings.HasPrefix(file, prefix) {
+			output[file] = append(output[file], prNum...)
+		}
+	}
+	data, err := json.Marshal(output)
 	if err != nil {
 		res.Header().Set("Content-type", "text/plain")
 		res.WriteHeader(http.StatusInternalServerError)
