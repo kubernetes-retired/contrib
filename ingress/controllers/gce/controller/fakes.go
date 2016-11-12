@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,18 +17,19 @@ limitations under the License.
 package controller
 
 import (
+	"k8s.io/kubernetes/pkg/util/intstr"
+	"k8s.io/kubernetes/pkg/util/sets"
+
 	"k8s.io/contrib/ingress/controllers/gce/backends"
+	"k8s.io/contrib/ingress/controllers/gce/firewalls"
 	"k8s.io/contrib/ingress/controllers/gce/healthchecks"
 	"k8s.io/contrib/ingress/controllers/gce/instances"
 	"k8s.io/contrib/ingress/controllers/gce/loadbalancers"
 	"k8s.io/contrib/ingress/controllers/gce/utils"
-	"k8s.io/kubernetes/pkg/util/intstr"
-	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 const (
 	testDefaultBeNodePort = int64(3000)
-	defaultZone           = "default-zone"
 )
 
 var testBackendPort = intstr.IntOrString{Type: intstr.Int, IntVal: 80}
@@ -47,9 +48,14 @@ func NewFakeClusterManager(clusterName string) *fakeClusterManager {
 	fakeBackends := backends.NewFakeBackendServices()
 	fakeIGs := instances.NewFakeInstanceGroups(sets.NewString())
 	fakeHCs := healthchecks.NewFakeHealthChecks()
-	namer := utils.Namer{clusterName}
-	nodePool := instances.NewNodePool(fakeIGs, defaultZone)
+	namer := utils.NewNamer(clusterName)
+
+	nodePool := instances.NewNodePool(fakeIGs)
+	nodePool.Init(&instances.FakeZoneLister{[]string{"zone-a"}})
+
 	healthChecker := healthchecks.NewHealthChecker(fakeHCs, "/", namer)
+	healthChecker.Init(&healthchecks.FakeHealthCheckGetter{nil})
+
 	backendPool := backends.NewBackendPool(
 		fakeBackends,
 		healthChecker, nodePool, namer, []int64{}, false)
@@ -60,11 +66,13 @@ func NewFakeClusterManager(clusterName string) *fakeClusterManager {
 		testDefaultBeNodePort,
 		namer,
 	)
+	frPool := firewalls.NewFirewallPool(firewalls.NewFakeFirewallRules(), namer)
 	cm := &ClusterManager{
 		ClusterNamer: namer,
 		instancePool: nodePool,
 		backendPool:  backendPool,
 		l7Pool:       l7Pool,
+		firewallPool: frPool,
 	}
 	return &fakeClusterManager{cm, fakeLbs, fakeBackends, fakeIGs}
 }

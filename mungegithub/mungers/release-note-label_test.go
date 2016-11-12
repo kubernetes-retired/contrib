@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,33 +49,39 @@ func TestReleaseNoteLabel(t *testing.T) {
 	}{
 		{
 			name:        "LGTM with release-note",
-			issue:       github_test.Issue(botName, 1, []string{"lgtm", releaseNote}, true),
-			mustHave:    []string{"lgtm", releaseNote},
+			issue:       github_test.Issue(botName, 1, []string{lgtmLabel, releaseNote}, true),
+			mustHave:    []string{lgtmLabel, releaseNote},
 			mustNotHave: []string{releaseNoteLabelNeeded},
 		},
 		{
 			name:        "LGTM with release-note-none",
-			issue:       github_test.Issue(botName, 1, []string{"lgtm", releaseNoteNone}, true),
-			mustHave:    []string{"lgtm", releaseNoteNone},
+			issue:       github_test.Issue(botName, 1, []string{lgtmLabel, releaseNoteNone}, true),
+			mustHave:    []string{lgtmLabel, releaseNoteNone},
 			mustNotHave: []string{releaseNoteLabelNeeded},
 		},
 		{
 			name:        "LGTM with release-note-action-required",
-			issue:       github_test.Issue(botName, 1, []string{"lgtm", releaseNoteActionRequired}, true),
-			mustHave:    []string{"lgtm", releaseNoteActionRequired},
+			issue:       github_test.Issue(botName, 1, []string{lgtmLabel, releaseNoteActionRequired}, true),
+			mustHave:    []string{lgtmLabel, releaseNoteActionRequired},
+			mustNotHave: []string{releaseNoteLabelNeeded},
+		},
+		{
+			name:        "LGTM with release-note-experimental",
+			issue:       github_test.Issue(botName, 1, []string{lgtmLabel, releaseNoteExperimental}, true),
+			mustHave:    []string{lgtmLabel, releaseNoteExperimental},
 			mustNotHave: []string{releaseNoteLabelNeeded},
 		},
 		{
 			name:        "LGTM with release-note-label-needed",
-			issue:       github_test.Issue(botName, 1, []string{"lgtm", releaseNoteLabelNeeded}, true),
-			mustHave:    []string{releaseNoteLabelNeeded},
-			mustNotHave: []string{"lgtm"},
+			issue:       github_test.Issue(botName, 1, []string{lgtmLabel, releaseNoteLabelNeeded}, true),
+			mustHave:    []string{lgtmLabel, doNotMergeLabel, releaseNoteLabelNeeded},
+			mustNotHave: []string{},
 		},
 		{
 			name:        "LGTM only",
-			issue:       github_test.Issue(botName, 1, []string{"lgtm"}, true),
-			mustHave:    []string{releaseNoteLabelNeeded},
-			mustNotHave: []string{"lgtm"},
+			issue:       github_test.Issue(botName, 1, []string{lgtmLabel}, true),
+			mustHave:    []string{lgtmLabel, doNotMergeLabel, releaseNoteLabelNeeded},
+			mustNotHave: []string{},
 		},
 		{
 			name:     "No labels",
@@ -98,6 +104,11 @@ func TestReleaseNoteLabel(t *testing.T) {
 			mustHave: []string{releaseNoteActionRequired},
 		},
 		{
+			name:     "release-note-experimental",
+			issue:    github_test.Issue(botName, 1, []string{releaseNoteExperimental}, true),
+			mustHave: []string{releaseNoteExperimental},
+		},
+		{
 			name:        "release-note and release-note-label-needed",
 			issue:       github_test.Issue(botName, 1, []string{releaseNote, releaseNoteLabelNeeded}, true),
 			mustHave:    []string{releaseNote},
@@ -116,6 +127,12 @@ func TestReleaseNoteLabel(t *testing.T) {
 			mustNotHave: []string{releaseNoteLabelNeeded},
 		},
 		{
+			name:        "release-note-experimental and release-note-label-needed",
+			issue:       github_test.Issue(botName, 1, []string{releaseNoteExperimental, releaseNoteLabelNeeded}, true),
+			mustHave:    []string{releaseNoteExperimental},
+			mustNotHave: []string{releaseNoteLabelNeeded},
+		},
+		{
 			name:        "do not add needs label when parent PR has releaseNote label",
 			branch:      "release-1.2",
 			issue:       github_test.Issue(botName, 1, []string{}, true),
@@ -126,10 +143,10 @@ func TestReleaseNoteLabel(t *testing.T) {
 		{
 			name:        "do not touch LGTM on non-master when parent PR has releaseNote label",
 			branch:      "release-1.2",
-			issue:       github_test.Issue(botName, 1, []string{"lgtm"}, true),
+			issue:       github_test.Issue(botName, 1, []string{lgtmLabel}, true),
 			body:        "Cherry pick of #2 on release-1.2.",
 			secondIssue: github_test.Issue(botName, 2, []string{releaseNote}, true),
-			mustHave:    []string{"lgtm"},
+			mustHave:    []string{lgtmLabel},
 			mustNotHave: []string{releaseNoteLabelNeeded},
 		},
 		{
@@ -141,13 +158,13 @@ func TestReleaseNoteLabel(t *testing.T) {
 			mustHave:    []string{releaseNoteLabelNeeded},
 		},
 		{
-			name:        "remove LGTM on non-master when parent PR has releaseNote label",
+			name:        "add doNotMergeLabel on non-master when parent PR has releaseNoteNone label",
 			branch:      "release-1.2",
-			issue:       github_test.Issue(botName, 1, []string{"lgtm"}, true),
+			issue:       github_test.Issue(botName, 1, []string{lgtmLabel}, true),
 			body:        "Cherry pick of #2 on release-1.2.",
 			secondIssue: github_test.Issue(botName, 2, []string{releaseNoteNone}, true),
-			mustHave:    []string{releaseNoteLabelNeeded},
-			mustNotHave: []string{"lgtm"},
+			mustHave:    []string{doNotMergeLabel, releaseNoteLabelNeeded},
+			mustNotHave: []string{},
 		},
 	}
 	for testNum, test := range tests {
@@ -156,7 +173,7 @@ func TestReleaseNoteLabel(t *testing.T) {
 			pr.Base.Ref = &test.branch
 		}
 		test.issue.Body = &test.body
-		client, server, mux := github_test.InitServer(t, test.issue, pr, nil, nil, nil)
+		client, server, mux := github_test.InitServer(t, test.issue, pr, nil, nil, nil, nil, nil)
 		path := fmt.Sprintf("/repos/o/r/issue/%s/labels", *test.issue.Number)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -217,4 +234,47 @@ func TestReleaseNoteLabel(t *testing.T) {
 		}
 		server.Close()
 	}
+}
+
+func TestGetReleaseNote(t *testing.T) {
+
+	tests := []struct {
+		body                        string
+		expectedReleaseNote         string
+		expectedReleaseNoteVariable string
+	}{
+		{
+			body:                        "**Release note**: <other unimportant information> ```NONE```",
+			expectedReleaseNote:         "NONE",
+			expectedReleaseNoteVariable: releaseNoteNone,
+		},
+		{
+			body:                        "**Release note**: <other unimportant information> ```This is a description of my feature```",
+			expectedReleaseNote:         "This is a description of my feature",
+			expectedReleaseNoteVariable: releaseNote,
+		},
+		{
+			body:                        "**Release note**: <other unimportant information> ```This is my feature. There is some action required for my feature.```",
+			expectedReleaseNote:         "This is my feature. There is some action required for my feature.",
+			expectedReleaseNoteVariable: releaseNoteActionRequired,
+		},
+		{
+			body:                        "",
+			expectedReleaseNote:         "",
+			expectedReleaseNoteVariable: releaseNoteLabelNeeded,
+		},
+	}
+
+	for testNum, test := range tests {
+		calculatedReleaseNote := getReleaseNote(test.body)
+		if test.expectedReleaseNote != calculatedReleaseNote {
+			t.Errorf("Test %v: Expected %v as the release note, got %v", testNum, test.expectedReleaseNote, calculatedReleaseNote)
+		}
+		calculatedLabel := chooseLabel(calculatedReleaseNote)
+		if test.expectedReleaseNoteVariable != calculatedLabel {
+			t.Errorf("%v, %v", calculatedReleaseNote, chooseLabel(calculatedReleaseNote))
+			t.Errorf("Test %v: Expected %v as the release note label, got %v", testNum, test.expectedReleaseNoteVariable, calculatedLabel)
+		}
+	}
+
 }

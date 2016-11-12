@@ -1,11 +1,12 @@
-sudo: false
+sudo: required
+
+services:
+  - docker
 
 language: go
 
 matrix:
   include:
-    - go: 1.4.3
-    - go: 1.5.3
     - go: 1.6
 
 install:
@@ -16,7 +17,7 @@ install:
   - hack/for-go-proj.sh install
 
 script:
-  - hack/verify-all.sh
+  - hack/verify-all.sh -v
   - hack/for-go-proj.sh test
 
 notifications:

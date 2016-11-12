@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,45 +24,65 @@ import (
 	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
 const (
-	staleGreenCIHours = 48
+	staleGreenCIHours = 96
+	greenMsgFormat    = `@` + jenkinsBotName + ` test this
+
+Tests are more than %d hours old. Re-running tests.`
 )
 
-// StaleGreenCI will remove the LGTM flag from an PR which has been
-// updated since the reviewer added LGTM
-type StaleGreenCI struct{}
+var greenMsgBody = fmt.Sprintf(greenMsgFormat, staleGreenCIHours)
+
+// StaleGreenCI will re-run passed tests for LGTM PRs if they are more than
+// 96 hours old.
+type StaleGreenCI struct {
+	getRetestContexts func() []string
+	features          *features.Features
+}
 
 func init() {
-	RegisterMungerOrDie(StaleGreenCI{})
+	s := &StaleGreenCI{}
+	RegisterMungerOrDie(s)
+	RegisterStaleComments(s)
 }
 
 // Name is the name usable in --pr-mungers
-func (StaleGreenCI) Name() string { return "stale-green-ci" }
+func (s *StaleGreenCI) Name() string { return "stale-green-ci" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (StaleGreenCI) RequiredFeatures() []string { return []string{} }
+func (s *StaleGreenCI) RequiredFeatures() []string { return []string{features.TestOptionsFeature} }
 
 // Initialize will initialize the munger
-func (StaleGreenCI) Initialize(config *github.Config, features *features.Features) error { return nil }
+func (s *StaleGreenCI) Initialize(config *github.Config, features *features.Features) error {
+	s.features = features
+	s.getRetestContexts = func() []string {
+		return s.features.TestOptions.RequiredRetestContexts
+	}
+	return nil
+}
 
 // EachLoop is called at the start of every munge loop
-func (StaleGreenCI) EachLoop() error { return nil }
+func (s *StaleGreenCI) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
-func (StaleGreenCI) AddFlags(cmd *cobra.Command, config *github.Config) {}
+func (s *StaleGreenCI) AddFlags(cmd *cobra.Command, config *github.Config) {}
 
 // Munge is the workhorse the will actually make updates to the PR
-func (StaleGreenCI) Munge(obj *github.MungeObject) {
-	requiredContexts := []string{jenkinsUnitContext, jenkinsE2EContext}
-
+func (s *StaleGreenCI) Munge(obj *github.MungeObject) {
+	requiredContexts := s.getRetestContexts()
 	if !obj.IsPR() {
 		return
 	}
 
-	if !obj.HasLabels([]string{"lgtm"}) {
+	if !obj.HasLabel(lgtmLabel) {
+		return
+	}
+
+	if obj.HasLabel(retestNotRequiredLabel) || obj.HasLabel(retestNotRequiredDocsOnlyLabel) {
 		return
 	}
 
@@ -81,11 +101,7 @@ func (StaleGreenCI) Munge(obj *github.MungeObject) {
 			return
 		}
 		if time.Since(*statusTime) > staleGreenCIHours*time.Hour {
-			msgFormat := `@k8s-bot test this
-
-Tests are more than %d hours old. Re-running tests.`
-			msg := fmt.Sprintf(msgFormat, staleGreenCIHours)
-			obj.WriteComment(msg)
+			obj.WriteComment(greenMsgBody)
 			err := obj.WaitForPending(requiredContexts)
 			if err != nil {
 				glog.Errorf("Failed waiting for PR to start testing: %v", err)
@@ -93,4 +109,45 @@ Tests are more than %d hours old. Re-running tests.`
 			return
 		}
 	}
+}
+
+func (s *StaleGreenCI) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
+	if *comment.Body != greenMsgBody {
+		return false
+	}
+	stale := commentBeforeLastCI(obj, comment, s.features.TestOptions.RequiredRetestContexts)
+	if stale {
+		glog.V(6).Infof("Found stale StaleGreenCI comment")
+	}
+	return stale
+}
+
+// StaleComments returns a slice of stale comments
+func (s *StaleGreenCI) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, s.isStaleComment)
+}
+
+func commentBeforeLastCI(obj *github.MungeObject, comment *githubapi.IssueComment, requiredContexts []string) bool {
+	if !obj.IsStatusSuccess(requiredContexts) {
+		return false
+	}
+	if comment.CreatedAt == nil {
+		return false
+	}
+	commentTime := *comment.CreatedAt
+
+	for _, context := range requiredContexts {
+		statusTimeP := obj.GetStatusTime(context)
+		if statusTimeP == nil {
+			return false
+		}
+		statusTime := statusTimeP.Add(30 * time.Minute)
+		if commentTime.After(statusTime) {
+			return false
+		}
+	}
+	return true
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"k8s.io/contrib/mungegithub/features"
@@ -27,20 +28,31 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
+)
+
+const (
+	labelSizePrefix = "size/"
+)
+
+var (
+	sizeRE = regexp.MustCompile("Labelling this PR as " + labelSizePrefix + "(XS|S|M|L|XL|XXL)")
 )
 
 // SizeMunger will update a label on a PR based on how many lines are changed.
 // It will exclude certain files in it's calculations based on the config
 // file provided in --generated-files-config
 type SizeMunger struct {
-	generatedFilesFile string
+	GeneratedFilesFile string
 	genFiles           *sets.String
 	genPrefixes        *[]string
 }
 
 func init() {
-	RegisterMungerOrDie(&SizeMunger{})
+	s := &SizeMunger{}
+	RegisterMungerOrDie(s)
+	RegisterStaleComments(s)
 }
 
 // Name is the name usable in --pr-mungers
@@ -50,17 +62,19 @@ func (SizeMunger) Name() string { return "size" }
 func (SizeMunger) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
-func (SizeMunger) Initialize(config *github.Config, features *features.Features) error { return nil }
+func (s *SizeMunger) Initialize(config *github.Config, features *features.Features) error {
+	glog.Infof("generated-files-config: %#v\n", s.GeneratedFilesFile)
+
+	return nil
+}
 
 // EachLoop is called at the start of every munge loop
 func (SizeMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (s *SizeMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringVar(&s.generatedFilesFile, "generated-files-config", "generated-files.txt", "file containing the pathname to label mappings")
+	cmd.Flags().StringVar(&s.GeneratedFilesFile, "generated-files-config", "", "file containing the pathname to label mappings")
 }
-
-const labelSizePrefix = "size/"
 
 // getGeneratedFiles returns a list of all automatically generated files in the repo. These include
 // docs, deep_copy, and conversions
@@ -79,7 +93,7 @@ func (s *SizeMunger) getGeneratedFiles(obj *github.MungeObject) {
 	s.genFiles = &files
 	s.genPrefixes = &prefixes
 
-	file := s.generatedFilesFile
+	file := s.GeneratedFilesFile
 	if len(file) == 0 {
 		glog.Infof("No --generated-files-config= supplied, applying no labels")
 		return
@@ -137,45 +151,37 @@ func (s *SizeMunger) Munge(obj *github.MungeObject) {
 	}
 
 	issue := obj.Issue
-	pr, err := obj.GetPR()
-	if err != nil {
-		return
-	}
 
 	s.getGeneratedFiles(obj)
 	genFiles := *s.genFiles
 	genPrefixes := *s.genPrefixes
 
-	if pr.Additions == nil {
-		glog.Warningf("PR %d has nil Additions", *pr.Number)
-		return
-	}
-	adds := *pr.Additions
-	if pr.Deletions == nil {
-		glog.Warningf("PR %d has nil Deletions", *pr.Number)
-		return
-	}
-	dels := *pr.Deletions
-
-	commits, err := obj.GetCommits()
+	files, err := obj.ListFiles()
 	if err != nil {
 		return
 	}
 
-	for _, c := range commits {
-		for _, f := range c.Files {
-			for _, p := range genPrefixes {
-				if strings.HasPrefix(*f.Filename, p) {
-					adds = adds - *f.Additions
-					dels = dels - *f.Deletions
-					continue
-				}
+	adds := 0
+	dels := 0
+	for _, f := range files {
+		skip := false
+		for _, p := range genPrefixes {
+			if strings.HasPrefix(*f.Filename, p) {
+				skip = true
+				break
 			}
-			if genFiles.Has(*f.Filename) {
-				adds = adds - *f.Additions
-				dels = dels - *f.Deletions
-				continue
-			}
+		}
+		if skip {
+			continue
+		}
+		if genFiles.Has(*f.Filename) {
+			continue
+		}
+		if f.Additions != nil {
+			adds += *f.Additions
+		}
+		if f.Deletions != nil {
+			dels += *f.Deletions
 		}
 	}
 
@@ -228,4 +234,20 @@ func calculateSize(adds, dels int) string {
 		return sizeXL
 	}
 	return sizeXXL
+}
+
+func (s *SizeMunger) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
+	stale := sizeRE.MatchString(*comment.Body)
+	if stale {
+		glog.V(6).Infof("Found stale SizeMunger comment")
+	}
+	return stale
+}
+
+// StaleComments returns a slice of stale comments
+func (s *SizeMunger) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, s.isStaleComment)
 }

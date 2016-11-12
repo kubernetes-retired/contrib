@@ -12,18 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/google_containers/ubuntu-slim:0.1
+FROM gcr.io/google_containers/ubuntu-slim:0.5
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  bash \
-  curl \
-  ipvsadm \
-  iproute2 \
-  keepalived \
+  libssl1.0.0 \
+  libnl-3-200 \
+  libnl-route-3-200 \
+  libnl-genl-3-200 \
+  iptables \
+  libnfnetlink0 \
+  libiptcdata0 \
+  libipset3 \
+  libipset-dev \
+  libsnmp30 \
   kmod \
-  psmisc && \
-  rm -rf /var/cache/apk/* /etc/keepalived/keepalived.conf
-  
-COPY kube-keepalived-vip /kube-keepalived-vip
+  ca-certificates \
+  iproute2 \
+  ipvsadm \
+  bash && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+ADD keepalived.tar.gz /
+
+RUN mkdir -p /etc/keepalived && \
+  ln -s /keepalived/sbin/keepalived /usr/sbin && \
+  ln -s /keepalived/bin/genhash /usr/sbin
+
+COPY kube-keepalived-vip /
+COPY keepalived.tmpl /
+COPY keepalived.conf /etc/keepalived
 
 ENTRYPOINT ["/kube-keepalived-vip"]

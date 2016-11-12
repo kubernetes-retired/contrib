@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,6 +33,6 @@ run "kubectl --namespace=demos create -f $(relative daemon.yaml) --validate=fals
 run "kubectl --namespace=demos describe ds daemons-demo"
 
 tmux new -d -s my-session \
-    "sleep 10; $(dirname ${BASH_SOURCE})/split1_color_nodes.sh" \; \
-    split-window -h -d "$(dirname $BASH_SOURCE)/split1_hit_svc.sh" \; \
+    "$(dirname ${BASH_SOURCE})/split1_color_nodes.sh" \; \
+    split-window -v -d "$(dirname $BASH_SOURCE)/split1_hit_svc.sh" \; \
     attach \;

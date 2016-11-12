@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,19 +22,28 @@ import (
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 
+	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
 const (
 	labelUnapprovedPicksName = "label-unapproved-picks"
+	labelUnapprovedFormat    = "This PR is not for the master branch but does not have the `%s` label. Adding the `%s` label."
 )
 
-// LabelUnapprovedPicks will remove the LGTM flag from an PR which has been
-// updated since the reviewer added LGTM
+var (
+	labelUnapprovedBody = fmt.Sprintf(labelUnapprovedFormat, cpApprovedLabel, doNotMergeLabel)
+)
+
+// LabelUnapprovedPicks will add `do-not-merge` to PRs against a release branch which
+// do not have `cherrypick-approved`.
 type LabelUnapprovedPicks struct{}
 
 func init() {
-	RegisterMungerOrDie(LabelUnapprovedPicks{})
+	l := LabelUnapprovedPicks{}
+	RegisterMungerOrDie(l)
+	RegisterStaleComments(l)
 }
 
 // Name is the name usable in --pr-mungers
@@ -74,6 +83,24 @@ func (LabelUnapprovedPicks) Munge(obj *github.MungeObject) {
 
 	obj.AddLabel(doNotMergeLabel)
 
-	msg := fmt.Sprintf("This PR is not for the master branch but does not have the `%s` label. Adding the `%s` label.", cpApprovedLabel, doNotMergeLabel)
-	obj.WriteComment(msg)
+	obj.WriteComment(labelUnapprovedBody)
+}
+
+func (LabelUnapprovedPicks) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
+	if *comment.Body != labelUnapprovedBody {
+		return false
+	}
+	stale := obj.HasLabel(cpApprovedLabel)
+	if stale {
+		glog.V(6).Infof("Found stale LabelUnapprovedPicks comment")
+	}
+	return stale
+}
+
+// StaleComments returns a list of stale comments
+func (l LabelUnapprovedPicks) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, l.isStaleComment)
 }

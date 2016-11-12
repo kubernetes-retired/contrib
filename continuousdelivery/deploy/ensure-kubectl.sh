@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 # used to install kubectl inside the build environment plus other tools these scripts leverage.
 # uncomment for troubleshooting if required
-# set -xv
+#set -x
 
 PKG_MANAGER=$( command -v yum || command -v apt-get ) || echo "Neither yum nor apt-get found"
 
@@ -49,11 +49,11 @@ if [ ! -e ~/.kube ]; then
 fi
 
 if [ ! -e ~/.kube/kubectl ]; then
-    wget https://storage.googleapis.com/kubernetes-release/release/v1.0.6/bin/linux/amd64/kubectl -O ~/.kube/kubectl
+    wget https://storage.googleapis.com/kubernetes-release/release/v1.2.2/bin/linux/amd64/kubectl -O ~/.kube/kubectl
     chmod +x ~/.kube/kubectl
 fi
 
-if md5sum -c - <<<"${KUBECHECKSUM} `ls ~/.kube/config`"; then 
+if (echo "${KUBECHECKSUM} `ls ~/.kube/config`" | md5sum -c -); then 
   echo kubeconfig checksum matches;
 else 
   wget ${KUBEURL} -O ~/.kube/config;

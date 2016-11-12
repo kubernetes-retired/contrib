@@ -34,7 +34,7 @@ Of course, if you don't want to push the images, just run `make` or `make contai
 
 ```sh
 $ make server
-$ ./exechealthz -cmd "ls /tmp/test"
+$ ./exechealthz --cmd "ls /tmp/test"
 $ curl http://localhost:8080/healthz
 Healthz probe error: Result of last exec: ls: cannot access /tmp/test: No such file or directory
 , at 2015-07-08 17:59:45.698036238 -0700 PDT, error exit status 2
@@ -42,6 +42,14 @@ $ touch /tmp/test
 $ curl http://localhost:8080/healthz
 ok
 ```
+
+### Commands for running healthz server on multiple URLs and commands:
+
+```
+$ ./exechealthz --cmd="ls /tmp/test1" --url="/healthz1" --cmd="ls /tmp/test2" --url="/healthz2"
+```
+The `--url` flag indicates the path healthz server needs to serve on.
+Notes: Number of commands and URLs have to be the same (if more than one). URL need to start with "/". URLs and cmds match up based on their orders (first URL to first cmd).
 
 ### Run the healthz server in a docker container:
 
@@ -115,6 +123,21 @@ Create a pod.json with 2 containers, one of which is the healthz probe and the o
 pod.json example file in this directory does exactly that. If you create the pod the same way you created the pod in the previous
 example, the kubelet on the node will periodically perform a health check similar to what you did manually and restart the container
 when it fails. Explore [liveness probes](../../examples/liveness/README.md).
+
+## Debugging
+
+You can run exechealthz locally, to poke and prod at it:
+```console
+$ go build exechealthz.go
+$ ./exechealthz -cmd="nslookup google.com > /dev/null" -period=10ms
+```
+
+The container exposes pprof handlers on the same port it exposes /healthz (8080 by default). You can get runtime stats as [documented here](https://golang.org/pkg/net/http/pprof/), i.e curl the various pprof handlers:
+```console
+$ curl http://localhost:8080/debug/pprof/
+$ http://localhost:8080/debug/pprof/goroutine?debug=1
+$ http://localhost:8080/debug/pprof/heap?debug=1
+```
 
 ## Limitations:
 * Doesn't handle sigterm, which means docker stop on this container can take longer than it needs to.

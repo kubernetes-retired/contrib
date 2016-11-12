@@ -2,9 +2,9 @@
     "name": "json-lint-express",
     "preferGlobal": true,
     "version": "0.0.1",
-    "author": "<me@concur.com>",
+    "author": "<danw@concur.com>",
     "description": "a hello world nodejs app.",
-    "license": "MIT",
+    "license": "Apache License, Version 2.0",
     "engines": {
         "node": ">=0.10"
     },

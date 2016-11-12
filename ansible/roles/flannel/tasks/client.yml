@@ -1,4 +1,6 @@
 ---
+# Install Flannel.
+
 - name: Force to use github-release when packages are not available
   set_fact:
     flannel_source_type: "github-release"
@@ -11,12 +13,16 @@
         state: latest
   when: not is_atomic and flannel_source_type != "github-release"
 
+- set_fact: 
+    flannel_use_upstart: false
+
+- set_fact:
+    flannel_use_upstart: true
+  when:  "{{ ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15 }}"
+
 - name: Install Flannel with github release
   include: github-release.yml
   when: flannel_source_type == "github-release"
-
-- set_fact:
-    flannel_use_upstart: ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
 
 - name: Set Flannel config file directory
   set_fact:

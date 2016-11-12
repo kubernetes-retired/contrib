@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,6 +49,9 @@ const (
 
 	// A single target proxy/urlmap/forwarding rule is created per loadbalancer.
 	// Tagged with the namespace/name of the Ingress.
+	// TODO: Move the namer to its own package out of utils and move the prefix
+	// with it. Currently the construction of the loadbalancer resources names
+	// are split between the namer and the loadbalancers package.
 	targetProxyPrefix         = "k8s-tp"
 	targetHTTPSProxyPrefix    = "k8s-tps"
 	sslCertPrefix             = "k8s-ssl"
@@ -67,7 +70,7 @@ type L7s struct {
 	glbcDefaultBackend     *compute.BackendService
 	defaultBackendPool     backends.BackendPool
 	defaultBackendNodePort int64
-	namer                  utils.Namer
+	namer                  *utils.Namer
 }
 
 // NewLoadBalancerPool returns a new loadbalancer pool.
@@ -80,7 +83,7 @@ type L7s struct {
 func NewLoadBalancerPool(
 	cloud LoadBalancers,
 	defaultBackendPool backends.BackendPool,
-	defaultBackendNodePort int64, namer utils.Namer) LoadBalancerPool {
+	defaultBackendNodePort int64, namer *utils.Namer) LoadBalancerPool {
 	return &L7s{cloud, storage.NewInMemoryPool(), nil, defaultBackendPool, defaultBackendNodePort, namer}
 }
 
@@ -275,11 +278,16 @@ type L7 struct {
 	// sslCert is the ssl cert associated with the targetHTTPSProxy.
 	// TODO: Make this a custom type that contains crt+key
 	sslCert *compute.SslCertificate
+	// oldSSLCert is the certificate that used to be hooked up to the
+	// targetHTTPSProxy. We can't update a cert in place, so we need
+	// to create - update - delete and storing the old cert in a field
+	// prevents leakage if there's a failure along the way.
+	oldSSLCert *compute.SslCertificate
 	// glbcDefaultBacked is the backend to use if no path rules match.
 	// TODO: Expose this to users.
 	glbcDefaultBackend *compute.BackendService
 	// namer is used to compute names of the various sub-components of an L7.
-	namer utils.Namer
+	namer *utils.Namer
 }
 
 func (l *L7) checkUrlMap(backend *compute.BackendService) (err error) {
@@ -329,23 +337,67 @@ func (l *L7) checkProxy() (err error) {
 	return nil
 }
 
+func (l *L7) deleteOldSSLCert() (err error) {
+	if l.oldSSLCert == nil || l.sslCert == nil || l.oldSSLCert.Name == l.sslCert.Name {
+		return nil
+	}
+	glog.Infof("Cleaning up old SSL Certificate %v, current name %v", l.oldSSLCert.Name, l.sslCert.Name)
+	if err := l.cloud.DeleteSslCertificate(l.oldSSLCert.Name); err != nil {
+		if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+			return err
+		}
+	}
+	l.oldSSLCert = nil
+	return nil
+}
+
 func (l *L7) checkSSLCert() (err error) {
 	// TODO: Currently, GCE only supports a single certificate per static IP
 	// so we don't need to bother with disambiguation. Naming the cert after
 	// the loadbalancer is a simplification.
-	certName := l.namer.Truncate(fmt.Sprintf("%v-%v", sslCertPrefix, l.Name))
+
+	ingCert := l.runtimeInfo.TLS.Cert
+	ingKey := l.runtimeInfo.TLS.Key
+
+	// The name of the cert for this lb flip-flops between these 2 on
+	// every certificate update. We don't append the index at the end so we're
+	// sure it isn't truncated.
+	// TODO: Clean this code up into a ring buffer.
+	primaryCertName := l.namer.Truncate(fmt.Sprintf("%v-%v", sslCertPrefix, l.Name))
+	secondaryCertName := l.namer.Truncate(fmt.Sprintf("%v-%d-%v", sslCertPrefix, 1, l.Name))
+	certName := primaryCertName
+	if l.sslCert != nil {
+		certName = l.sslCert.Name
+	}
 	cert, _ := l.cloud.GetSslCertificate(certName)
-	if cert == nil {
+
+	// PrivateKey is write only, so compare certs alone. We're assuming that
+	// no one will change just the key. We can remember the key and compare,
+	// but a bug could end up leaking it, which feels worse.
+	if cert == nil || ingCert != cert.Certificate {
+
+		certChanged := cert != nil && (ingCert != cert.Certificate)
+		if certChanged {
+			if certName == primaryCertName {
+				certName = secondaryCertName
+			} else {
+				certName = primaryCertName
+			}
+		}
+
 		glog.Infof("Creating new sslCertificates %v for %v", l.Name, certName)
 		cert, err = l.cloud.CreateSslCertificate(&compute.SslCertificate{
 			Name:        certName,
-			Certificate: l.runtimeInfo.TLS.Cert,
-			PrivateKey:  l.runtimeInfo.TLS.Key,
+			Certificate: ingCert,
+			PrivateKey:  ingKey,
 		})
 		if err != nil {
 			return err
 		}
+		// Save the current cert for cleanup after we update the target proxy.
+		l.oldSSLCert = l.sslCert
 	}
+
 	l.sslCert = cert
 	return nil
 }
@@ -534,6 +586,7 @@ func (l *L7) edgeHop() error {
 		}
 	}
 	if l.runtimeInfo.TLS != nil {
+		glog.V(3).Infof("Edge hopping https for %v", l.Name)
 		if err := l.edgeHopHttps(); err != nil {
 			return err
 		}
@@ -559,6 +612,9 @@ func (l *L7) edgeHopHttps() error {
 		return err
 	}
 	if err := l.checkHttpsForwardingRule(); err != nil {
+		return err
+	}
+	if err := l.deleteOldSSLCert(); err != nil {
 		return err
 	}
 	return nil
@@ -815,4 +871,14 @@ func GetLBAnnotations(l7 *L7, existing map[string]string, backendPool backends.B
 	// TODO: We really want to know *when* a backend flipped states.
 	existing[fmt.Sprintf("%v/backends", utils.K8sAnnotationPrefix)] = jsonBackendState
 	return existing
+}
+
+// GCEResourceName retrieves the name of the gce resource created for this
+// Ingress, of the given resource type, by inspecting the map of ingress
+// annotations.
+func GCEResourceName(ingAnnotations map[string]string, resourceName string) string {
+	// Even though this function is trivial, it exists to keep the annotation
+	// parsing logic in a single location.
+	resourceName, _ = ingAnnotations[fmt.Sprintf("%v/%v", utils.K8sAnnotationPrefix, resourceName)]
+	return resourceName
 }

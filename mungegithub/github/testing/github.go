@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,6 +39,18 @@ func intPtr(val int) *int          { return &val }
 func boolPtr(val bool) *bool       { return &val }
 
 func timePtr(val time.Time) *time.Time { return &val }
+
+// Comment is a helper to create a valid-ish comment for testing
+func Comment(id int, login string, createdAt time.Time, body string) *github.IssueComment {
+	return &github.IssueComment{
+		ID:        &id,
+		Body:      &body,
+		CreatedAt: &createdAt,
+		User: &github.User{
+			Login: &login,
+		},
+	}
+}
 
 // PullRequest returns a filled out github.PullRequest
 func PullRequest(user string, merged, mergeDetermined, mergeable bool) *github.PullRequest {
@@ -92,6 +104,27 @@ func Issue(user string, number int, labels []string, isPR bool) *github.Issue {
 	return issue
 }
 
+// MultiIssueEvents packages up events for when you have multiple issues in the
+// test server.
+func MultiIssueEvents(issueToEvents map[int][]LabelTime, eventName string) (out []*github.IssueEvent) {
+	for issueNum, events := range issueToEvents {
+		for _, l := range events {
+			out = append(out, &github.IssueEvent{
+				Issue: &github.Issue{Number: intPtr(issueNum)},
+				Event: stringPtr(eventName),
+				Label: &github.Label{
+					Name: stringPtr(l.Label),
+				},
+				CreatedAt: timePtr(time.Unix(l.Time, 0)),
+				Actor: &github.User{
+					Login: stringPtr(l.User),
+				},
+			})
+		}
+	}
+	return out
+}
+
 // LabelTime is a struct which can be used to call Events()
 // It expresses what label the event should be about and what time
 // the event took place.
@@ -103,11 +136,11 @@ type LabelTime struct {
 
 // Events returns a slice of github.IssueEvent where the specified labels were
 // applied at the specified times
-func Events(labels []LabelTime) []github.IssueEvent {
+func Events(labels []LabelTime) []*github.IssueEvent {
 	// putting it in a map means ordering is non-deterministic
-	eMap := map[int]github.IssueEvent{}
+	eMap := map[int]*github.IssueEvent{}
 	for i, l := range labels {
-		event := github.IssueEvent{
+		event := &github.IssueEvent{
 			Event: stringPtr("labeled"),
 			Label: &github.Label{
 				Name: stringPtr(l.Label),
@@ -119,7 +152,7 @@ func Events(labels []LabelTime) []github.IssueEvent {
 		}
 		eMap[i] = event
 	}
-	out := []github.IssueEvent{}
+	out := []*github.IssueEvent{}
 	for _, e := range eMap {
 		out = append(out, e)
 	}
@@ -136,21 +169,33 @@ func Commit(sha string, t int64) *github.Commit {
 	}
 }
 
+// IssueComment returns a filled out github.IssueComment which happened at time.Unix(t, 0).
+func IssueComment(id int, body string, user string, createAt int64) *github.IssueComment {
+	return &github.IssueComment{
+		ID:   intPtr(id),
+		Body: stringPtr(body),
+		User: &github.User{
+			Login: stringPtr(user),
+		},
+		CreatedAt: timePtr(time.Unix(createAt, 0)),
+	}
+}
+
 // Commits returns an array of github.RepositoryCommits. The first commit
 // will have happened at time `time`, the next commit `time + 1`, etc
-func Commits(num int, time int64) []github.RepositoryCommit {
+func Commits(num int, time int64) []*github.RepositoryCommit {
 	// putting it in a map means ordering is non-deterministic
-	cMap := map[int]github.RepositoryCommit{}
+	cMap := map[int]*github.RepositoryCommit{}
 	for i := 0; i < num; i++ {
 		sha := fmt.Sprintf("mysha%d", i)
 		t := time + int64(i)
-		commit := github.RepositoryCommit{
+		commit := &github.RepositoryCommit{
 			SHA:    stringPtr(sha),
 			Commit: Commit(sha, t),
 		}
 		cMap[i] = commit
 	}
-	out := []github.RepositoryCommit{}
+	out := []*github.RepositoryCommit{}
 	for _, c := range cMap {
 		out = append(out, c)
 	}
@@ -235,15 +280,19 @@ func setMux(t *testing.T, mux *http.ServeMux, path string, thing interface{}) {
 			data, err = json.Marshal(thing)
 		case *github.PullRequest:
 			data, err = json.Marshal(thing)
-		case []github.IssueEvent:
+		case []*github.IssueEvent:
 			data, err = json.Marshal(thing)
-		case []github.RepositoryCommit:
+		case []*github.RepositoryCommit:
 			data, err = json.Marshal(thing)
 		case github.RepositoryCommit:
 			data, err = json.Marshal(thing)
+		case *github.RepositoryCommit:
+			data, err = json.Marshal(thing)
 		case *github.CombinedStatus:
 			data, err = json.Marshal(thing)
-		case []github.User:
+		case []*github.CommitFile:
+			data, err = json.Marshal(thing)
+		case []*github.User:
 			data, err = json.Marshal(thing)
 		}
 		if err != nil {
@@ -257,10 +306,23 @@ func setMux(t *testing.T, mux *http.ServeMux, path string, thing interface{}) {
 	})
 }
 
+func splitEventsByIssueNumber(defaultNumber int, events []*github.IssueEvent) map[int][]*github.IssueEvent {
+	// The defaultNumber nonsense is to support tests that were assuming only one issue.
+	out := map[int][]*github.IssueEvent{}
+	for _, e := range events {
+		n := defaultNumber
+		if e.Issue != nil && e.Issue.Number != nil {
+			n = *e.Issue.Number
+		}
+		out[n] = append(out[n], e)
+	}
+	return out
+}
+
 // InitServer will return a github.Client which will talk to httptest.Server,
 // to retrieve information from the http.ServeMux. If an issue, pr, events, or
 // commits are supplied it will repond with those on o/r/
-func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, events []github.IssueEvent, commits []github.RepositoryCommit, status *github.CombinedStatus) (*github.Client, *httptest.Server, *http.ServeMux) {
+func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, events []*github.IssueEvent, commits []*github.RepositoryCommit, status *github.CombinedStatus, masterCommit *github.RepositoryCommit, files []*github.CommitFile) (*github.Client, *httptest.Server, *http.ServeMux) {
 	// test server
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
@@ -292,8 +354,10 @@ func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, event
 		setMux(t, mux, path, pr)
 	}
 	if events != nil {
-		path := fmt.Sprintf("/repos/o/r/issues/%d/events", issueNum)
-		setMux(t, mux, path, events)
+		for issueNum, events := range splitEventsByIssueNumber(issueNum, events) {
+			path := fmt.Sprintf("/repos/o/r/issues/%d/events", issueNum)
+			setMux(t, mux, path, events)
+		}
 	}
 	if commits != nil {
 		path := fmt.Sprintf("/repos/o/r/pulls/%d/commits", issueNum)
@@ -302,6 +366,14 @@ func InitServer(t *testing.T, issue *github.Issue, pr *github.PullRequest, event
 			path := fmt.Sprintf("/repos/o/r/commits/%s", *c.SHA)
 			setMux(t, mux, path, c)
 		}
+	}
+	if masterCommit != nil {
+		path := "/repos/o/r/commits/master"
+		setMux(t, mux, path, masterCommit)
+	}
+	if files != nil {
+		path := fmt.Sprintf("/repos/o/r/pulls/%d/files", issueNum)
+		setMux(t, mux, path, files)
 	}
 	if status != nil {
 		path := fmt.Sprintf("/repos/o/r/commits/%s/status", sha)

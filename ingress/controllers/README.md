@@ -57,7 +57,7 @@ for {
 ```
 
 All this is doing is:
-* List Ingresses, optionally you can watch for changes (see [GCE Ingress controller](https://github.com/kubernetes/contrib/blob/master/ingress/controllers/gce/controller.go) for an example)
+* List Ingresses, optionally you can watch for changes (see [GCE Ingress controller](https://github.com/kubernetes/contrib/blob/master/ingress/controllers/gce/controller/controller.go) for an example)
 * Executes the template and writes results to `/etc/nginx/nginx.conf`
 * Reloads nginx
 
@@ -130,6 +130,6 @@ This section can also bear the title "why anyone would want to write an Ingress 
 * L4 and L7 loadbalancing (it currently only supports HTTP rules)
 * Ingress Rules that are not limited to a simple path regex (eg: redirect rules, session persistence)
 
-And is expected to be the way one configures a "frontends" that handle user traffic for a Kubernetes cluster.
+And is expected to be the way one configures "frontends" that handle user traffic for a Kubernetes cluster.
 
 

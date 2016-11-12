@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"time"
 
 	compute "google.golang.org/api/compute/v1"
+	"k8s.io/contrib/ingress/controllers/gce/firewalls"
 	"k8s.io/contrib/ingress/controllers/gce/loadbalancers"
 	"k8s.io/contrib/ingress/controllers/gce/utils"
 	"k8s.io/kubernetes/pkg/api"
@@ -30,8 +31,9 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/intstr"
+	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/uuid"
 )
 
 const testClusterName = "testcluster"
@@ -53,6 +55,7 @@ func newLoadBalancerController(t *testing.T, cm *fakeClusterManager, masterUrl s
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	lb.hasSynced = func() bool { return true }
 	return lb
 }
 
@@ -91,7 +94,7 @@ func toIngressRules(hostRules map[string]utils.FakeIngressRuleValueMap) []extens
 func newIngress(hostRules map[string]utils.FakeIngressRuleValueMap) *extensions.Ingress {
 	return &extensions.Ingress{
 		ObjectMeta: api.ObjectMeta{
-			Name:      fmt.Sprintf("%v", util.NewUUID()),
+			Name:      fmt.Sprintf("%v", uuid.NewUUID()),
 			Namespace: api.NamespaceNone,
 		},
 		Spec: extensions.IngressSpec{
@@ -182,11 +185,11 @@ func addIngress(lbc *LoadBalancerController, ing *extensions.Ingress, pm *nodePo
 			var svcPort api.ServicePort
 			switch path.Backend.ServicePort.Type {
 			case intstr.Int:
-				svcPort = api.ServicePort{Port: int(path.Backend.ServicePort.IntVal)}
+				svcPort = api.ServicePort{Port: path.Backend.ServicePort.IntVal}
 			default:
 				svcPort = api.ServicePort{Name: path.Backend.ServicePort.StrVal}
 			}
-			svcPort.NodePort = pm.getNodePort(path.Backend.ServiceName)
+			svcPort.NodePort = int32(pm.getNodePort(path.Backend.ServiceName))
 			svc.Spec.Ports = []api.ServicePort{svcPort}
 			lbc.svcLister.Store.Add(svc)
 		}
@@ -234,10 +237,26 @@ func TestLbCreateDelete(t *testing.T) {
 	// we shouldn't pull shared backends out from existing loadbalancers.
 	unexpected := []int{pm.portMap["foo2svc"], pm.portMap["bar2svc"]}
 	expected := []int{pm.portMap["foo1svc"], pm.portMap["bar1svc"]}
+	firewallPorts := sets.NewString()
+	firewallName := pm.namer.FrName(pm.namer.FrSuffix())
+
+	if firewallRule, err := cm.firewallPool.(*firewalls.FirewallRules).GetFirewall(firewallName); err != nil {
+		t.Fatalf("%v", err)
+	} else {
+		if len(firewallRule.Allowed) != 1 {
+			t.Fatalf("Expected a single firewall rule")
+		}
+		for _, p := range firewallRule.Allowed[0].Ports {
+			firewallPorts.Insert(p)
+		}
+	}
 
 	for _, port := range expected {
 		if _, err := cm.backendPool.Get(int64(port)); err != nil {
 			t.Fatalf("%v", err)
+		}
+		if !firewallPorts.Has(fmt.Sprintf("%v", port)) {
+			t.Fatalf("Expected a firewall rule for port %v", port)
 		}
 	}
 	for _, port := range unexpected {
@@ -262,6 +281,9 @@ func TestLbCreateDelete(t *testing.T) {
 		if l7, err := cm.l7Pool.Get(lbName); err == nil {
 			t.Fatalf("Found unexpected loadbalandcer %+v: %v", l7, err)
 		}
+	}
+	if firewallRule, err := cm.firewallPool.(*firewalls.FirewallRules).GetFirewall(firewallName); err == nil {
+		t.Fatalf("Found unexpected firewall rule %v", firewallRule)
 	}
 }
 

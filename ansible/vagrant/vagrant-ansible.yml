@@ -1,12 +1,12 @@
 - hosts: all
   gather_facts: false
-  sudo: yes
+  become: yes
   roles:
     # On CoreOS pre-ansible installs Python required to run further ansible steps.
     - pre-ansible
 
 - hosts: all
-  sudo: yes
+  become: yes
   vars:
     - public_iface: "{{ ansible_default_ipv4.interface }}"
   tasks:

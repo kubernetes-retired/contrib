@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,45 +28,49 @@ import (
 type HealthChecks struct {
 	cloud       SingleHealthCheck
 	defaultPath string
-	namer       utils.Namer
+	namer       *utils.Namer
+	healthCheckGetter
 }
 
 // NewHealthChecker creates a new health checker.
 // cloud: the cloud object implementing SingleHealthCheck.
 // defaultHealthCheckPath: is the HTTP path to use for health checks.
-func NewHealthChecker(cloud SingleHealthCheck, defaultHealthCheckPath string, namer utils.Namer) HealthChecker {
-	return &HealthChecks{cloud, defaultHealthCheckPath, namer}
+func NewHealthChecker(cloud SingleHealthCheck, defaultHealthCheckPath string, namer *utils.Namer) HealthChecker {
+	return &HealthChecks{cloud, defaultHealthCheckPath, namer, nil}
+}
+
+// Init initializes the health checker.
+func (h *HealthChecks) Init(r healthCheckGetter) {
+	h.healthCheckGetter = r
 }
 
 // Add adds a healthcheck if one for the same port doesn't already exist.
-func (h *HealthChecks) Add(port int64, path string) error {
-	hc, _ := h.Get(port)
-	name := h.namer.BeName(port)
-	if path == "" {
-		path = h.defaultPath
+func (h *HealthChecks) Add(port int64) error {
+	wantHC, err := h.healthCheckGetter.HealthCheck(port)
+	if err != nil {
+		return err
 	}
+	if wantHC.RequestPath == "" {
+		wantHC.RequestPath = h.defaultPath
+	}
+	name := h.namer.BeName(port)
+	wantHC.Name = name
+	hc, _ := h.Get(port)
 	if hc == nil {
+		// TODO: check if the readiness probe has changed and update the
+		// health check.
 		glog.Infof("Creating health check %v", name)
-		if err := h.cloud.CreateHttpHealthCheck(
-			&compute.HttpHealthCheck{
-				Name:        name,
-				Port:        port,
-				RequestPath: path,
-				Description: "Default kubernetes L7 Loadbalancing health check.",
-				// How often to health check.
-				CheckIntervalSec: 1,
-				// How long to wait before claiming failure of a health check.
-				TimeoutSec: 1,
-				// Number of healthchecks to pass for a vm to be deemed healthy.
-				HealthyThreshold: 1,
-				// Number of healthchecks to fail before the vm is deemed unhealthy.
-				UnhealthyThreshold: 10,
-			}); err != nil {
+		if err := h.cloud.CreateHttpHealthCheck(wantHC); err != nil {
 			return err
 		}
+	} else if wantHC.RequestPath != hc.RequestPath {
+		// TODO: reconcile health checks, and compare headers interval etc.
+		// Currently Ingress doesn't expose all the health check params
+		// natively, so some users prefer to hand modify the check.
+		glog.Infof("Unexpected request path on health check %v, has %v want %v, NOT reconciling",
+			name, hc.RequestPath, wantHC.RequestPath)
 	} else {
-		// TODO: Does this health check need an edge hop?
-		glog.Infof("Health check %v already exists", hc.Name)
+		glog.Infof("Health check %v already exists and has the expected path %v", hc.Name, hc.RequestPath)
 	}
 	return nil
 }

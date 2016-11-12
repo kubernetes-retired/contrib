@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
 
 . $(dirname ${BASH_SOURCE})/../util.sh
 
-desc "Color each node, slowly"
-run "for NODE in \$(kubectl get nodes -o name | grep -v master | cut -f2 -d/); do \\
-    kubectl label node \$NODE color=red; \\
-    kubectl --namespace=demos describe ds daemons-demo; \\
-    sleep 10; \\
-done"
+run "" # wait for first input
+desc "Color each node"
+for NODE in $(kubectl get nodes -o name | grep -v master | cut -f2 -d/); do
+    run "kubectl label node $NODE color=red"
+    run "kubectl --namespace=demos describe ds daemons-demo | head"
+done

@@ -16,8 +16,6 @@
     did_install: true
   when: ansible_distribution == "CentOS"
 
-
-
 - include: pkgMgrInstallers/fedora-install.yml
   when: ansible_distribution == "Fedora" and ansible_distribution_release != "Rawhide" and not is_atomic
 
@@ -25,8 +23,6 @@
   set_fact:
     did_install: true
   when: ansible_distribution == "Fedora" and ansible_distribution_release != "Rawhide"
-
-
 
 - include: pkgMgrInstallers/generic-install.yml
   when: not did_install

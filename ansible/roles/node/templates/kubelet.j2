@@ -21,5 +21,8 @@ KUBELET_API_SERVER="--api-servers=https://{{ groups['masters'][0] }}:{{ kube_mas
 {% if networking == "opencontrail" -%}
 {{ kubelet_options.append('--network-plugin=opencontrail')|default('', true) -}}
 {% endif -%}
+{% if networking == "contiv" -%}
+{{ kubelet_options.append('--network-plugin=cni')|default('', true) -}}
+{% endif -%}
 
 KUBELET_ARGS="--kubeconfig={{ kube_config_dir }}/kubelet.kubeconfig --config={{ kube_manifest_dir }} {{ kubelet_options|join(' ') }}"

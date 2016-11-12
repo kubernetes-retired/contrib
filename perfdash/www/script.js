@@ -19,103 +19,104 @@ var app = angular.module('PerfDashApp', ['ngMaterial', 'chart.js']);
 var PerfDashApp = function(http, scope) {
     this.http = http;
     this.scope = scope;
-    this.selectedResource = "pods";
-    this.selectedVerb = "GET";
     this.testNames = [];
-    this.series = [ "Perc99", "Perc90", "Perc50" ];
-    this.allData = null;
+    this.onClick = this.onClickInternal_.bind(this);
 };
 
-PerfDashApp.prototype.onClick = function(data) {
+PerfDashApp.prototype.onClickInternal_ = function(data) {
     console.log(data);
-    window.location = "http://kubekins.dls.corp.google.com/job/kubernetes-e2e-gce-scalability/" + data[0].label + "/"
+    // Get location
+    // TODO(random-liu): Make the URL configurable if we want to support more
+    // buckets in the future.
+    window.location = "http://kubekins.dls.corp.google.com/job/" + this.job + "/" + data[0].label + "/";
 };
 
 // Fetch data from the server and update the data to display
 PerfDashApp.prototype.refresh = function() {
     this.http.get("api")
-    .success(function(data) {
-        this.testNames = Object.keys(data);
-        this.testName = this.testNames[0];
-        this.allData = data;
-        this.testNameChanged();
-        this.labels = this.getLabels();
-        this.resources = this.getResources();
-        this.verbs = this.getVerbs();
-    }.bind(this))
+            .success(function(data) {
+                this.testNames = Object.keys(data);
+                this.testName = this.testNames[0];
+                this.allData = data;
+                this.testNameChanged();
+            }.bind(this))
     .error(function(data) {
-        console.log("error fetching api");
+        console.log("error fetching result");
         console.log(data);
     });
 };
 
-// Update the data to graph, using the selected resource and verb
-PerfDashApp.prototype.resourceChanged = function() {
-    this.seriesData = [
-        this.getStream(this.getData(this.selectedResource, this.selectedVerb), "Perc99"),
-        this.getStream(this.getData(this.selectedResource, this.selectedVerb), "Perc90"),
-        this.getStream(this.getData(this.selectedResource, this.selectedVerb), "Perc50")
-    ];
+// Update the data to graph, using selected labels
+PerfDashApp.prototype.labelChanged = function() {
+    this.seriesData = [];
+    this.series = [];
+    result = this.getData(this.selectedLabels);
+    if (result.length <= 0) {
+        return;
+    }
+    // All the unit should be the same
+    this.options= {scaleLabel: "<%=value%> "+result[0].unit};
+    angular.forEach(result[0].data, function(value, name) {
+        this.seriesData.push(this.getStream(result, name));
+        this.series.push(name);
+    }, this);
 };
 
 // Update the data to graph, using the selected testName
 PerfDashApp.prototype.testNameChanged = function() {
-    this.data = this.allData[this.testName];
-    this.resourceChanged();
+    this.data = this.allData[this.testName].builds;
+    this.job = this.allData[this.testName].job;
+    this.builds = this.getBuilds();
+    this.labels = this.getLabels();
+    this.labelChanged();
 };
 
-// Get the set of all resources (e.g. 'pods') in the data set
-PerfDashApp.prototype.getResources = function() {
-    var set = {};
-    angular.forEach(this.data, function(value, key) {
-        angular.forEach(value, function(v, k) {
-            set[k] = true;
-        })
-    });
-    var result = [];
-    angular.forEach(set, function(value, key) {
-        result.push(key);
-    })
-    return result;
+// Get all of the builds for the data set (e.g. build numbers)
+PerfDashApp.prototype.getBuilds = function() {
+    return Object.keys(this.data)
 };
 
-// Get the set of all verbs (e.g. 'GET') in the data set
-PerfDashApp.prototype.getVerbs = function() {
+// Get the set of all labels (e.g. 'resources', 'verbs') in the data set
+PerfDashApp.prototype.getLabels = function() {
     var set = {};
-    angular.forEach(this.data, function(value, key) {
-        angular.forEach(value, function(v, k) {
-            angular.forEach(v, function(val) {
-                set[val.verb] = true;
+    angular.forEach(this.data, function(items, build) {
+        angular.forEach(items, function(item) {
+            angular.forEach(item.labels, function(label, name) {
+                if (set[name] == undefined) {
+                    set[name] = {}
+                }
+                set[name][label] = true
             });
         });
     });
-    var result = [];
-    angular.forEach(set, function(value, key) {
-        result.push(key);
-    })
-    return result;
+
+    this.selectedLabels = {}
+    var labels = {};
+    angular.forEach(set, function(items, name) {
+        labels[name] = [];
+        angular.forEach(items, function(ignore, item) {
+            if (this.selectedLabels[name] == undefined) {
+              this.selectedLabels[name] = item;
+            }
+            labels[name].push(item)
+        }, this);
+    }, this);
+    return labels;
 };
 
-
-// Get all of the possible labels for the data set (e.g. build numbers)
-PerfDashApp.prototype.getLabels = function() {
+// Extract a time series of data for specific labels
+PerfDashApp.prototype.getData = function(labels) {
     var result = [];
-    angular.forEach(this.data, function(value, key) {
-        result.push(key);
-    })
-    return result;
-};
-
-// Extract a time series of latency data for a specific object type
-// 'object' the type of object to extract data for (e.g. 'pods')
-// 'verb' the verb to extract data for (e.g. 'GET')
-PerfDashApp.prototype.getData = function(object, verb) {
-    var result = [];
-    angular.forEach(this.data, function(value, key) {
-        var dataSet = value[object];
-        angular.forEach(dataSet, function(latency) {
-            if (latency.verb == verb) {
-                result.push(latency);
+    angular.forEach(this.data, function(items, build) {
+        angular.forEach(items, function(item) {
+            var match = true;
+            angular.forEach(labels, function(label, name) {
+                if (item.labels[name] != label) {
+                    match = false;
+                }
+            });
+            if (match) {
+                result.push(item);
             }
         });
     });
@@ -128,7 +129,7 @@ PerfDashApp.prototype.getData = function(object, verb) {
 PerfDashApp.prototype.getStream = function(data, stream) {
     var result = [];
     angular.forEach(data, function(value) {
-        result.push(value.latency[stream] / 1000000);
+        result.push(value.data[stream]);
     });
     return result;
 };
@@ -137,6 +138,6 @@ app.controller('AppCtrl', ['$scope', '$http', '$interval', function($scope, $htt
     $scope.controller = new PerfDashApp($http, $scope);
     $scope.controller.refresh();
 
-    // Refresh every 60 secs.  The data only refreshes every 10 minutes on the server
-    $interval($scope.controller.refresh.bind($scope.controller), 60000) 
+    // Refresh every 5 min.  The data only refreshes every 10 minutes on the server
+    $interval($scope.controller.refresh.bind($scope.controller), 300000)
 }]);

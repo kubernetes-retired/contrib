@@ -2,16 +2,14 @@
 - name: LOGGING | Assures {{ kube_addons_dir }}/cluster-logging dir exists
   file: path={{ kube_addons_dir }}/cluster-logging state=directory
 
-- name: LOGGING | Download logging files from Kubernetes repo
-  get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/fluentd-elasticsearch/{{ item }}
-    dest="{{ kube_addons_dir }}/cluster-logging/"
-    force=yes
-    validate_certs=False
-  environment:
-    http_proxy: "{{ http_proxy|default('') }}"
-    https_proxy: "{{ https_proxy|default('') }}"
-    no_proxy: "{{ no_proxy|default('') }}"
+- name: LOGGING | Copy logging manifests to master
+  template:
+  args:
+    src: "cluster-logging/{{ item }}.j2"
+    dest: "{{ kube_addons_dir }}/cluster-logging/{{ item }}"
+    mode: 0644
+    owner: root
+    group: root
   with_items:
     - es-controller.yaml
     - es-service.yaml

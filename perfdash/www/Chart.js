@@ -88,7 +88,7 @@
 			scaleShowLabels: true,
 
 			// Interpolated JS string - can access value
-			scaleLabel: "<%=value + 'ms'%>",
+			scaleLabel: "<%=value%>",
 
 			// Boolean - Whether the scale should stick to integers, and not show any floats even if drawing space is there
 			scaleIntegersOnly: true,
