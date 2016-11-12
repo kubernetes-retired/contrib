@@ -97,8 +97,8 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 
 	approverSet := sets.String{}
-	if obj.Issue.User.Name != nil {
-		approverSet.Insert(*obj.Issue.User.Name)
+	if obj.Issue.User.Login != nil {
+		approverSet.Insert(*obj.Issue.User.Login)
 	}
 
 	approverSet = approverSet.Union(createApproverSet(comments))
