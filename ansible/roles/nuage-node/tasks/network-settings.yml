@@ -29,9 +29,5 @@
   when: "'api-server-allow' not in iptablesrules.stdout"
   notify: save iptables rules
 
-- name: Add route for the overlay traffic
-  command: ip {{ svc_pat_tap_route_cmd }}
-  ignore_errors: yes
-
 - name: Add the static route to the route file
   lineinfile: dest={{ svc_pat_tap_route_file }} create=yes state=present line={{ svc_pat_tap_route_cmd }}
