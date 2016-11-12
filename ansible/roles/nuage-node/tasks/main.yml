@@ -46,7 +46,7 @@
   become: yes
   template: src=vsp-k8s.j2 dest={{ vsp_k8s_yaml }} owner=root mode=0644
 
-- include: iptables.yml
+- include: network-settings.yml
 
 - name: Remove existing kubelet network args
   become: yes
