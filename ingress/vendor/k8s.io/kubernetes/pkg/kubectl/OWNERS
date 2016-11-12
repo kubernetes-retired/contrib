@@ -1,7 +1,14 @@
-assignees:
-  - brendandburns
-  - deads2k
-  - janetkuo
-  - jlowdermilk
-  - pwittrock
-  - smarterclayton
+approvers:
+- brendandburns
+- deads2k
+- janetkuo
+- jlowdermilk
+- pwittrock
+- smarterclayton
+reviewers:
+- brendandburns
+- deads2k
+- janetkuo
+- jlowdermilk
+- pwittrock
+- smarterclayton

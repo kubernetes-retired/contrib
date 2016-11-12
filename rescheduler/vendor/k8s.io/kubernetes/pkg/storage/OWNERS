@@ -1,6 +1,12 @@
-assignees:
-  - lavalamp
-  - liggitt
-  - timothysc
-  - wojtek-t
-  - xiang90
+approvers:
+- lavalamp
+- liggitt
+- timothysc
+- wojtek-t
+- xiang90
+reviewers:
+- lavalamp
+- liggitt
+- timothysc
+- wojtek-t
+- xiang90

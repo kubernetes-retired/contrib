@@ -1,6 +1,12 @@
-assignees:
-  - bgrant0607
-  - erictune
-  - lavalamp
-  - smarterclayton
-  - thockin
+approvers:
+- bgrant0607
+- erictune
+- lavalamp
+- smarterclayton
+- thockin
+reviewers:
+- bgrant0607
+- erictune
+- lavalamp
+- smarterclayton
+- thockin

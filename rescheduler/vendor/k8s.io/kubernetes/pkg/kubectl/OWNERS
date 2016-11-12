@@ -1,7 +1,14 @@
-assignees:
-  - bgrant0607
-  - brendandburns
-  - deads2k
-  - janetkuo
-  - jlowdermilk
-  - smarterclayton
+approvers:
+- bgrant0607
+- brendandburns
+- deads2k
+- janetkuo
+- jlowdermilk
+- smarterclayton
+reviewers:
+- bgrant0607
+- brendandburns
+- deads2k
+- janetkuo
+- jlowdermilk
+- smarterclayton
