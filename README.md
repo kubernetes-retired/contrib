@@ -86,3 +86,9 @@ To run all go test in all projects do this:
 ```shell
 ./hack/for-go-proj.sh test
 ```
+
+## Getting PRs Merged Into Contrib
+
+In order for your PR to get merged, it must have the both `lgtm` AND `approved` labels.  When you open a PR, the k8s-merge-bot will automatically assign a reviewers from the `OWNERS` files.  Once assigned, the reviewer can then comment `/lgtm`, which will add the `lgtm` label (the reviewer can add the label directly if they have permission).
+
+Each file modified in the PR will also need to be approved by an approver from its `OWNERS` file or an approver in a parent directory's `OWNERS` file.  A file is approved happens when the approver comments `/approve`, and it is unapproved if an approver comments `/approve cancel`.  Once all files have been approved, the `approved` label will automatically be added by the k8s-merge-bot and the PR will be added to the submit-queue to be merged.
