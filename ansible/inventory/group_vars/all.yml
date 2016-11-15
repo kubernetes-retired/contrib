@@ -11,6 +11,14 @@ source_type: packageManager
 # myservice.default.svc.cluster.local
 cluster_name: cluster.local
 
+# Set if you want to access kubernetes cluster via load balancer. The installer
+# assumes that a load balancer has been preconfigured or resolves to 
+# kubenetes master
+#master_cluster_hostname: kubernetes-cluster.example.com
+
+# Port number for the load balanced master hostname.
+#master_cluster_port: 443
+
 # Account name of remote user. Ansible will use this user account to ssh into
 # the managed machines. The user must be able to use sudo without asking
 # for password unless ansible_sudo_pass is set

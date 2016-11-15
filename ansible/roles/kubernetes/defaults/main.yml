@@ -61,3 +61,7 @@ dns_domain: "{{ cluster_name }}"
 # the range specified as kube_service_addresses. This magic will actually
 # pick the 10th ip address in the kube_service_addresses range and use that.
 dns_server: "{{ kube_service_addresses|ipaddr('net')|ipaddr(10)|ipaddr('address') }}"
+
+cluster_hostname: "{{ master_cluster_hostname | default('') }}"
+
+cluster_port: "{{ master_cluster_port | default('443') }}"
