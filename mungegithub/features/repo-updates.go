@@ -257,6 +257,33 @@ func (o *RepoInfo) gitCommandDir(args []string, cmdDir string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
+// FindOwnersForPath returns the OWNERS file further down the tree for a file
+func (o *RepoInfo) FindOwnersForPath(path string, enableMdYaml bool) string {
+	d := path
+	if !enableMdYaml {
+		//if path is a directory, this will remove the leaf directory
+		d = filepath.Dir(path)
+	}
+
+	out := ""
+	for {
+		// special case the root
+		if d == "" {
+			d = "/"
+		}
+		_, ok := o.approvers[d]
+		if ok {
+			return d
+		}
+		if d == "/" {
+			break
+		}
+		d, _ = filepath.Split(d)
+		d = strings.TrimSuffix(d, "/")
+	}
+	return out
+}
+
 // peopleForPath returns a set of users who are assignees to the
 // requested file.  The path variable should be a full path to a filename
 // and not directory as the final directory will be discounted if enableMdYaml is true
@@ -289,6 +316,11 @@ func peopleForPath(path string, people map[string]sets.String, leafOnly bool, en
 		d = strings.TrimSuffix(d, "/")
 	}
 	return out
+}
+
+// GetApprovers returns the set of approvers For A Specified path
+func (o *RepoInfo) GetApprovers(somePath string) sets.String {
+	return o.approvers[somePath]
 }
 
 // LeafApprovers returns a set of users who are the closest approvers to the
