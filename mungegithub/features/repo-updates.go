@@ -257,6 +257,28 @@ func (o *RepoInfo) gitCommandDir(args []string, cmdDir string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
+// FindOwnersForPath returns the OWNERS file further down the tree for a file
+func (o *RepoInfo) FindOwnersForPath(path string) string {
+	d := path
+
+	for {
+		// special case the root
+		if d == "" {
+			d = "/"
+		}
+		_, ok := o.approvers[d]
+		if ok {
+			return d
+		}
+		if d == "/" {
+			break
+		}
+		d = filepath.Dir(d)
+		d = strings.TrimSuffix(d, "/")
+	}
+	return ""
+}
+
 // peopleForPath returns a set of users who are assignees to the
 // requested file.  The path variable should be a full path to a filename
 // and not directory as the final directory will be discounted if enableMdYaml is true
