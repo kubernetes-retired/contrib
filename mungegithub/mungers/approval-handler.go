@@ -209,7 +209,7 @@ func (h ApprovalHandler) getApprovalNeededFiles(files []*goGithub.CommitFile, ap
 
 // isApproved indicates whether or not someone from the list of OWNERS for a file has approved the PR
 func (h ApprovalHandler) isApproved(someFile *goGithub.CommitFile, approverSet sets.String) bool {
-	fileOwners := h.features.Repos.Assignees(*someFile.Filename)
+	fileOwners := h.features.Repos.LeafApprovers(*someFile.Filename)
 	return fileOwners.Intersection(approverSet).Len() > 0
 }
 
