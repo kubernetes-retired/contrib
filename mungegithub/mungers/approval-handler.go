@@ -140,17 +140,6 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, needsAppro
 	return nil
 }
 
-type Pair struct {
-	Key   string
-	Value sets.String
-}
-
-type PairList []Pair
-
-func (p PairList) Len() int           { return len(p) }
-func (p PairList) Less(i, j int) bool { return len(p[i].Value) < len(p[j].Value) }
-func (p PairList) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-
 // findApproverSet Takes all the Owners Files that Are Needed for the PR and chooses a good
 // subset of Approvers that are guaranteed to be from all of them (exact cover)
 // This is a greedy approximation and not guaranteed to find the minimum number of OWNERS
