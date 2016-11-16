@@ -91,6 +91,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       config.vm.box = "fedora/23-cloud-base"
     when :fedoraatomic
       config.vm.box = "fedora/23-atomic-host"
+    when :ubuntu14
+      config.vm.box = "baremettle/ubuntu-14.04"
+    when :ubuntu16
+      config.vm.box = "yk0/ubuntu-xenial"
     end
   end
 
