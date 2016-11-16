@@ -14,3 +14,5 @@ kube_node_binaries:
 kube_node_rpms:
   - kubernetes-client
   - kubernetes-node
+
+kubelet_args: ""
