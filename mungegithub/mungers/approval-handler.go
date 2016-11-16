@@ -159,7 +159,7 @@ func (h ApprovalHandler) findApproverSet(ownersPath sets.String) sets.String {
 	// approverCount contains a map: person -> set of relevant OWNERS file they are in
 	approverCount := make(map[string]sets.String)
 	for ownersFile := range ownersPath {
-		for approver := range h.features.Repos.GetApprovers(ownersFile) {
+		for approver := range h.features.Repos.LeafApprovers(ownersFile) {
 			if _, ok := approverCount[approver]; ok {
 				approverCount[approver].Insert(ownersFile)
 			} else {
@@ -196,11 +196,12 @@ func (h *ApprovalHandler) createMessage(obj *github.MungeObject, filesNeedApprov
 		glog.Error("Could not list the files for PR%v", obj.Issue.Number)
 		return err
 	}
+	// contains the a set of directories where relevant ownersFiles are
 	ownersFiles := sets.String{}
 	for _, file := range files {
 		// find owners files for files that have not yet been approved
 		if !filesNeedApproval.Has(*file.Filename) {
-			ownersFiles.Insert(h.features.Repos.FindOwnersForPath(*file.Filename, true))
+			ownersFiles.Insert(h.features.Repos.FindOwnersForPath(*file.Filename))
 		}
 	}
 	context := bytes.NewBufferString("The PR requires approval from at least one person in the following OWNERS files:\n")
