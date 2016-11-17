@@ -96,14 +96,14 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 
 	approverSet := createApproverSet(comments)
-	needsApproval := h.getApprovalNeededFiles(files, approverSet)
+	approvedFiles, ownersFiles := h.getApprovalNeededOwnersFiles(files, approverSet)
 
-	if err := h.updateNotification(obj, needsApproval); err != nil {
+	if err := h.updateNotification(obj, approvedFiles, ownersFiles); err != nil {
 		return
 	}
-	if needsApproval.Len() > 0 {
+	if ownersFiles.Len() > 0 {
 		if obj.HasLabel(approvedLabel) {
-			glog.Infof("Canceling the approve label because these files %v have no valid approvers", needsApproval)
+			glog.Infof("Canceling the approve label because these owners files %v still require a sign-off", ownersFiles)
 			obj.RemoveLabel(approvedLabel)
 		}
 	} else if !obj.HasLabel(approvedLabel) {
@@ -111,7 +111,7 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 }
 
-func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, needsApproval sets.String) error {
+func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, approvedFiles, needApprovalOwnersFiles sets.String) error {
 	notificationMatcher := mungeComment.MungerNotificationName(approvalNotificationName)
 	comments, err := obj.ListComments()
 	if err != nil {
@@ -121,7 +121,7 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, needsAppro
 	latestNotification := mungeComment.FilterComments(comments, notificationMatcher).GetLast()
 	latestApprove := mungeComment.FilterComments(comments, mungeComment.CommandName("approve")).GetLast()
 	if latestNotification == nil {
-		return h.createMessage(obj, needsApproval)
+		return h.createMessage(obj, approvedFiles, needApprovalOwnersFiles)
 	}
 	if latestApprove == nil {
 		// there was already a bot notification and nothing has changed since
@@ -130,12 +130,12 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, needsAppro
 	if latestApprove.CreatedAt.After(*latestNotification.CreatedAt) {
 		// there has been approval since last notification
 		obj.DeleteComment(latestNotification)
-		return h.createMessage(obj, needsApproval)
+		return h.createMessage(obj, approvedFiles, needApprovalOwnersFiles)
 	}
 	lastModified := obj.LastModifiedTime()
 	if latestNotification.CreatedAt.Before(*lastModified) {
 		obj.DeleteComment(latestNotification)
-		return h.createMessage(obj, needsApproval)
+		return h.createMessage(obj, approvedFiles, needApprovalOwnersFiles)
 	}
 	return nil
 }
@@ -179,28 +179,21 @@ func (h ApprovalHandler) findApproverSet(ownersPath sets.String) sets.String {
 	return approverGroup
 }
 
-func (h *ApprovalHandler) createMessage(obj *github.MungeObject, filesNeedApproval sets.String) error {
-	files, err := obj.ListFiles()
-	if err != nil {
-		glog.Error("Could not list the files for PR%v", obj.Issue.Number)
-		return err
+func (h *ApprovalHandler) createMessage(obj *github.MungeObject, approvedFiles, needApprovalOwnersFiles sets.String) error {
+	context := bytes.NewBufferString("The following files have been successfully approved:\n")
+	fmtString := "- %s\n"
+	for _, fn := range approvedFiles {
+		context.WriteString(fmt.Sprintf(fmtString, fn))
 	}
-	// contains the a set of directories where relevant ownersFiles are
-	ownersFiles := sets.String{}
-	for _, file := range files {
-		// find owners files for files that have not yet been approved
-		if !filesNeedApproval.Has(*file.Filename) {
-			ownersFiles.Insert(h.features.Repos.FindOwnersForPath(*file.Filename))
-		}
-	}
-	context := bytes.NewBufferString("The PR requires approval from at least one person in the following OWNERS files:\n")
-	for _, fn := range ownersFiles {
-		context.WriteString(fmt.Sprintf("- %s\n", fn))
+	context.WriteString("\n")
+	context.WriteString("The PR requires approval from at least one person in the following OWNERS files:\n")
+	for _, fn := range needApprovalOwnersFiles {
+		context.WriteString(fmt.Sprintf(fmtString, fn))
 	}
 	context.WriteString("\n")
 	context.WriteString("We suggest the following people:\n")
 	context.WriteString("cc ")
-	toBeAssigned := h.findApproverSet(ownersFiles)
+	toBeAssigned := h.findApproverSet(needApprovalOwnersFiles)
 	for person := range toBeAssigned {
 		context.WriteString("@" + person + " ")
 	}
@@ -232,19 +225,22 @@ func createApproverSet(comments []*goGithub.IssueComment) sets.String {
 }
 
 // getApprovalNeededFiles identifies the files that still need approval from someone in their OWNERS files
-func (h ApprovalHandler) getApprovalNeededFiles(files []*goGithub.CommitFile, approverSet sets.String) sets.String {
-	needsApproval := sets.String{}
+func (h ApprovalHandler) getApprovalNeededOwnersFiles(files []*goGithub.CommitFile, approverSet sets.String) (sets.String, sets.String) {
+	owners := sets.String{}
+	hasApproval := sets.String{}
 	for _, file := range files {
 		if !h.isApproved(file, approverSet) {
-			needsApproval.Insert(*file.Filename)
+			owners.Insert(h.features.Repos.FindOwnersForPath(*file.Filename))
+		} else {
+			hasApproval.Insert(*file.Filename)
 		}
 	}
-	return needsApproval
+	return hasApproval, owners
 }
 
 // isApproved indicates whether or not someone from the list of OWNERS for a file has approved the PR
 func (h ApprovalHandler) isApproved(someFile *goGithub.CommitFile, approverSet sets.String) bool {
-	fileOwners := h.features.Repos.LeafApprovers(*someFile.Filename)
+	fileOwners := h.features.Repos.Approvers(*someFile.Filename)
 	return fileOwners.Intersection(approverSet).Len() > 0
 }
 

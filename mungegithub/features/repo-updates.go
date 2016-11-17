@@ -273,10 +273,9 @@ func (o *RepoInfo) FindOwnersForPath(path string) string {
 		if d == "/" {
 			break
 		}
-		d, _ = filepath.Split(d)
+		d = filepath.Dir(d)
 		d = strings.TrimSuffix(d, "/")
 	}
-	glog.Error("Reached the root and found no OWNERS files")
 	return ""
 }
 
