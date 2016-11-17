@@ -30,5 +30,5 @@ check_inventory() {
 ansible_playbook() {
 	inventory=$1
 	check_inventory ${inventory}
-	ansible-playbook -i $@
+	ansible-playbook -i "$@"
 }
