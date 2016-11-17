@@ -6,7 +6,6 @@
     - restart vrs
     - systemctl daemon-reload
     - restart kubelet
-    - Add route for the overlay traffic
 
 - name: restart vrs
   service: name=openvswitch state=restarted
@@ -21,6 +20,3 @@
 
 - name: save iptables rules
   command: service iptables save
-
-- name: Add route for the overlay traffic
-  command: /usr/sbin/ip {{ svc_pat_tap_route_cmd }}

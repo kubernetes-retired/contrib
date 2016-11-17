@@ -12,11 +12,6 @@ rest_server_ca_cert: "{{ vsp_k8s_dir }}/nuageMonCA.crt"
 vport_mtu: "{{ nuage_interface_mtu | default('1460') }}"
 plugin_log_level: "{{ nuage_plugin_log_level | default('err') }}"
 
-svc_pat_tap_ip: "{{ nuage_svc_pat_tap_ip | default('169.254.3.3') }}"
-svc_pat_tap_dev: "{{ nuage_svc_pat_tap_dev | default('svc-pat-tap') }}"
-svc_pat_tap_route_cmd: "route add {{nuage_cluster_nw_cidr }} via {{ svc_pat_tap_ip }} dev {{ svc_pat_tap_dev }}"
-svc_pat_tap_route_file: "/etc/sysconfig/network-scripts/route-{{ svc_pat_tap_dev }}"
-
 nuage_plugin_rest_client_crt_dir: "{{ nuage_ca_master_crt_dir }}/{{ ansible_nodename }}"
 nuage_ca_master_plugin_key: "{{ nuage_plugin_rest_client_crt_dir }}/nuageMonClient.key"
 nuage_ca_master_plugin_crt: "{{ nuage_plugin_rest_client_crt_dir }}/nuageMonClient.crt" 
