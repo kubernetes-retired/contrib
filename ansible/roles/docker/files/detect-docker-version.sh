@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 
-# Copyright 2015 The Kubernetes Authors.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,11 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-. ./init.sh
+ver=$(docker version -f '{{ .Server.Version }}' 2>/dev/null)
+if [ $? -ne 0 ]; then
+	ver=$(docker version -f '{{ .Client.Version }}' 2>/dev/null)
+fi
 
-inventory=${INVENTORY:-${INVENTORY_DIR}/inventory}
-ansible_playbook \
-  ${inventory} ${PLAYBOOKS_DIR}/deploy-node.yml \
-  --tags "restart" \
-  --extra-vars "kubelet_modified=true proxy_modified=true" \
-  "$@"
+echo ${ver}

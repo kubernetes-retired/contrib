@@ -26,10 +26,10 @@
   when: cluster_logging
 
 - include: kube-ui.yml
-  when: kube-ui
+  when: kube_ui
 
 - include: kube-dash.yml
-  when: kube-dash
+  when: kube_dash
 
 - name: Get kube-addons script from Kubernetes
   copy:
