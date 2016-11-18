@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,48 +98,4 @@ func (f *FakeBackendServices) GetHealth(name, instanceGroupLink string) (*comput
 	}
 	return &compute.BackendServiceGroupHealth{
 		HealthStatus: states}, nil
-}
-
-// NewFakeHealthChecks returns a health check fake.
-func NewFakeHealthChecks() *FakeHealthChecks {
-	return &FakeHealthChecks{hc: []*compute.HttpHealthCheck{}}
-}
-
-// FakeHealthChecks fakes out health checks.
-type FakeHealthChecks struct {
-	hc []*compute.HttpHealthCheck
-}
-
-// CreateHttpHealthCheck fakes health check creation.
-func (f *FakeHealthChecks) CreateHttpHealthCheck(hc *compute.HttpHealthCheck) error {
-	f.hc = append(f.hc, hc)
-	return nil
-}
-
-// GetHttpHealthCheck fakes getting a http health check.
-func (f *FakeHealthChecks) GetHttpHealthCheck(name string) (*compute.HttpHealthCheck, error) {
-	for _, h := range f.hc {
-		if h.Name == name {
-			return h, nil
-		}
-	}
-	return nil, fmt.Errorf("Health check %v not found.", name)
-}
-
-// DeleteHttpHealthCheck fakes deleting a http health check.
-func (f *FakeHealthChecks) DeleteHttpHealthCheck(name string) error {
-	healthChecks := []*compute.HttpHealthCheck{}
-	exists := false
-	for _, h := range f.hc {
-		if h.Name == name {
-			exists = true
-			continue
-		}
-		healthChecks = append(healthChecks, h)
-	}
-	if !exists {
-		return fmt.Errorf("Failed to find health check %v", name)
-	}
-	f.hc = healthChecks
-	return nil
 }

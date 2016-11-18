@@ -24,6 +24,7 @@ machine:
     DOCKER_REGISTRY: docker-registry.yourcompany.com
     # the docker container defaulted to user/project
     CONTAINER1: $(tr [A-Z] [a-z] <<< ${CIRCLE_PROJECT_USERNAME:0:8})/$(tr [A-Z] [a-z] <<< ${CIRCLE_PROJECT_REPONAME:0:15}| tr -d '_-')
+    #https_proxy: https://xxx.xxx.xxx.xxx:8080/ #uncomment if you need to use a proxy to access the kubernetes api
 
 # Customize checkout
 # checkout:
@@ -47,7 +48,6 @@ test:
     # run the container and add a label
     # do not specify a local port since the docker daemon is shared
     - docker run -p 3000 -d --label ${CONTAINER1} ${DOCKER_REGISTRY}/${CONTAINER1}:latest
-    # - docker search docker-registry.concur.com:4443/danw
     # show how to execute a command in your container
     # run any commands to test inside\outside of the container here
     - npm test

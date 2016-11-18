@@ -1,4 +1,6 @@
 ---
+# Prepare and write Flannel configuration to etcd.
+
 - name: Set facts about etcdctl command
   set_fact:
     peers: "{% for hostname in groups['etcd'] %}http://{{ hostname }}:2379{% if not loop.last %},{% endif %}{% endfor %}"

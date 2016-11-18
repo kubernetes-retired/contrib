@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 # $1 = the kubernetes context (specified in kubeconfig)
 # $2 = directory that contains your kubernetes files to deploy
-# $3 = set to y to perform a rolling update
+# $3 = pass in rolling to perform a rolling update
 
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 CONTEXT="$1"
@@ -29,28 +29,54 @@ $DIR/ensure-kubectl.sh
 
 #set config context
 ~/.kube/kubectl config use-context ${CONTEXT}
+~/.kube/kubectl version
 
-#get user password and api ip from config data
-export kubepass=`(~/.kube/kubectl config view -o json | jq ' { mycontext: .["current-context"], contexts: .contexts[], users: .users[], clusters: .clusters[]}' | jq 'select(.mycontext == .contexts.name) | select(.contexts.context.user == .users.name) | select(.contexts.context.cluster == .clusters.name)' | jq .users.user.password | tr -d '\"')`
+#get user, password, certs, namespace and api ip from config data
+export kubepass=`(~/.kube/kubectl config view -o json --raw --minify  | jq .users[0].user.password | tr -d '\"')`
 
-export kubeuser=`(~/.kube/kubectl config view -o json | jq ' { mycontext: .["current-context"], contexts: .contexts[], users: .users[], clusters: .clusters[]}' | jq 'select(.mycontext == .contexts.name) | select(.contexts.context.user == .users.name) | select(.contexts.context.cluster == .clusters.name)' | jq .users.user.username | tr -d '\"')`
+export kubeuser=`(~/.kube/kubectl config view -o json --raw --minify  | jq .users[0].user.username | tr -d '\"')`
 
-export kubeurl=`(~/.kube/kubectl config view -o json | jq ' { mycontext: .["current-context"], contexts: .contexts[], users: .users[], clusters: .clusters[]}' | jq 'select(.mycontext == .contexts.name) | select(.contexts.context.user == .users.name) | select(.contexts.context.cluster == .clusters.name)' | jq .clusters.cluster.server | tr -d '\"')`
+export kubeurl=`(~/.kube/kubectl config view -o json --raw --minify  | jq .clusters[0].cluster.server | tr -d '\"')`
 
-export kubenamespace=`(~/.kube/kubectl config view -o json | jq ' { mycontext: .["current-context"], contexts: .contexts[]}' | jq 'select(.mycontext == .contexts.name)' | jq .contexts.context.namespace | tr -d '\"')`
+export kubenamespace=`(~/.kube/kubectl config view -o json --raw --minify  | jq .contexts[0].context.namespace | tr -d '\"')`
 
 export kubeip=`(echo $kubeurl | sed 's~http[s]*://~~g')`
 
 export https=`(echo $kubeurl | awk 'BEGIN { FS = ":" } ; { print $1 }')`
 
+export certdata=`(~/.kube/kubectl config view -o json --raw --minify  | jq '.users[0].user["client-certificate-data"]' | tr -d '\"')`
+
+export certcmd=""
+
+if [ "$certdata" != "null" ] && [ "$certdata" != "" ];
+then
+    ~/.kube/kubectl config view -o json --raw --minify  | jq '.users[0].user["client-certificate-data"]' | tr -d '\"' | base64 --decode > ${CONTEXT}-cert.pem
+    export certcmd="$certcmd --cert ${CONTEXT}-cert.pem"
+fi
+
+export keydata=`(~/.kube/kubectl config view -o json --raw --minify  | jq '.users[0].user["client-key-data"]' | tr -d '\"')`
+
+if [ "$keydata" != "null" ] && [ "$keydata" != "" ];
+then
+    ~/.kube/kubectl config view -o json --raw --minify  | jq '.users[0].user["client-key-data"]' | tr -d '\"' | base64 --decode > ${CONTEXT}-key.pem
+    export certcmd="$certcmd --key ${CONTEXT}-key.pem"
+fi
+
+export cadata=`(~/.kube/kubectl config view -o json --raw --minify  | jq '.clusters[0].cluster["certificate-authority-data"]' | tr -d '\"')`
+
+if [ "$cadata" != "null" ] && [ "$cadata" != "" ];
+then
+    ~/.kube/kubectl config view -o json --raw --minify  | jq '.clusters[0].cluster["certificate-authority-data"]' | tr -d '\"' | base64 --decode > ${CONTEXT}-ca.pem
+    export certcmd="$certcmd --cacert ${CONTEXT}-ca.pem"
+fi
+
 #set -x
 
 #print some useful data for folks to check on their service later
 echo "Deploying service to ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}"
-echo "Monitor your service at ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/kube-system/services/kibana-logging/?#/discover?_a=(columns:!(_source),filters:!(),index:'logstash-*',interval:auto,query:(query_string:(analyze_wildcard:!t,query:'tag:kubernetes.${SERVICENAME}*')))"
+echo "Monitor your service at ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/kube-system/services/kibana-logging/?#/discover?_a=(columns:!(log),filters:!(),index:'logstash-*',interval:auto,query:(query_string:(analyze_wildcard:!t,query:'tag:%22kubernetes.${SERVICENAME}*%22')),sort:!('@timestamp',asc))"
 
-if [ "${ROLLING}" = "rolling" ]
-then
+if [ "${ROLLING}" = "rolling" ]; then
   # perform a rolling update.
   # assumes your service\rc are already created
   ~/.kube/kubectl rolling-update ${SERVICENAME} --image=${DOCKER_REGISTRY}/${CONTAINER1}:latest || true
@@ -58,21 +84,25 @@ then
 else
 
   # delete service (throws and error to ignore if service does not exist already)
-  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; ~/.kube/kubectl delete --namespace=${kubenamespace} -f kubetemp.yaml || true; done
+  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; echo ""; ~/.kube/kubectl delete --namespace=${kubenamespace} -f kubetemp.yaml || true; done
 
   # create service (does nothing if the service already exists)
-  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; ~/.kube/kubectl create --namespace=${kubenamespace} -f kubetemp.yaml || true; done
+  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; ~/.kube/kubectl create --namespace=${kubenamespace} -f kubetemp.yaml --validate=false || true; done
 fi
 
 # wait for services to start
 sleep 30
 
-# try to hit the api proxy endpoint
-curl -k --retry 10 --retry-delay 5 -v ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/
-
-# extra check just to get the status code
-STATUSCODE=$(curl -k --silent --output /dev/stderr --write-out "%{http_code}"  ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/)
-if [ "$STATUSCODE" -ne "200" ]; then
-  # write output and set to false so the CI system can report a failure
-  false
-fi
+COUNTER=0
+while [  $COUNTER -lt 30 ]; do
+  let COUNTER=COUNTER+1
+  echo Service Check: $COUNTER
+  STATUSCODE=$(curl -k --silent --output /dev/stdnull --write-out "%{http_code}" $certcmd  ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/)
+  echo HTTP Status: $STATUSCODE
+  if [ "$STATUSCODE" -eq "200" ]; then
+    break
+  else
+    sleep 10
+    false
+  fi
+done

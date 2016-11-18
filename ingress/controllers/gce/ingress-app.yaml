@@ -20,23 +20,6 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: echoheadersdefault
-  labels:
-    app: echoheaders
-spec:
-  type: NodePort
-  ports:
-  - port: 80
-    nodePort: 30302
-    targetPort: 8080
-    protocol: TCP
-    name: http
-  selector:
-    app: echoheaders
----
-apiVersion: v1
-kind: Service
-metadata:
   name: echoheadersy
   labels:
     app: echoheaders
@@ -66,7 +49,7 @@ spec:
     spec:
       containers:
       - name: echoheaders
-        image: bprashanth/echoserver:0.0
+        image: gcr.io/google_containers/echoserver:1.4
         ports:
         - containerPort: 8080
 ---
@@ -78,7 +61,9 @@ metadata:
   name: echomap
 spec:
   backend:
-    serviceName: echoheadersdefault
+    # Re-use echoheadersx as the default backend so we stay under the default
+    # quota for gce BackendServices.
+    serviceName: echoheadersx
     servicePort: 80
   rules:
   - host: foo.bar.com

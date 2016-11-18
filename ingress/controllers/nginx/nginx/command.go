@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package nginx
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -25,6 +26,9 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/kubernetes/pkg/healthz"
+
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
 )
 
 // Start starts a nginx (master process) and waits. If the process ends
@@ -54,24 +58,31 @@ func (ngx *Manager) Start() {
 // shut down, stop accepting new connections and continue to service current requests
 // until all such requests are serviced. After that, the old worker processes exit.
 // http://nginx.org/en/docs/beginners_guide.html#control
-func (ngx *Manager) CheckAndReload(cfg nginxConfiguration, ingressCfg IngressConfig) {
+func (ngx *Manager) CheckAndReload(cfg config.Configuration, ingressCfg ingress.Configuration) error {
 	ngx.reloadRateLimiter.Accept()
 
 	ngx.reloadLock.Lock()
 	defer ngx.reloadLock.Unlock()
 
-	newCfg, err := ngx.writeCfg(cfg, ingressCfg)
-
+	newCfg, err := ngx.template.Write(cfg, ingressCfg, ngx.testTemplate)
 	if err != nil {
-		glog.Errorf("failed to write new nginx configuration. Avoiding reload: %v", err)
-		return
+		return fmt.Errorf("failed to write new nginx configuration. Avoiding reload: %v", err)
 	}
 
-	if newCfg {
-		if err := ngx.shellOut("nginx -s reload"); err == nil {
-			glog.Info("change in configuration detected. Reloading...")
-		}
+	changed, err := ngx.needsReload(newCfg)
+	if err != nil {
+		return err
 	}
+
+	if changed {
+		if err := ngx.shellOut("nginx -s reload"); err != nil {
+			return fmt.Errorf("error reloading nginx: %v", err)
+		}
+
+		glog.Info("change in configuration detected. Reloading...")
+	}
+
+	return nil
 }
 
 // shellOut executes a command and returns its combined standard output and standard
@@ -96,7 +107,7 @@ func (ngx Manager) Name() string {
 
 // Check returns if the nginx healthz endpoint is returning ok (status code 200)
 func (ngx Manager) Check(_ *http.Request) error {
-	res, err := http.Get("http://127.0.0.1:8080/healthz")
+	res, err := http.Get("http://127.0.0.1:18080/healthz")
 	if err != nil {
 		return err
 	}
@@ -106,5 +117,22 @@ func (ngx Manager) Check(_ *http.Request) error {
 		return fmt.Errorf("NGINX is unhealthy")
 	}
 
+	return nil
+}
+
+// testTemplate checks if the NGINX configuration inside the byte array is valid
+// running the command "nginx -t" using a temporal file.
+func (ngx Manager) testTemplate(cfg []byte) error {
+	tmpfile, err := ioutil.TempFile("", "nginx-cfg")
+	if err != nil {
+		return err
+	}
+	defer tmpfile.Close()
+	ioutil.WriteFile(tmpfile.Name(), cfg, 0644)
+	if err := ngx.shellOut(fmt.Sprintf("nginx -t -c %v", tmpfile.Name())); err != nil {
+		return fmt.Errorf("invalid nginx configuration: %v", err)
+	}
+	// in case of error do not remove temporal file
+	defer os.Remove(tmpfile.Name())
 	return nil
 }

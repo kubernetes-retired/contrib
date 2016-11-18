@@ -2,61 +2,12 @@
 - name: MONITORING | Assures {{ kube_config_dir }}/addons/cluster-monitoring dir exists
   file: path={{ kube_addons_dir }}/cluster-monitoring state=directory
 
-- name: MONITORING | Assures local temporary {{ local_temp_addon_dir }}/cluster-monitoring dir exists
-  local_action: file
-    path={{ local_temp_addon_dir }}/cluster-monitoring
-    state=directory
-  sudo: no
-
-- name: MONITORING | Download monitoring files from Kubernetes repo
-  local_action: get_url
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/cluster-monitoring/influxdb/{{ item }}
-    dest="{{ local_temp_addon_dir }}/cluster-monitoring/{{ item }}.j2"
-    force=yes
-  sudo: no
-  with_items:
-    - grafana-service.yaml
-    - heapster-controller.yaml
-    - heapster-service.yaml
-    - influxdb-grafana-controller.yaml
-    - influxdb-service.yaml
-  changed_when: false
-
-- name: MONITORING | Remove instances of getting pillar dicts
-  local_action: lineinfile
-    dest="{{ local_temp_addon_dir }}/cluster-monitoring/{{ item }}.j2"
-    regexp="set\s+\w+\s+=\s+pillar\.get\("
-    state=absent
-  sudo: no
-  with_items:
-    - grafana-service.yaml
-    - heapster-controller.yaml
-    - heapster-service.yaml
-    - influxdb-grafana-controller.yaml
-    - influxdb-service.yaml
-  changed_when: false
-
-- name: MONITORING | Add tests for pillar vars converted to ansible vars
-  local_action: lineinfile
-    dest="{{ local_temp_addon_dir }}/cluster-monitoring/{{ item }}.j2"
-    regexp="(.*)if\s+(\w+)\s+([<>=]+.*)"
-    line="\1if \2 is defined and \2 \3"
-    backrefs=yes
-  sudo: no
-  with_items:
-    - grafana-service.yaml
-    - heapster-controller.yaml
-    - heapster-service.yaml
-    - influxdb-grafana-controller.yaml
-    - influxdb-service.yaml
-  changed_when: false
-
 - name: MONITORING | Install template from converted saltfile
   template:
   args:
-    src: "{{ local_temp_addon_dir }}/cluster-monitoring/{{ item }}.j2"
+    src: "cluster-monitoring/{{ item }}.j2"
     dest: "{{ kube_addons_dir }}/cluster-monitoring/{{ item }}"
-    mode: 0755
+    mode: 0644
     owner: root
     group: root
   with_items:

@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util/wait"
@@ -37,13 +39,23 @@ type StoreToIngressLister struct {
 	cache.Store
 }
 
+// StoreToSecretsLister makes a Store that lists Secrets.
+type StoreToSecretsLister struct {
+	cache.Store
+}
+
+// StoreToConfigmapLister makes a Store that lists Configmap.
+type StoreToConfigmapLister struct {
+	cache.Store
+}
+
 // taskQueue manages a work queue through an independent worker that
 // invokes the given sync function for every work item inserted.
 type taskQueue struct {
 	// queue is the work queue the worker polls
-	queue *workqueue.Type
+	queue workqueue.RateLimitingInterface
 	// sync is called for each item in the queue
-	sync func(string)
+	sync func(string) error
 	// workerDone is closed when the worker exits
 	workerDone chan struct{}
 }
@@ -62,9 +74,8 @@ func (t *taskQueue) enqueue(obj interface{}) {
 	t.queue.Add(key)
 }
 
-func (t *taskQueue) requeue(key string, err error) {
-	glog.V(3).Infof("requeuing %v, err %v", key, err)
-	t.queue.Add(key)
+func (t *taskQueue) requeue(key string) {
+	t.queue.AddRateLimited(key)
 }
 
 // worker processes work in the queue through sync.
@@ -76,7 +87,13 @@ func (t *taskQueue) worker() {
 			return
 		}
 		glog.V(3).Infof("syncing %v", key)
-		t.sync(key.(string))
+		if err := t.sync(key.(string)); err != nil {
+			glog.Warningf("requeuing %v, err %v", key, err)
+			t.requeue(key.(string))
+		} else {
+			t.queue.Forget(key)
+		}
+
 		t.queue.Done(key)
 	}
 }
@@ -89,9 +106,9 @@ func (t *taskQueue) shutdown() {
 
 // NewTaskQueue creates a new task queue with the given sync function.
 // The sync function is called for every element inserted into the queue.
-func NewTaskQueue(syncFn func(string)) *taskQueue {
+func NewTaskQueue(syncFn func(string) error) *taskQueue {
 	return &taskQueue{
-		queue:      workqueue.New(),
+		queue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
 	}
@@ -102,6 +119,10 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 	podName := os.Getenv("POD_NAME")
 	podNs := os.Getenv("POD_NAMESPACE")
 
+	if podName == "" && podNs == "" {
+		return nil, fmt.Errorf("unable to get POD information (missing POD_NAME or POD_NAMESPACE environment variable")
+	}
+
 	err := waitForPodRunning(kubeClient, podNs, podName, time.Millisecond*200, time.Second*30)
 	if err != nil {
 		return nil, err
@@ -109,7 +130,7 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 
 	pod, _ := kubeClient.Pods(podNs).Get(podName)
 	if pod == nil {
-		return nil, fmt.Errorf("Unable to get POD information")
+		return nil, fmt.Errorf("unable to get POD information")
 	}
 
 	node, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
@@ -230,4 +251,51 @@ func waitForPodCondition(kubeClient *unversioned.Client, ns, podName string, con
 
 		return false, nil
 	})
+}
+
+// ingAnnotations represents Ingress annotations.
+type ingAnnotations map[string]string
+
+const (
+	// ingressClassKey picks a specific "class" for the Ingress. The controller
+	// only processes Ingresses with this annotation either unset, or set
+	// to either nginxIngressClass or the empty string.
+	ingressClassKey   = "kubernetes.io/ingress.class"
+	nginxIngressClass = "nginx"
+)
+
+func (ing ingAnnotations) ingressClass() string {
+	val, ok := ing[ingressClassKey]
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+// isNGINXIngress returns true if the given Ingress either doesn't specify the
+// ingress.class annotation, or it's set to "nginx".
+func isNGINXIngress(ing *extensions.Ingress) bool {
+	class := ingAnnotations(ing.ObjectMeta.Annotations).ingressClass()
+	return class == "" || class == nginxIngressClass
+}
+
+const (
+	snakeOilPem = "/etc/ssl/certs/ssl-cert-snakeoil.pem"
+	snakeOilKey = "/etc/ssl/private/ssl-cert-snakeoil.key"
+)
+
+// getFakeSSLCert returns the snake oil ssl certificate created by the command
+// make-ssl-cert generate-default-snakeoil --force-overwrite
+func getFakeSSLCert() (string, string) {
+	cert, err := ioutil.ReadFile(snakeOilPem)
+	if err != nil {
+		return "", ""
+	}
+
+	key, err := ioutil.ReadFile(snakeOilKey)
+	if err != nil {
+		return "", ""
+	}
+
+	return string(cert), string(key)
 }

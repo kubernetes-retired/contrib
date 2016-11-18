@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,12 +27,16 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
+const defaultZone = "zone-a"
+
 func newBackendPool(f BackendServices, fakeIGs instances.InstanceGroups, syncWithCloud bool) BackendPool {
-	namer := utils.Namer{}
+	namer := &utils.Namer{}
+	nodePool := instances.NewNodePool(fakeIGs)
+	nodePool.Init(&instances.FakeZoneLister{[]string{defaultZone}})
+	healthChecks := healthchecks.NewHealthChecker(healthchecks.NewFakeHealthChecks(), "/", namer)
+	healthChecks.Init(&healthchecks.FakeHealthCheckGetter{nil})
 	return NewBackendPool(
-		f,
-		healthchecks.NewHealthChecker(healthchecks.NewFakeHealthChecks(), "/", namer),
-		instances.NewNodePool(fakeIGs, "default-zone"), namer, []int64{}, syncWithCloud)
+		f, healthChecks, nodePool, namer, []int64{}, syncWithCloud)
 }
 
 func TestBackendPoolAdd(t *testing.T) {
@@ -71,7 +75,9 @@ func TestBackendPoolAdd(t *testing.T) {
 	// This simulates a user doing foolish things through the UI.
 	f.calls = []int{}
 	be, err = f.GetBackendService(beName)
-	be.Backends[0].Group = "test edge hop"
+	be.Backends = []*compute.Backend{
+		{Group: "test edge hop"},
+	}
 	f.UpdateBackendService(be)
 
 	pool.Add(nodePort)
@@ -80,12 +86,22 @@ func TestBackendPoolAdd(t *testing.T) {
 			t.Fatalf("Unexpected create for existing backend service")
 		}
 	}
-	gotBackend, _ := f.GetBackendService(beName)
-	gotGroup, _ := fakeIGs.GetInstanceGroup(namer.IGName(), "default-zone")
-	if gotBackend.Backends[0].Group != gotGroup.SelfLink {
+	gotBackend, err := f.GetBackendService(beName)
+	if err != nil {
+		t.Fatalf("Failed to find a backend with name %v: %v", beName, err)
+	}
+	gotGroup, err := fakeIGs.GetInstanceGroup(namer.IGName(), defaultZone)
+	if err != nil {
+		t.Fatalf("Failed to find instance group %v", namer.IGName())
+	}
+	backendLinks := sets.NewString()
+	for _, be := range gotBackend.Backends {
+		backendLinks.Insert(be.Group)
+	}
+	if !backendLinks.Has(gotGroup.SelfLink) {
 		t.Fatalf(
-			"Broken instance group link: %v %v",
-			gotBackend.Backends[0].Group,
+			"Broken instance group link, got: %+v expected: %v",
+			backendLinks.List(),
 			gotGroup.SelfLink)
 	}
 }
@@ -168,5 +184,49 @@ func TestBackendPoolShutdown(t *testing.T) {
 	if _, err := f.GetBackendService(namer.BeName(80)); err == nil {
 		t.Fatalf("%v", err)
 	}
+}
 
+func TestBackendInstanceGroupClobbering(t *testing.T) {
+	f := NewFakeBackendServices()
+	fakeIGs := instances.NewFakeInstanceGroups(sets.NewString())
+	pool := newBackendPool(f, fakeIGs, false)
+	namer := utils.Namer{}
+
+	// This will add the instance group k8s-ig to the instance pool
+	pool.Add(80)
+
+	be, err := f.GetBackendService(namer.BeName(80))
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	// Simulate another controller updating the same backend service with
+	// a different instance group
+	newGroups := []*compute.Backend{
+		{Group: "k8s-ig-bar"},
+		{Group: "k8s-ig-foo"},
+	}
+	be.Backends = append(be.Backends, newGroups...)
+	if err := f.UpdateBackendService(be); err != nil {
+		t.Fatalf("Failed to update backend service %v", be.Name)
+	}
+
+	// Make sure repeated adds don't clobber the inserted instance group
+	pool.Add(80)
+	be, err = f.GetBackendService(namer.BeName(80))
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	gotGroups := sets.NewString()
+	for _, g := range be.Backends {
+		gotGroups.Insert(g.Group)
+	}
+
+	// seed expectedGroups with the first group native to this controller
+	expectedGroups := sets.NewString("k8s-ig")
+	for _, newGroup := range newGroups {
+		expectedGroups.Insert(newGroup.Group)
+	}
+	if !expectedGroups.Equal(gotGroups) {
+		t.Fatalf("Expected %v Got %v", expectedGroups, gotGroups)
+	}
 }

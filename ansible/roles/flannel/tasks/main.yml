@@ -1,11 +1,10 @@
 ---
-- include: config.yml
+- name: Prepare and write Flannel configuration to etcd
+  include: config.yml
 
-- include: client.yml
+- name: Install Flannel
+  include: client.yml
   when: inventory_hostname in groups['masters'] + groups['nodes']
-
-- include: coreos.yml
-  when: is_coreos
 
 - include: ubuntu.yml
   when: ansible_distribution == 'Ubuntu'

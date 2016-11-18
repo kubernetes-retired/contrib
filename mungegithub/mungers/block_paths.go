@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,11 +26,18 @@ import (
 	"k8s.io/kubernetes/pkg/util/yaml"
 
 	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
+const (
+	blockPathFormat = `Adding label:%s because PR changes docs prohibited to auto merge
+See http://kubernetes.io/editdocs/ for information about editing docs`
+)
+
 var (
-	_ = fmt.Print
+	_             = fmt.Print
+	blockPathBody = fmt.Sprintf(blockPathFormat, doNotMergeLabel)
 )
 
 type configBlockPath struct {
@@ -40,13 +47,15 @@ type configBlockPath struct {
 
 // BlockPath will add a label to block auto merge if a PR touches certain paths
 type BlockPath struct {
-	path             string
+	Path             string
 	blockRegexp      []regexp.Regexp
 	doNotBlockRegexp []regexp.Regexp
 }
 
 func init() {
-	RegisterMungerOrDie(&BlockPath{})
+	b := &BlockPath{}
+	RegisterMungerOrDie(b)
+	RegisterStaleComments(b)
 }
 
 // Name is the name usable in --pr-mungers
@@ -57,10 +66,10 @@ func (b *BlockPath) RequiredFeatures() []string { return []string{} }
 
 // Initialize will initialize the munger
 func (b *BlockPath) Initialize(config *github.Config, features *features.Features) error {
-	if len(b.path) == 0 {
+	if len(b.Path) == 0 {
 		glog.Fatalf("--block-path-config is required with the block-path munger")
 	}
-	file, err := os.Open(b.path)
+	file, err := os.Open(b.Path)
 	if err != nil {
 		glog.Fatalf("Failed to load block-path config: %v", err)
 	}
@@ -96,7 +105,7 @@ func (b *BlockPath) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (b *BlockPath) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().StringVar(&b.path, "block-path-config", "block-path.yaml", "file containing the pathnames to block or not block")
+	cmd.Flags().StringVar(&b.Path, "block-path-config", "", "file containing the pathnames to block or not block")
 }
 
 func matchesAny(path string, regs []regexp.Regexp) bool {
@@ -118,23 +127,38 @@ func (b *BlockPath) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	commits, err := obj.GetCommits()
+	files, err := obj.ListFiles()
 	if err != nil {
 		return
 	}
 
-	for _, c := range commits {
-		for _, f := range c.Files {
-			if matchesAny(*f.Filename, b.blockRegexp) {
-				if matchesAny(*f.Filename, b.doNotBlockRegexp) {
-					continue
-				}
-				body := fmt.Sprintf(`Adding label:%s because PR changes docs prohibited to auto merge
-See http://kubernetes.io/editdocs/ for information about editing docs`, doNotMergeLabel)
-				obj.WriteComment(body)
-				obj.AddLabels([]string{doNotMergeLabel})
-				return
+	for _, f := range files {
+		if matchesAny(*f.Filename, b.blockRegexp) {
+			if matchesAny(*f.Filename, b.doNotBlockRegexp) {
+				continue
 			}
+			obj.WriteComment(blockPathBody)
+			obj.AddLabels([]string{doNotMergeLabel})
+			return
 		}
 	}
+}
+
+func (b *BlockPath) isStaleComment(obj *github.MungeObject, comment *githubapi.IssueComment) bool {
+	if !mergeBotComment(comment) {
+		return false
+	}
+	if *comment.Body != blockPathBody {
+		return false
+	}
+	stale := !obj.HasLabel(doNotMergeLabel)
+	if stale {
+		glog.V(6).Infof("Found stale BlockPath comment")
+	}
+	return stale
+}
+
+// StaleComments returns a slice of stale comments
+func (b *BlockPath) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
+	return forEachCommentTest(obj, comments, b.isStaleComment)
 }

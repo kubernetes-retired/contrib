@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,62 +12,135 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Build the exechealthz binary or image for any GOARCH
-#
-# Usage:
-# 	[PREFIX=gcr.io/google_containers/exechealthz] [ARCH=amd64] make TAG={somevalue} (server|container|push)
+# The binary to build (just the basename).
+BIN := exechealthz
 
-all: container
+# This repo's root import path (under GOPATH).
+PKG := k8s.io/contrib/exec-healthz
 
-# TAG doesn't default to anything. You must set it via make params
-PREFIX?=gcr.io/google_containers/exechealthz
-ARCH?=amd64
-GOLANG_VERSION=1.6
-TEMP_DIR:=$(shell mktemp -d)
+# Where to push the docker image.
+REGISTRY ?= gcr.io/google_containers
+
+# Which architecture to build - see $(ALL_ARCH) for options.
+ARCH ?= amd64
+
+###
+### These variables should not need tweaking.
+###
+
+SRC_DIRS := cmd pkg # directories which hold app source (not vendored)
+
+ALL_ARCH := amd64 arm arm64 ppc64le
 
 # Set default base image dynamically for each arch
 ifeq ($(ARCH),amd64)
-	BASEIMAGE?=busybox
+    BASEIMAGE?=alpine
 endif
 ifeq ($(ARCH),arm)
-	BASEIMAGE?=armel/busybox
+    BASEIMAGE?=armel/busybox
 endif
 ifeq ($(ARCH),arm64)
-	BASEIMAGE?=aarch64/busybox
+    BASEIMAGE?=aarch64/busybox
 endif
 ifeq ($(ARCH),ppc64le)
-	BASEIMAGE?=ppc64le/busybox
+    BASEIMAGE?=ppc64le/busybox
 endif
 
-server: exechealthz.go
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) GOARM=6 go build -a -installsuffix cgo -ldflags '-w' -o exechealthz ./exechealthz.go
+IMAGE := $(REGISTRY)/$(BIN)-$(ARCH)
 
-container:
+BUILD_IMAGE ?= golang:1.7-alpine
 
-ifndef TAG
-    $(error TAG is undefined)
-endif
+VERSION := $(shell git describe --always --dirty)
 
-	# Copy the whole directory to a temporary dir and set the base image
-	cp -r ./* $(TEMP_DIR)
-	cd $(TEMP_DIR) && sed -i "s|BASEIMAGE|$(BASEIMAGE)|g" Dockerfile
+# If you want to build all binaries, see the 'all-build' rule.
+# If you want to build all containers, see the 'all-container' rule.
+# If you want to build AND push all containers, see the 'all-push' rule.
+all: build
 
-	# Compile the binary inside a container for reliable builds
-	docker run --rm -it -v $(TEMP_DIR):/build golang:$(GOLANG_VERSION) /bin/bash -c "make -C /build server ARCH=$(ARCH)"
+build-%:
+	@$(MAKE) --no-print-directory ARCH=$* build
 
-	docker build -t $(PREFIX)-$(ARCH):$(TAG) $(TEMP_DIR)
+container-%:
+	@$(MAKE) --no-print-directory ARCH=$* container
 
-	rm -r $(TEMP_DIR)
+push-%:
+	@$(MAKE) --no-print-directory ARCH=$* push
 
-push: container
-	gcloud docker push $(PREFIX)-$(ARCH):$(TAG)
+all-build: $(addprefix build-, $(ALL_ARCH))
 
-push-legacy: container
-ifeq ($(ARCH),amd64)
-	# Backward compatibility. TODO: deprecate this image tag
-	docker tag -f $(PREFIX)-$(ARCH):$(TAG) $(PREFIX):$(TAG)
-	gcloud docker push $(PREFIX):$(TAG)
-endif
+all-container: $(addprefix container-, $(ALL_ARCH))
 
-clean:
-	rm -f exechealthz
+all-push: $(addprefix push-, $(ALL_ARCH))
+
+build: bin/$(ARCH)/$(BIN)
+
+bin/$(ARCH)/$(BIN): build-dirs
+	@echo "building: $@"
+	@docker run                                                            \
+	    -ti                                                                \
+	    -u $$(id -u):$$(id -g)                                             \
+	    -v $$(pwd)/.go:/go                                                 \
+	    -v $$(pwd):/go/src/$(PKG)                                          \
+	    -v $$(pwd)/bin/$(ARCH):/go/bin                                     \
+	    -v $$(pwd)/bin/$(ARCH):/go/bin/$$(go env GOOS)_$(ARCH)             \
+	    -v $$(pwd)/.go/std/$(ARCH):/usr/local/go/pkg/linux_$(ARCH)_static  \
+	    -w /go/src/$(PKG)                                                  \
+	    $(BUILD_IMAGE)                                                     \
+	    /bin/sh -c "                                                       \
+	        ARCH=$(ARCH)                                                   \
+	        VERSION=$(VERSION)                                             \
+	        PKG=$(PKG)                                                     \
+	        ./build/build.sh                                               \
+	    "
+
+DOTFILE_IMAGE = $(subst /,_,$(IMAGE))-$(VERSION)
+
+container: .container-$(DOTFILE_IMAGE) container-name
+.container-$(DOTFILE_IMAGE): bin/$(ARCH)/$(BIN) Dockerfile.in
+	@sed \
+	    -e 's|ARG_BIN|$(BIN)|g' \
+	    -e 's|ARG_ARCH|$(ARCH)|g' \
+	    -e 's|ARG_FROM|$(BASEIMAGE)|g' \
+	    Dockerfile.in > .dockerfile-$(ARCH)
+	@docker build -t $(IMAGE):$(VERSION) -f .dockerfile-$(ARCH) .
+	@docker images -q $(IMAGE):$(VERSION) > $@
+
+container-name:
+	@echo "container: $(IMAGE):$(VERSION)"
+
+push: .push-$(DOTFILE_IMAGE) push-name
+.push-$(DOTFILE_IMAGE): .container-$(DOTFILE_IMAGE)
+	@gcloud docker push $(IMAGE):$(VERSION)
+	@docker images -q $(IMAGE):$(VERSION) > $@
+
+push-name:
+	@echo "pushed: $(IMAGE):$(VERSION)"
+
+version:
+	@echo $(VERSION)
+
+test: build-dirs
+	@docker run                                                            \
+	    -ti                                                                \
+	    -u $$(id -u):$$(id -g)                                             \
+	    -v $$(pwd)/.go:/go                                                 \
+	    -v $$(pwd):/go/src/$(PKG)                                          \
+	    -v $$(pwd)/bin/$(ARCH):/go/bin                                     \
+	    -v $$(pwd)/.go/std/$(ARCH):/usr/local/go/pkg/linux_$(ARCH)_static  \
+	    -w /go/src/$(PKG)                                                  \
+	    $(BUILD_IMAGE)                                                     \
+	    /bin/sh -c "                                                       \
+	        ./build/test.sh $(SRC_DIRS)                                    \
+	    "
+
+build-dirs:
+	@mkdir -p bin/$(ARCH)
+	@mkdir -p .go/src/$(PKG) .go/pkg .go/bin .go/std/$(ARCH)
+
+clean: container-clean bin-clean
+
+container-clean:
+	rm -rf .container-* .dockerfile-* .push-*
+
+bin-clean:
+	rm -rf .go bin

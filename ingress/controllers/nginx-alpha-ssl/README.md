@@ -44,7 +44,7 @@ path "secret/ssl/*" {
   policy = "read"
 }
 ```
-You may also pass in an alternative file as an env var $VAULT_TOKEN_FILE, or pass in the TOKEN directly as $VAULT_TOKEN.
+You may also pass in an alternative file as an env var $VAULT_TOKEN_FILE, or pass in the TOKEN directly as $VAULT_TOKEN. The controller self-renews this token every 10 minutes.
 
 The key contents themselves should already have been written to Vault as follows:
 
@@ -61,37 +61,38 @@ vault write www.example.com key="-----BEGIN PRIVATE KEY-----..." crt="-----BEGIN
 Deploying the controller is as easy as creating the RC in this directory. Having done so you can test it with the following echoheaders application:
 
 ```yaml
-# 3 Services for the 3 endpoints of the Ingress
-apiVersion: v1
-kind: ReplicationController
+apiVersion: extensions/v1beta1
+kind: DaemonSet
 metadata:
   namespace: kube-system
   name: nginx-ingress
-  labels:
-    app: nginx-ingress
 spec:
-  replicas: 3
-  selector:
-    app: nginx-ingress
-  template:
+ template:
     metadata:
       labels:
-        app: nginx-ingress
+        name: nginx-ingress
     spec:
+      hostNetwork: true
+      nodeSelector:
+        role: loadbalancer
       containers:
-      - image: devlm/nginx-ingress:dev
+      - image: devlm/nginx-ingress:1.7.0
+        resources:
+            limits:
+              cpu: "${INGRESS_CPU}"
+              memory: ${INGRESS_RAM}
         imagePullPolicy: Always
         name: nginx-ingress
         env:
           - name: "VAULT_ADDR"
             value: "https://vault.kube-system.svc.cluster.local:8243"
-          - name: "VAULT_SKIP_VERIFY"
-            value: "false"
+          - name: "VAULT_TOKEN_FILE"
+            value: "/etc/vault-token/ingress-read-only"
           - name: "VAULT_SSL_SIGNER"
             value: >
                    "-----BEGIN CERTIFICATE-----
-                   ...
-                   -----END CERTIFICATE-----"
+                    ....
+                    -----END CERTIFICATE-----"
         ports:
         - containerPort: 80
           hostPort: 80
@@ -104,8 +105,7 @@ spec:
         - name: vault-volume
           secret:
               secretName: ingress-read-only
-      nodeSelector:
-        role: loadbalancer
+
 ```
 
 Note the secret volume setup and `VAULT_` environment variables.
@@ -120,6 +120,8 @@ metadata:
   namespace: some-namespace
   labels:
     ssl: true
+    httpsOnly: false
+    httpsBackend: true
 spec:
   rules:
   - host: www.example.com
@@ -130,9 +132,15 @@ spec:
           servicePort: 8043
         path: /
 ```
-You should be able to access the Services on the public IP of the node the nginx pod lands on. If using ssl: true the backend service must be https:// as well.
+You should be able to access the Services on the public IP of the node the nginx pod lands on.
 
 Note the `ssl: true` label.
+
+The other (optional) labels available are:
+
+`httpsOnly` Do not create a http listener
+`httpsBackend` Use https for the proxy connection to the backend
+`timeout` A configurable override of the backend timeout (default 60s)
 
 The ingress controller will detect that this has been created and react as follows:
 
@@ -140,10 +148,19 @@ The ingress controller will detect that this has been created and react as follo
 Found secret for www.example.com
 Found key for www.example.com
 Found crt for www.example.com
+Keypair correct for www.example.com
+Service address responding for www.example.com
 Starting nginx [-c /etc/nginx/nginx.conf]
 nginx config updated.
 ```
-
 You should now be able to point www.example.com at the Ingress nodes and reach www.example.com over http:// and https://.
+
+Validation:
+
+The ingress will NOT be created if:
+The keypair created by the key and crt values is not valid.
+The backend service does not respond at https://example.some-namespace.svc.cluster.local:8043 with a 200.
+
+However it will keep trying.
 
 If either VAULT_ADDR or VAULT_TOKEN are not set then vault support is disabled and the controller should act like nginx-alpha, with the addition of access and err logging from the nginx instance to stdout/err on the container.

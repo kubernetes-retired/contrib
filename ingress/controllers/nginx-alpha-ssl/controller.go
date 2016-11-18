@@ -56,7 +56,6 @@ http {
     types_hash_max_size 2048;
     server_names_hash_max_size 512;
     server_names_hash_bucket_size 64;
-    # bite-460
     client_max_body_size 128m;
 
     # Optimize
@@ -64,7 +63,7 @@ http {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_session_cache shared:SSL:100m;
     ssl_session_timeout 30m;
-    proxy_read_timeout 180s;
+    proxy_read_timeout 60s;
 
     log_format proxied_combined '"$http_x_forwarded_for" - $remote_user [$time_local] "$request" '
                                             '$status $body_bytes_sent "$http_referer" '
@@ -194,27 +193,8 @@ func renewVaultToken(vault *vault.Client, scheduled *time.Ticker) {
     }
 }
 
-func main() {
-  var ingClient client.IngressInterface
-  if kubeClient, err := client.NewInCluster(); err != nil {
-    log.Fatalf("Failed to create client: %v.", err)
-  } else {
-    ingClient = kubeClient.Extensions().Ingress(api.NamespaceAll)
-  }
-  /* vaultEnabled
-  The following environment variables should be set:
-  VAULT_ADDR
-  VAULT_TOKEN
-  VAULT_SKIP_VERIFY (if using self-signed SSL on vault)
-  The only one we need to explicitly introduce is VAULT_ADDR, but we can check the others
-  Se the following to disable Vault integration entirely:
-  VAULT_ENABLED = "false"
-  */
-  nginxTemplate := nginxConf
-  vaultEnabledFlag := os.Getenv("VAULT_ENABLED")
-  vaultAddress := os.Getenv("VAULT_ADDR")
-  vaultToken := os.Getenv("VAULT_TOKEN")
-  debug := os.Getenv("DEBUG")
+func testServiceEndpoint(scheme string, host string, port string) bool {
+    requestString := scheme + "://" + host + ":" + port + "/"
 
     if strings.ToLower(scheme) == "https" {
         tr := &http.Transport{

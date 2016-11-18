@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/leaderelection"
 	"k8s.io/kubernetes/pkg/client/record"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 const (
@@ -124,5 +124,5 @@ func NewElection(electionId, id, namespace string, ttl time.Duration, callback f
 
 // RunElection runs an election given an leader elector.  Doesn't return.
 func RunElection(e *leaderelection.LeaderElector) {
-	util.Forever(e.Run, 0)
+	wait.Forever(e.Run, 0)
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2015 The Kubernetes Authors All rights reserved.
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ do
   format none
   time_key time
   path ${filepath}
-  pos_file /etc/google-fluentd/fluentd-gcp.log.pos
+  pos_file /etc/google-fluentd/fluentd-gcp-${filename}.pos
   time_format %Y-%m-%dT%H:%M:%S
   tag file.${filename}
   read_from_head true

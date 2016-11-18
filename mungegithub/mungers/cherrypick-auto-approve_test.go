@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -115,7 +115,7 @@ func TestCherrypickAuthApprove(t *testing.T) {
 
 		pr := ValidPR()
 		pr.Base.Ref = &test.prBranch
-		client, server, mux := github_test.InitServer(t, test.issue, pr, nil, nil, nil)
+		client, server, mux := github_test.InitServer(t, test.issue, pr, nil, nil, nil, nil, nil)
 
 		path := fmt.Sprintf("/repos/o/r/issues/%d/labels", *test.issue.Number)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {

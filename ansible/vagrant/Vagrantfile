@@ -7,10 +7,16 @@ require "yaml"
 ### Then RUN: "vagrant plugin install vagrant-openstack-provider"
 require 'vagrant-openstack-provider'
 
+require 'vagrant-aws'
+
 $num_nodes = (ENV['NUM_NODES'] || 2).to_i
+$num_masters = (ENV['NUM_MASTERS'] || 1).to_i
 $ansible_tags = ENV['ANSIBLE_TAGS']
 # OS image to use. Currently supported:
 # - "centos7" on openstack, libvirt, virtualbox
+# - "centosatomic" on openstack, libvirt, virtualbox
+# - "fedora" on openstack, libvirt, virtualbox
+# - "fedoraatomic" on openstack, libvirt, virtualbox
 # - "coreos" on virtualbox
 $os_image = (ENV['OS_IMAGE'] || "centos7").to_sym
 
@@ -34,9 +40,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.ssh.insert_key = false
 
   # This explicitly sets the order that vagrant will use by default if no --provider given
-  config.vm.provider "openstack"
-  config.vm.provider "libvirt"
   config.vm.provider "virtualbox"
+  config.vm.provider "libvirt"
+  config.vm.provider "aws"
+  config.vm.provider "openstack"
 
   def set_openstack_box(config)
     case $os_image
@@ -51,6 +58,12 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     case $os_image
     when :centos7
       config.vm.box = "centos/7"
+    when :centosatomic
+      config.vm.box = "centos/atomic-host"
+    when :fedora
+      config.vm.box = "fedora/23-cloud-base"
+    when :fedoraatomic
+      config.vm.box = "fedora/23-atomic-host"
     when :coreos
       config.vm.box = "coreos-%s" % $coreos_update_channel
       if $coreos_image_version != "current"
@@ -64,8 +77,21 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   def set_libvirt_box(config)
     case $os_image
     when :centos7
-      config.vm.box = "kube-centos-7"
-      config.vm.box_url = "http://cloud.centos.org/centos/7/vagrant/x86_64/images/CentOS-7.LibVirt.box"
+      config.vm.box = "centos/7"
+    when :centosatomic
+      config.vm.box = "centos/atomic-host"
+    when :fedora
+      config.vm.box = "fedora/23-cloud-base"
+    when :fedoraatomic
+      config.vm.box = "fedora/23-atomic-host"
+    end
+  end
+
+  def set_aws_box(config)
+    case $os_image
+    when :centos7
+      config.vm.box = "dummy"
+      config.vm.box_url = "https://github.com/mitchellh/vagrant-aws/raw/master/dummy.box"
     end
   end
 
@@ -121,6 +147,21 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     lv.volume_cache = 'none'
   end
 
+  def set_aws(aws, config, n)
+    set_aws_box(config)
+
+    config.ssh.username = "YOUR IMAGE UNAME"
+    config.ssh.private_key_path = "PATH TO YOUR KEY"
+
+    ### The below parameters need to be modified per your aws acct
+    aws.access_key_id = "YOUR KEY"
+    aws.secret_access_key = "YOUR SECRET KEY"
+    aws.session_token = "SESSION TOKEN"
+    aws.keypair_name = "KEYPAIR NAME"
+    aws.ami = "YOUR AMI"
+    aws.region = "YOUR REGION"
+  end
+
   def set_provider(n, vm_idx)
     n.vm.provider :openstack do |os, override|
       set_openstack(os, override, n)
@@ -130,6 +171,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     end
     n.vm.provider :libvirt do |lv, override|
       set_libvirt(lv, override)
+    end
+     n.vm.provider :aws do |aws, override|
+      set_aws(aws, override, n)
     end
   end
 
@@ -159,7 +203,17 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     set_common_ansible_options(ansible)
 
     # This sets up both flannel and kube.
-    ansible.playbook = "../cluster.yml"
+    ansible.playbook = "../playbooks/deploy-cluster.yml"
+
+    # Copy group_vars directory if it exists
+    vagrant_inventory_directory = ".vagrant/provisioners/ansible/inventory"
+    unless File.directory?(vagrant_inventory_directory)
+      FileUtils.mkdir_p(vagrant_inventory_directory)
+    end
+
+    if File.directory?("../inventory/group_vars")
+      FileUtils.copy_entry "../inventory/group_vars", File.join(vagrant_inventory_directory, "group_vars")
+    end
 
     if provider == :virtualbox
       master_ip = VBOX_STATIC_IP_TEMPLATE % 0
@@ -170,6 +224,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       ansible.extra_vars = {
         flannel_opts: "--iface=eth1",
         etcd_interface: "eth1",
+        netplugin_interface: "eth1",
+        netmaster_interface: "eth1",
         kube_apiserver_bind_address: master_ip,
       }
     end
@@ -191,9 +247,25 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         yield ansible, :libvirt
       end
     end
+    n.vm.provider :aws do |aws, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :aws
+      end
+    end
   end
 
   config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  masters = Array.new()
+  $num_masters.times do |i|
+    # multi vm config
+    name = "kube-master-#{i+1}"
+    masters.push(name)
+    config.vm.define "#{name}" do |n|
+      n.vm.hostname = name
+      set_provider(n, i )
+    end
+  end
 
   nodes = Array.new()
   $num_nodes.times do |i|
@@ -202,41 +274,37 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     nodes.push(name)
     config.vm.define "#{name}" do |n|
       n.vm.hostname = name
-      set_provider(n, i + 1)
-    end
-  end
+      set_provider(n, i + $num_masters)
+      if i == $num_nodes-1
+        # GROUP CONFIGURATION
+        # This is how we create the ansible inventory, see it in .vagrant
+        # if you want to debug, run 'VAGRANT_LOG=info vagrant up'
+        # and you'll see exactly how the cluster comes up via ansible inv.
+        $groups = {
+          "etcd:children" => ["masters"],
+          "masters" => masters,
+          "nodes" => nodes,
+          "all_groups:children" => ["etcd","masters","nodes"],
+        }
+        if $os_image == :coreos
+          # Vagrant prior version 1.8.0 doesn't write group variables into inventory file:
+          # <https://github.com/mitchellh/vagrant/commit/dd4ae1a51cfb246d561bced89d3b34ee90a0a38f>
+          Vagrant.require_version ">= 1.8.0"
 
-  # This is how we create the ansible inventory, see it in .vagrant
-  # if you want to debug, run 'VAGRANT_LOG=info vagrant up'
-  # and you'll see exactly how the cluster comes up via ansible inv.
-  $groups = {
-     "etcd" => ["kube-master"],
-     "masters" => ["kube-master"],
-     "nodes" => nodes,
-     "all_groups:children" => ["etcd","masters","nodes"],
-  }
-  if $os_image == :coreos
-    # Vagrant prior version 1.8.0 doesn't write group variables into inventory file:
-    # <https://github.com/mitchellh/vagrant/commit/dd4ae1a51cfb246d561bced89d3b34ee90a0a38f>
-    Vagrant.require_version ">= 1.8.0"
+          # On CoreOS we use custom Python in Ansible.
+          $groups["all_groups:vars"] = ['ansible_python_interpreter="PATH=/opt/bin:$PATH python"']
+        end
+        # PROVISIONING
+        if $ansible_tags.nil?
+          run_ansible_provision n do |ansible, provider|
+            vagrant_ansible_provision(ansible, provider)
+          end
+        end
 
-    # On CoreOS we use custom Python in Ansible.
-    $groups["all_groups:vars"] = ['ansible_python_interpreter="PATH=/opt/bin:$PATH python"']
-  end
-
-  config.vm.define "kube-master" do |n|
-    name = "kube-master"
-    n.vm.hostname = name
-    set_provider(n, 0)
-
-    if $ansible_tags.nil?
-      run_ansible_provision n do |ansible, provider|
-        vagrant_ansible_provision(ansible, provider)
+        run_ansible_provision n do |ansible, provider|
+          cluster_ansible_provision(ansible, provider)
+        end
       end
-    end
-
-    run_ansible_provision n do |ansible, provider|
-      cluster_ansible_provision(ansible, provider)
     end
   end
 end

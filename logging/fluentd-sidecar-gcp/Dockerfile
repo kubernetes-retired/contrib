@@ -8,17 +8,20 @@
 # that has been created with a logging.write scope and that the Logging API
 # has been enabled for the project in the Google Developer Console. 
 
-FROM ubuntu:14.04
+FROM ubuntu:16.04
 MAINTAINER Alex Robinson "arob@google.com"
 
 # Disable prompts from apt.
 ENV DEBIAN_FRONTEND noninteractive
+# Keeps unneeded configs from being installed along with fluentd.
+ENV DO_NOT_INSTALL_CATCH_ALL_CONFIG true
 
 # Install the Fluentd agent that knows how to send logs to Google Cloud Logging.
 RUN apt-get -q update && \
     apt-get install -y curl && \
     apt-get clean && \
-    curl -s https://storage.googleapis.com/signals-agents/logging/google-fluentd-install.sh | sudo bash
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+    curl -s https://storage.googleapis.com/signals-agents/logging/google-fluentd-install.sh | bash
 
 # Copy the configuration file generator for creating input configurations for
 # each file specified in the FILES_TO_COLLECT environment variable.

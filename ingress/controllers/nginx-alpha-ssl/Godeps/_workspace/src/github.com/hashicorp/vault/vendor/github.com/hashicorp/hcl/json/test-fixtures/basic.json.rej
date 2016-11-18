@@ -1,6 +1,0 @@
---- /dev/null
-+++ Godeps/_workspace/src/github.com/hashicorp/vault/vendor/github.com/hashicorp/hcl/json/test-fixtures/basic.json
-@@ -0,0 +1,3 @@
-+{
-+	"foo": "bar"
-+}

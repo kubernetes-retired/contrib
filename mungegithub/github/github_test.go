@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -181,7 +181,7 @@ func TestForEachIssueDo(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		client, server, mux := github_test.InitServer(t, nil, nil, nil, nil, nil)
+		client, server, mux := github_test.InitServer(t, nil, nil, nil, nil, nil, nil, nil)
 		config := &Config{
 			client:      client,
 			Org:         "foo",
@@ -352,7 +352,7 @@ func TestComputeStatus(t *testing.T) {
 
 func TestGetLastModified(t *testing.T) {
 	tests := []struct {
-		commits      []github.RepositoryCommit
+		commits      []*github.RepositoryCommit
 		expectedTime *time.Time
 	}{
 		{
@@ -371,7 +371,7 @@ func TestGetLastModified(t *testing.T) {
 		},
 		{
 			//  We can't represent the same time in 2 commits using github_test.Commits()
-			commits: []github.RepositoryCommit{
+			commits: []*github.RepositoryCommit{
 				{
 					SHA: stringPtr("mysha1"),
 					Commit: &github.Commit{
@@ -404,7 +404,7 @@ func TestGetLastModified(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		client, server, _ := github_test.InitServer(t, nil, nil, nil, test.commits, nil)
+		client, server, _ := github_test.InitServer(t, nil, nil, nil, test.commits, nil, nil, nil)
 		config := &Config{}
 		config.Org = "o"
 		config.Project = "r"
@@ -450,7 +450,7 @@ func TestRemoveLabel(t *testing.T) {
 		},
 	}
 	for testNum, test := range tests {
-		client, server, mux := github_test.InitServer(t, test.issue, nil, nil, nil, nil)
+		client, server, mux := github_test.InitServer(t, test.issue, nil, nil, nil, nil, nil, nil)
 		config := &Config{}
 		config.Org = "o"
 		config.Project = "r"
@@ -474,5 +474,88 @@ func TestRemoveLabel(t *testing.T) {
 			}
 		}
 		server.Close()
+	}
+}
+
+func TestPRGetFixesList(t *testing.T) {
+	tests := []struct {
+		issue    *github.Issue
+		body     string
+		expected []int
+	}{
+		{
+			issue: github_test.Issue("", 1, []string{"label1"}, false),
+			body: `bla resolve
+this pr closes #45545 and also fixes #679
+bla, some more bla with close here and there.
+some suggest that it resolved #5643`,
+			expected: []int{45545, 679, 5643},
+		},
+		{
+			issue: github_test.Issue("", 2, []string{"label1"}, false),
+			body: `bla resolve 345
+some suggest that it also closes #892`,
+			expected: []int{892},
+		},
+		{
+			issue: github_test.Issue("", 3, []string{"label1"}, false),
+			body: `bla resolve
+this pr closes and fixes nothing`,
+			expected: nil,
+		},
+		{
+			issue: github_test.Issue("", 4, []string{"label1"}, false),
+			body: `bla bla
+this pr Fixes #23 and FIXES #45 but not fixxx #99`,
+			expected: []int{23, 45},
+		},
+	}
+	for testNum, test := range tests {
+		client, server, _ := github_test.InitServer(t, test.issue, nil, nil, nil, nil, nil, nil)
+		config := &Config{}
+		config.Org = "o"
+		config.Project = "r"
+		config.SetClient(client)
+
+		obj, err := config.GetObject(*test.issue.Number)
+		if err != nil {
+			t.Fatalf("%d: unable to get issue: %v", testNum, *test.issue.Number)
+		}
+		obj.Issue.Body = &test.body
+		fixes := obj.GetPRFixesList()
+		if len(test.expected) != len(fixes) {
+			t.Errorf("%d: len(fixes) not equal, expected: %v but got: %v", testNum, test.expected, fixes)
+			return
+		}
+		for i, n := range test.expected {
+			if n != fixes[i] {
+				t.Errorf("%d: expected fixes: %v but got fixes: %v", testNum, test.expected, fixes)
+			}
+		}
+		server.Close()
+	}
+}
+
+func TestCleanIssueBody(t *testing.T) {
+	tests := []struct {
+		body, expected string
+	}{
+		{"foo", "foo"},
+		{"    bar   ", "bar"},
+		{
+			`Some message
+
+<!-- Reviewable:start -->
+gratuitous href
+<!-- Reviewable:end -->`,
+			"Some message",
+		},
+	}
+	for testNum, test := range tests {
+		body := cleanIssueBody(test.body)
+		if body != test.expected {
+			t.Errorf("%d: cleanIssueBody(%#v) == %#v != %#v",
+				testNum, test.body, body, test.expected)
+		}
 	}
 }

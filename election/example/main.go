@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import (
 	"github.com/golang/glog"
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
@@ -47,11 +48,11 @@ var (
 )
 
 func makeClient() (*client.Client, error) {
-	var cfg *client.Config
+	var cfg *restclient.Config
 	var err error
 
 	if *inCluster {
-		if cfg, err = client.InClusterConfig(); err != nil {
+		if cfg, err = restclient.InClusterConfig(); err != nil {
 			return nil, err
 		}
 	} else {

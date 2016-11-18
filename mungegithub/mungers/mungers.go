@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
+	"k8s.io/contrib/mungegithub/mungers/mungerutil"
 )
 
 // Munger is the interface which all mungers must implement to register
@@ -69,18 +70,26 @@ func RequestedFeatures() []string {
 	return out.List()
 }
 
-// InitializeMungers will call munger.Initialize() for all mungers requested
-// in --pr-mungers
-func InitializeMungers(requestedMungers []string, config *github.Config, features *features.Features) error {
+// RegisterMungers will check if a requested munger exists and add it to
+// the list.
+func RegisterMungers(requestedMungers []string) error {
 	for _, name := range requestedMungers {
 		munger, found := mungerMap[name]
 		if !found {
 			return fmt.Errorf("couldn't find a munger named: %s", name)
 		}
 		mungers = append(mungers, munger)
+	}
+	return nil
+}
+
+// InitializeMungers will call munger.Initialize() for the requested mungers.
+func InitializeMungers(config *github.Config, features *features.Features) error {
+	for _, munger := range mungers {
 		if err := munger.Initialize(config, features); err != nil {
 			return err
 		}
+		glog.Infof(mungerutil.PrettyString(munger))
 		glog.Infof("Initialized munger: %s", munger.Name())
 	}
 	return nil

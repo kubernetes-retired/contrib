@@ -1,3 +1,5 @@
-FROM node:0.12
+FROM node:6.3-slim
+
 COPY server.js /server.js
+
 CMD node server.js

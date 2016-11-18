@@ -51,7 +51,7 @@ $ kubectl get svc --all-namespaces -o yaml  | grep -i "selfLink"
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-heapster
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-influxdb
 ```
-These are all the [cluster addon](https://github.com/kubernetes/kubernetes/tree/master/cluster/addons) services in `namespace=kube-system`.
+These are all the [cluster addon](https://github.com/kubernetes/kubernetes/tree/master/cluster/addons) services in all namespaces `--all-namespaces`.
 
 #### Create a loadbalancer
 * Loadbalancers are created via a ReplicationController.
@@ -116,15 +116,13 @@ A couple of points to note:
 - You need to take care of ensuring there is no collision between these service ports on the node.
 
 #### SSL Termination
-
-- Annotate a service
+To terminate SSL for a service you just need to annotate the service with ``` serviceloadbalancer/lb.sslTerm: "true" ``` as seen below. This will cause your service to be served behind /{service-name} or /{service-name}:{port} if not running on port 80. This mimics the standard http functionality.
 
 ```yaml
 metadata:
   name: myservice
   annotations:
     serviceloadbalancer/lb.sslTerm: "true"
-    serviceloadbalancer/lb.aclMatch: "-i /t1 /t2"
   labels:
 ```
 
@@ -147,13 +145,14 @@ metadata:
           hostPort: 1936
           protocol: TCP
         resources: {}
-        volumes:
-        - name: secret-volume
-          secret:
-            secretName: my-secret
         volumeMounts:
         - mountPath: "/ssl"
           name: secret-volume
+    volumes:
+    - name: secret-volume
+      secret:
+        secretName: my-secret
+       
 ```
 
 - Add your SSL configuration to loadbalancer pod
@@ -165,6 +164,17 @@ metadata:
       - --namespace=default
 ```
 
+##### Custom ACL
+ - Adding the aclMatch annotation will allow you to serve the service on a specific path although URLs will not be rewritten back to root. The following will cause your service to be available at /test and your web service will be passed the url with /test on the front.
+ 
+```yaml
+ metadata:
+   name: myservice
+   annotations:
+     serviceloadbalancer/lb.sslTerm: "true"
+     serviceloadbalancer/lb.aclMatch: "-i /test"
+   labels:
+```
 #### TCP
 
 ```yaml

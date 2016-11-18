@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import (
 	"k8s.io/contrib/mungegithub/github"
 
 	"github.com/golang/glog"
-	github_api "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +40,7 @@ type BlunderbussConfig struct {
 type BlunderbussMunger struct {
 	config              *BlunderbussConfig
 	features            *features.Features
-	blunderbussReassign bool
+	BlunderbussReassign bool
 }
 
 func init() {
@@ -53,7 +52,9 @@ func init() {
 func (b *BlunderbussMunger) Name() string { return "blunderbuss" }
 
 // RequiredFeatures is a slice of 'features' that must be provided
-func (b *BlunderbussMunger) RequiredFeatures() []string { return []string{features.RepoFeatureName} }
+func (b *BlunderbussMunger) RequiredFeatures() []string {
+	return []string{features.RepoFeatureName, features.AliasesFeature}
+}
 
 // Initialize will initialize the munger
 func (b *BlunderbussMunger) Initialize(config *github.Config, features *features.Features) error {
@@ -66,15 +67,7 @@ func (b *BlunderbussMunger) EachLoop() error { return nil }
 
 // AddFlags will add any request flags to the cobra `cmd`
 func (b *BlunderbussMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
-	cmd.Flags().BoolVar(&b.blunderbussReassign, "blunderbuss-reassign", false, "Assign PRs even if they're already assigned; use with -dry-run to judge changes to the assignment algorithm")
-}
-
-// u may be nil.
-func describeUser(u *github_api.User) string {
-	if u != nil && u.Login != nil {
-		return *u.Login
-	}
-	return "<nil>"
+	cmd.Flags().BoolVar(&b.BlunderbussReassign, "blunderbuss-reassign", false, "Assign PRs even if they're already assigned; use with -dry-run to judge changes to the assignment algorithm")
 }
 
 func chance(val, total int64) float64 {
@@ -98,39 +91,42 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 	}
 
 	issue := obj.Issue
-	if !b.blunderbussReassign && issue.Assignee != nil {
-		glog.V(6).Infof("skipping %v: reassign: %v assignee: %v", *issue.Number, b.blunderbussReassign, describeUser(issue.Assignee))
+	if !b.BlunderbussReassign && issue.Assignee != nil {
+		glog.V(6).Infof("skipping %v: reassign: %v assignee: %v", *issue.Number, b.BlunderbussReassign, github.DescribeUser(issue.Assignee))
 		return
 	}
 
-	commits, err := obj.GetCommits()
+	files, err := obj.ListFiles()
 	if err != nil {
 		return
 	}
 
 	potentialOwners := weightMap{}
 	weightSum := int64(0)
-	for _, commit := range commits {
-		for _, file := range commit.Files {
-			fileWeight := int64(1)
-			if file.Changes != nil && *file.Changes != 0 {
-				fileWeight = int64(*file.Changes)
+	for _, file := range files {
+		fileWeight := int64(1)
+		if file.Changes != nil && *file.Changes != 0 {
+			fileWeight = int64(*file.Changes)
+		}
+		// Judge file size on a log scale-- effectively this
+		// makes three buckets, we shouldn't have many 10k+
+		// line changes.
+		fileWeight = int64(math.Log10(float64(fileWeight))) + 1
+		fileOwners := b.features.Repos.LeafAssignees(*file.Filename)
+		if fileOwners.Len() == 0 {
+			glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
+		}
+
+		if b.features.Aliases != nil && b.features.Aliases.IsEnabled {
+			fileOwners = b.features.Aliases.Expand(fileOwners)
+		}
+
+		for _, owner := range fileOwners.List() {
+			if owner == *issue.User.Login {
+				continue
 			}
-			// Judge file size on a log scale-- effectively this
-			// makes three buckets, we shouldn't have many 10k+
-			// line changes.
-			fileWeight = int64(math.Log10(float64(fileWeight))) + 1
-			fileOwners := b.features.Repos.LeafAssignees(*file.Filename)
-			if fileOwners.Len() == 0 {
-				glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
-			}
-			for _, owner := range fileOwners.List() {
-				if owner == *issue.User.Login {
-					continue
-				}
-				potentialOwners[owner] = potentialOwners[owner] + fileWeight
-				weightSum += fileWeight
-			}
+			potentialOwners[owner] = potentialOwners[owner] + fileWeight
+			weightSum += fileWeight
 		}
 	}
 	if len(potentialOwners) == 0 {
@@ -153,6 +149,6 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 		}
 	}
 	c := chance(potentialOwners[owner], weightSum)
-	glog.Infof("Assigning %v to %v who had a %02.2f%% chance to be assigned (previously assigned to %v)", *issue.Number, owner, c, describeUser(issue.Assignee))
+	glog.Infof("Assigning %v to %v who had a %02.2f%% chance to be assigned (previously assigned to %v)", *issue.Number, owner, c, github.DescribeUser(issue.Assignee))
 	obj.AssignPR(owner)
 }

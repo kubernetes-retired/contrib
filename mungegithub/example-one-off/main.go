@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"k8s.io/contrib/mungegithub/github"
-	"k8s.io/kubernetes/pkg/util"
+	utilflag "k8s.io/kubernetes/pkg/util/flag"
 )
 
 // MungeIssue is the real worker. It is called for every open github Issue
@@ -54,7 +54,7 @@ func main() {
 			return nil
 		},
 	}
-	root.SetGlobalNormalizationFunc(util.WordSepNormalizeFunc)
+	root.SetGlobalNormalizationFunc(utilflag.WordSepNormalizeFunc)
 	config.AddRootFlags(root)
 	root.Execute()
 }

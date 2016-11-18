@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,44 +17,74 @@ limitations under the License.
 package nginx
 
 import (
+	"crypto/sha1"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"os"
 
 	"github.com/golang/glog"
+
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/config"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/ingress"
 )
 
 // AddOrUpdateCertAndKey creates a .pem file wth the cert and the key with the specified name
-func (nginx *Manager) AddOrUpdateCertAndKey(name string, cert string, key string) (string, error) {
-	pemFileName := sslDirectory + "/" + name + ".pem"
+func (nginx *Manager) AddOrUpdateCertAndKey(name string, cert string, key string) (ingress.SSLCert, error) {
+	temporaryPemFileName := fmt.Sprintf("%v.pem", name)
+	pemFileName := fmt.Sprintf("%v/%v.pem", config.SSLDirectory, name)
 
-	pem, err := os.Create(pemFileName)
+	temporaryPemFile, err := ioutil.TempFile("", temporaryPemFileName)
 	if err != nil {
-		return "", fmt.Errorf("Couldn't create pem file %v: %v", pemFileName, err)
-	}
-	defer pem.Close()
-
-	_, err = pem.WriteString(fmt.Sprintf("%v\n%v", cert, key))
-	if err != nil {
-		return "", fmt.Errorf("Couldn't write to pem file %v: %v", pemFileName, err)
+		return ingress.SSLCert{}, fmt.Errorf("Couldn't create temp pem file %v: %v", temporaryPemFile.Name(), err)
 	}
 
-	return pemFileName, nil
+	_, err = temporaryPemFile.WriteString(fmt.Sprintf("%v\n%v", cert, key))
+	if err != nil {
+		return ingress.SSLCert{}, fmt.Errorf("Couldn't write to pem file %v: %v", temporaryPemFile.Name(), err)
+	}
+
+	err = temporaryPemFile.Close()
+	if err != nil {
+		return ingress.SSLCert{}, fmt.Errorf("Couldn't close temp pem file %v: %v", temporaryPemFile.Name(), err)
+	}
+
+	cn, err := nginx.commonNames(temporaryPemFile.Name())
+	if err != nil {
+		os.Remove(temporaryPemFile.Name())
+		return ingress.SSLCert{}, err
+	}
+
+	err = os.Rename(temporaryPemFile.Name(), pemFileName)
+	if err != nil {
+		os.Remove(temporaryPemFile.Name())
+		return ingress.SSLCert{}, fmt.Errorf("Couldn't move temp pem file %v to destination %v: %v", temporaryPemFile.Name(), pemFileName, err)
+	}
+
+	return ingress.SSLCert{
+		CertFileName: cert,
+		KeyFileName:  key,
+		PemFileName:  pemFileName,
+		PemSHA:       nginx.pemSHA1(pemFileName),
+		CN:           cn,
+	}, nil
 }
 
-// CheckSSLCertificate checks if the certificate and key file are valid
+// commonNames checks if the certificate and key file are valid
 // returning the result of the validation and the list of hostnames
 // contained in the common name/s
-func (nginx *Manager) CheckSSLCertificate(pemFileName string) ([]string, error) {
+func (nginx *Manager) commonNames(pemFileName string) ([]string, error) {
 	pemCerts, err := ioutil.ReadFile(pemFileName)
 	if err != nil {
 		return []string{}, err
 	}
 
-	var block *pem.Block
-	block, _ = pem.Decode(pemCerts)
+	block, _ := pem.Decode(pemCerts)
+	if block == nil {
+		return []string{}, fmt.Errorf("No valid PEM formatted block found")
+	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
@@ -66,7 +96,7 @@ func (nginx *Manager) CheckSSLCertificate(pemFileName string) ([]string, error) 
 		cn = append(cn, cert.DNSNames...)
 	}
 
-	glog.V(2).Infof("DNS %v %v\n", cn, len(cn))
+	glog.V(3).Infof("found %v common names: %v\n", cn, len(cn))
 	return cn, nil
 }
 
@@ -89,4 +119,17 @@ func (nginx *Manager) SearchDHParamFile(baseDir string) string {
 
 	glog.Warning("no file dhparam.pem found in secrets")
 	return ""
+}
+
+// pemSHA1 returns the SHA1 of a pem file. This is used to
+// reload NGINX in case a secret with a SSL certificate changed.
+func (nginx *Manager) pemSHA1(filename string) string {
+	hasher := sha1.New()
+	s, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return ""
+	}
+
+	hasher.Write(s)
+	return hex.EncodeToString(hasher.Sum(nil))
 }
