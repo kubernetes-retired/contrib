@@ -157,6 +157,8 @@ func main() {
   } else {
     ingClient = kubeClient.Extensions().Ingress(api.NamespaceAll)
   }
+
+  stats := statsd.NewStatsdClient("localhost:8125", "nginx.config.")
   /* vaultEnabled
   The following environment variables should be set:
   VAULT_ADDR
