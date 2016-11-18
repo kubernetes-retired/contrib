@@ -26,6 +26,7 @@ import (
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/aws"
+	"k8s.io/contrib/cluster-autoscaler/cloudprovider/azure"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/gce"
 	"k8s.io/contrib/cluster-autoscaler/clusterstate"
 	"k8s.io/contrib/cluster-autoscaler/config"
@@ -97,7 +98,7 @@ var (
 		"How often scale down possiblity is check")
 	scanInterval                = flag.Duration("scan-interval", 10*time.Second, "How often cluster is reevaluated for scale up or down")
 	maxNodesTotal               = flag.Int("max-nodes-total", 0, "Maximum number of nodes in all node groups. Cluster autoscaler will not grow the cluster beyond this number.")
-	cloudProviderFlag           = flag.String("cloud-provider", "gce", "Cloud provider type. Allowed values: gce, aws")
+	cloudProviderFlag           = flag.String("cloud-provider", "gce", "Cloud provider type. Allowed values: gce, aws, azure")
 	maxEmptyBulkDeleteFlag      = flag.Int("max-empty-bulk-delete", 10, "Maximum number of empty nodes that can be deleted at the same time.")
 	maxGratefulTerminationFlag  = flag.Int("max-grateful-termination-sec", 60, "Maximum number of seconds CA waints for pod termination when trying to scale down a node.")
 	maxTotalUnreadyPercentage   = flag.Float64("max-total-unready-percentage", 33, "Maximum percentage of unready nodes after which CA halts operations")
@@ -138,7 +139,7 @@ func createEventRecorder(kubeClient kube_client.Interface) kube_record.EventReco
 }
 
 // In order to meet interface criteria for LeaderElectionConfig we need to
-// take stop channell as an argument. However, since we are committing a suicide
+// take stop channel as an argument. However, since we are committing a suicide
 // after loosing mastership we can safely ignore it.
 func run(_ <-chan struct{}) {
 	kubeClient := createKubeClient()
@@ -200,6 +201,28 @@ func run(_ <-chan struct{}) {
 		cloudProvider, err = aws.BuildAwsCloudProvider(awsManager, nodeGroupsFlag)
 		if err != nil {
 			glog.Fatalf("Failed to create AWS cloud provider: %v", err)
+		}
+	}
+
+	if *cloudProviderFlag == "azure" {
+		var azureManager *azure.AzureManager
+		var azureError error
+		if *cloudConfig != "" {
+			config, fileErr := os.Open(*cloudConfig)
+			if fileErr != nil {
+				glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", *cloudConfig, err)
+			}
+			defer config.Close()
+			azureManager, azureError = azure.CreateAzureManager(config)
+		} else {
+			azureManager, azureError = azure.CreateAzureManager(nil)
+		}
+		if azureError != nil {
+			glog.Fatalf("Failed to create Azure Manager: %v", err)
+		}
+		cloudProvider, err = azure.BuildAzureCloudProvider(azureManager, nodeGroupsFlag)
+		if err != nil {
+			glog.Fatalf("Failed to create Azure cloud provider: %v", err)
 		}
 	}
 
