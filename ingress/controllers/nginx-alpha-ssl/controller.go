@@ -32,6 +32,8 @@ import (
   "k8s.io/kubernetes/pkg/apis/extensions"
   client "k8s.io/kubernetes/pkg/client/unversioned"
   "k8s.io/kubernetes/pkg/util/flowcontrol"
+
+  "github.com/quipo/statsd"
 )
 
 const (
@@ -155,6 +157,8 @@ func main() {
   } else {
     ingClient = kubeClient.Extensions().Ingress(api.NamespaceAll)
   }
+
+  stats := statsd.NewStatsdClient("localhost:8125", "nginx")
   /* vaultEnabled
   The following environment variables should be set:
   VAULT_ADDR
@@ -336,13 +340,11 @@ func main() {
     }
 
     err = exec.Command(nginxCommand, verifyArgs...).Run()
+    stats.Incr("reload", 1)
     if err != nil {
       fmt.Printf("ERR: nginx config failed validation: %v\n", err)
       fmt.Printf("Sent config error notification to statsd.\n")
-      nginxArgs := []string{
-        nginxConfDir + "/nginx-error-statsd.sh",
-			}
-      shellOut("/bin/bash", nginxArgs)
+      stats.Incr("error", 1)
     } else {
       exec.Command(nginxCommand, reloadArgs...).Run()
       fmt.Printf("nginx config updated.\n")
