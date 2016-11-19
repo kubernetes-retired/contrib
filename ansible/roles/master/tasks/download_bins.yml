@@ -5,13 +5,9 @@
 - name: Create directory for current Kubernetes release
   file: path={{ kube_current_release_directory }} state=directory
 
-- name: Set a list of kube master binaries to download
-  set_fact:
-    kube_binaries: "{{ kube_master_binaries }}"
-
 - name: Extend the list of kube master binaries with kubelet
   set_fact:
-    kube_binaries: "{{ kube_master_binaries }} kubelet"
+    kube_master_binaries: "{{ kube_master_binaries + ['kubelet'] }}"
   when: networking == 'opencontrail'
 
 - name: Download Kubernetes binaries
@@ -25,7 +21,7 @@
     https_proxy: "{{ https_proxy|default('') }}"
     no_proxy: "{{ no_proxy|default('') }}"
   with_items:
-    - "{{ kube_binaries }}"
+    - "{{ kube_master_binaries }}"
 
 - name: Create symlinks
   file:
@@ -33,4 +29,4 @@
     dest: "{{ bin_dir }}/{{ item }}"
     state: link
   with_items:
-    - "{{ kube_binaries }}"
+    - "{{ kube_master_binaries }}"
