@@ -46,7 +46,7 @@ server: server.go
 container:
 	# Copy the whole directory to a temporary dir and set the base image
 	cp -r ./* $(TEMP_DIR)
-	cd $(TEMP_DIR) && sed -i "s|BASEIMAGE|$(BASEIMAGE)|g" Dockerfile
+	cd $(TEMP_DIR) && sed -i "" "s|BASEIMAGE|$(BASEIMAGE)|g" Dockerfile
 
 	# Compile the binary inside a container for reliable builds
 	docker run --rm -it -v $(TEMP_DIR):/build golang:$(GOLANG_VERSION) /bin/bash -c "make -C /build server ARCH=$(ARCH)"
