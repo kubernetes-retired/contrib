@@ -17,8 +17,10 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
 	"sort"
 	"strconv"
@@ -62,7 +64,8 @@ const (
 )
 
 var (
-	keyFunc = framework.DeletionHandlingMetaNamespaceKeyFunc
+	keyFunc          = framework.DeletionHandlingMetaNamespaceKeyFunc
+	httpSendReplacer = strings.NewReplacer("\r", "\\r", "\n", "\\n", "\"", "\\\"")
 )
 
 type namedPortMapping map[string]string
@@ -98,12 +101,14 @@ type loadBalancerController struct {
 	svcController  *framework.Controller
 	secrController *framework.Controller
 	mapController  *framework.Controller
+	podController  *framework.Controller
 
 	ingLister  StoreToIngressLister
 	svcLister  cache.StoreToServiceLister
 	endpLister cache.StoreToEndpointsLister
 	secrLister StoreToSecretsLister
 	mapLister  StoreToConfigmapLister
+	podLister  cache.StoreToPodLister
 
 	nginx   *nginx.Manager
 	podInfo *podInfo
@@ -249,6 +254,14 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 		},
 	}
 
+	podEventHandler := framework.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) {
+			if !reflect.DeepEqual(old, cur) {
+				lbc.syncQueue.enqueue(cur)
+			}
+		},
+	}
+
 	lbc.ingLister.Store, lbc.ingController = framework.NewInformer(
 		&cache.ListWatch{
 			ListFunc:  ingressListFunc(lbc.client, namespace),
@@ -283,6 +296,13 @@ func newLoadBalancerController(kubeClient *client.Client, resyncPeriod time.Dura
 			WatchFunc: mapWatchFunc(lbc.client, namespace),
 		},
 		&api.ConfigMap{}, resyncPeriod, mapEventHandler)
+
+	lbc.podLister.Indexer, lbc.podController = framework.NewIndexerInformer(
+		&cache.ListWatch{
+			ListFunc:  podListFunc(lbc.client, namespace),
+			WatchFunc: podWatchFunc(lbc.client, namespace),
+		},
+		&api.Pod{}, resyncPeriod, podEventHandler, nil)
 
 	return &lbc, nil
 }
@@ -335,9 +355,21 @@ func secretsWatchFunc(c *client.Client, ns string) func(options api.ListOptions)
 	}
 }
 
+func podWatchFunc(c *client.Client, ns string) func(api.ListOptions) (watch.Interface, error) {
+	return func(opts api.ListOptions) (watch.Interface, error) {
+		return c.Pods(ns).Watch(opts)
+	}
+}
+
 func mapListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
 	return func(opts api.ListOptions) (runtime.Object, error) {
 		return c.ConfigMaps(ns).List(opts)
+	}
+}
+
+func podListFunc(c *client.Client, ns string) func(api.ListOptions) (runtime.Object, error) {
+	return func(opts api.ListOptions) (runtime.Object, error) {
+		return c.Pods(ns).List(opts)
 	}
 }
 
@@ -352,7 +384,8 @@ func (lbc *loadBalancerController) controllersInSync() bool {
 		lbc.svcController.HasSynced() &&
 		lbc.endpController.HasSynced() &&
 		lbc.secrController.HasSynced() &&
-		lbc.mapController.HasSynced()
+		lbc.mapController.HasSynced() &&
+		lbc.podController.HasSynced()
 }
 
 func (lbc *loadBalancerController) getConfigMap(ns, name string) (*api.ConfigMap, error) {
@@ -887,6 +920,22 @@ func (lbc *loadBalancerController) createUpstreams(ngxCfg config.Configuration, 
 					continue
 				}
 				upstreams[name].Backends = endp
+
+				if ngxCfg.UseUpstreamHealthChecks {
+					probe, err := lbc.findProbeForService(svcKey, &path.Backend.ServicePort)
+					if err != nil {
+						glog.Errorf("Failed to check for readinessProbe for %v: %v", name, err)
+					}
+					if probe != nil {
+						check, err := lbc.getUpstreamCheckForProbe(probe)
+						if err != nil {
+							glog.Errorf("Failed to create health check for probe: %v", err)
+						} else {
+							upstreams[name].UpstreamCheck = check
+						}
+					}
+				}
+
 			}
 		}
 	}
@@ -894,7 +943,64 @@ func (lbc *loadBalancerController) createUpstreams(ngxCfg config.Configuration, 
 	return upstreams
 }
 
-func (lbc *loadBalancerController) getSvcEndpoints(svcKey, backendPort string,
+func (lbc *loadBalancerController) getUpstreamCheckForProbe(probe *api.Probe) (*ingress.UpstreamCheck, error) {
+	var headers http.Header = make(http.Header)
+	for _, header := range probe.HTTPGet.HTTPHeaders {
+		headers.Add(header.Name, header.Value)
+	}
+	headersWriter := new(bytes.Buffer)
+	headers.Write(headersWriter)
+
+	httpSend := httpSendReplacer.Replace(
+		fmt.Sprintf("GET %s HTTP/1.0\r\n%s\r\n", probe.HTTPGet.Path, string(headersWriter.Bytes())))
+
+	return &ingress.UpstreamCheck{
+		HttpSend:       httpSend,
+		Port:           probe.HTTPGet.Port.IntValue(),
+		Rise:           probe.SuccessThreshold,
+		Fall:           probe.FailureThreshold,
+		TimeoutMillis:  probe.TimeoutSeconds * 1000,
+		IntervalMillis: probe.PeriodSeconds * 1000,
+	}, nil
+}
+
+func (lbc *loadBalancerController) findProbeForService(svcKey string, servicePort *intstr.IntOrString) (*api.Probe, error) {
+	svcObj, svcExists, err := lbc.svcLister.Store.GetByKey(svcKey)
+	if err != nil {
+		return nil, fmt.Errorf("error getting service %v from the cache: %v", svcKey, err)
+	}
+
+	if !svcExists {
+		err = fmt.Errorf("service %v does not exists", svcKey)
+		return nil, err
+	}
+
+	svc := svcObj.(*api.Service)
+
+	selector := labels.SelectorFromSet(svc.Spec.Selector)
+	pods, err := lbc.podLister.List(selector)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get pod listing: %v", err)
+	}
+	for _, pod := range pods {
+		for _, container := range pod.Spec.Containers {
+			for _, port := range container.Ports {
+				if servicePort.Type == intstr.Int && int(port.ContainerPort) == servicePort.IntValue() ||
+					servicePort.Type == intstr.String && port.Name == servicePort.String() {
+					if container.ReadinessProbe != nil {
+						if container.ReadinessProbe.HTTPGet == nil || container.ReadinessProbe.HTTPGet.Scheme != "HTTP" {
+							continue
+						}
+						return container.ReadinessProbe, nil
+					}
+				}
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (lbc *loadBalancerController) getSvcEndpoints(svcKey string, backendPort string,
 	hz *healthcheck.Upstream) ([]ingress.UpstreamServer, error) {
 	svcObj, svcExists, err := lbc.svcLister.Store.GetByKey(svcKey)
 
@@ -1227,6 +1333,7 @@ func (lbc *loadBalancerController) Run() {
 	go lbc.svcController.Run(lbc.stopCh)
 	go lbc.secrController.Run(lbc.stopCh)
 	go lbc.mapController.Run(lbc.stopCh)
+	go lbc.podController.Run(lbc.stopCh)
 
 	go lbc.syncQueue.run(time.Second, lbc.stopCh)
 	go lbc.ingQueue.run(time.Second, lbc.stopCh)
