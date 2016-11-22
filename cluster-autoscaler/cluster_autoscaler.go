@@ -44,6 +44,7 @@ import (
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 	kube_flag "k8s.io/kubernetes/pkg/util/flag"
 
+	"fmt"
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/pflag"
@@ -205,9 +206,16 @@ func run(_ <-chan struct{}) {
 	}
 
 	if *cloudProviderFlag == "azure" {
+
+		for _, e := range os.Environ() {
+			pair := strings.Split(e, "=")
+			fmt.Println(pair[0])
+		}
+
 		var azureManager *azure.AzureManager
 		var azureError error
 		if *cloudConfig != "" {
+			glog.Info("Creating Azure Manager using cloud-config file: %v", *cloudConfig)
 			config, fileErr := os.Open(*cloudConfig)
 			if fileErr != nil {
 				glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", *cloudConfig, err)
@@ -215,6 +223,7 @@ func run(_ <-chan struct{}) {
 			defer config.Close()
 			azureManager, azureError = azure.CreateAzureManager(config)
 		} else {
+			glog.Info("Creating Azure Manager with default configuration.")
 			azureManager, azureError = azure.CreateAzureManager(nil)
 		}
 		if azureError != nil {

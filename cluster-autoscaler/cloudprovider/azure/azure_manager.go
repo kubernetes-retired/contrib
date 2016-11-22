@@ -11,7 +11,11 @@ import (
 
 	"fmt"
 	"github.com/Azure/go-autorest/autorest"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"k8s.io/kubernetes/pkg/util/wait"
+	"log"
+	"net/http"
+	"os"
 )
 
 type scaleSetInformation struct {
@@ -32,6 +36,7 @@ type scaleSetVMClient interface {
 // AzureManager handles Azure communication and data caching.
 type AzureManager struct {
 	resourceGroupName string
+	subscription      string
 	scaleSetClient    scaleSetClient
 	scaleSetVmClient  scaleSetVMClient
 
@@ -62,6 +67,12 @@ type Config struct {
 // CreateAzureManager creates Azure Manager object to work with Azure.
 func CreateAzureManager(configReader io.Reader) (*AzureManager, error) {
 	subscriptionId := string("")
+	resourceGroup := string("")
+	tenantId := string("")
+	clientId := string("")
+	clientSecret := string("")
+	var scaleSetAPI scaleSetClient = nil
+	var scaleSetVmAPI scaleSetVMClient = nil
 	if configReader != nil {
 		var cfg Config
 		if err := gcfg.ReadInto(&cfg, configReader); err != nil {
@@ -69,18 +80,75 @@ func CreateAzureManager(configReader io.Reader) (*AzureManager, error) {
 			return nil, err
 		}
 		subscriptionId = cfg.SubscriptionID
+		resourceGroup = cfg.ResourceGroup
+		tenantId = cfg.AADTenantID
+		clientId = cfg.AADClientID
+		clientSecret = cfg.AADClientSecret
+
+	} else {
+		subscriptionId = os.Getenv("ARM_SUBSCRIPTION_ID")
+		resourceGroup = os.Getenv("ARM_RESOURCE_GROUP")
+		tenantId = os.Getenv("ARM_TENANT_ID")
+		clientId = os.Getenv("ARM_CLIENT_ID")
+		clientSecret = os.Getenv("ARM_CLIENT_SECRET")
 	}
 
-	glog.Info("read configuration: %s", subscriptionId)
+	if resourceGroup == "" {
+		panic("Resource group not found")
+	}
+
+	if subscriptionId == "" {
+		panic("Subscription ID not found")
+	}
+
+	if tenantId == "" {
+		panic("Tenant ID not found.")
+	}
+
+	if clientId == "" {
+		panic("ARM Client  ID not found")
+	}
+
+	if clientSecret == "" {
+		panic("ARM Client Secret not found.")
+	}
+
+	glog.Infof("read configuration: %v", subscriptionId)
+
+	spt, err := NewServicePrincipalTokenFromCredentials(tenantId, clientId, clientSecret, azure.PublicCloud.ServiceManagementEndpoint)
+	if err != nil {
+		panic(err)
+	}
+
+	scaleSetAPI = compute.NewVirtualMachineScaleSetsClient(subscriptionId)
+	scaleSetsClient := scaleSetAPI.(compute.VirtualMachineScaleSetsClient)
+	scaleSetsClient.Authorizer = spt
+
+	scaleSetsClient.Sender = autorest.CreateSender(
+		autorest.WithLogging(log.New(os.Stdout, "sdk-example: ", log.LstdFlags)))
+
+	scaleSetsClient.RequestInspector = withInspection()
+	scaleSetsClient.ResponseInspector = byInspecting()
+
+	glog.Infof("Created scale set client with authorizer: %v", scaleSetsClient)
+
+	scaleSetVmAPI = compute.NewVirtualMachineScaleSetVMsClient(subscriptionId)
+	scaleSetVMsClient := scaleSetVmAPI.(compute.VirtualMachineScaleSetVMsClient)
+	scaleSetVMsClient.Authorizer = spt
+
+	scaleSetVMsClient.RequestInspector = withInspection()
+	scaleSetVMsClient.ResponseInspector = byInspecting()
+
+	glog.Infof("Created scale set vm client with authorizer: %v", scaleSetVMsClient)
 
 	// Create Availability Sets Azure Client.
-	scaleSetClient := compute.NewVirtualMachineScaleSetsClient(subscriptionId)
-	scaleSetVmClient := compute.NewVirtualMachineScaleSetVMsClient(subscriptionId)
 	manager := &AzureManager{
-		scaleSetClient:   &scaleSetClient,
-		scaleSetVmClient: &scaleSetVmClient,
-		scaleSets:        make([]*scaleSetInformation, 0),
-		scaleSetCache:    make(map[AzureRef]*ScaleSet),
+		subscription:      subscriptionId,
+		resourceGroupName: resourceGroup,
+		scaleSetClient:    scaleSetsClient,
+		scaleSetVmClient:  scaleSetVMsClient,
+		scaleSets:         make([]*scaleSetInformation, 0),
+		scaleSetCache:     make(map[AzureRef]*ScaleSet),
 	}
 
 	go wait.Forever(func() {
@@ -92,6 +160,34 @@ func CreateAzureManager(configReader io.Reader) (*AzureManager, error) {
 	}, time.Hour)
 
 	return manager, nil
+}
+
+// NewServicePrincipalTokenFromCredentials creates a new ServicePrincipalToken using values of the
+// passed credentials map.
+func NewServicePrincipalTokenFromCredentials(tenantId string, clientId string, clientSecret string, scope string) (*azure.ServicePrincipalToken, error) {
+	oauthConfig, err := azure.PublicCloud.OAuthConfigForTenant(tenantId)
+	if err != nil {
+		panic(err)
+	}
+	return azure.NewServicePrincipalToken(*oauthConfig, clientId, clientSecret, scope)
+}
+
+func withInspection() autorest.PrepareDecorator {
+	return func(p autorest.Preparer) autorest.Preparer {
+		return autorest.PreparerFunc(func(r *http.Request) (*http.Request, error) {
+			glog.Infof("Inspecting Request: %s %s\n", r.Method, r.URL)
+			return p.Prepare(r)
+		})
+	}
+}
+
+func byInspecting() autorest.RespondDecorator {
+	return func(r autorest.Responder) autorest.Responder {
+		return autorest.ResponderFunc(func(resp *http.Response) error {
+			glog.Infof("Inspecting Response: %s for %s %s\n", resp.Status, resp.Request.Method, resp.Request.URL)
+			return r.Respond(resp)
+		})
+	}
 }
 
 // RegisterAvailabilitySet registers scale set in Azure Manager.
@@ -116,7 +212,7 @@ func (m *AzureManager) GetScaleSetSize(asConfig *ScaleSet) (int64, error) {
 	return *set.Sku.Capacity, nil
 }
 
-// SetMigSize sets ScaleSet size.
+// SetScaleSetSize sets ScaleSet size.
 // TODO(uthark) it may worth to do PATCH request here.
 func (m *AzureManager) SetScaleSetSize(asConfig *ScaleSet, size int64) error {
 	op, err := m.scaleSetClient.Get(m.resourceGroupName, asConfig.Name)
@@ -136,6 +232,11 @@ func (m *AzureManager) SetScaleSetSize(asConfig *ScaleSet, size int64) error {
 
 // GetScaleSetForInstance returns ScaleSetConfig of the given Instance
 func (m *AzureManager) GetScaleSetForInstance(instance *AzureRef) (*ScaleSet, error) {
+
+	if m.resourceGroupName == "" {
+		m.resourceGroupName = instance.ResourceGroup
+	}
+
 	m.cacheMutex.Lock()
 	defer m.cacheMutex.Unlock()
 	if config, found := m.scaleSetCache[*instance]; found {
@@ -168,7 +269,7 @@ func (m *AzureManager) DeleteInstances(instances []*AzureRef) error {
 			return err
 		}
 		if asg != commonAsg {
-			return fmt.Errorf("Connot delete instances which don't belong to the same Scale Set.")
+			return fmt.Errorf("Cannot delete instances which don't belong to the same Scale Set.")
 		}
 	}
 
@@ -218,7 +319,9 @@ func (m *AzureManager) regenerateCache() error {
 
 		for _, instance := range *result.Value {
 			ref := AzureRef{
-				Name: *instance.InstanceID,
+				Subscription:  m.subscription,
+				ResourceGroup: m.resourceGroupName,
+				Name:          *instance.InstanceID,
 			}
 			newCache[ref] = sset.config
 		}

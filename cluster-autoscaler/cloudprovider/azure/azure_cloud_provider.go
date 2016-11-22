@@ -60,6 +60,7 @@ func (azure *AzureCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudpro
 	if err != nil {
 		return nil, err
 	}
+
 	scaleSet, err := azure.azureManager.GetScaleSetForInstance(ref)
 
 	return scaleSet, err
@@ -67,18 +68,22 @@ func (azure *AzureCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudpro
 
 // AzureRef contains a reference to some entity in Azure world.
 type AzureRef struct {
-	Name string
+	Subscription  string
+	ResourceGroup string
+	Name          string
 }
 
 // AzureRefFromProviderId creates InstanceConfig object from provider id which
 // must be in format: azure:///resourceGroupName/name
 func AzureRefFromProviderId(id string) (*AzureRef, error) {
 	splitted := strings.Split(id[9:], "/")
-	if len(splitted) != 2 {
-		return nil, fmt.Errorf("Wrong id: expected format azure:///<resourceGroupName>/<name>, got %v", id)
+	if len(splitted) != 8 {
+		return nil, fmt.Errorf("Wrong id: expected format azure:///subscriptions/<subscriptionId>/resourceGroups/<resourceGroup>/providers/Microsoft.Compute/virtualMachines/<instance-name>, got %v", id)
 	}
 	return &AzureRef{
-		Name: splitted[1],
+		Subscription:  splitted[1],
+		ResourceGroup: splitted[3],
+		Name:          splitted[len(splitted)-1],
 	}, nil
 }
 

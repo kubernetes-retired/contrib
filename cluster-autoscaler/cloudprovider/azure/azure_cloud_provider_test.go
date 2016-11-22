@@ -111,7 +111,7 @@ func TestNodeGroups(t *testing.T) {
 func TestNodeGroupForNode(t *testing.T) {
 	node := &kube_api.Node{
 		Spec: kube_api.NodeSpec{
-			ProviderID: "azure:///test-resource-group/test-instance-id",
+			ProviderID: "azure:///subscriptions/subscripion/resourceGroups/test-resource-group/providers/Microsoft.Compute/virtualMachines/test-instance-id",
 		},
 	}
 
@@ -133,6 +133,7 @@ func TestNodeGroupForNode(t *testing.T) {
 	group, err := provider.NodeGroupForNode(node)
 
 	assert.NoError(t, err)
+	assert.NotNil(t, group, "Group should not be nil")
 
 	assert.Equal(t, group.Id(), "test-asg")
 	assert.Equal(t, group.MinSize(), 1)
@@ -141,7 +142,7 @@ func TestNodeGroupForNode(t *testing.T) {
 	// test node in cluster that is not in a group managed by cluster autoscaler
 	nodeNotInGroup := &kube_api.Node{
 		Spec: kube_api.NodeSpec{
-			ProviderID: "azure://test-resource-group/test-instance-id-not-in-group",
+			ProviderID: "azure:///subscriptions/subscripion/resourceGroups/test-resource-group/providers/Microsoft.Compute/virtualMachines/test-instance-id-not-in-group",
 		},
 	}
 
@@ -151,17 +152,20 @@ func TestNodeGroupForNode(t *testing.T) {
 
 }
 
-func TestAwsRefFromProviderId(t *testing.T) {
+func TestAzureRefFromProviderId(t *testing.T) {
 	_, err := AzureRefFromProviderId("azure:///123")
 	assert.Error(t, err)
 	_, err = AzureRefFromProviderId("azure://test/rg/test-instance-id")
 	assert.Error(t, err)
 
-	awsRef, err := AzureRefFromProviderId("azure:///test-rg/i-260942b3")
+	// Example id: "azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/kubernetes-master"
+	azureRef, err := AzureRefFromProviderId("azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/kubernetes-master")
 	assert.NoError(t, err)
-	assert.Equal(t, awsRef, &AzureRef{
-		Name: "i-260942b3",
-	})
+	assert.Equal(t, &AzureRef{
+		Subscription:  "subscriptionId",
+		ResourceGroup: "kubernetes",
+		Name:          "kubernetes-master",
+	}, azureRef)
 }
 
 func TestMaxSize(t *testing.T) {
@@ -226,7 +230,7 @@ func TestBelongs(t *testing.T) {
 
 	invalidNode := &kube_api.Node{
 		Spec: kube_api.NodeSpec{
-			ProviderID: "azure://eastus-1/invalid-instance-id",
+			ProviderID: "azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/invalid-instance-id",
 		},
 	}
 
@@ -235,7 +239,7 @@ func TestBelongs(t *testing.T) {
 
 	validNode := &kube_api.Node{
 		Spec: kube_api.NodeSpec{
-			ProviderID: "azure://eastus-1/test-instance-id",
+			ProviderID: "azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/test-instance-id",
 		},
 	}
 	belongs, err := provider.scaleSets[0].Belongs(validNode)
@@ -268,7 +272,7 @@ func TestDeleteNodes(t *testing.T) {
 			Status: "OK",
 		},
 	}
-	scaleSetClient.On("DeleteInstances", "", "test-asg", mock.Anything, mock.Anything).Return(response, nil)
+	scaleSetClient.On("DeleteInstances", "kubernetes", "test-asg", mock.Anything, mock.Anything).Return(response, nil)
 
 	provider := testProvider(t, m)
 	err := provider.addNodeGroup("1:5:test-asg")
@@ -276,7 +280,7 @@ func TestDeleteNodes(t *testing.T) {
 
 	node := &kube_api.Node{
 		Spec: kube_api.NodeSpec{
-			ProviderID: "azure://eastus-1/test-instance-id",
+			ProviderID: "azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/test-instance-id",
 		},
 	}
 	err = provider.scaleSets[0].DeleteNodes([]*kube_api.Node{node})
