@@ -242,6 +242,9 @@ type SubmitQueue struct {
 	emergencyMergeStopFlag int32
 
 	features *features.Features
+
+	mergeLock sync.Mutex // acquired when attempting to merge a specific PR
+	BatchURL  string
 }
 
 func init() {
@@ -488,6 +491,9 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 
 	go sq.handleGithubE2EAndMerge()
 	go sq.updateGoogleE2ELoop()
+	if sq.BatchURL != "" {
+		go sq.handleGithubE2EBatchMerge()
+	}
 
 	if sq.AdminPort != 0 {
 		go http.ListenAndServe(fmt.Sprintf("0.0.0.0:%v", sq.AdminPort), admin.Mux)
@@ -536,6 +542,7 @@ func (sq *SubmitQueue) AddFlags(cmd *cobra.Command, config *github.Config) {
 	// If you create a StringSliceVar you may wish to check out 'cleanStringSliceVar()'
 	cmd.Flags().StringVar(&sq.Metadata.HistoryUrl, "history-url", "", "URL to access the submit-queue instance's health history.")
 	cmd.Flags().StringVar(&sq.Metadata.ChartUrl, "chart-url", "", "URL to access the submit-queue instance's health charts.")
+	cmd.Flags().StringVar(&sq.BatchURL, "batch-url", "", "Prow data.json URL to read batch results")
 }
 
 // Hold the lock
@@ -842,6 +849,8 @@ const (
 	e2eFailure              = "The e2e tests are failing. The entire submit queue is blocked."
 	e2eRecover              = "The e2e tests started passing. The submit queue is unblocked."
 	merged                  = "MERGED!"
+	mergedSkippedRetest     = "MERGED! (skipped retest because of label)"
+	mergedBatch             = "MERGED! (batch)"
 	mergedByHand            = "MERGED! (by hand outside of submit queue)"
 	ghE2EQueued             = "Queued to run github e2e tests a second time."
 	ghE2EWaitingStart       = "Requested and waiting for github e2e test to start running a second time."
@@ -865,13 +874,16 @@ func getEarliestApprovedTime(obj *github.MungeObject) *time.Time {
 	return approvedTime
 }
 
-// validForMerge is the base logic about what PR can be automatically merged.
+// validForMergeExt is the base logic about what PR can be automatically merged.
 // PRs must pass this logic to be placed on the queue and they must pass this
 // logic a second time to be retested/merged after they get to the top of
 // the queue.
 //
+// checkStatus is true if the PR should only merge if the appropriate Github status
+// checks are passing.
+//
 // If you update the logic PLEASE PLEASE PLEASE update serveMergeInfo() as well.
-func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
+func (sq *SubmitQueue) validForMergeExt(obj *github.MungeObject, checkStatus bool) bool {
 	// Can't merge an issue!
 	if !obj.IsPR() {
 		return false
@@ -917,16 +929,18 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	}
 
 	// Validate the status information for this PR
-	if len(sq.RequiredStatusContexts) > 0 {
-		if ok := obj.IsStatusSuccess(sq.RequiredStatusContexts); !ok {
-			sq.SetMergeStatus(obj, ciFailure)
-			return false
+	if checkStatus {
+		if len(sq.RequiredStatusContexts) > 0 {
+			if ok := obj.IsStatusSuccess(sq.RequiredStatusContexts); !ok {
+				sq.SetMergeStatus(obj, ciFailure)
+				return false
+			}
 		}
-	}
-	if len(sq.RequiredRetestContexts) > 0 {
-		if ok := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok {
-			sq.SetMergeStatus(obj, ciFailure)
-			return false
+		if len(sq.RequiredRetestContexts) > 0 {
+			if ok := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok {
+				sq.SetMergeStatus(obj, ciFailure)
+				return false
+			}
 		}
 	}
 
@@ -960,6 +974,10 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 	}
 
 	return true
+}
+
+func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
+	return sq.validForMergeExt(obj, true)
 }
 
 // Munge is the workhorse the will actually make updates to the PR
@@ -1139,10 +1157,14 @@ func (sq *SubmitQueue) handleGithubE2EAndMerge() {
 	}
 }
 
-func (sq *SubmitQueue) mergePullRequest(obj *github.MungeObject) {
-	obj.MergePR("submit-queue")
-	sq.SetMergeStatus(obj, merged)
+func (sq *SubmitQueue) mergePullRequest(obj *github.MungeObject, msg string) error {
+	err := obj.MergePR("submit-queue")
+	if err != nil {
+		return err
+	}
+	sq.SetMergeStatus(obj, msg)
 	sq.updateMergeRate()
+	return nil
 }
 
 func (sq *SubmitQueue) selectPullRequest() *github.MungeObject {
@@ -1187,6 +1209,7 @@ func newInterruptedObject(obj *github.MungeObject) *submitQueueInterruptedObject
 }
 
 // Returns true if we can discard the PR from the queue, false if we must keep it for later.
+// If you modify this, consider modifying maybeMergeBatch too.
 func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 	interruptedObj := sq.interruptedObj
 	sq.interruptedObj = nil
@@ -1204,7 +1227,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 
 	if obj.HasLabel(retestNotRequiredLabel) || obj.HasLabel(retestNotRequiredDocsOnlyLabel) {
 		atomic.AddInt32(&sq.instantMerges, 1)
-		sq.mergePullRequest(obj)
+		sq.mergePullRequest(obj, mergedSkippedRetest)
 		return true
 	}
 
@@ -1235,6 +1258,9 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 		}
 	}
 
+	sq.mergeLock.Lock()
+	defer sq.mergeLock.Unlock()
+
 	// We shouldn't merge if it's not valid anymore
 	if !sq.validForMerge(obj) {
 		glog.Errorf("%d: Not mergeable anymore. Do not merge.", *obj.Issue.Number)
@@ -1259,7 +1285,7 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 		return true
 	}
 
-	sq.mergePullRequest(obj)
+	sq.mergePullRequest(obj, merged)
 	return true
 }
 
