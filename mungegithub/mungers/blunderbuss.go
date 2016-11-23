@@ -42,6 +42,7 @@ type BlunderbussConfig struct {
 type BlunderbussMunger struct {
 	config              *BlunderbussConfig
 	features            *features.Features
+	UseReviewers        bool
 	BlunderbussReassign bool
 }
 
@@ -70,6 +71,7 @@ func (b *BlunderbussMunger) EachLoop() error { return nil }
 // AddFlags will add any request flags to the cobra `cmd`
 func (b *BlunderbussMunger) AddFlags(cmd *cobra.Command, config *github.Config) {
 	cmd.Flags().BoolVar(&b.BlunderbussReassign, "blunderbuss-reassign", false, "Assign PRs even if they're already assigned; use with -dry-run to judge changes to the assignment algorithm")
+	cmd.Flags().BoolVar(&b.UseReviewers, "blunderbuss-reviewers", false, "Use \"reviewers\" rather than \"approvers\" for blunderbuss")
 }
 
 func chance(val, total int64) float64 {
@@ -89,6 +91,7 @@ func printChance(owners weightMap, total int64) {
 func (b *BlunderbussMunger) potentialOwners(issue *githubapi.Issue, files []*githubapi.CommitFile, leafOnly bool) (weightMap, int64) {
 	potentialOwners := weightMap{}
 	weightSum := int64(0)
+	var fileOwners sets.String
 	for _, file := range files {
 		if file == nil {
 			continue
@@ -101,12 +104,20 @@ func (b *BlunderbussMunger) potentialOwners(issue *githubapi.Issue, files []*git
 		// makes three buckets, we shouldn't have many 10k+
 		// line changes.
 		fileWeight = int64(math.Log10(float64(fileWeight))) + 1
-		fileOwners := sets.String{}
 		if leafOnly {
-			fileOwners = b.features.Repos.LeafReviewers(*file.Filename)
+			if b.UseReviewers {
+				fileOwners = b.features.Repos.LeafReviewers(*file.Filename)
+			} else {
+				fileOwners = b.features.Repos.LeafApprovers(*file.Filename)
+			}
 		} else {
-			fileOwners = b.features.Repos.Reviewers(*file.Filename)
+			if b.UseReviewers {
+				fileOwners = b.features.Repos.Reviewers(*file.Filename)
+			} else {
+				fileOwners = b.features.Repos.Approvers(*file.Filename)
+			}
 		}
+
 		if fileOwners.Len() == 0 {
 			glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
 		}

@@ -151,3 +151,5 @@ vrrp-password
 watch-namespace
 weak-stable-jobs
 whitelist-override-label
+blunderbuss-reviewers
+gate-approved
