@@ -204,7 +204,6 @@ type SubmitQueue struct {
 	PresubmitJobNames   []string
 	WeakStableJobNames  []string
 
-	// Gate on Approved label
 	GateApproved bool
 
 	// If FakeE2E is true, don't try to connect to JenkinsHost, all jobs are passing.

@@ -125,17 +125,11 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, ownersMap 
 		return err
 	}
 	notifications := c.FilterComments(comments, notificationMatcher)
-	var latestNotification *githubapi.IssueComment
-	if notifications == nil {
-		latestNotification = nil
-	} else {
-		latestNotification = notifications.GetLast()
-	}
-
-	latestApprove := c.FilterComments(comments, c.CommandName(approveCommand)).GetLast()
+	latestNotification := notifications.GetLast()
 	if latestNotification == nil {
 		return h.createMessage(obj, ownersMap)
 	}
+	latestApprove := c.FilterComments(comments, c.CommandName(approveCommand)).GetLast()
 	if latestApprove == nil {
 		// there was already a bot notification and nothing has changed since
 		return nil
@@ -193,7 +187,7 @@ func (h ApprovalHandler) findApproverSet(ownersPath sets.String) sets.String {
 }
 
 func (h *ApprovalHandler) createMessage(obj *github.MungeObject, ownersMap map[string]sets.String) error {
-	//sort the keys so we always display OWNERS files in same order
+	// sort the keys so we always display OWNERS files in same order
 	sliceOfKeys := make([]string, len(ownersMap))
 	i := 0
 	for path := range ownersMap {
