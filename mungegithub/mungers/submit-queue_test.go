@@ -626,7 +626,7 @@ func TestSubmitQueue(t *testing.T) {
 			pr:       ValidPR(),
 			issue:    NoLGTMIssue(),
 			ciStatus: SuccessStatus(),
-			reason:   noLgtmOrApproved,
+			reason:   noLGTM,
 			state:    "pending",
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
