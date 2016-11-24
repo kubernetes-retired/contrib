@@ -570,7 +570,7 @@ func (config *Config) NewIssue(title, body string, labels []string, owner string
 }
 
 // GetBranchCommits gets recent commits for the given branch.
-func (config *Config) GetBranchCommits(branch string) ([]*github.RepositoryCommit, error) {
+func (config *Config) GetBranchCommits(branch string, limit int) ([]*github.RepositoryCommit, error) {
 	commits := []*github.RepositoryCommit{}
 	page := 0
 	for {
@@ -583,7 +583,7 @@ func (config *Config) GetBranchCommits(branch string) ([]*github.RepositoryCommi
 			return nil, err
 		}
 		commits = append(commits, commitsPage...)
-		if response.LastPage == 0 || response.LastPage <= page || len(commits) > 200 {
+		if response.LastPage == 0 || response.LastPage <= page || len(commits) > limit {
 			break
 		}
 		page++

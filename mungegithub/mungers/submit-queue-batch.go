@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang/glog"
@@ -75,7 +76,17 @@ type Batch struct {
 	Pulls    []BatchPull
 }
 
-// batchRefToBatch parses a string into a Batch
+func (b *Batch) String() string {
+	out := b.BaseName + ":" + b.BaseSha
+	for _, pull := range b.Pulls {
+		out += "," + strconv.Itoa(pull.Number) + ":" + pull.Sha
+	}
+	return out
+}
+
+// batchRefToBatch parses a string into a Batch.
+// The input is a comma-separated list of colon-separated ref/sha pairs,
+// like "master:abcdef0,123:f00d,456:f00f".
 func batchRefToBatch(batchRef string) (Batch, error) {
 	batch := Batch{}
 	for i, ref := range strings.Split(batchRef, ",") {
@@ -100,9 +111,10 @@ func batchRefToBatch(batchRef string) (Batch, error) {
 // getCompleteBatches returns a list of Batches that passed all
 // required tests.
 func (sq *SubmitQueue) getCompleteBatches(jobs []ProwJob) []Batch {
+	// for each batch specifier, a set of successful contexts
 	batchContexts := make(map[string]map[string]interface{})
 	for _, job := range jobs {
-		if _, ok := batchContexts[job.Refs]; !ok {
+		if batchContexts[job.Refs] == nil {
 			batchContexts[job.Refs] = make(map[string]interface{})
 		}
 		batchContexts[job.Refs][job.Context] = nil
@@ -149,10 +161,10 @@ func (sq *SubmitQueue) batchIntersectsQueue(batch Batch) bool {
 // 1) the batch's BaseSha
 // 2) (optional) merge commits for PRs in the batch
 // 3) any merged PRs in the batch are sequential from the beginning
-// The return value is -1 on error, else the number of PRs already merged.
-func (batch *Batch) matchesCommits(commits []*githubapi.RepositoryCommit) int {
+// The return value is the number of PRs already merged, and any errors.
+func (batch *Batch) matchesCommits(commits []*githubapi.RepositoryCommit) (int, error) {
 	if len(commits) == 0 {
-		return -1
+		return 0, errors.New("no commits")
 	}
 
 	shaToPR := make(map[string]int)
@@ -176,9 +188,10 @@ func (batch *Batch) matchesCommits(commits []*githubapi.RepositoryCommit) int {
 		}
 		commit, ok := dag[ref]
 		if !ok {
-			return -1 // ref not in partial list of commits
+			return 0, errors.New("ran out of commits (missing ref " + ref + ")")
 		}
-		if len(commit.Parents) == 2 && commit.Message != nil && (*commit.Message)[:5] == "Merge" {
+		if len(commit.Parents) == 2 && commit.Message != nil &&
+			strings.HasPrefix(*commit.Message, "Merge") {
 			// looks like a merge commit!
 
 			// first parent is the normal branch
@@ -186,37 +199,37 @@ func (batch *Batch) matchesCommits(commits []*githubapi.RepositoryCommit) int {
 			// second parent is the PR
 			pr, ok := shaToPR[*commit.Parents[1].SHA]
 			if !ok {
-				return -1 // merge of a PR not in batch
+				return 0, errors.New("Merge of something not in batch")
 			}
 			matchedPRs = append(matchedPRs, pr)
 		} else {
-			return -1 // unhandled non-merge commit
+			return 0, errors.New("Unknown non-merge commit " + ref)
 		}
 	}
 
 	// Now, ensure that the merged PRs are ordered correctly.
 	for i, pr := range matchedPRs {
 		if batch.Pulls[len(matchedPRs)-1-i].Number != pr {
-			return -1
+			return 0, errors.New("Batch PRs merged out-of-order")
 		}
 	}
-	return len(matchedPRs)
+	return len(matchedPRs), nil
 }
 
 // batchIsApplicable returns whether a successful batch result can be used--
 // 1) some of the batch is still unmerged and in the queue.
 // 2) the recent commits are the batch head ref or merges of batch PRs.
 // 3) all unmerged PRs in the batch are still in the queue.
-// The return value is -1 on error, else the number of PRs already merged.
-func (sq *SubmitQueue) batchIsApplicable(batch Batch) int {
+// The return value is the number of PRs already merged, and any errors.
+func (sq *SubmitQueue) batchIsApplicable(batch Batch) (int, error) {
 	// batch must intersect the queue
 	if !sq.batchIntersectsQueue(batch) {
-		return -1
+		return 0, errors.New("Batch has no PRs in Queue")
 	}
-	commits, err := sq.githubConfig.GetBranchCommits(batch.BaseName)
+	commits, err := sq.githubConfig.GetBranchCommits(batch.BaseName, 100)
 	if err != nil {
 		glog.Errorf("Error getting commits for batchIsApplicable: %v", err)
-		return -1
+		return 0, errors.New("Failed to get branch commits: " + err.Error())
 	}
 	return batch.matchesCommits(commits)
 }
@@ -230,12 +243,16 @@ func (sq *SubmitQueue) handleGithubE2EBatchMerge() {
 			continue
 		}
 		batches := sq.getCompleteBatches(jobs)
+		batchErrors := make(map[string]string)
 		for _, batch := range batches {
-			if sq.batchIsApplicable(batch) < 0 {
+			_, err := sq.batchIsApplicable(batch)
+			if err != nil {
+				batchErrors[batch.String()] = err.Error()
 				continue
 			}
 			sq.doBatchMerge(batch)
 		}
+		sq.batchStatus.Error = batchErrors
 	}
 }
 
@@ -244,15 +261,18 @@ func (sq *SubmitQueue) handleGithubE2EBatchMerge() {
 func (sq *SubmitQueue) doBatchMerge(batch Batch) {
 	sq.mergeLock.Lock()
 	defer sq.mergeLock.Unlock()
-	match := sq.batchIsApplicable(batch)
-	if match < 0 {
+
+	// Test again inside the merge lock, in case some other merge snuck in.
+	match, err := sq.batchIsApplicable(batch)
+	if err != nil {
+		glog.Errorf("unexpected! batchIsApplicable failed after success %v", err)
 		return
 	}
 	if !sq.e2eStable(true) {
 		return
 	}
 	prs := []*github.MungeObject{}
-	// check batch preconditions first
+	// Check entire batch's preconditions first.
 	for _, pull := range batch.Pulls[match:] {
 		obj, err := sq.githubConfig.GetObject(pull.Number)
 		if err != nil {
@@ -278,5 +298,6 @@ func (sq *SubmitQueue) doBatchMerge(batch Batch) {
 		if err != nil {
 			return
 		}
+		atomic.AddInt32(&sq.batchMerges, 1)
 	}
 }

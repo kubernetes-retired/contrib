@@ -79,6 +79,9 @@ func TestBatchRefToBatch(t *testing.T) {
 		batch, err := batchRefToBatch(test.ref)
 		expectEqual(t, "error", err, test.err)
 		expectEqual(t, "batch", batch, test.expected)
+		if err == nil {
+			expectEqual(t, "batch.String()", batch.String(), test.ref)
+		}
 	}
 }
 
@@ -122,40 +125,42 @@ func TestBatchMatchesCommits(t *testing.T) {
 		pulls    []BatchPull
 		commits  []string
 		expected int
+		err      string
 	}{
 		// no commits
-		{nil, []string{}, -1},
+		{nil, []string{}, 0, "no commits"},
 		// base matches
-		{nil, []string{"a:0 blah"}, 0},
+		{nil, []string{"a:0 blah"}, 0, ""},
 		// base doesn't match
-		{nil, []string{"b:0 blaga"}, -1},
+		{nil, []string{"b:0 blaga"}, 0, "Unknown non-merge commit b"},
 		// PR could apply
-		{[]BatchPull{{1, "c"}}, []string{"a:0 blah"}, 0},
+		{[]BatchPull{{1, "c"}}, []string{"a:0 blah"}, 0, ""},
 		// PR already applied
-		{[]BatchPull{{1, "c"}}, []string{"d:a,c Merge #1", "c:a fix stuff", "a:0 blah"}, 1},
+		{[]BatchPull{{1, "c"}}, []string{"d:a,c Merge #1", "c:a fix stuff", "a:0 blah"}, 1, ""},
 		// unknown merge
-		{[]BatchPull{{2, "d"}}, []string{"d:a,c Merge #1", "c:a fix stuff", "a:0 blah"}, -1},
+		{[]BatchPull{{2, "d"}}, []string{"d:a,c Merge #1", "c:a fix stuff", "a:0 blah"}, 0, "Merge of something not in batch"},
 		// unknown commit
-		{[]BatchPull{{2, "d"}}, []string{"c:a fix stuff", "a:0 blah"}, -1},
+		{[]BatchPull{{2, "d"}}, []string{"c:a fix stuff", "a:0 blah"}, 0, "Unknown non-merge commit c"},
 		// PRs could apply
-		{[]BatchPull{{1, "c"}, {2, "e"}}, []string{"a:0 blah"}, 0},
+		{[]BatchPull{{1, "c"}, {2, "e"}}, []string{"a:0 blah"}, 0, ""},
 		// 1 PR applied
-		{[]BatchPull{{1, "c"}, {2, "e"}}, []string{"d:a,c Merge #1", "c:a fix stuff", "a:0 blah"}, 1},
+		{[]BatchPull{{1, "c"}, {2, "e"}}, []string{"d:a,c Merge #1", "c:a fix stuff", "a:0 blah"}, 1, ""},
 		// other PR merged
-		{[]BatchPull{{1, "c"}, {2, "e"}}, []string{"d:a,g Merge #3", "g:a add feature", "a:0 blah"}, -1},
+		{[]BatchPull{{1, "c"}, {2, "e"}}, []string{"d:a,g Merge #3", "g:a add feature", "a:0 blah"}, 0, "Merge of something not in batch"},
 		// both PRs already merged
 		{[]BatchPull{{1, "c"}, {2, "e"}},
-			[]string{"f:d,e Merge #2", "e:a fix bug", "d:a,c Merge #1", "c:a fix stuff", "a:0 blah"}, 2},
+			[]string{"f:d,e Merge #2", "e:a fix bug", "d:a,c Merge #1", "c:a fix stuff", "a:0 blah"}, 2, ""},
 		// PRs merged in wrong order
 		{[]BatchPull{{1, "c"}, {2, "e"}},
-			[]string{"f:d,c Merge #1", "d:a,e Merge #2", "e:a fix bug", "c:a fix stuff", "a:0 blah"}, -1},
+			[]string{"f:d,c Merge #1", "d:a,e Merge #2", "e:a fix bug", "c:a fix stuff", "a:0 blah"}, 0, "Batch PRs merged out-of-order"},
 	} {
 		batch := Batch{"m", "a", test.pulls}
 		commits := makeCommits(test.commits)
-		actual := batch.matchesCommits(commits)
-		if actual != test.expected {
-			expectEqual(t, "batch.matchesCommits", actual, test.expected)
-			t.Errorf("batch: %v commits: %v", batch, commits)
+		actual, err := batch.matchesCommits(commits)
+		if err == nil {
+			err = errors.New("")
 		}
+		expectEqual(t, "batch.matchesCommits", actual, test.expected)
+		expectEqual(t, "batch.matchesCommits err", err.Error(), test.err)
 	}
 }

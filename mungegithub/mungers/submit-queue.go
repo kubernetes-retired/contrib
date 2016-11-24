@@ -124,7 +124,8 @@ type submitQueueStats struct {
 	Added              int // Number of items added to the queue since restart
 	FlakesIgnored      int
 	Initialized        bool // true if we've made at least one complete pass
-	InstantMerges      int  // Number of commits without retests required
+	InstantMerges      int  // Number of merges without retests required
+	BatchMerges        int  // Number of merges caused by batch
 	LastMergeTime      time.Time
 	MergeRate          float64
 	MergesSinceRestart int
@@ -150,6 +151,10 @@ type submitQueueMetadata struct {
 	ChartUrl    string
 	HistoryUrl  string
 	RepoPullUrl string
+}
+
+type submitQueueBatchStatus struct {
+	Error map[string]string
 }
 
 type prometheusMetrics struct {
@@ -230,7 +235,8 @@ type SubmitQueue struct {
 
 	interruptedObj *submitQueueInterruptedObject
 	flakesIgnored  int32 // Increments for each merge while 1+ job is flaky
-	instantMerges  int32 // Increments whenever we commit without retesting
+	instantMerges  int32 // Increments whenever we merge without retesting
+	batchMerges    int32 // Increments whenever we merge because of a batch
 	prsAdded       int32 // Increments whenever an items queues
 	prsRemoved     int32 // Increments whenever an item dequeues
 	prsTested      int32 // Number of prs that completed second testing
@@ -243,8 +249,9 @@ type SubmitQueue struct {
 
 	features *features.Features
 
-	mergeLock sync.Mutex // acquired when attempting to merge a specific PR
-	BatchURL  string
+	mergeLock   sync.Mutex // acquired when attempting to merge a specific PR
+	BatchURL    string
+	batchStatus submitQueueBatchStatus
 }
 
 func init() {
@@ -475,6 +482,9 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 		http.Handle("/sq-stats", gziphandler.GzipHandler(http.HandlerFunc(sq.serveSQStats)))
 		http.Handle("/flakes", gziphandler.GzipHandler(http.HandlerFunc(sq.serveFlakes)))
 		http.Handle("/metadata", gziphandler.GzipHandler(http.HandlerFunc(sq.serveMetadata)))
+		if sq.BatchURL != "" {
+			http.Handle("/batch", gziphandler.GzipHandler(http.HandlerFunc(sq.serveBatch)))
+		}
 		config.ServeDebugStats("/stats")
 		go http.ListenAndServe(config.Address, nil)
 	}
@@ -493,6 +503,7 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 	go sq.updateGoogleE2ELoop()
 	if sq.BatchURL != "" {
 		go sq.handleGithubE2EBatchMerge()
+
 	}
 
 	if sq.AdminPort != 0 {
@@ -708,17 +719,9 @@ func objToStatusPullRequest(obj *github.MungeObject) *statusPullRequest {
 
 func reasonToState(reason string) string {
 	switch reason {
-	case merged:
+	case merged, mergedByHand, mergedSkippedRetest, mergedBatch:
 		return "success"
-	case mergedByHand:
-		return "success"
-	case e2eFailure:
-		return "success"
-	case ghE2EQueued:
-		return "success"
-	case ghE2EWaitingStart:
-		return "success"
-	case ghE2ERunning:
+	case e2eFailure, ghE2EQueued, ghE2EWaitingStart, ghE2ERunning:
 		return "success"
 	case unknown:
 		return "failure"
@@ -1370,6 +1373,7 @@ func (sq *SubmitQueue) serveSQStats(res http.ResponseWriter, req *http.Request) 
 		FlakesIgnored:      int(atomic.LoadInt32(&sq.flakesIgnored)),
 		Initialized:        atomic.LoadInt32(&sq.loopStarts) > 1,
 		InstantMerges:      int(atomic.LoadInt32(&sq.instantMerges)),
+		BatchMerges:        int(atomic.LoadInt32(&sq.batchMerges)),
 		LastMergeTime:      sq.lastMergeTime,
 		MergeRate:          sq.calcMergeRateWithTail(),
 		MergesSinceRestart: int(atomic.LoadInt32(&sq.totalMerges)),
@@ -1389,6 +1393,10 @@ func (sq *SubmitQueue) serveFlakes(res http.ResponseWriter, req *http.Request) {
 func (sq *SubmitQueue) serveMetadata(res http.ResponseWriter, req *http.Request) {
 	data := sq.getMetaData()
 	sq.serve(data, res, req)
+}
+
+func (sq *SubmitQueue) serveBatch(res http.ResponseWriter, req *http.Request) {
+	sq.serve(sq.marshal(sq.batchStatus), res, req)
 }
 
 func (sq *SubmitQueue) serveMergeInfo(res http.ResponseWriter, req *http.Request) {
