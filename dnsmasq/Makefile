@@ -42,6 +42,11 @@ ifeq ($(ARCH),ppc64le)
     TRIPLE?=powerpc64le-linux-gnu
     QEMUARCH=ppc64le
 endif
+ifeq ($(ARCH),s390x)
+    BASEIMAGE?=s390x/busybox:glibc
+    TRIPLE?=s390x-linux-gnu
+    QEMUARCH=s390x
+endif
 
 all: build
 

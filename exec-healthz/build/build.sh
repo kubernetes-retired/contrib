@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Copyright 2016 The Kubernetes Authors.
 #
@@ -16,6 +16,11 @@
 
 set -o errexit
 set -o nounset
+# For ubuntu updating bash to avoid illegal instruction error for pipefail
+if [ -f /etc/os-release ];then
+    apt-get update
+    apt-get install -y bash
+fi
 set -o pipefail
 
 if [ -z "${PKG}" ]; then
