@@ -1070,21 +1070,21 @@ func (s queueSorter) Less(i, j int) bool {
 	a := s.queue[i]
 	b := s.queue[j]
 
-	aPrio := priority(a)
-	bPrio := priority(b)
-
-	if aPrio < bPrio {
-		return true
-	} else if aPrio > bPrio {
-		return false
-	}
-
 	aDue := a.ReleaseMilestoneDue()
 	bDue := b.ReleaseMilestoneDue()
 
 	if aDue.Before(bDue) {
 		return true
 	} else if aDue.After(bDue) {
+		return false
+	}
+
+	aPrio := priority(a)
+	bPrio := priority(b)
+
+	if aPrio < bPrio {
+		return true
+	} else if aPrio > bPrio {
 		return false
 	}
 
@@ -1445,19 +1445,20 @@ func (sq *SubmitQueue) servePriorityInfo(res http.ResponseWriter, req *http.Requ
 	res.WriteHeader(http.StatusOK)
 	res.Write([]byte(`The merge queue is sorted by the following. If there is a tie in any test the next test will be used. A P0 will always come before a P1, no matter how the other tests compare.
 <ol>
+  <li>Release milestone due date
+    <ul>
+      <li>Release milestones are of the form vX.Y where X and Y are integers</li>
+      <li>Milestones must have due dates.
+      <li>Other milestones are ignored.
+      <li>PR with no dated release milestone will be considered after any PR with a milestone</li>
+    </ul>
+  </li>
   <li>Priority
     <ul>
       <li>Determined by a label of the form 'priority/pX'
       <li>P0 -&gt; P1 -&gt; P2</li>
       <li>A PR with no priority label is considered equal to a P3</li>
       <li>A PR with the '` + retestNotRequiredLabel + `' or '` + retestNotRequiredDocsOnlyLabel + `' label will come first, before even P0</li>
-    </ul>
-  </li>
-  <li>Release milestone due date
-    <ul>
-      <li>Release milestones are of the form vX.Y where X and Y are integers</li>
-      <li>Other milestones are ignored.
-      <li>PR with no release milestone will be considered after any PR with a milestone</li>
     </ul>
   </li>
   <li>First time at which the LGTM label was applied.
