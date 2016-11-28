@@ -148,3 +148,4 @@ prometheus-namespace
 prometheus-path
 prometheus-port
 prometheus-subsystem
+batch-url
