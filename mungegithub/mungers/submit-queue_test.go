@@ -86,9 +86,12 @@ func BareIssue() *github.Issue {
 func LGTMIssue() *github.Issue {
 	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel}, true)
 }
+func LGTMApprovedIssue() *github.Issue {
+	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, approvedLabel}, true)
+}
 
 func DoNotMergeIssue() *github.Issue {
-	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, doNotMergeLabel}, true)
+	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, approvedLabel, doNotMergeLabel}, true)
 }
 
 func DoNotMergeMilestoneIssue() *github.Issue {
@@ -109,7 +112,7 @@ func NoLGTMIssue() *github.Issue {
 }
 
 func NoRetestIssue() *github.Issue {
-	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, retestNotRequiredLabel}, true)
+	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, approvedLabel, retestNotRequiredLabel}, true)
 }
 
 func OldLGTMEvents() []*github.IssueEvent {
@@ -482,7 +485,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Test1",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
 			ciStatus:        SuccessStatus(),
@@ -499,7 +502,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:               "Test1+emergencyStop",
 			pr:                 ValidPR(),
-			issue:              LGTMIssue(),
+			issue:              LGTMApprovedIssue(),
 			events:             NewLGTMEvents(),
 			commits:            Commits(), // Modified at time.Unix(7), 8, and 9
 			ciStatus:           SuccessStatus(),
@@ -518,7 +521,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Test1+prevsuccess",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
 			ciStatus:        SuccessStatus(),
@@ -540,7 +543,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Test2",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(),
 			ciStatus:        SuccessStatus(),
@@ -573,7 +576,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:   "Test5",
 			pr:     UnMergeablePR(),
-			issue:  LGTMIssue(),
+			issue:  LGTMApprovedIssue(),
 			reason: unmergeable,
 			state:  "pending",
 			// To avoid false errors in logs
@@ -585,7 +588,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:   "Test6",
 			pr:     UndeterminedMergeablePR(),
-			issue:  LGTMIssue(),
+			issue:  LGTMApprovedIssue(),
 			reason: undeterminedMergability,
 			state:  "pending",
 			// To avoid false errors in logs
@@ -609,7 +612,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:   "Test8",
 			pr:     ValidPR(),
-			issue:  LGTMIssue(),
+			issue:  LGTMApprovedIssue(),
 			reason: ciFailure,
 			state:  "pending",
 			// To avoid false errors in logs
@@ -623,7 +626,7 @@ func TestSubmitQueue(t *testing.T) {
 			pr:       ValidPR(),
 			issue:    NoLGTMIssue(),
 			ciStatus: SuccessStatus(),
-			reason:   noLGTM,
+			reason:   noLgtmOrApproved,
 			state:    "pending",
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
@@ -634,7 +637,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:     "Test11",
 			pr:       ValidPR(),
-			issue:    LGTMIssue(),
+			issue:    LGTMApprovedIssue(),
 			ciStatus: SuccessStatus(),
 			reason:   unknown,
 			state:    "failure",
@@ -647,7 +650,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:     "Test12",
 			pr:       ValidPR(),
-			issue:    LGTMIssue(),
+			issue:    LGTMApprovedIssue(),
 			ciStatus: SuccessStatus(),
 			events:   OldLGTMEvents(),
 			commits:  Commits(), // Modified at time.Unix(7), 8, and 9
@@ -658,7 +661,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Test13",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			ciStatus:        SuccessStatus(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
@@ -672,7 +675,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Test14",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			ciStatus:        SuccessStatus(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(),
@@ -686,7 +689,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Test15",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			ciStatus:        SuccessStatus(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
@@ -703,7 +706,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Test16",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			ciStatus:        SuccessStatus(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
@@ -716,7 +719,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Fail because E2E pass, but unit test fail",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
 			ciStatus:        SuccessStatus(),
@@ -731,7 +734,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Fail because E2E fail, but unit test pass",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
 			ciStatus:        SuccessStatus(),
@@ -777,7 +780,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Fail because retest status fail",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
 			ciStatus:        RetestFailStatus(),
@@ -792,7 +795,7 @@ func TestSubmitQueue(t *testing.T) {
 		{
 			name:            "Fail because noretest status fail",
 			pr:              ValidPR(),
-			issue:           LGTMIssue(),
+			issue:           LGTMApprovedIssue(),
 			events:          NewLGTMEvents(),
 			commits:         Commits(), // Modified at time.Unix(7), 8, and 9
 			ciStatus:        NoRetestFailStatus(),
