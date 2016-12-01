@@ -53,7 +53,7 @@ type NodeToBeRemoved struct {
 // FindNodesToRemove finds nodes that can be removed. Returns also an information about good
 // rescheduling location for each of the pods.
 func FindNodesToRemove(candidates []*kube_api.Node, allNodes []*kube_api.Node, pods []*kube_api.Pod,
-	client *kube_client.Client, predicateChecker *PredicateChecker, maxCount int,
+	client *kube_client.Client, predicateChecker *PredicateChecker,
 	fastCheck bool, oldHints map[string]string, usageTracker *UsageTracker,
 	timestamp time.Time) (nodesToRemove []NodeToBeRemoved, podReschedulingHints map[string]string, finalError error) {
 
@@ -101,9 +101,6 @@ candidateloop:
 				PodsToReschedule: podsToRemove,
 			})
 			glog.V(2).Infof("%s: node %s may be removed", evaluationType, node.Name)
-			if len(result) >= maxCount {
-				break candidateloop
-			}
 		} else {
 			glog.V(2).Infof("%s: node %s is not suitable for removal %v", evaluationType, node.Name, err)
 		}
