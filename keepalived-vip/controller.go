@@ -31,7 +31,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/fields"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	"k8s.io/kubernetes/pkg/util/exec"
@@ -104,7 +104,7 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 // ipvsControllerController watches the kubernetes api and adds/removes
 // services from LVS throgh ipvsadmin.
 type ipvsControllerController struct {
-	client            *unversioned.Client
+	client            *clientset.Clientset
 	epController      *cache.Controller
 	svcController     *cache.Controller
 	svcLister         cache.StoreToServiceLister
@@ -178,7 +178,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 		}
 
 		nsSvc := fmt.Sprintf("%v/%v", ns, svc)
-		svcObj, svcExists, err := ipvsc.svcLister.Indexer.GetByKey(nsSvc)
+		svcObj, svcExists, err := ipvsc.svcLister.Store.GetByKey(nsSvc)
 		if err != nil {
 			glog.Warningf("error getting service %v: %v", nsSvc, err)
 			continue
@@ -284,7 +284,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string, proxyMode bool) *ipvsControllerController {
+func newIPVSController(kubeClient *clientset.Clientset, namespace string, useUnicast bool, configMapName string, proxyMode bool) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
@@ -350,9 +350,9 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		},
 	}
 
-	ipvsc.svcLister.Indexer, ipvsc.svcController = cache.NewIndexerInformer(
+	ipvsc.svcLister.Store, ipvsc.svcController = cache.NewIndexerInformer(
 		cache.NewListWatchFromClient(
-			ipvsc.client, "services", namespace, fields.Everything()),
+			ipvsc.client.CoreClient, "services", namespace, fields.Everything()),
 		&api.Service{},
 		resyncPeriod,
 		eventHandlers,
@@ -360,7 +360,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 
 	ipvsc.epLister.Store, ipvsc.epController = cache.NewInformer(
 		cache.NewListWatchFromClient(
-			ipvsc.client, "endpoints", namespace, fields.Everything()),
+			ipvsc.client.CoreClient, "endpoints", namespace, fields.Everything()),
 		&api.Endpoints{}, resyncPeriod, eventHandlers)
 
 	return &ipvsc
