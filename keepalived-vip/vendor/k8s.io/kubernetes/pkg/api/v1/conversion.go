@@ -309,8 +309,6 @@ func Convert_v1_ReplicationControllerStatus_to_extensions_ReplicaSetStatus(in *R
 	}
 	out.Replicas = in.Replicas
 	out.FullyLabeledReplicas = in.FullyLabeledReplicas
-	out.ReadyReplicas = in.ReadyReplicas
-	out.AvailableReplicas = in.AvailableReplicas
 	out.ObservedGeneration = in.ObservedGeneration
 	return nil
 }
@@ -347,7 +345,6 @@ func Convert_extensions_ReplicaSetSpec_to_v1_ReplicationControllerSpec(in *exten
 	}
 	out.Replicas = new(int32)
 	*out.Replicas = in.Replicas
-	out.MinReadySeconds = in.MinReadySeconds
 	var invalidErr error
 	if in.Selector != nil {
 		invalidErr = api.Convert_unversioned_LabelSelector_to_map(in.Selector, &out.Selector, s)
@@ -365,15 +362,12 @@ func Convert_extensions_ReplicaSetStatus_to_v1_ReplicationControllerStatus(in *e
 	}
 	out.Replicas = in.Replicas
 	out.FullyLabeledReplicas = in.FullyLabeledReplicas
-	out.ReadyReplicas = in.ReadyReplicas
-	out.AvailableReplicas = in.AvailableReplicas
 	out.ObservedGeneration = in.ObservedGeneration
 	return nil
 }
 
 func Convert_api_ReplicationControllerSpec_To_v1_ReplicationControllerSpec(in *api.ReplicationControllerSpec, out *ReplicationControllerSpec, s conversion.Scope) error {
 	out.Replicas = &in.Replicas
-	out.MinReadySeconds = in.MinReadySeconds
 	out.Selector = in.Selector
 	if in.Template != nil {
 		out.Template = new(PodTemplateSpec)
@@ -388,7 +382,6 @@ func Convert_api_ReplicationControllerSpec_To_v1_ReplicationControllerSpec(in *a
 
 func Convert_v1_ReplicationControllerSpec_To_api_ReplicationControllerSpec(in *ReplicationControllerSpec, out *api.ReplicationControllerSpec, s conversion.Scope) error {
 	out.Replicas = *in.Replicas
-	out.MinReadySeconds = in.MinReadySeconds
 	out.Selector = in.Selector
 	if in.Template != nil {
 		out.Template = new(api.PodTemplateSpec)

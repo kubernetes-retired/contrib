@@ -71,6 +71,7 @@ func autoConvert_v1alpha1_KubeProxyConfiguration_To_componentconfig_KubeProxyCon
 	out.ConntrackMaxPerCore = in.ConntrackMaxPerCore
 	out.ConntrackMin = in.ConntrackMin
 	out.ConntrackTCPEstablishedTimeout = in.ConntrackTCPEstablishedTimeout
+	out.ConntrackTCPCloseWaitTimeout = in.ConntrackTCPCloseWaitTimeout
 	return nil
 }
 
@@ -101,6 +102,7 @@ func autoConvert_componentconfig_KubeProxyConfiguration_To_v1alpha1_KubeProxyCon
 	out.ConntrackMaxPerCore = in.ConntrackMaxPerCore
 	out.ConntrackMin = in.ConntrackMin
 	out.ConntrackTCPEstablishedTimeout = in.ConntrackTCPEstablishedTimeout
+	out.ConntrackTCPCloseWaitTimeout = in.ConntrackTCPCloseWaitTimeout
 	return nil
 }
 
@@ -248,7 +250,6 @@ func autoConvert_v1alpha1_KubeletConfiguration_To_componentconfig_KubeletConfigu
 	if err := api.Convert_Pointer_bool_To_bool(&in.CgroupsPerQOS, &out.CgroupsPerQOS, s); err != nil {
 		return err
 	}
-	out.CgroupDriver = in.CgroupDriver
 	out.ContainerRuntime = in.ContainerRuntime
 	out.RemoteRuntimeEndpoint = in.RemoteRuntimeEndpoint
 	out.RemoteImageEndpoint = in.RemoteImageEndpoint
@@ -291,6 +292,7 @@ func autoConvert_v1alpha1_KubeletConfiguration_To_componentconfig_KubeletConfigu
 	if err := api.Convert_Pointer_bool_To_bool(&in.SerializeImagePulls, &out.SerializeImagePulls, s); err != nil {
 		return err
 	}
+	out.ExperimentalFlannelOverlay = in.ExperimentalFlannelOverlay
 	out.OutOfDiskTransitionFrequency = in.OutOfDiskTransitionFrequency
 	out.NodeIP = in.NodeIP
 	out.NodeLabels = in.NodeLabels
@@ -337,7 +339,6 @@ func autoConvert_v1alpha1_KubeletConfiguration_To_componentconfig_KubeletConfigu
 		return err
 	}
 	out.AllowedUnsafeSysctls = in.AllowedUnsafeSysctls
-	out.ExperimentalRuntimeIntegrationType = in.ExperimentalRuntimeIntegrationType
 	return nil
 }
 
@@ -426,7 +427,6 @@ func autoConvert_componentconfig_KubeletConfiguration_To_v1alpha1_KubeletConfigu
 	if err := api.Convert_bool_To_Pointer_bool(&in.CgroupsPerQOS, &out.CgroupsPerQOS, s); err != nil {
 		return err
 	}
-	out.CgroupDriver = in.CgroupDriver
 	out.RuntimeCgroups = in.RuntimeCgroups
 	out.SystemCgroups = in.SystemCgroups
 	out.CgroupRoot = in.CgroupRoot
@@ -472,6 +472,7 @@ func autoConvert_componentconfig_KubeletConfiguration_To_v1alpha1_KubeletConfigu
 	if err := api.Convert_bool_To_Pointer_bool(&in.SerializeImagePulls, &out.SerializeImagePulls, s); err != nil {
 		return err
 	}
+	out.ExperimentalFlannelOverlay = in.ExperimentalFlannelOverlay
 	out.OutOfDiskTransitionFrequency = in.OutOfDiskTransitionFrequency
 	out.NodeIP = in.NodeIP
 	out.NodeLabels = in.NodeLabels
@@ -518,7 +519,6 @@ func autoConvert_componentconfig_KubeletConfiguration_To_v1alpha1_KubeletConfigu
 		return err
 	}
 	out.AllowedUnsafeSysctls = in.AllowedUnsafeSysctls
-	out.ExperimentalRuntimeIntegrationType = in.ExperimentalRuntimeIntegrationType
 	return nil
 }
 

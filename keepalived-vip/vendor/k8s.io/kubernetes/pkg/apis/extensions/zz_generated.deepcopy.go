@@ -846,7 +846,6 @@ func DeepCopy_extensions_ReplicaSetSpec(in interface{}, out interface{}, c *conv
 		in := in.(*ReplicaSetSpec)
 		out := out.(*ReplicaSetSpec)
 		out.Replicas = in.Replicas
-		out.MinReadySeconds = in.MinReadySeconds
 		if in.Selector != nil {
 			in, out := &in.Selector, &out.Selector
 			*out = new(unversioned.LabelSelector)
@@ -870,7 +869,6 @@ func DeepCopy_extensions_ReplicaSetStatus(in interface{}, out interface{}, c *co
 		out.Replicas = in.Replicas
 		out.FullyLabeledReplicas = in.FullyLabeledReplicas
 		out.ReadyReplicas = in.ReadyReplicas
-		out.AvailableReplicas = in.AvailableReplicas
 		out.ObservedGeneration = in.ObservedGeneration
 		return nil
 	}

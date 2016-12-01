@@ -20,6 +20,7 @@ import (
 	authorizationapi "k8s.io/kubernetes/pkg/apis/authorization"
 )
 
+// The PodExpansion interface allows manually adding extra methods to the PodInterface.
 type SubjectAccessReviewExpansion interface {
 	Create(sar *authorizationapi.SubjectAccessReview) (result *authorizationapi.SubjectAccessReview, err error)
 }

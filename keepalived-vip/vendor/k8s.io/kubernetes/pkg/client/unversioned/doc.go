@@ -23,33 +23,32 @@ Most consumers should use the Config object to create a Client:
 
     import (
       client "k8s.io/kubernetes/pkg/client/unversioned"
-      "k8s.io/kubernetes/pkg/client/restclient"
       "k8s.io/kubernetes/pkg/api"
     )
 
     [...]
 
-    config := &restclient.Config{
+    config := &client.Config{
       Host:     "http://localhost:8080",
       Username: "test",
       Password: "password",
     }
-    c, err := client.New(config)
+    client, err := client.New(config)
     if err != nil {
       // handle error
     }
-    pods, err := c.Pods(api.NamespaceDefault).List(api.ListOptions{})
+    pods, err := client.Pods(api.NamespaceDefault).List(api.ListOptions{})
     if err != nil {
       // handle error
     }
 
 More advanced consumers may wish to provide their own transport via a http.RoundTripper:
 
-    config := &restclient.Config{
+    config := &client.Config{
       Host:      "https://localhost:8080",
       Transport: oauthclient.Transport(),
     }
-    c, err := client.New(config)
+    client, err := client.New(config)
 
 The RESTClient type implements the Kubernetes API conventions (see `docs/devel/api-conventions.md`)
 for a given API path and is intended for use by consumers implementing their own Kubernetes

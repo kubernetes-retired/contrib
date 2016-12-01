@@ -20,8 +20,6 @@ import (
 	"errors"
 	"math/rand"
 	"time"
-
-	"k8s.io/kubernetes/pkg/util/runtime"
 )
 
 // For any test of the style:
@@ -83,7 +81,6 @@ func JitterUntil(f func(), period time.Duration, jitterFactor float64, sliding b
 		}
 
 		func() {
-			defer runtime.HandleCrash()
 			f()
 		}()
 
@@ -189,7 +186,7 @@ func pollImmediateInternal(wait WaitFunc, condition ConditionFunc) error {
 func PollInfinite(interval time.Duration, condition ConditionFunc) error {
 	done := make(chan struct{})
 	defer close(done)
-	return PollUntil(interval, condition, done)
+	return WaitFor(poller(interval, 0), condition, done)
 }
 
 // PollUntil is like Poll, but it takes a stop change instead of total duration

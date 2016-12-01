@@ -27,7 +27,6 @@ type ExtensionsInterface interface {
 	DaemonSetsGetter
 	DeploymentsGetter
 	IngressesGetter
-	NetworkPoliciesGetter
 	PodSecurityPoliciesGetter
 	ReplicaSetsGetter
 	ScalesGetter
@@ -49,10 +48,6 @@ func (c *ExtensionsClient) Deployments(namespace string) DeploymentInterface {
 
 func (c *ExtensionsClient) Ingresses(namespace string) IngressInterface {
 	return newIngresses(c, namespace)
-}
-
-func (c *ExtensionsClient) NetworkPolicies(namespace string) NetworkPolicyInterface {
-	return newNetworkPolicies(c, namespace)
 }
 
 func (c *ExtensionsClient) PodSecurityPolicies() PodSecurityPolicyInterface {
@@ -109,10 +104,12 @@ func setConfigDefaults(config *restclient.Config) error {
 	if config.UserAgent == "" {
 		config.UserAgent = restclient.DefaultKubernetesUserAgent()
 	}
-	if config.GroupVersion == nil || config.GroupVersion.Group != g.GroupVersion.Group {
-		copyGroupVersion := g.GroupVersion
-		config.GroupVersion = &copyGroupVersion
-	}
+	// TODO: Unconditionally set the config.Version, until we fix the config.
+	//if config.Version == "" {
+	copyGroupVersion := g.GroupVersion
+	config.GroupVersion = &copyGroupVersion
+	//}
+
 	config.NegotiatedSerializer = api.Codecs
 
 	if config.QPS == 0 {

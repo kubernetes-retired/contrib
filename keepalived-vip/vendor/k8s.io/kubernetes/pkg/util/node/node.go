@@ -28,7 +28,6 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/types"
 )
 
 func GetHostname(hostnameOverride string) string {
@@ -87,7 +86,7 @@ func GetZoneKey(node *api.Node) string {
 }
 
 // SetNodeCondition updates specific node condition with patch operation.
-func SetNodeCondition(c clientset.Interface, node types.NodeName, condition api.NodeCondition) error {
+func SetNodeCondition(c clientset.Interface, node string, condition api.NodeCondition) error {
 	generatePatch := func(condition api.NodeCondition) ([]byte, error) {
 		raw, err := json.Marshal(&[]api.NodeCondition{condition})
 		if err != nil {
@@ -100,6 +99,6 @@ func SetNodeCondition(c clientset.Interface, node types.NodeName, condition api.
 	if err != nil {
 		return nil
 	}
-	_, err = c.Core().Nodes().PatchStatus(string(node), patch)
+	_, err = c.Core().Nodes().PatchStatus(node, patch)
 	return err
 }

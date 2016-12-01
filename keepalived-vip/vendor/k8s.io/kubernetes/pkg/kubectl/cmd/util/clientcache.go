@@ -20,7 +20,6 @@ import (
 	fed_clientset "k8s.io/kubernetes/federation/client/clientset_generated/federation_internalclientset"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
@@ -28,7 +27,7 @@ import (
 
 func NewClientCache(loader clientcmd.ClientConfig) *ClientCache {
 	return &ClientCache{
-		clientsets:    make(map[unversioned.GroupVersion]*internalclientset.Clientset),
+		clients:       make(map[unversioned.GroupVersion]*client.Client),
 		configs:       make(map[unversioned.GroupVersion]*restclient.Config),
 		fedClientSets: make(map[unversioned.GroupVersion]fed_clientset.Interface),
 		loader:        loader,
@@ -39,7 +38,7 @@ func NewClientCache(loader clientcmd.ClientConfig) *ClientCache {
 // is invoked only once
 type ClientCache struct {
 	loader        clientcmd.ClientConfig
-	clientsets    map[unversioned.GroupVersion]*internalclientset.Clientset
+	clients       map[unversioned.GroupVersion]*client.Client
 	fedClientSets map[unversioned.GroupVersion]fed_clientset.Interface
 	configs       map[unversioned.GroupVersion]*restclient.Config
 	defaultConfig *restclient.Config
@@ -96,12 +95,12 @@ func (c *ClientCache) ClientConfigForVersion(version *unversioned.GroupVersion) 
 	return &config, nil
 }
 
-// ClientSetForVersion initializes or reuses a clientset for the specified version, or returns an
+// ClientForVersion initializes or reuses a client for the specified version, or returns an
 // error if that is not possible
-func (c *ClientCache) ClientSetForVersion(version *unversioned.GroupVersion) (*internalclientset.Clientset, error) {
+func (c *ClientCache) ClientForVersion(version *unversioned.GroupVersion) (*client.Client, error) {
 	if version != nil {
-		if clientset, ok := c.clientsets[*version]; ok {
-			return clientset, nil
+		if client, ok := c.clients[*version]; ok {
+			return client, nil
 		}
 	}
 	config, err := c.ClientConfigForVersion(version)
@@ -109,25 +108,25 @@ func (c *ClientCache) ClientSetForVersion(version *unversioned.GroupVersion) (*i
 		return nil, err
 	}
 
-	clientset, err := internalclientset.NewForConfig(config)
+	kubeclient, err := client.New(config)
 	if err != nil {
 		return nil, err
 	}
-	c.clientsets[*config.GroupVersion] = clientset
+	c.clients[*config.GroupVersion] = kubeclient
 
 	// `version` does not necessarily equal `config.Version`.  However, we know that if we call this method again with
 	// `version`, we should get a client based on the same config we just found.  There's no guarantee that a client
 	// is copiable, so create a new client and save it in the cache.
 	if version != nil {
 		configCopy := *config
-		clientset, err := internalclientset.NewForConfig(&configCopy)
+		kubeclient, err := client.New(&configCopy)
 		if err != nil {
 			return nil, err
 		}
-		c.clientsets[*version] = clientset
+		c.clients[*version] = kubeclient
 	}
 
-	return clientset, nil
+	return kubeclient, nil
 }
 
 func (c *ClientCache) FederationClientSetForVersion(version *unversioned.GroupVersion) (fed_clientset.Interface, error) {
