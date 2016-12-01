@@ -74,6 +74,7 @@ data:
     ci-kubernetes-e2e-gke-staging,\
     ci-kubernetes-e2e-gke-staging-parallel,\
     ci-kubernetes-e2e-gke-test,\
+    ci-kubernetes-e2e-kops-aws,\
     ci-kubernetes-e2e-kops-aws-updown,\
     ci-kubernetes-kubemark-5-gce,\
     ci-kubernetes-node-kubelet-serial,\
@@ -158,7 +159,6 @@ data:
     ci-kubernetes-e2e-gci-gce-slow,\
     ci-kubernetes-e2e-gci-gke,\
     ci-kubernetes-e2e-gci-gke-slow,\
-    ci-kubernetes-e2e-kops-aws,\
     ci-kubernetes-kubemark-500-gce,\
     ci-kubernetes-node-kubelet,\
     ci-kubernetes-test-go,\
