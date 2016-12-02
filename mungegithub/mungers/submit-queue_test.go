@@ -636,7 +636,7 @@ func TestSubmitQueue(t *testing.T) {
 			name:   "Test8",
 			pr:     ValidPR(),
 			issue:  LGTMApprovedIssue(),
-			reason: ciFailure,
+			reason: fmt.Sprintf(ciFailureFmt, notRequiredReTestContext1),
 			state:  "pending",
 			// To avoid false errors in logs
 			lastBuildNumber: LastBuildNumber(),
