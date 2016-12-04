@@ -63,8 +63,11 @@ const (
 	// BinpackingEstimatorName is the name of binpacking estimator.
 	BinpackingEstimatorName = "binpacking"
 
-	RandomExpanderName     = "random"
-	MostPodsExpanderName   = "most-pods"
+	// RandomExpanderName selects a node group at random
+	RandomExpanderName = "random"
+	// MostPodsExpanderName selects a node group that fits the most pods
+	MostPodsExpanderName = "most-pods"
+	// LeastWasteExpanderName selects a node group that leaves the least CPU unusued (or Memory in a tie)
 	LeastWasteExpanderName = "least-waste"
 )
 
@@ -96,6 +99,7 @@ var (
 	estimatorFlag       = flag.String("estimator", BinpackingEstimatorName,
 		"Type of resource estimator to be used in scale up. Available values: ["+strings.Join(AvailableEstimators, ",")+"]")
 
+	// AvailableExpanders is a list of avaialble expander options
 	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName}
 	expanderFlag       = flag.String("expander", RandomExpanderName,
 		"Type of node group expander to be used in scale up. Available values: ["+strings.Join(AvailableExpanders, ",")+"]")
