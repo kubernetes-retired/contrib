@@ -87,6 +87,7 @@ required-contexts
 right-build-number
 running-in-cluster
 scale-down-delay
+scale-down-policy
 scale-down-enabled
 scale-down-trial-interval
 scale-down-unneeded-time
