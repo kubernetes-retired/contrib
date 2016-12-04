@@ -18,10 +18,13 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/estimator"
+	"k8s.io/kubernetes/pkg/api/resource"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
 )
@@ -108,7 +111,7 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 	}
 
 	// Pick some expansion option.
-	bestOption := BestExpansionOption(expansionOptions)
+	bestOption := BestExpansionOption(expansionOptions, nodeInfos, expanderName)
 	if bestOption != nil && bestOption.nodeCount > 0 {
 		glog.V(1).Infof("Best option to resize: %s", bestOption.nodeGroup.Id())
 		if len(bestOption.debug) > 0 {
@@ -153,4 +156,113 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 	}
 
 	return false, nil
+}
+
+// BestExpansionOption picks the best cluster expansion option.
+func BestExpansionOption(expansionOptions []ExpansionOption, nodeInfo map[string]*schedulercache.NodeInfo, expanderName string) *ExpansionOption {
+	if len(expansionOptions) == 0 {
+		return nil
+	}
+
+	if expanderName == RandomExpanderName {
+		return randomExpansion(expansionOptions)
+	} else if expanderName == MostPodsExpanderName {
+		return mostPodsExpansion(expansionOptions)
+	} else if expanderName == LeastWasteExpanderName {
+		return leastWasteExpansion(expansionOptions, nodeInfo)
+	}
+
+	glog.Fatalf("Unrecognized expander: %s", expanderName)
+
+	// Unreachable
+	return nil
+}
+
+func randomExpansion(expansionOptions []ExpansionOption) *ExpansionOption {
+	pos := rand.Int31n(int32(len(expansionOptions)))
+	return &expansionOptions[pos]
+}
+
+func mostPodsExpansion(expansionOptions []ExpansionOption) *ExpansionOption {
+	var maxPods int
+	var maxOptions []ExpansionOption
+
+	for _, option := range expansionOptions {
+		if len(option.pods) == maxPods {
+			maxOptions = append(maxOptions, option)
+		}
+
+		if len(option.pods) > maxPods {
+			maxPods = len(option.pods)
+			maxOptions = []ExpansionOption{option}
+		}
+	}
+
+	if len(maxOptions) == 0 {
+		return nil
+	}
+
+	return randomExpansion(maxOptions)
+}
+
+// Find the option that wastes the least amount of CPU, then the least amount of Memory, then random
+func leastWasteExpansion(expansionOptions []ExpansionOption, nodeInfo map[string]*schedulercache.NodeInfo) *ExpansionOption {
+	var leastWastedCPU int64
+	var leastWastedMemory int64
+	var leastWastedOptions []ExpansionOption
+
+	for _, option := range expansionOptions {
+		requestedCPU, requestedMemory := resourcesForPods(option.pods)
+		node, found := nodeInfo[option.nodeGroup.Id()]
+		if !found {
+			glog.Errorf("No node info for: %s", option.nodeGroup.Id())
+			continue
+		}
+
+		nodeCPU, nodeMemory := resourcesForNode(node.Node())
+		wastedCPU := nodeCPU.MilliValue()*int64(option.nodeCount) - requestedCPU.MilliValue()
+		wastedMemory := nodeMemory.MilliValue()*int64(option.nodeCount) - requestedMemory.MilliValue()
+
+		if leastWastedOptions != nil && wastedCPU == leastWastedCPU && wastedMemory == leastWastedMemory {
+			leastWastedOptions = append(leastWastedOptions, option)
+		}
+
+		if leastWastedOptions == nil || wastedCPU < leastWastedCPU {
+			leastWastedCPU, leastWastedMemory = wastedCPU, wastedMemory
+			leastWastedOptions = []ExpansionOption{option}
+		}
+
+		if wastedCPU == leastWastedCPU && wastedMemory < leastWastedMemory {
+			leastWastedMemory = wastedMemory
+			leastWastedOptions = []ExpansionOption{option}
+		}
+	}
+
+	if len(leastWastedOptions) == 0 {
+		return nil
+	}
+
+	return randomExpansion(leastWastedOptions)
+}
+
+func resourcesForPods(pods []*kube_api.Pod) (cpu resource.Quantity, memory resource.Quantity) {
+	for _, pod := range pods {
+		for _, container := range pod.Spec.Containers {
+			if request, ok := container.Resources.Requests[kube_api.ResourceCPU]; ok {
+				cpu.Add(request)
+			}
+			if request, ok := container.Resources.Requests[kube_api.ResourceMemory]; ok {
+				memory.Add(request)
+			}
+		}
+	}
+
+	return cpu, memory
+}
+
+func resourcesForNode(node *kube_api.Node) (cpu resource.Quantity, memory resource.Quantity) {
+	cpu = node.Status.Capacity[kube_api.ResourceCPU]
+	memory = node.Status.Capacity[kube_api.ResourceMemory]
+
+	return cpu, memory
 }

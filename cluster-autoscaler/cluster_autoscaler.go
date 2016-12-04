@@ -62,6 +62,10 @@ const (
 	BasicEstimatorName = "basic"
 	// BinpackingEstimatorName is the name of binpacking estimator.
 	BinpackingEstimatorName = "binpacking"
+
+	RandomExpanderName     = "random"
+	MostPodsExpanderName   = "most-pods"
+	LeastWasteExpanderName = "least-waste"
 )
 
 var (
@@ -91,6 +95,10 @@ var (
 	AvailableEstimators = []string{BasicEstimatorName, BinpackingEstimatorName}
 	estimatorFlag       = flag.String("estimator", BinpackingEstimatorName,
 		"Type of resource estimator to be used in scale up. Available values: ["+strings.Join(AvailableEstimators, ",")+"]")
+
+	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName}
+	expanderFlag       = flag.String("expander", RandomExpanderName,
+		"Type of node group expander to be used in scale up. Available values: ["+strings.Join(AvailableExpanders, ",")+"]")
 )
 
 func createKubeClient() kube_client.Interface {
@@ -275,6 +283,7 @@ func run(_ <-chan struct{}) {
 					scaleUpStart := time.Now()
 					updateLastTime("scaleup")
 					scaledUp, err := ScaleUp(autoscalingContext, unschedulablePodsToHelp, nodes)
+
 					updateDuration("scaleup", scaleUpStart)
 
 					if err != nil {

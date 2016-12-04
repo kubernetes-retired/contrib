@@ -18,7 +18,6 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"reflect"
 	"time"
 
@@ -208,13 +207,4 @@ func GetNodeInfosForGroups(nodes []*apiv1.Node, cloudProvider cloudprovider.Clou
 		}
 	}
 	return result, nil
-}
-
-// BestExpansionOption picks the best cluster expansion option.
-func BestExpansionOption(expansionOptions []ExpansionOption) *ExpansionOption {
-	if len(expansionOptions) > 0 {
-		pos := rand.Int31n(int32(len(expansionOptions)))
-		return &expansionOptions[pos]
-	}
-	return nil
 }
