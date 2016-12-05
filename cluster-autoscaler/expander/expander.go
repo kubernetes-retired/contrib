@@ -64,7 +64,7 @@ func LeastWasteExpansion(expansionOptions []ExpansionOption, nodeInfo map[string
 		wastedCPU := nodeCPU.MilliValue()*int64(option.NodeCount) - requestedCPU.MilliValue()
 		wastedMemory := nodeMemory.MilliValue()*int64(option.NodeCount) - requestedMemory.MilliValue()
 
-		glog.V(0).Infof("Expanding Node Group %s would waste %d CPU, %d Memory", option.NodeGroup.Id(), wastedCPU, wastedMemory)
+		glog.V(1).Infof("Expanding Node Group %s would waste %d CPU, %d Memory", option.NodeGroup.Id(), wastedCPU, wastedMemory)
 
 		if wastedCPU == leastWastedCPU && wastedMemory == leastWastedMemory {
 			leastWastedOptions = append(leastWastedOptions, option)
