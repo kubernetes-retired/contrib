@@ -82,7 +82,7 @@ func TestLeastWaste(t *testing.T) {
 	balancedOption := ExpansionOption{NodeGroup: &FakeNodeGroup{"balanced"}, NodeCount: 1}
 
 	// Test without any pods, one node info
-	ret, debug := LeastWasteExpansion([]ExpansionOption{balancedOption}, nodeMap)
+	ret := LeastWasteExpansion([]ExpansionOption{balancedOption}, nodeMap)
 
 	assert.Equal(t, *ret, balancedOption)
 
@@ -104,7 +104,7 @@ func TestLeastWaste(t *testing.T) {
 	// Test with one pod, one node info
 	balancedOption.Pods = []*kube_api.Pod{pod}
 
-	ret, debug = LeastWasteExpansion([]ExpansionOption{balancedOption}, nodeMap)
+	ret = LeastWasteExpansion([]ExpansionOption{balancedOption}, nodeMap)
 
 	assert.Equal(t, *ret, balancedOption)
 
@@ -114,7 +114,7 @@ func TestLeastWaste(t *testing.T) {
 
 	highmemOption := ExpansionOption{NodeGroup: &FakeNodeGroup{"highmem"}, NodeCount: 1, Pods: []*kube_api.Pod{pod}}
 
-	ret, debug = LeastWasteExpansion([]ExpansionOption{balancedOption, highmemOption}, nodeMap)
+	ret = LeastWasteExpansion([]ExpansionOption{balancedOption, highmemOption}, nodeMap)
 
 	assert.Equal(t, *ret, balancedOption)
 
@@ -124,8 +124,7 @@ func TestLeastWaste(t *testing.T) {
 
 	lowcpuOption := ExpansionOption{NodeGroup: &FakeNodeGroup{"lowcpu"}, NodeCount: 1, Pods: []*kube_api.Pod{pod}}
 
-	ret, debug = LeastWasteExpansion([]ExpansionOption{balancedOption, highmemOption, lowcpuOption}, nodeMap)
-	t.Log(debug)
+	ret = LeastWasteExpansion([]ExpansionOption{balancedOption, highmemOption, lowcpuOption}, nodeMap)
 
 	assert.Equal(t, *ret, lowcpuOption)
 }

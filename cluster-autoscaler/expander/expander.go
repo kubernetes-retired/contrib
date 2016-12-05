@@ -1,7 +1,6 @@
 package expander
 
 import (
-	"fmt"
 	"math/rand"
 
 	"github.com/golang/glog"
@@ -19,11 +18,13 @@ type ExpansionOption struct {
 	Pods      []*kube_api.Pod
 }
 
+// RandomExpansion Selects from the expansion options at random
 func RandomExpansion(expansionOptions []ExpansionOption) *ExpansionOption {
 	pos := rand.Int31n(int32(len(expansionOptions)))
 	return &expansionOptions[pos]
 }
 
+// MostPodsExpansion Selects the expansion option that schedules the most pods
 func MostPodsExpansion(expansionOptions []ExpansionOption) *ExpansionOption {
 	var maxPods int
 	var maxOptions []ExpansionOption
@@ -46,8 +47,8 @@ func MostPodsExpansion(expansionOptions []ExpansionOption) *ExpansionOption {
 	return RandomExpansion(maxOptions)
 }
 
-// Find the option that wastes the least amount of CPU, then the least amount of Memory, then random
-func LeastWasteExpansion(expansionOptions []ExpansionOption, nodeInfo map[string]*schedulercache.NodeInfo) (*ExpansionOption, string) {
+// LeastWasteExpansion Finds the option that wastes the least amount of CPU, then the least amount of Memory, then random
+func LeastWasteExpansion(expansionOptions []ExpansionOption, nodeInfo map[string]*schedulercache.NodeInfo) *ExpansionOption {
 	var leastWastedCPU int64
 	var leastWastedMemory int64
 	var leastWastedOptions []ExpansionOption
@@ -82,10 +83,10 @@ func LeastWasteExpansion(expansionOptions []ExpansionOption, nodeInfo map[string
 	}
 
 	if len(leastWastedOptions) == 0 {
-		return nil, ""
+		return nil
 	}
 
-	return RandomExpansion(leastWastedOptions), fmt.Sprintf("Wasted %d CPU, %d Memory", leastWastedCPU, leastWastedMemory)
+	return RandomExpansion(leastWastedOptions)
 }
 
 func resourcesForPods(pods []*kube_api.Pod) (cpu resource.Quantity, memory resource.Quantity) {

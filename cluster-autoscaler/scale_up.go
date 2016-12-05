@@ -159,8 +159,7 @@ func BestExpansionOption(expansionOptions []expander.ExpansionOption, nodeInfo m
 	} else if expanderName == MostPodsExpanderName {
 		return expander.MostPodsExpansion(expansionOptions)
 	} else if expanderName == LeastWasteExpanderName {
-		ret, debug := expander.LeastWasteExpansion(expansionOptions, nodeInfo)
-		return ret
+		return expander.LeastWasteExpansion(expansionOptions, nodeInfo)
 	}
 
 	glog.Fatalf("Unrecognized expander: %s", expanderName)
