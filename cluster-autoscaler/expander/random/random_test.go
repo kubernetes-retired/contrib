@@ -14,23 +14,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package expander
+package random
 
 import (
-	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
-	kube_api "k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
+	"testing"
+
+	"k8s.io/contrib/cluster-autoscaler/expander"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// Option describes an option to expand the cluster.
-type Option struct {
-	NodeGroup cloudprovider.NodeGroup
-	NodeCount int
-	Debug     string
-	Pods      []*kube_api.Pod
-}
+func TestRandomExpander(t *testing.T) {
+	eo1a := expander.Option{Debug: "EO1a"}
+	e := NewStrategy()
 
-// Strategy describes an interface for selecting the best option when scaling up
-type Strategy interface {
-	BestOption(options []Option, nodeInfo map[string]*schedulercache.NodeInfo) *Option
+	ret := e.BestOption([]expander.Option{eo1a}, nil)
+	assert.Equal(t, *ret, eo1a)
+
+	eo1b := expander.Option{Debug: "EO1b"}
+
+	ret = e.BestOption([]expander.Option{eo1a, eo1b}, nil)
+
+	assert.True(t, assert.ObjectsAreEqual(*ret, eo1a) || assert.ObjectsAreEqual(*ret, eo1b))
 }

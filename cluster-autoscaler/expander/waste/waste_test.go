@@ -14,48 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package expander
+package waste
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/contrib/cluster-autoscaler/expander"
 	kube_api "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
-
-func TestRandomExpander(t *testing.T) {
-	eo1a := ExpansionOption{Debug: "EO1a"}
-
-	ret := RandomExpansion([]ExpansionOption{eo1a})
-	assert.Equal(t, *ret, eo1a)
-
-	eo1b := ExpansionOption{Debug: "EO1b"}
-
-	ret = RandomExpansion([]ExpansionOption{eo1a, eo1b})
-
-	assert.True(t, assert.ObjectsAreEqual(*ret, eo1a) || assert.ObjectsAreEqual(*ret, eo1b))
-}
-
-func TestMostPods(t *testing.T) {
-	eo0 := ExpansionOption{Debug: "EO0"}
-
-	ret := MostPodsExpansion([]ExpansionOption{eo0})
-	assert.Equal(t, *ret, eo0)
-
-	eo1 := ExpansionOption{Debug: "EO1", Pods: []*kube_api.Pod{nil}}
-
-	ret = MostPodsExpansion([]ExpansionOption{eo0, eo1})
-	assert.Equal(t, *ret, eo1)
-
-	eo1b := ExpansionOption{Debug: "EO1b", Pods: []*kube_api.Pod{nil}}
-
-	ret = MostPodsExpansion([]ExpansionOption{eo0, eo1, eo1b})
-	assert.NotEqual(t, *ret, eo0)
-
-	assert.True(t, assert.ObjectsAreEqual(*ret, eo1) || assert.ObjectsAreEqual(*ret, eo1b))
-}
 
 type FakeNodeGroup struct {
 	id string
@@ -95,10 +64,12 @@ func TestLeastWaste(t *testing.T) {
 
 	nodeMap := map[string]*schedulercache.NodeInfo{"balanced": balancedNodeInfo}
 
-	balancedOption := ExpansionOption{NodeGroup: &FakeNodeGroup{"balanced"}, NodeCount: 1}
+	balancedOption := expander.Option{NodeGroup: &FakeNodeGroup{"balanced"}, NodeCount: 1}
+
+	e := NewStrategy()
 
 	// Test without any pods, one node info
-	ret := LeastWasteExpansion([]ExpansionOption{balancedOption}, nodeMap)
+	ret := e.BestOption([]expander.Option{balancedOption}, nodeMap)
 
 	assert.Equal(t, *ret, balancedOption)
 
@@ -120,7 +91,7 @@ func TestLeastWaste(t *testing.T) {
 	// Test with one pod, one node info
 	balancedOption.Pods = []*kube_api.Pod{pod}
 
-	ret = LeastWasteExpansion([]ExpansionOption{balancedOption}, nodeMap)
+	ret = e.BestOption([]expander.Option{balancedOption}, nodeMap)
 
 	assert.Equal(t, *ret, balancedOption)
 
@@ -128,9 +99,9 @@ func TestLeastWaste(t *testing.T) {
 	highmemNodeInfo := makeNodeInfo(16*cpuPerPod, 32*memoryPerPod, 100)
 	nodeMap["highmem"] = highmemNodeInfo
 
-	highmemOption := ExpansionOption{NodeGroup: &FakeNodeGroup{"highmem"}, NodeCount: 1, Pods: []*kube_api.Pod{pod}}
+	highmemOption := expander.Option{NodeGroup: &FakeNodeGroup{"highmem"}, NodeCount: 1, Pods: []*kube_api.Pod{pod}}
 
-	ret = LeastWasteExpansion([]ExpansionOption{balancedOption, highmemOption}, nodeMap)
+	ret = e.BestOption([]expander.Option{balancedOption, highmemOption}, nodeMap)
 
 	assert.Equal(t, *ret, balancedOption)
 
@@ -138,9 +109,9 @@ func TestLeastWaste(t *testing.T) {
 	lowcpuNodeInfo := makeNodeInfo(8*cpuPerPod, 16*memoryPerPod, 100)
 	nodeMap["lowcpu"] = lowcpuNodeInfo
 
-	lowcpuOption := ExpansionOption{NodeGroup: &FakeNodeGroup{"lowcpu"}, NodeCount: 1, Pods: []*kube_api.Pod{pod}}
+	lowcpuOption := expander.Option{NodeGroup: &FakeNodeGroup{"lowcpu"}, NodeCount: 1, Pods: []*kube_api.Pod{pod}}
 
-	ret = LeastWasteExpansion([]ExpansionOption{balancedOption, highmemOption, lowcpuOption}, nodeMap)
+	ret = e.BestOption([]expander.Option{balancedOption, highmemOption, lowcpuOption}, nodeMap)
 
 	assert.Equal(t, *ret, lowcpuOption)
 }

@@ -28,6 +28,10 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/aws"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/gce"
 	"k8s.io/contrib/cluster-autoscaler/config"
+	"k8s.io/contrib/cluster-autoscaler/expander"
+	"k8s.io/contrib/cluster-autoscaler/expander/mostpods"
+	"k8s.io/contrib/cluster-autoscaler/expander/random"
+	"k8s.io/contrib/cluster-autoscaler/expander/waste"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
@@ -205,6 +209,18 @@ func run(_ <-chan struct{}) {
 		MaxNodesTotal:                 *maxNodesTotal,
 		EstimatorName:                 *estimatorFlag,
 		MaxGratefulTerminationSec:     *maxGratefulTerminationFlag,
+	}
+
+	var expanderStrategy expander.Strategy
+	{
+		switch *expanderFlag {
+		case RandomExpanderName:
+			expanderStrategy = random.NewStrategy()
+		case MostPodsExpanderName:
+			expanderStrategy = mostpods.NewStrategy()
+		case LeastWasteExpanderName:
+			expanderStrategy = waste.NewStrategy()
+		}
 	}
 
 	for {

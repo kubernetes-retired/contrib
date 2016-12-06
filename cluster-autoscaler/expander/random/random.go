@@ -14,23 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package expander
+package random
 
 import (
-	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
-	kube_api "k8s.io/kubernetes/pkg/api"
+	"math/rand"
+
+	"k8s.io/contrib/cluster-autoscaler/expander"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
 
-// Option describes an option to expand the cluster.
-type Option struct {
-	NodeGroup cloudprovider.NodeGroup
-	NodeCount int
-	Debug     string
-	Pods      []*kube_api.Pod
+type random struct {
 }
 
-// Strategy describes an interface for selecting the best option when scaling up
-type Strategy interface {
-	BestOption(options []Option, nodeInfo map[string]*schedulercache.NodeInfo) *Option
+func NewStrategy() expander.Strategy {
+	return &random{}
+}
+
+// RandomExpansion Selects from the expansion options at random
+func (r *random) BestOption(expansionOptions []expander.Option, nodeInfo map[string]*schedulercache.NodeInfo) *expander.Option {
+	pos := rand.Int31n(int32(len(expansionOptions)))
+	return &expansionOptions[pos]
 }

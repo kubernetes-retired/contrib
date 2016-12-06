@@ -22,7 +22,6 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/estimator"
 	"k8s.io/contrib/cluster-autoscaler/expander"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
 )
@@ -31,7 +30,6 @@ import (
 // false if it didn't and error if an error occured. Assumes that all nodes in the cluster are
 // ready and in sync with instance groups.
 func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes []*apiv1.Node) (bool, error) {
-
 	// From now on we only care about unschedulable pods that were marked after the newest
 	// node became available for the scheduler.
 	if len(unschedulablePods) == 0 {
@@ -44,7 +42,7 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 	}
 
 	nodeInfos, err := GetNodeInfosForGroups(nodes, context.CloudProvider, context.ClientSet)
-	expansionOptions := make([]expander.ExpansionOption, 0)
+	expansionOptions := make([]expander.Option, 0)
 	if err != nil {
 		return false, fmt.Errorf("failed to build node infos for node groups: %v", err)
 	}
@@ -63,7 +61,7 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 			continue
 		}
 
-		option := expander.ExpansionOption{
+		option := expander.Option{
 			NodeGroup: nodeGroup,
 			Pods:      make([]*apiv1.Pod, 0),
 		}
@@ -101,7 +99,7 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 	}
 
 	// Pick some expansion option.
-	bestOption := BestExpansionOption(expansionOptions, nodeInfos, expanderName)
+	bestOption := expanderStrategy.BestOption(expansionOptions, nodeInfos)
 	if bestOption != nil && bestOption.NodeCount > 0 {
 		glog.V(1).Infof("Best option to resize: %s", bestOption.NodeGroup.Id())
 		if len(bestOption.Debug) > 0 {
@@ -146,24 +144,4 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 	}
 
 	return false, nil
-}
-
-// BestExpansionOption picks the best cluster expansion option.
-func BestExpansionOption(expansionOptions []expander.ExpansionOption, nodeInfo map[string]*schedulercache.NodeInfo, expanderName string) *expander.ExpansionOption {
-	if len(expansionOptions) == 0 {
-		return nil
-	}
-
-	if expanderName == RandomExpanderName {
-		return expander.RandomExpansion(expansionOptions)
-	} else if expanderName == MostPodsExpanderName {
-		return expander.MostPodsExpansion(expansionOptions)
-	} else if expanderName == LeastWasteExpanderName {
-		return expander.LeastWasteExpansion(expansionOptions, nodeInfo)
-	}
-
-	glog.Fatalf("Unrecognized expander: %s", expanderName)
-
-	// Unreachable
-	return nil
 }
