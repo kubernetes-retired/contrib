@@ -26,6 +26,7 @@ import (
 type random struct {
 }
 
+// NewStrategy returns an expansion strategy that randomly picks between node groups
 func NewStrategy() expander.Strategy {
 	return &random{}
 }
