@@ -462,7 +462,14 @@ func (lbc *loadBalancerController) sync(key string) error {
 	ngxConfig := lbc.nginx.ReadConfig(cfg)
 	ngxConfig.HealthzURL = lbc.defHealthzURL
 
-	ings := lbc.ingLister.Store.List()
+	allIngs := lbc.ingLister.Store.List()
+	ings := []interface{}{}
+	for _, ing := range allIngs {
+		curIng := ing.(*extensions.Ingress)
+		if isNGINXIngress(curIng) {
+			ings = append(ings, ing)
+		}
+	}
 	upstreams, servers := lbc.getUpstreamServers(ngxConfig, ings)
 
 	return lbc.nginx.CheckAndReload(ngxConfig, ingress.Configuration{

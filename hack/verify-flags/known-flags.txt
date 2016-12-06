@@ -47,6 +47,7 @@ history-url
 http-cache-dir
 http-cache-size
 http-port
+ingress-class
 insecure-registry
 insecure-skip-verify
 issue-mungers
