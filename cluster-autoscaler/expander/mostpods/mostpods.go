@@ -26,6 +26,7 @@ type mostpods struct {
 	next expander.Strategy
 }
 
+// NewStrategy returns a scale up strategy (expander) that picks the node group that can schedule the most pods
 func NewStrategy() expander.Strategy {
 	return &mostpods{random.NewStrategy()}
 }
