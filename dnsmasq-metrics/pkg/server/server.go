@@ -31,6 +31,7 @@ type Server interface {
 type server struct {
 	options       *Options
 	metricsClient dnsmasq.MetricsClient
+	probes        []*dnsProbe
 }
 
 // NewServer creates a new server instance
@@ -43,6 +44,16 @@ func (s *server) Run(options *Options) {
 	s.options = options
 	glog.Infof("Starting server (options %+v)", *s.options)
 
+	for _, probeOption := range options.Probes {
+		probe := &dnsProbe{DNSProbeOption: probeOption}
+		s.probes = append(s.probes, probe)
+		probe.Start(options)
+	}
+
+	s.runMetrics(options)
+}
+
+func (s *server) runMetrics(options *Options) {
 	InitializeMetrics(options)
 
 	client := dnsmasq.NewMetricsClient(options.DnsMasqAddr, options.DnsMasqPort)

@@ -36,12 +36,23 @@ dig="/usr/bin/dig"
 sleep_interval=10
 
 run ${dnsmasq} \
-  -q -k -a 127.0.0.1 -p ${dnsmasq_port} -c 1337 -8 - 2> ${dnsmasq_out} &
+  -q -k \
+  -a 127.0.0.1 \
+  -p ${dnsmasq_port} \
+  -c 1337 \
+  -8 - \
+  -A "/ok.local/1.2.3.4" \
+  -A "/nxdomain.local/" \
+  2> ${dnsmasq_out} &
 dnsmasq_pid=$!
 echo "dnsmasq_pid=${dnsmasq_pid}"
 
 run ${dnsmasq_metrics} \
-  --dnsmasq-port ${dnsmasq_port} -v 4 2> ${dnsmasq_metrics_out} &
+  --dnsmasq-port ${dnsmasq_port} -v 4 \
+  --probe "ok,127.0.0.1:${dnsmasq_port},ok.local,1" \
+  --probe "nxdomain,127.0.0.1:${dnsmasq_port},nx.local,1" \
+  --probe "notpresent,127.0.0.1:$((dnsmasq_port + 1)),notpresent.local,1" \
+  2> ${dnsmasq_metrics_out} &
 dnsmasq_metrics_pid=$!
 echo "dnsmasq_metrics_pid=${dnsmasq_metrics_pid}"
 
