@@ -69,20 +69,50 @@ cat ${output_dir}/e2e.log | awk '
 # Validate results.
 errors=0
 
-max_size=`grep dnsmasq_cache_max_size ${output_dir}/metrics.log | awk '{print $2}'`
-hits=`grep dnsmasq_cache_hits ${output_dir}/metrics.log | awk '{print $2}'`
+max_size=`grep kubedns_dnsmasq_max_size ${output_dir}/metrics.log | awk '{print $2}'`
+hits=`grep kubedns_dnsmasq_hits ${output_dir}/metrics.log | awk '{print $2}'`
 
-if [ -z "${max_size}" -o ${max_size} -ne 1337 ]; then
+ok_errors=`grep kubedns_probe_ok_errors ${output_dir}/metrics.log | awk '{print $2}'`
+nxdomain_errors=`grep kubedns_probe_nxdomain_errors ${output_dir}/metrics.log | awk '{print $2}'`
+notpresent_errors=`grep kubedns_probe_notpresent_errors ${output_dir}/metrics.log | awk '{print $2}'`
+
+die() {
+  echo "Failed: " "$@"
+  exit 1
+}
+
+[ -z "${max_size}" ] && die "missing max_size"
+[ -z "${hits}" ] && die "missing hits"
+[ -z "${ok_errors}" ] && die "missing ok_errors"
+[ -z "${nxdomain_errors}" ] && die "missing nxdomain_errors"
+[ -z "${notpresent_errors}" ] && die "missing notpresent_errors"
+
+if [ "${max_size}" -ne 1337 ]; then
   echo "Failed: expected max_size == 1337, got ${max_size}"
   errors=$(( $errors + 1))
 fi
 
-if [ -z "${hits}" -o ${hits} -lt 100 ]; then
+if [ "${hits}" -lt 100 ]; then
   echo "Failed: expected hits > 100, got ${hits}"
   errors=$(( $errors + 1))
 fi
 
-if [ ${errors} = 0 ]; then
+if [ "${ok_errors}" -ne 0 ]; then
+  echo "Failed: expected ok_errors = 0, got ${ok_errors}"
+  errors=$(( $errors + 1))
+fi
+
+if [ "${nxdomain_errors}" -lt 5 ]; then
+  echo "Failed: expected nxdomain_errors > 5, got ${nxdomain_errors}"
+  errors=$(( $errors + 1))
+fi
+
+if [ "${notpresent_errors}" -lt 5 ]; then
+  echo "Failed: expected notpresent_errors > 5, got ${notpresent_errors}"
+  errors=$(( $errors + 1))
+fi
+
+if [ "${errors}" = 0 ]; then
   echo "Tests passed"
 fi
 

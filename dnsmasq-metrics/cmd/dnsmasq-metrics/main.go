@@ -17,6 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/util/flag"
@@ -25,6 +31,10 @@ import (
 
 	"k8s.io/contrib/dnsmasq-metrics/pkg/server"
 	"k8s.io/contrib/dnsmasq-metrics/pkg/version"
+)
+
+const (
+	defaultProbeInterval = 5 * time.Second
 )
 
 func main() {
@@ -43,6 +53,58 @@ func main() {
 	server.Run(options)
 }
 
+type probeOptions []server.DNSProbeOption
+
+func (po *probeOptions) String() string {
+	return fmt.Sprintf("%+v", *po)
+}
+
+func (po *probeOptions) Set(value string) error {
+	splits := strings.Split(value, ",")
+	if !(len(splits) == 3 || len(splits) == 4) {
+		return fmt.Errorf("invalid format to --probe")
+	}
+
+	option := server.DNSProbeOption{
+		Label:    splits[0],
+		Server:   splits[1],
+		Name:     splits[2],
+		Interval: defaultProbeInterval,
+	}
+
+	const labelRegexp = "^[a-zA-Z0-9_]+"
+	if !regexp.MustCompile(labelRegexp).MatchString(option.Label) {
+		return fmt.Errorf("label must be of format " + labelRegexp)
+	}
+
+	if !strings.Contains(option.Server, ":") {
+		option.Server = option.Server + ":53"
+	}
+
+	if !strings.HasSuffix(option.Name, ".") {
+		// dns package requires a fully qualified (e.g. terminal '.') name
+		option.Name = option.Name + "."
+	}
+
+	if len(splits) == 4 {
+		if interval, err := strconv.Atoi(splits[3]); err == nil {
+			option.Interval = time.Duration(interval) * time.Second
+		} else {
+			return err
+		}
+	}
+
+	*po = append(*po, option)
+
+	return nil
+}
+
+func (po *probeOptions) Type() string {
+	return "string"
+}
+
+var _ pflag.Value = (*probeOptions)(nil)
+
 func configureFlags(opt *server.Options, flagSet *pflag.FlagSet) {
 	flagSet.StringVar(
 		&opt.DnsMasqAddr, "dnsmasq-addr", opt.DnsMasqAddr,
@@ -53,7 +115,15 @@ func configureFlags(opt *server.Options, flagSet *pflag.FlagSet) {
 	flagSet.IntVar(
 		&opt.DnsMasqPollIntervalMs, "dnsmasq-poll-interval-ms", opt.DnsMasqPollIntervalMs,
 		"interval with which to poll dnsmasq for stats")
-
+	flagSet.Var(
+		(*probeOptions)(&opt.Probes), "probe",
+		"probe the given DNS server with the DNS name and export probe"+
+			" metrics and healthcheck URI. Specified as"+
+			" <label>,<server>,<dns name>,<interval_seconds>."+
+			" Healthcheck url will be exported under /healthcheck/<label>."+
+			" interval_seconds is optional."+
+			" This option may be specified multiple times to check multiple servers."+
+			" Example: 'mydns,127.0.0.1:53,example.com,10'.")
 	flagSet.StringVar(
 		&opt.PrometheusAddr, "prometheus-addr", opt.PrometheusAddr,
 		"http addr to bind metrics server to")
@@ -66,7 +136,4 @@ func configureFlags(opt *server.Options, flagSet *pflag.FlagSet) {
 	flagSet.StringVar(
 		&opt.PrometheusNamespace, "prometheus-namespace", opt.PrometheusNamespace,
 		"prometheus metric namespace")
-	flagSet.StringVar(
-		&opt.PrometheusSubsystem, "prometheus-subsystem", opt.PrometheusSubsystem,
-		"prometheus metric subsystem")
 }

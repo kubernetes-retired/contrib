@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 BIN := dnsmasq-metrics
-PKG := k8s.io/contrib/dnsmasq-metrics
+PKG := k8s.io/contrib/dnsmasq-metrics # TODO: change to kubedns-sidecar
 REGISTRY ?= gcr.io/google_containers
 ARCH ?= amd64
 
-VERSION := 1.0
+VERSION := 1.1
 
 ###
 ### These variables should not need tweaking.
