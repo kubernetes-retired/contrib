@@ -112,7 +112,9 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 		// makes three buckets, we shouldn't have many 10k+
 		// line changes.
 		fileWeight = int64(math.Log10(float64(fileWeight))) + 1
-		fileOwners := b.features.Repos.LeafAssignees(*file.Filename)
+		// XXX (apelisse): This has to change when we move to two-tier system.
+		// For now, approvers are equivalent to former assignees.
+		fileOwners := b.features.Repos.LeafApprovers(*file.Filename)
 		if fileOwners.Len() == 0 {
 			glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
 		}
