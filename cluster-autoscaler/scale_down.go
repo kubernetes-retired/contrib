@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
+	"k8s.io/kubernetes/pkg/api/errors"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
@@ -44,6 +45,13 @@ const (
 	ScaleDownNoNodeDeleted ScaleDownResult = iota
 	// ScaleDownNodeDeleted - a node was deleted.
 	ScaleDownNodeDeleted ScaleDownResult = iota
+)
+
+const (
+	// DrainTimeClusterAutoscaler is an annotation added to the nodes that CA marks as unschedulable.
+	DrainTimeClusterAutoscaler = "clusterautoscaler.beta.kubernetes.io/drain_time"
+	// MaxGracefulTerminationTime is max gracefull termination time used by CA.
+	MaxGracefulTerminationTime = time.Minute
 )
 
 // FindUnneededNodes calculates which nodes are not needed, i.e. all pods can be scheduled somewhere else,
@@ -210,11 +218,14 @@ func ScaleDown(
 	glog.V(0).Infof("Scale-down: removing node %s, utilization: %v, pods to reschedule: ", toRemove.Node.Name, utilization,
 		strings.Join(podNames, ","))
 
+	// Nothing super-bad should happen if the node is removed from tracker prematurely.
 	simulator.RemoveNodeFromTracker(usageTracker, toRemove.Node.Name, unneededNodes)
-	err = deleteNodeFromCloudProvider(toRemove.Node, cloudProvider, recorder)
+
+	err = deleteNode(toRemove.Node, toRemove.PodsToReschedule, client, cloudProvider, recorder)
 	if err != nil {
 		return ScaleDownError, fmt.Errorf("Failed to delete %s: %v", toRemove.Node.Name, err)
 	}
+
 	return ScaleDownNodeDeleted, nil
 }
 
@@ -260,6 +271,114 @@ func getEmptyNodes(candidates []*apiv1.Node, pods []*apiv1.Pod, maxEmptyBulkDele
 	return result[:limit]
 }
 
+func deleteNode(node *apiv1.Node, pods []*apiv1.Pod, client kube_client.Interface, cloudProvider cloudprovider.CloudProvider, recorder kube_record.EventRecorder) error {
+	if err := drainNode(node, pods, client, recorder); err != nil {
+		return err
+	}
+	return deleteNodeFromCloudProvider(node, cloudProvider, recorder)
+}
+
+// Performs drain logic on the node. Marks the node as unschedulable and later removes all pods, giving
+// them up to MaxGracefulTerminationTime to finish.
+func drainNode(node *apiv1.Node, pods []*apiv1.Pod, client kube_client.Interface, recorder kube_record.EventRecorder) error {
+	if err := makeUnschedulable(node, client, recorder); err != nil {
+		return err
+	}
+
+	for _, pod := range pods {
+		recorder.Eventf(pod, apiv1.EventTypeNormal, "ScaleDown", "deleting pod for node scale down")
+		err := client.Core().Pods(pod.Namespace).Delete(pod.Name, &apiv1.DeleteOptions{})
+		if err != nil {
+			glog.Errorf("Failed to delete %s/%s: %v", pod.Namespace, pod.Name, err)
+		}
+	}
+	allGone := true
+
+	// Wait up to MaxGracefulTerminationTime.
+	for start := time.Now(); time.Now().Sub(start) < MaxGracefulTerminationTime; time.Sleep(5 * time.Second) {
+		allGone = true
+		for _, pod := range pods {
+			podreturned, err := client.Core().Pods(pod.Namespace).Get(pod.Name)
+			if err == nil {
+				glog.Errorf("Not deleted yet %v", podreturned)
+				allGone = false
+				continue
+			}
+			if !errors.IsNotFound(err) {
+				glog.Errorf("Failed to check pod %s/%s: %v", pod.Namespace, pod.Name, err)
+				allGone = false
+			}
+		}
+		if allGone {
+			glog.V(1).Infof("All pods removed from %s", node.Name)
+			break
+		}
+	}
+	if !allGone {
+		glog.Warningf("Not all pods were removed from %s, proceeding anyway", node.Name)
+	}
+	return nil
+}
+
+// Sets unschedulable=true and adds an annotation.
+func makeUnschedulable(node *apiv1.Node, client kube_client.Interface, recorder kube_record.EventRecorder) error {
+	// Get the newest version of the node.
+	freshNode, err := client.Core().Nodes().Get(node.Name)
+	if err != nil || freshNode == nil {
+		return fmt.Errorf("failed to get node %v: %v", node.Name, err)
+	}
+	if !freshNode.Spec.Unschedulable {
+		freshNode.Spec.Unschedulable = true
+		if freshNode.Annotations == nil {
+			freshNode.Annotations = make(map[string]string)
+		}
+		freshNode.Annotations[DrainTimeClusterAutoscaler] = time.Now().String()
+		freshNode, err = client.Core().Nodes().Update(freshNode)
+		if err != nil || freshNode == nil {
+			return fmt.Errorf("failed to mark node %v as unschedulable: %v", node.Name, err)
+		}
+		recorder.Eventf(node, apiv1.EventTypeNormal, "ScaleDown", "marking the node as unschedulable for scale down")
+	}
+	return nil
+}
+
+// Sets unschedulable=false and removes the annotation if there is an annotation.
+func cleanUnschedulable(nodes []*apiv1.Node, client kube_client.Interface, recorder kube_record.EventRecorder) error {
+	for _, node := range nodes {
+		if !node.Spec.Unschedulable {
+			return nil
+		}
+		if node.Annotations == nil {
+			return nil
+		}
+		if _, found := node.Annotations[DrainTimeClusterAutoscaler]; !found {
+			return nil
+		}
+
+		// Get the newest version of the node.
+		freshNode, err := client.Core().Nodes().Get(node.Name)
+		if err != nil || freshNode == nil {
+			return fmt.Errorf("failed to get node %v: %v", node.Name, err)
+		}
+		if freshNode.Annotations == nil {
+			return nil
+		}
+		_, annotationFound := freshNode.Annotations[DrainTimeClusterAutoscaler]
+		if freshNode.Spec.Unschedulable && annotationFound {
+			freshNode.Spec.Unschedulable = false
+			delete(freshNode.Annotations, DrainTimeClusterAutoscaler)
+			freshNode, err = client.Core().Nodes().Update(freshNode)
+			if err != nil || freshNode == nil {
+				return fmt.Errorf("failed to mark node %v as schedulable: %v", node.Name, err)
+			}
+			recorder.Eventf(node, apiv1.EventTypeNormal, "ClusterAutoscalerCleanup", "marking the node as schedulable")
+		}
+	}
+	return nil
+}
+
+// Removes the given node from cloud provider. No extra pre-deletion actions are executed on
+// the Kubernetes side.
 func deleteNodeFromCloudProvider(node *apiv1.Node, cloudProvider cloudprovider.CloudProvider, recorder kube_record.EventRecorder) error {
 	nodeGroup, err := cloudProvider.NodeGroupForNode(node)
 	if err != nil {

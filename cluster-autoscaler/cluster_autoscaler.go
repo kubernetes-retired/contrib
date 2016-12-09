@@ -205,6 +205,11 @@ func run(_ <-chan struct{}) {
 					continue
 				}
 
+				if err := cleanUnschedulable(nodes, kubeClient, recorder); err != nil {
+					glog.Warningf("Failed to clean unschedulable information: %v", err)
+					continue
+				}
+
 				allUnschedulablePods, err := unschedulablePodLister.List()
 				if err != nil {
 					glog.Errorf("Failed to list unscheduled pods: %v", err)
