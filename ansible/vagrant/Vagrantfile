@@ -88,7 +88,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     when :centosatomic
       config.vm.box = "centos/atomic-host"
     when :fedora
-      config.vm.box = "fedora/23-cloud-base"
+      config.vm.box = "fedora/24-cloud-base"
     when :fedoraatomic
       config.vm.box = "fedora/23-atomic-host"
     when :ubuntu14
