@@ -361,7 +361,7 @@ Europe
 
 #### Advanced features
 
-* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L155).
+* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L188).
 * __Name based virtual hosting__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L148).
 * __Configurable algorithms__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L153).
 
