@@ -54,7 +54,10 @@ const (
 	lbSslTerm                = "serviceloadbalancer/lb.sslTerm"
 	lbAclMatch               = "serviceloadbalancer/lb.aclMatch"
 	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
+	lbUrlStickySessionKey 	 = "serviceloadbalancer/lb.url-param-sticky-session"
+	lbStickTableParams  		 = "serviceloadbalancer/lb.stick-table-params"
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
+	defaultStickTableParams  = "size 100k expire 30m"
 )
 
 var (
@@ -174,7 +177,9 @@ type service struct {
 	// If SessionAffinity is set and without CookieStickySession, requests are routed to
 	// a backend based on client ip. If both SessionAffinity and CookieStickSession are
 	// set, a SERVERID cookie is inserted by the loadbalancer and used to route subsequent
-	// requests. If neither is set, requests are routed based on the algorithm.
+	// requests. If SessionAffinity and UrlStickySession are set, the first url param
+	// named "session" is used to stick the request to a backend
+	// If neither is set, requests are routed based on the algorithm.
 
 	// Indicates if the service must use sticky sessions
 	// http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#stick-table
@@ -182,10 +187,17 @@ type service struct {
 	// https://github.com/kubernetes/kubernetes/blob/master/docs/user-guide/services.md#virtual-ips-and-service-proxies
 	SessionAffinity bool
 
+	// The params passed to HAProxy to configure the stick table used for
+	// the sticky sessions
+	StickTableParams string
+
 	// CookieStickySession use a cookie to enable sticky sessions.
 	// The name of the cookie is SERVERID
 	// This only can be used in http services
 	CookieStickySession bool
+
+	// UrlStickySession uses a url param 'session' to stick sessions to backends
+	UrlStickySession bool
 }
 
 type serviceByName []service
@@ -233,8 +245,18 @@ func (s serviceAnnotations) getHost() (string, bool) {
 	return val, ok
 }
 
+func (s serviceAnnotations) getStickTableParams() (string, bool) {
+	val, ok := s[lbStickTableParams]
+	return val, ok
+}
+
 func (s serviceAnnotations) getCookieStickySession() (string, bool) {
 	val, ok := s[lbCookieStickySessionKey]
+	return val, ok
+}
+
+func (s serviceAnnotations) getUrlStickySession() (string, bool) {
+	val, ok := s[lbUrlStickySessionKey]
 	return val, ok
 }
 
@@ -461,6 +483,13 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 			newSvc.SessionAffinity = false
 			if s.Spec.SessionAffinity != "" {
 				newSvc.SessionAffinity = true
+				if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getStickTableParams(); ok {
+					glog.Infof("params:", val)
+					newSvc.StickTableParams = val
+				} else {
+					glog.Infof("params:", defaultStickTableParams)
+					newSvc.StickTableParams = defaultStickTableParams
+				}
 			}
 
 			// By default sslTerm is disabled
@@ -484,6 +513,11 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 					b, err := strconv.ParseBool(val)
 					if err == nil {
 						newSvc.CookieStickySession = b
+					}
+				} else if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getUrlStickySession(); ok {
+					b, err := strconv.ParseBool(val)
+					if err == nil {
+						newSvc.UrlStickySession = b
 					}
 				}
 
