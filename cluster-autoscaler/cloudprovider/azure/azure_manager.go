@@ -9,13 +9,14 @@ import (
 	"github.com/golang/glog"
 	"gopkg.in/gcfg.v1"
 
+	"bytes"
 	"fmt"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"k8s.io/kubernetes/pkg/util/wait"
-	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 type scaleSetInformation struct {
@@ -42,6 +43,9 @@ type AzureManager struct {
 
 	scaleSets     []*scaleSetInformation
 	scaleSetCache map[AzureRef]*ScaleSet
+
+	// cache of mapping from instance id to the scale set id
+	scaleSetIdCache map[string]string
 
 	cacheMutex sync.Mutex
 }
@@ -125,17 +129,17 @@ func CreateAzureManager(configReader io.Reader) (*AzureManager, error) {
 	scaleSetsClient.Authorizer = spt
 
 	scaleSetsClient.Sender = autorest.CreateSender(
-		autorest.WithLogging(log.New(os.Stdout, "sdk-example: ", log.LstdFlags)))
+	//autorest.WithLogging(log.New(os.Stdout, "sdk-example: ", log.LstdFlags)),
+	)
 
-	scaleSetsClient.RequestInspector = withInspection()
-	scaleSetsClient.ResponseInspector = byInspecting()
+	//scaleSetsClient.RequestInspector = withInspection()
+	//scaleSetsClient.ResponseInspector = byInspecting()
 
 	glog.Infof("Created scale set client with authorizer: %v", scaleSetsClient)
 
 	scaleSetVmAPI = compute.NewVirtualMachineScaleSetVMsClient(subscriptionId)
 	scaleSetVMsClient := scaleSetVmAPI.(compute.VirtualMachineScaleSetVMsClient)
 	scaleSetVMsClient.Authorizer = spt
-
 	scaleSetVMsClient.RequestInspector = withInspection()
 	scaleSetVMsClient.ResponseInspector = byInspecting()
 
@@ -205,10 +209,12 @@ func (m *AzureManager) RegisterScaleSet(scaleSet *ScaleSet) {
 
 // GetScaleSetSize gets Scale Set size.
 func (m *AzureManager) GetScaleSetSize(asConfig *ScaleSet) (int64, error) {
+	fmt.Printf("Get scale set size: %v\n", asConfig)
 	set, err := m.scaleSetClient.Get(m.resourceGroupName, asConfig.Name)
 	if err != nil {
 		return -1, err
 	}
+	fmt.Printf("Returning scale set capacity: %d\n", *set.Sku.Capacity)
 	return *set.Sku.Capacity, nil
 }
 
@@ -232,21 +238,22 @@ func (m *AzureManager) SetScaleSetSize(asConfig *ScaleSet, size int64) error {
 
 // GetScaleSetForInstance returns ScaleSetConfig of the given Instance
 func (m *AzureManager) GetScaleSetForInstance(instance *AzureRef) (*ScaleSet, error) {
-
+	fmt.Printf("Looking for scale set for instance: %v\n", instance)
 	if m.resourceGroupName == "" {
 		m.resourceGroupName = instance.ResourceGroup
 	}
+
+	instance.Subscription = m.subscription
+	instance.ResourceGroup = m.resourceGroupName
 
 	m.cacheMutex.Lock()
 	defer m.cacheMutex.Unlock()
 	if config, found := m.scaleSetCache[*instance]; found {
 		return config, nil
 	}
-	fmt.Printf("Cache: %v, key: %v\n", m.scaleSetCache, instance)
 	if err := m.regenerateCache(); err != nil {
 		return nil, fmt.Errorf("Error while looking for ScaleSet for instance %+v, error: %v", *instance, err)
 	}
-	fmt.Printf("Cache after regeneration: %v, key: %v\n", m.scaleSetCache, *instance)
 	if config, found := m.scaleSetCache[*instance]; found {
 		return config, nil
 	}
@@ -275,7 +282,7 @@ func (m *AzureManager) DeleteInstances(instances []*AzureRef) error {
 
 	instanceIds := make([]string, len(instances))
 	for i, instance := range instances {
-		instanceIds[i] = instance.Name
+		instanceIds[i] = m.scaleSetIdCache[instance.Name]
 	}
 	requiredIds := &compute.VirtualMachineScaleSetVMInstanceRequiredIDs{
 		InstanceIds: &instanceIds,
@@ -292,9 +299,9 @@ func (m *AzureManager) DeleteInstances(instances []*AzureRef) error {
 }
 
 func (m *AzureManager) regenerateCache() error {
-	newCache := make(map[AzureRef]*ScaleSet)
 
-	fmt.Printf("Iterating over scaleSets: %d, %v\n", len(m.scaleSets), m.scaleSets)
+	newCache := make(map[AzureRef]*ScaleSet)
+	newScaleSetIdCache := make(map[string]string)
 	for _, sset := range m.scaleSets {
 
 		glog.V(4).Infof("Regenerating Scale Set information for %s", sset.config.Name)
@@ -304,13 +311,9 @@ func (m *AzureManager) regenerateCache() error {
 			glog.V(4).Infof("Failed AS info request for %s: %v", sset.config.Name, err)
 			return err
 		}
-		fmt.Printf("Got scaleSet: %s, %s, '%s' \n", m.resourceGroupName, sset.basename, *scaleSet.Name)
 		sset.basename = *scaleSet.Name
 
-		fmt.Printf("Calling list\n")
 		result, err := m.scaleSetVmClient.List(m.resourceGroupName, sset.basename, "", "", "")
-
-		fmt.Printf("Called list: %v, %v\n", result, err)
 
 		if err != nil {
 			glog.V(4).Infof("Failed AS info request for %s: %v", sset.config.Name, err)
@@ -318,15 +321,63 @@ func (m *AzureManager) regenerateCache() error {
 		}
 
 		for _, instance := range *result.Value {
+			var name = "azure:////" + fixEndiannessUUID(string(strings.ToUpper(*instance.Properties.VMID)))
 			ref := AzureRef{
 				Subscription:  m.subscription,
 				ResourceGroup: m.resourceGroupName,
-				Name:          *instance.InstanceID,
+				Name:          name,
 			}
 			newCache[ref] = sset.config
+
+			newScaleSetIdCache[name] = *instance.InstanceID
 		}
 	}
 
 	m.scaleSetCache = newCache
+	m.scaleSetIdCache = newScaleSetIdCache
 	return nil
+}
+
+// fixEndiannessUUID fixes UUID representation broken because of the bug in linux kernel.
+// According to RFC 4122 (http://tools.ietf.org/html/rfc4122), Section 4.1.2 first three fields have Big Endian encoding.
+// There is a bug in DMI code in Linux kernel (https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1551419) which
+// prevents proper reading of UUID, so, there is a situation, when VMID read by kubernetes on the host is different from
+// VMID reported by Azure REST API. To fix it, we need manually fix Big Endianness on first three fields of UUID.
+func fixEndiannessUUID(uuid string) string {
+	if len(uuid) != 36 {
+		panic("Passed string is not an UUID: " + uuid)
+	}
+	sections := strings.Split(uuid, "-")
+	if len(sections) != 5 {
+		panic("Passed string is not an UUID: " + uuid)
+	}
+
+	var buffer bytes.Buffer
+	buffer.WriteString(reverseBytes(sections[0]))
+	buffer.WriteString("-")
+	buffer.WriteString(reverseBytes(sections[1]))
+	buffer.WriteString("-")
+	buffer.WriteString(reverseBytes(sections[2]))
+	buffer.WriteString("-")
+	buffer.WriteString(sections[3])
+	buffer.WriteString("-")
+	buffer.WriteString(sections[4])
+	return buffer.String()
+}
+
+// reverseBytes is a helper function used by fixEndiannessUUID.
+// it reverses order of pairs of bytes in string. i.e. passing ABCD will produce CDAB.
+func reverseBytes(s string) string {
+	// string length should be even.
+	if len(s)%2 != 0 {
+		panic("Passed string should have even length: " + s)
+	}
+	var buffer bytes.Buffer
+
+	var l int = len(s) / 2
+	for i := l; i > 0; i-- {
+		var startIndex int = (i - 1) * 2
+		buffer.WriteString(s[startIndex : startIndex+2])
+	}
+	return buffer.String()
 }

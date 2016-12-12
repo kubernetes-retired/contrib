@@ -207,11 +207,6 @@ func run(_ <-chan struct{}) {
 
 	if *cloudProviderFlag == "azure" {
 
-		for _, e := range os.Environ() {
-			pair := strings.Split(e, "=")
-			fmt.Println(pair[0])
-		}
-
 		var azureManager *azure.AzureManager
 		var azureError error
 		if *cloudConfig != "" {
