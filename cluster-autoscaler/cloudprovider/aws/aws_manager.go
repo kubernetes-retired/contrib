@@ -103,6 +103,41 @@ func (m *AwsManager) RegisterAsg(asg *Asg) {
 	m.cacheMutex.Lock()
 	defer m.cacheMutex.Unlock()
 
+	params := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: []*string{aws.String(asg.AwsRef.Name)},
+		MaxRecords:            aws.Int64(1),
+	}
+	groups, err := m.service.DescribeAutoScalingGroups(params)
+	if err != nil {
+		glog.Errorf("Failed ASG info request for %s: %v", asg.AwsRef.Name, err)
+		return
+	}
+	if len(groups.AutoScalingGroups) < 1 {
+		glog.Errorf("Unable to get first autoscaling.Group for %s", asg.AwsRef.Name)
+		return
+	}
+	group := *groups.AutoScalingGroups[0]
+
+	lcParams := &autoscaling.DescribeLaunchConfigurationsInput{
+		LaunchConfigurationNames: []*string{group.LaunchConfigurationName},
+	}
+	lcs, err := m.service.DescribeLaunchConfigurations(lcParams)
+	if err != nil {
+		glog.Errorf("Failed LC info request for %s: %v", asg.AwsRef.Name, err)
+		return
+	}
+	if len(lcs.LaunchConfigurations) < 1 {
+		glog.Errorf("Unable to get first lc.LaunchConfiguration for %s", asg.AwsRef.Name)
+		return
+	}
+	lc := *lcs.LaunchConfigurations[0]
+	asg.launchConfig = &Lc{
+		AwsRef{Name: *lc.LaunchConfigurationName},
+		group.AvailabilityZones,
+		lc.InstanceType,
+		lc.SpotPrice,
+	}
+
 	m.asgs = append(m.asgs, &asgInformation{
 		config: asg,
 	})
@@ -245,25 +280,6 @@ func (m *AwsManager) regenerateCache() error {
 			return fmt.Errorf("Unable to get first autoscaling.Group for %s", asg.config.Name)
 		}
 		group := *groups.AutoScalingGroups[0]
-
-		lcParams := &autoscaling.DescribeLaunchConfigurationsInput{
-			LaunchConfigurationNames: []*string{group.LaunchConfigurationName},
-		}
-		lcs, err := m.service.DescribeLaunchConfigurations(lcParams)
-		if err != nil {
-			glog.V(4).Infof("Failed LC info request for %s: %v", asg.config.Name, err)
-			return err
-		}
-		if len(lcs.LaunchConfigurations) < 1 {
-			return fmt.Errorf("Unable to get first lc.LaunchConfiguration for %s", asg.config.Name)
-		}
-		lc := *lcs.LaunchConfigurations[0]
-		asg.config.launchConfig = &Lc{
-			AwsRef{Name: *lc.LaunchConfigurationName},
-			group.AvailabilityZones,
-			lc.InstanceType,
-			lc.SpotPrice,
-		}
 
 		for _, instance := range group.Instances {
 			ref := AwsRef{Name: *instance.InstanceId}
