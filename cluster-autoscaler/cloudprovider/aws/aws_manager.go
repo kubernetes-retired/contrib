@@ -46,6 +46,7 @@ type autoScaling interface {
 	DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error)
 	SetDesiredCapacity(input *autoscaling.SetDesiredCapacityInput) (*autoscaling.SetDesiredCapacityOutput, error)
 	TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error)
+	DescribeLaunchConfigurations(input *autoscaling.DescribeLaunchConfigurationsInput) (*autoscaling.DescribeLaunchConfigurationsOutput, error)
 }
 
 // AwsManager is handles aws communication and data caching.
@@ -190,6 +191,30 @@ func (m *AwsManager) regenerateCache() error {
 		if err != nil {
 			return err
 		}
+		if len(groups.AutoScalingGroups) < 1 {
+			return fmt.Errorf("Unable to get first autoscaling.Group for %s", asg.config.Name)
+		}
+		group := *groups.AutoScalingGroups[0]
+
+		lcParams := &autoscaling.DescribeLaunchConfigurationsInput{
+			LaunchConfigurationNames: []*string{group.LaunchConfigurationName},
+		}
+		lcs, err := m.service.DescribeLaunchConfigurations(lcParams)
+		if err != nil {
+			glog.V(4).Infof("Failed LC info request for %s: %v", asg.config.Name, err)
+			return err
+		}
+		if len(lcs.LaunchConfigurations) < 1 {
+			return fmt.Errorf("Unable to get first lc.LaunchConfiguration for %s", asg.config.Name)
+		}
+		lc := *lcs.LaunchConfigurations[0]
+		asg.config.launchConfig = &Lc{
+			AwsRef{Name: *lc.LaunchConfigurationName},
+			group.AvailabilityZones,
+			lc.InstanceType,
+			lc.SpotPrice,
+		}
+
 		for _, instance := range group.Instances {
 			ref := AwsRef{Name: *instance.InstanceId}
 			newCache[ref] = asg.config
