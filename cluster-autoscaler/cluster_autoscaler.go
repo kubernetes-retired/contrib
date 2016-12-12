@@ -75,6 +75,8 @@ const (
 	MostPodsExpanderName = "most-pods"
 	// LeastWasteExpanderName selects a node group that leaves the least fraction of CPU and Memory
 	LeastWasteExpanderName = "least-waste"
+	// LeastCostExpanderName selects the node group with the lowest cost per node
+	LeastCostExpanderName = "least-cost"
 )
 
 var (
@@ -112,7 +114,7 @@ var (
 		"Type of resource estimator to be used in scale up. Available values: ["+strings.Join(AvailableEstimators, ",")+"]")
 
 	// AvailableExpanders is a list of avaialble expander options
-	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName}
+	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName, LeastCostExpanderName}
 	expanderFlag       = flag.String("expander", RandomExpanderName,
 		"Type of node group expander to be used in scale up. Available values: ["+strings.Join(AvailableExpanders, ",")+"]")
 )
