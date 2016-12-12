@@ -45,5 +45,7 @@ func TestBuildMig(t *testing.T) {
 	assert.Equal(t, 222, mig.MaxSize())
 	assert.Equal(t, "test-zone", mig.Zone)
 	assert.Equal(t, "test-name", mig.Name)
-	assert.Equal(t, 1.5, mig.NodeCost())
+	cost, err := mig.NodeCost()
+	assert.NoError(t, err)
+	assert.Equal(t, 1.5, cost)
 }
