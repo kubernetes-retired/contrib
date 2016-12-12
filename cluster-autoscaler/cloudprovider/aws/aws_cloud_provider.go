@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
@@ -47,7 +48,7 @@ func BuildAwsCloudProvider(awsManager *AwsManager, specs []string) (*AwsCloudPro
 }
 
 // addNodeGroup adds node group defined in string spec. Format:
-// minNodes:maxNodes:asgName
+// minNodes:maxNodes:asgName || minNodes:maxNodes:asgName:nodeCost
 func (aws *AwsCloudProvider) addNodeGroup(spec string) error {
 	asg, err := buildAsg(spec, aws.awsManager)
 	if err != nil {
@@ -100,15 +101,26 @@ func AwsRefFromProviderId(id string) (*AwsRef, error) {
 	}, nil
 }
 
-// Asg implements NodeGroup interfrace.
+// Asg implements NodeGroup interface.
 type Asg struct {
 	AwsRef
 
 	awsManager *AwsManager
 
-	minSize int
-	maxSize int
+	launchConfig *Lc
+
+	minSize  int
+	maxSize  int
 	nodeCost *float64
+}
+
+// Lc caches LaunchConfiguration data for an Asg
+type Lc struct {
+	AwsRef
+
+	availabilityZones []*string
+	instanceType      *string
+	spotPrice         *string
 }
 
 // MaxSize returns maximum size of the node group.
@@ -121,8 +133,27 @@ func (asg *Asg) MinSize() int {
 	return asg.minSize
 }
 
+// NodeCost returns cost of each node within the node group.
+func (asg *Asg) NodeCost() (float64, error) {
+	if asg.nodeCost != nil {
+		glog.V(4).Infof("Returning user-defined cost on NodeGroup %s: %+v", asg.Id(), asg.nodeCost)
+		return *asg.nodeCost, nil
+	}
+
+	if asg.launchConfig == nil {
+		if err := asg.awsManager.regenerateCache(); err != nil {
+			return 0, fmt.Errorf("Error while looking for LaunchConfiguration of ASG %s, error: %v", asg.Name, err)
+		}
+	}
+	cost, err := asg.awsManager.GetAsgSpotInstanceCost(asg)
+	if err != nil {
+		return 0, fmt.Errorf("Error calculating nodeCost: %v", err)
+	}
+	return cost, nil
+}
+
 // TargetSize returns the current TARGET size of the node group. It is possible that the
-// number is different from the number of nodes registered in Kuberentes.
+// number is different from the number of nodes registered in Kubernetes.
 func (asg *Asg) TargetSize() (int, error) {
 	size, err := asg.awsManager.GetAsgSize(asg)
 	return int(size), err

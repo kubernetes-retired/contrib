@@ -125,6 +125,14 @@ func (mig *Mig) MinSize() int {
 	return mig.minSize
 }
 
+// NodeCost returns cost per node within the node group.
+func (mig *Mig) NodeCost() (float64, error) {
+	if mig.nodeCost == nil {
+		return 0, nil
+	}
+	return *mig.nodeCost, nil
+}
+
 // TargetSize returns the current TARGET size of the node group. It is possible that the
 // number is different from the number of nodes registered in Kuberentes.
 func (mig *Mig) TargetSize() (int, error) {
