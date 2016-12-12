@@ -19,6 +19,7 @@ package aws
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,14 +28,16 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/util/wait"
 	provider_aws "k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
 )
 
 const (
-	operationWaitTimeout  = 5 * time.Second
-	operationPollInterval = 100 * time.Millisecond
+	operationWaitTimeout               = 5 * time.Second
+	operationPollInterval              = 100 * time.Millisecond
+	spotPriceHistoryProductDescription = "Linux/UNIX (Amazon VPC)"
 )
 
 type asgInformation struct {
@@ -49,13 +52,19 @@ type autoScaling interface {
 	DescribeLaunchConfigurations(input *autoscaling.DescribeLaunchConfigurationsInput) (*autoscaling.DescribeLaunchConfigurationsOutput, error)
 }
 
-// AwsManager is handles aws communication and data caching.
+type ec2Client interface {
+	DescribeSpotPriceHistory(input *ec2.DescribeSpotPriceHistoryInput) (*ec2.DescribeSpotPriceHistoryOutput, error)
+}
+
+// AwsManager handles aws communication and data caching.
 type AwsManager struct {
 	asgs     []*asgInformation
 	asgCache map[AwsRef]*Asg
 
 	service    autoScaling
 	cacheMutex sync.Mutex
+
+	client ec2Client
 }
 
 // CreateAwsManager constructs awsManager object.
@@ -68,11 +77,14 @@ func CreateAwsManager(configReader io.Reader) (*AwsManager, error) {
 		}
 	}
 
-	service := autoscaling.New(session.New())
+	sn := session.New()
+	service := autoscaling.New(sn)
+	client := ec2.New(sn)
 	manager := &AwsManager{
 		asgs:     make([]*asgInformation, 0),
 		service:  service,
 		asgCache: make(map[AwsRef]*Asg),
+		client:   client,
 	}
 
 	go wait.Forever(func() {
@@ -162,6 +174,44 @@ func (m *AwsManager) DeleteInstances(instances []*AwsRef) error {
 	}
 
 	return nil
+}
+
+// GetAsgSpotInstanceCost gets the cost per instance for the ASG.
+func (m *AwsManager) GetAsgSpotInstanceCost(asgConfig *Asg) (float64, error) {
+	lc := *asgConfig.launchConfig
+	if lc.spotPrice != nil {
+		t := time.Now().UTC()
+
+		describeSpotPriceParams := &ec2.DescribeSpotPriceHistoryInput{
+			InstanceTypes:       []*string{lc.instanceType},
+			StartTime:           aws.Time(t),
+			EndTime:             aws.Time(t),
+			ProductDescriptions: []*string{aws.String(spotPriceHistoryProductDescription)},
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("availability-zone"),
+					Values: lc.availabilityZones,
+				},
+			},
+		}
+		glog.Infof("describeSpotPriceParams: %v", describeSpotPriceParams)
+
+		ph, err := m.client.DescribeSpotPriceHistory(describeSpotPriceParams)
+
+		if err != nil {
+			return 0, err
+		}
+
+		if len(ph.SpotPriceHistory) < 1 {
+			return 0, fmt.Errorf("Unable to get first ph.SpotPriceHistory for %s", asgConfig.Name)
+		}
+		sp := *ph.SpotPriceHistory[0]
+
+		price, err := strconv.ParseFloat(*sp.SpotPrice, 64)
+		return price, err
+	}
+
+	return 0, fmt.Errorf("Unable to get node cost for autoscaling.Group for %s", asgConfig.Name)
 }
 
 // GetAsgForInstance returns AsgConfig of the given Instance
