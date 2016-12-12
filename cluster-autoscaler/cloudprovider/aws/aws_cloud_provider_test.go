@@ -18,9 +18,11 @@ package aws
 
 import (
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
@@ -30,11 +32,16 @@ type AutoScalingMock struct {
 	mock.Mock
 }
 
+type Ec2Mock struct {
+	mock.Mock
+}
+
 func (a *AutoScalingMock) DescribeAutoScalingGroups(i *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error) {
 	return &autoscaling.DescribeAutoScalingGroupsOutput{
 		AutoScalingGroups: []*autoscaling.Group{
 			{
-				DesiredCapacity: aws.Int64(2),
+				AutoScalingGroupName: aws.String("test-spot-asg"),
+				DesiredCapacity:      aws.Int64(2),
 				Instances: []*autoscaling.Instance{
 					{
 						InstanceId: aws.String("test-instance-id"),
@@ -43,6 +50,21 @@ func (a *AutoScalingMock) DescribeAutoScalingGroups(i *autoscaling.DescribeAutoS
 						InstanceId: aws.String("second-test-instance-id"),
 					},
 				},
+				AvailabilityZones: []*string{
+					aws.String("us-east-1a"),
+				},
+			},
+		},
+	}, nil
+}
+
+func (a *AutoScalingMock) DescribeLaunchConfigurations(input *autoscaling.DescribeLaunchConfigurationsInput) (*autoscaling.DescribeLaunchConfigurationsOutput, error) {
+	return &autoscaling.DescribeLaunchConfigurationsOutput{
+		LaunchConfigurations: []*autoscaling.LaunchConfiguration{
+			{
+				InstanceType:            aws.String("c4.8xlarge"),
+				LaunchConfigurationName: aws.String("test-launch-configuration"),
+				SpotPrice:               aws.String("1.675"),
 			},
 		},
 	}, nil
@@ -58,10 +80,25 @@ func (a *AutoScalingMock) TerminateInstanceInAutoScalingGroup(input *autoscaling
 	return args.Get(0).(*autoscaling.TerminateInstanceInAutoScalingGroupOutput), nil
 }
 
+func (e *Ec2Mock) DescribeSpotPriceHistory(input *ec2.DescribeSpotPriceHistoryInput) (*ec2.DescribeSpotPriceHistoryOutput, error) {
+	return &ec2.DescribeSpotPriceHistoryOutput{
+		SpotPriceHistory: []*ec2.SpotPrice{
+			{
+				AvailabilityZone:   aws.String("us-east-1a"),
+				InstanceType:       aws.String("c4.8xlarge"),
+				ProductDescription: aws.String("Linux/UNIX (Amazon VPC)"),
+				SpotPrice:          aws.String("0.457293"),
+				Timestamp:          aws.Time(time.Now().UTC()),
+			},
+		},
+	}, nil
+}
+
 var testAwsManager = &AwsManager{
 	asgs:     make([]*asgInformation, 0),
 	service:  &AutoScalingMock{},
 	asgCache: make(map[AwsRef]*Asg),
+	client:   &Ec2Mock{},
 }
 
 func testProvider(t *testing.T, m *AwsManager) *AwsCloudProvider {
@@ -156,6 +193,21 @@ func TestMinSize(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, len(provider.asgs), 1)
 	assert.Equal(t, provider.asgs[0].MinSize(), 1)
+}
+
+func TestNodeCost(t *testing.T) {
+	provider := testProvider(t, testAwsManager)
+	err := provider.addNodeGroup("1:5:test-asg:0.5")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(provider.asgs))
+	cost, _ := provider.asgs[0].NodeCost()
+	assert.Equal(t, 0.5, cost)
+
+	err = provider.addNodeGroup("1:5:test-spot-asg")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(provider.asgs))
+	cost, _ = provider.asgs[1].NodeCost()
+	assert.Equal(t, 0.457293, cost)
 }
 
 func TestTargetSize(t *testing.T) {
