@@ -38,4 +38,12 @@ func TestBuildMig(t *testing.T) {
 	assert.Equal(t, 222, mig.MaxSize())
 	assert.Equal(t, "test-zone", mig.Zone)
 	assert.Equal(t, "test-name", mig.Name)
+
+	mig, err = buildMig("111:222:https://content.googleapis.com/compute/v1/projects/test-project/zones/test-zone/instanceGroups/test-name:1.5", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, 111, mig.MinSize())
+	assert.Equal(t, 222, mig.MaxSize())
+	assert.Equal(t, "test-zone", mig.Zone)
+	assert.Equal(t, "test-name", mig.Name)
+	assert.Equal(t, 1.5, mig.NodeCost())
 }

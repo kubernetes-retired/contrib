@@ -327,4 +327,11 @@ func TestBuildAsg(t *testing.T) {
 	assert.Equal(t, 111, asg.MinSize())
 	assert.Equal(t, 222, asg.MaxSize())
 	assert.Equal(t, "test-name", asg.Name)
+
+	asg, err = buildAsg("111:222:test-name:0.5", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, 111, asg.MinSize())
+	assert.Equal(t, 222, asg.MaxSize())
+	assert.Equal(t, "test-name", asg.Name)
+	assert.Equal(t, 0.5, *asg.nodeCost)
 }
