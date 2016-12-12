@@ -108,6 +108,7 @@ type Asg struct {
 
 	minSize int
 	maxSize int
+	nodeCost *float64
 }
 
 // MaxSize returns maximum size of the node group.
@@ -228,8 +229,8 @@ func (asg *Asg) Nodes() ([]string, error) {
 }
 
 func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
-	tokens := strings.SplitN(value, ":", 3)
-	if len(tokens) != 3 {
+	tokens := strings.Split(value, ":")
+	if len(tokens) < 3 || len(tokens) > 4 {
 		return nil, fmt.Errorf("wrong nodes configuration: %s", value)
 	}
 
@@ -257,7 +258,16 @@ func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 	if tokens[2] == "" {
 		return nil, fmt.Errorf("asg name must not be blank: %s got error: %v", tokens[2])
 	}
-
 	asg.Name = tokens[2]
+
+	if len(tokens) == 4 {
+		if cost, err := strconv.ParseFloat(tokens[len(tokens)-1], 64); err == nil {
+			if cost < 0 {
+				return nil, fmt.Errorf("cost must be a non-negative value")
+			}
+			asg.nodeCost = &cost
+		}
+	}
+
 	return &asg, nil
 }

@@ -46,7 +46,7 @@ func BuildGceCloudProvider(gceManager *GceManager, specs []string) (*GceCloudPro
 }
 
 // addNodeGroup adds node group defined in string spec. Format:
-// minNodes:maxNodes:migUrl
+// minNodes:maxNodes:migUrl || minNodes:maxNodes:migUrl:nodeCost
 func (gce *GceCloudProvider) addNodeGroup(spec string) error {
 	mig, err := buildMig(spec, gce.gceManager)
 	if err != nil {
@@ -112,6 +112,7 @@ type Mig struct {
 
 	minSize int
 	maxSize int
+	nodeCost *float64
 }
 
 // MaxSize returns maximum size of the node group.
@@ -231,8 +232,8 @@ func (mig *Mig) Nodes() ([]string, error) {
 }
 
 func buildMig(value string, gceManager *GceManager) (*Mig, error) {
-	tokens := strings.SplitN(value, ":", 3)
-	if len(tokens) != 3 {
+	tokens := strings.Split(value, ":")
+	if len(tokens) < 4 || len(tokens) > 5 {
 		return nil, fmt.Errorf("wrong nodes configuration: %s", value)
 	}
 
@@ -258,8 +259,20 @@ func buildMig(value string, gceManager *GceManager) (*Mig, error) {
 	}
 
 	var err error
-	if mig.Project, mig.Zone, mig.Name, err = ParseMigUrl(tokens[2]); err != nil {
+	if mig.Project, mig.Zone, mig.Name, err = ParseMigUrl(tokens[2] + ":" + tokens[3]); err != nil {
 		return nil, fmt.Errorf("failed to parse mig url: %s got error: %v", tokens[2], err)
 	}
+
+	if len(tokens) == 5 {
+		cost, err := strconv.ParseFloat(tokens[4], 64)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse node cost, got error: %v", err)
+		}
+		if cost < 0 {
+			return nil, fmt.Errorf("cost must be a non-negative value, got value: %f", cost)
+		}
+		mig.nodeCost = &cost
+	}
+
 	return &mig, nil
 }
