@@ -22,5 +22,11 @@ KUBE_ETCD_SERVERS="--etcd-servers={% for node in groups['etcd'] %}http://{{ node
 # default admission control policies
 KUBE_ADMISSION_CONTROL="--admission-control={{ admission_controllers }}"
 
+{% set apiserver_ssh_options = [] -%}
+{% if enable_kube_apiserver_ssh -%}
+{{ apiserver_ssh_options.append('--ssh-keyfile=' + kube_cert_dir + '/id_rsa') -}}
+{{ apiserver_ssh_options.append('--ssh-user=' + kube_cert_user) -}}
+{% endif -%}
+
 # Add your own!
-KUBE_API_ARGS="{{ apiserver_extra_args | default('') }} --tls-cert-file={{ kube_cert_dir }}/server.crt --tls-private-key-file={{ kube_cert_dir }}/server.key --client-ca-file={{ kube_cert_dir }}/ca.crt --token-auth-file={{ kube_token_dir }}/known_tokens.csv --service-account-key-file={{ kube_cert_dir }}/server.crt --bind-address={{ kube_apiserver_bind_address }}"
+KUBE_API_ARGS="{{ apiserver_extra_args | default('') }} --tls-cert-file={{ kube_cert_dir }}/server.crt --tls-private-key-file={{ kube_cert_dir }}/server.key --client-ca-file={{ kube_cert_dir }}/ca.crt --token-auth-file={{ kube_token_dir }}/known_tokens.csv --service-account-key-file={{ kube_cert_dir }}/server.crt --bind-address={{ kube_apiserver_bind_address }} {{ apiserver_ssh_options|join(' ') }}"

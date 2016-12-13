@@ -4,4 +4,4 @@
 # default config should be adequate
 
 # Add your own!
-KUBE_SCHEDULER_ARGS="--kubeconfig={{ kube_config_dir }}/scheduler.kubeconfig"
+KUBE_SCHEDULER_ARGS="--address={{ kube_scheduler_bind_address }} --profiling={{ kube_scheduler_profiling }} --kubeconfig={{ kube_config_dir }}/scheduler.kubeconfig"

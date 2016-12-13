@@ -26,7 +26,7 @@
   user:
     name=etcd
     comment="Etcd user"
-    shell=/sbin/nologin
+    shell=/usr/sbin/nologin
     state=present
     system=yes
     groups=etcd

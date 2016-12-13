@@ -2,10 +2,16 @@
 # kubernetes kubelet (node) config
 
 # The address for the info server to serve on (set to 0.0.0.0 or "" for all interfaces)
-KUBELET_ADDRESS="--address=0.0.0.0"
+KUBELET_ADDRESS="--address={{ kubelet_bind_address }}"
 
 # The port for the info server to serve on
-# KUBELET_PORT="--port=10250"
+KUBELET_PORT="--port={{ kubelet_port }}"
+
+# The read-only port for the info server to serve on
+KUBELET_READONLY_PORT="--read-only-port={{ kubelet_read_only_port }}"
+
+# The cAdvisor port
+KUBELET_CADVISOR_PORT="--cadvisor-port={{ kubelet_cadvisor_port }}"
 
 # You may leave this blank to use the actual hostname
 KUBELET_HOSTNAME="--hostname-override={{ inventory_hostname }}"
