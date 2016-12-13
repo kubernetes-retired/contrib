@@ -139,12 +139,6 @@ func (asg *Asg) NodeCost() (float64, error) {
 		glog.V(4).Infof("Returning user-defined cost on NodeGroup %s: %+v", asg.Id(), asg.nodeCost)
 		return *asg.nodeCost, nil
 	}
-
-	if asg.launchConfig == nil {
-		if err := asg.awsManager.regenerateCache(); err != nil {
-			return 0, fmt.Errorf("Error while looking for LaunchConfiguration of ASG %s, error: %v", asg.Name, err)
-		}
-	}
 	cost, err := asg.awsManager.GetAsgSpotInstanceCost(asg)
 	if err != nil {
 		return 0, fmt.Errorf("Error calculating nodeCost: %v", err)
