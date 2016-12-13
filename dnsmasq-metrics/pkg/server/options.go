@@ -16,17 +16,32 @@ limitations under the License.
 
 package server
 
+import "time"
+
+// DNSProbeOption for periodic DNS health check and latency probes.
+type DNSProbeOption struct {
+	// Label to use for healthcheck URL
+	Label string
+	// Endpoint to send DNS requests to.
+	Server string
+	// Name to resolve to test endpoint.
+	Name string
+	// Interval to use for probing
+	Interval time.Duration
+}
+
 // Options for the daemon
 type Options struct {
 	DnsMasqPort           int
 	DnsMasqAddr           string
 	DnsMasqPollIntervalMs int
 
+	Probes []DNSProbeOption
+
 	PrometheusAddr      string
 	PrometheusPort      int
 	PrometheusPath      string
 	PrometheusNamespace string
-	PrometheusSubsystem string
 }
 
 // NewOptions creates a new options struct with default values.
@@ -35,10 +50,10 @@ func NewOptions() *Options {
 		DnsMasqAddr:           "127.0.0.1",
 		DnsMasqPort:           53,
 		DnsMasqPollIntervalMs: 5000,
-		PrometheusAddr:        "0.0.0.0",
-		PrometheusPort:        10054,
-		PrometheusPath:        "/metrics",
-		PrometheusNamespace:   "dnsmasq",
-		PrometheusSubsystem:   "cache",
+
+		PrometheusAddr:      "0.0.0.0",
+		PrometheusPort:      10054,
+		PrometheusPath:      "/metrics",
+		PrometheusNamespace: "kubedns",
 	}
 }

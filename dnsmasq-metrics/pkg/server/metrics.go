@@ -32,39 +32,41 @@ var (
 	errorsCounter prometheus.Counter
 )
 
-func defineMetrics(options *Options) {
+func defineDnsmasqMetrics(options *Options) {
+	const dnsmasqSubsystem = "dnsmasq"
+
 	gauges[dnsmasq.CacheHits] = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: options.PrometheusNamespace,
-			Subsystem: options.PrometheusSubsystem,
+			Subsystem: dnsmasqSubsystem,
 			Name:      "hits",
 			Help:      "Number of DNS cache hits (from start of process)",
 		})
 	gauges[dnsmasq.CacheMisses] = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: options.PrometheusNamespace,
-			Subsystem: options.PrometheusSubsystem,
+			Subsystem: dnsmasqSubsystem,
 			Name:      "misses",
 			Help:      "Number of DNS cache misses (from start of process)",
 		})
 	gauges[dnsmasq.CacheEvictions] = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: options.PrometheusNamespace,
-			Subsystem: options.PrometheusSubsystem,
+			Subsystem: dnsmasqSubsystem,
 			Name:      "evictions",
 			Help:      "Counter of DNS cache evictions (from start of process)",
 		})
 	gauges[dnsmasq.CacheInsertions] = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: options.PrometheusNamespace,
-			Subsystem: options.PrometheusSubsystem,
+			Subsystem: dnsmasqSubsystem,
 			Name:      "insertions",
 			Help:      "Counter of DNS cache insertions (from start of process)",
 		})
 	gauges[dnsmasq.CacheSize] = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: options.PrometheusNamespace,
-			Subsystem: options.PrometheusSubsystem,
+			Subsystem: dnsmasqSubsystem,
 			Name:      "max_size",
 			Help:      "Maximum size of the DNS cache",
 		})
@@ -76,7 +78,7 @@ func defineMetrics(options *Options) {
 	errorsCounter = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Namespace: options.PrometheusNamespace,
-			Subsystem: options.PrometheusSubsystem,
+			Subsystem: dnsmasqSubsystem,
 			Name:      "errors",
 			Help:      "Number of errors that have occurred getting metrics",
 		})
@@ -85,7 +87,7 @@ func defineMetrics(options *Options) {
 
 // InitializeMetrics and export metrics.
 func InitializeMetrics(options *Options) {
-	defineMetrics(options)
+	defineDnsmasqMetrics(options)
 
 	http.Handle(options.PrometheusPath, prometheus.Handler())
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, req *http.Request) {
