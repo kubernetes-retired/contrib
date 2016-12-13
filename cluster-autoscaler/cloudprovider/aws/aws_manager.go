@@ -229,7 +229,6 @@ func (m *AwsManager) GetAsgSpotInstanceCost(asgConfig *Asg) (float64, error) {
 				},
 			},
 		}
-		glog.Infof("describeSpotPriceParams: %v", describeSpotPriceParams)
 
 		ph, err := m.client.DescribeSpotPriceHistory(describeSpotPriceParams)
 
