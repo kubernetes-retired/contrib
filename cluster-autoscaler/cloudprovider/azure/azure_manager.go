@@ -226,7 +226,7 @@ func (m *AzureManager) SetScaleSetSize(asConfig *ScaleSet, size int64) error {
 		return err
 	}
 	op.Sku.Capacity = &size
-
+	op.Properties.ProvisioningState = nil
 	cancel := make(chan struct{})
 	_, err = m.scaleSetClient.CreateOrUpdate(m.resourceGroupName, asConfig.Name, op, cancel)
 

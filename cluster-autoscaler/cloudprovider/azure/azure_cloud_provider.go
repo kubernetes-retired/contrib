@@ -115,24 +115,24 @@ func (scaleSet *ScaleSet) MaxSize() int {
 
 // TargetSize returns the current TARGET size of the node group. It is possible that the
 // number is different from the number of nodes registered in Kuberentes.
-func (asg *ScaleSet) TargetSize() (int, error) {
-	size, err := asg.azureManager.GetScaleSetSize(asg)
+func (scaleSet *ScaleSet) TargetSize() (int, error) {
+	size, err := scaleSet.azureManager.GetScaleSetSize(scaleSet)
 	return int(size), err
 }
 
 // IncreaseSize increases Asg size
-func (asg *ScaleSet) IncreaseSize(delta int) error {
+func (scaleSet *ScaleSet) IncreaseSize(delta int) error {
 	if delta <= 0 {
 		return fmt.Errorf("size increase must be positive")
 	}
-	size, err := asg.azureManager.GetScaleSetSize(asg)
+	size, err := scaleSet.azureManager.GetScaleSetSize(scaleSet)
 	if err != nil {
 		return err
 	}
-	if int(size)+delta > asg.MaxSize() {
-		return fmt.Errorf("size increase too large - desired:%d max:%d", int(size)+delta, asg.MaxSize())
+	if int(size)+delta > scaleSet.MaxSize() {
+		return fmt.Errorf("size increase too large - desired:%d max:%d", int(size)+delta, scaleSet.MaxSize())
 	}
-	return asg.azureManager.SetScaleSetSize(asg, size+int64(delta))
+	return scaleSet.azureManager.SetScaleSetSize(scaleSet, size+int64(delta))
 }
 
 // Belongs returns true if the given node belongs to the NodeGroup.

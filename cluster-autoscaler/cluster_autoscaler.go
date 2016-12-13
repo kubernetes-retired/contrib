@@ -44,7 +44,6 @@ import (
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 	kube_flag "k8s.io/kubernetes/pkg/util/flag"
 
-	"fmt"
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/pflag"
