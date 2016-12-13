@@ -31,6 +31,7 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/clusterstate"
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/expander"
+	"k8s.io/contrib/cluster-autoscaler/expander/leastcost"
 	"k8s.io/contrib/cluster-autoscaler/expander/mostpods"
 	"k8s.io/contrib/cluster-autoscaler/expander/random"
 	"k8s.io/contrib/cluster-autoscaler/expander/waste"
@@ -215,6 +216,8 @@ func run(_ <-chan struct{}) {
 			expanderStrategy = mostpods.NewStrategy()
 		case LeastWasteExpanderName:
 			expanderStrategy = waste.NewStrategy()
+		case LeastCostExpanderName:
+			expanderStrategy = leastcost.NewStrategy()
 		}
 	}
 
