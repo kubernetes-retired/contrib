@@ -86,8 +86,7 @@ func FindUnneededNodes(nodes []*kube_api.Node,
 
 	// Phase2 - check which nodes can be probably removed using fast drain.
 	nodesToRemove, newHints, err := simulator.FindNodesToRemove(currentlyUnneededNodes, nodes, pods,
-		nil, predicateChecker,
-		len(currentlyUnneededNodes), true, oldHints, tracker, timestamp)
+		nil, predicateChecker, true, oldHints, tracker, timestamp)
 	if err != nil {
 		glog.Errorf("Error while simulating node drains: %v", err)
 		return map[string]time.Time{}, oldHints, map[string]float64{}
@@ -191,7 +190,7 @@ func ScaleDown(
 	}
 
 	// We look for only 1 node so new hints may be incomplete.
-	nodesToRemove, _, err := simulator.FindNodesToRemove(candidates, nodes, pods, client, predicateChecker, 1, false,
+	nodesToRemove, _, err := simulator.FindNodesToRemove(candidates, nodes, pods, client, predicateChecker, false,
 		oldHints, usageTracker, time.Now())
 
 	if err != nil {
@@ -201,13 +200,14 @@ func ScaleDown(
 		glog.V(1).Infof("No node to remove")
 		return ScaleDownNoNodeDeleted, nil
 	}
-	toRemove := nodesToRemove[0]
+
+	toRemove := selectNodeToRemove(nodesToRemove, *scaleDownPolicy, lastUtilizationMap)
 	utilization := lastUtilizationMap[toRemove.Node.Name]
 	podNames := make([]string, 0, len(toRemove.PodsToReschedule))
 	for _, pod := range toRemove.PodsToReschedule {
 		podNames = append(podNames, pod.Namespace+"/"+pod.Name)
 	}
-	glog.V(0).Infof("Scale-down: removing node %s, utilization: %v, pods to reschedule: ", toRemove.Node.Name, utilization,
+	glog.V(0).Infof("Scale-down: removing node %s based on policy: %s, utilization: %v, pods to reschedule: ", toRemove.Node.Name, *scaleDownPolicy, utilization,
 		strings.Join(podNames, ","))
 
 	simulator.RemoveNodeFromTracker(usageTracker, toRemove.Node.Name, unneededNodes)
@@ -216,6 +216,41 @@ func ScaleDown(
 		return ScaleDownError, fmt.Errorf("Failed to delete %s: %v", toRemove.Node.Name, err)
 	}
 	return ScaleDownNodeDeleted, nil
+}
+
+func selectNodeToRemove(candidates []simulator.NodeToBeRemoved, policy string, utilizationMap map[string]float64) simulator.NodeToBeRemoved {
+	switch policy {
+	case "oldest":
+		oldestCandidate := getOldestCandidate(candidates)
+		return oldestCandidate
+	case "least-utilized":
+		leastUtilizedCandidate := getLeastUtilizedCandidate(candidates, utilizationMap)
+		return leastUtilizedCandidate
+	default:
+		return candidates[0]
+	}
+}
+
+func getOldestCandidate(candidates []simulator.NodeToBeRemoved) simulator.NodeToBeRemoved {
+	oldestCandidate := candidates[0]
+	for _, candidate := range candidates {
+		if candidate.Node.CreationTimestamp.Before(oldestCandidate.Node.CreationTimestamp) {
+			oldestCandidate = candidate
+		}
+	}
+
+	return oldestCandidate
+}
+
+func getLeastUtilizedCandidate(candidates []simulator.NodeToBeRemoved, utilizationMap map[string]float64) simulator.NodeToBeRemoved {
+	leastUtilizedCandidate := candidates[0]
+	for _, candidate := range candidates {
+		if utilizationMap[candidate.Node.Name] < utilizationMap[leastUtilizedCandidate.Node.Name] {
+			leastUtilizedCandidate = candidate
+		}
+	}
+
+	return leastUtilizedCandidate
 }
 
 // This functions finds empty nodes among passed candidates and returns a list of empty nodes
