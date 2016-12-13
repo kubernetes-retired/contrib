@@ -58,9 +58,7 @@ func (azure *AzureCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
 func (azure *AzureCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudprovider.NodeGroup, error) {
 	fmt.Printf("Searching for node group for the node: %s, %s\n", node.Spec.ExternalID, node.Spec.ProviderID)
 	ref := &AzureRef{
-		Subscription:  azure.azureManager.subscription,
-		ResourceGroup: azure.azureManager.resourceGroupName,
-		Name:          node.Spec.ProviderID,
+		Name: node.Spec.ProviderID,
 	}
 
 	scaleSet, err := azure.azureManager.GetScaleSetForInstance(ref)
@@ -70,9 +68,7 @@ func (azure *AzureCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudpro
 
 // AzureRef contains a reference to some entity in Azure world.
 type AzureRef struct {
-	Subscription  string
-	ResourceGroup string
-	Name          string
+	Name string
 }
 
 func (m *AzureRef) GetKey() string {
@@ -83,14 +79,11 @@ func (m *AzureRef) GetKey() string {
 // must be in format: azure:///resourceGroupName/name
 func AzureRefFromProviderId(id string) (*AzureRef, error) {
 	splitted := strings.Split(id[9:], "/")
-	if len(splitted) != 8 {
-		panic("Wrong id: expected format azure:///subscriptions/<subscriptionId>/resourceGroups/<resourceGroup>/providers/Microsoft.Compute/virtualMachines/<instance-name>, got " + id)
-		return nil, fmt.Errorf("Wrong id: expected format azure:///subscriptions/<subscriptionId>/resourceGroups/<resourceGroup>/providers/Microsoft.Compute/virtualMachines/<instance-name>, got %v", id)
+	if len(splitted) != 2 {
+		return nil, fmt.Errorf("Wrong id: expected format azure:////<unique-id>, got %v", id)
 	}
 	return &AzureRef{
-		Subscription:  splitted[1],
-		ResourceGroup: splitted[3],
-		Name:          splitted[len(splitted)-1],
+		Name: splitted[len(splitted)-1],
 	}, nil
 }
 
@@ -140,9 +133,7 @@ func (scaleSet *ScaleSet) Belongs(node *kube_api.Node) (bool, error) {
 	fmt.Printf("Check if node belongs to this scale set: scaleset:%v, node:%v\n", scaleSet, node)
 
 	ref := &AzureRef{
-		Subscription:  scaleSet.Subscription,
-		ResourceGroup: scaleSet.ResourceGroup,
-		Name:          node.Spec.ProviderID,
+		Name: node.Spec.ProviderID,
 	}
 
 	targetAsg, err := scaleSet.azureManager.GetScaleSetForInstance(ref)
@@ -178,9 +169,7 @@ func (scaleSet *ScaleSet) DeleteNodes(nodes []*kube_api.Node) error {
 			return fmt.Errorf("%s belongs to a different asg than %s", node.Name, scaleSet.Id())
 		}
 		azureRef := &AzureRef{
-			Subscription:  scaleSet.Subscription,
-			ResourceGroup: scaleSet.ResourceGroup,
-			Name:          node.Spec.ProviderID,
+			Name: node.Spec.ProviderID,
 		}
 		refs = append(refs, azureRef)
 	}

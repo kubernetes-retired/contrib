@@ -22,12 +22,14 @@ func (client *VirtualMachineScaleSetsClientMock) Get(resourceGroupName string,
 	vmScaleSetName string) (result compute.VirtualMachineScaleSet, err error) {
 	fmt.Printf("Called VirtualMachineScaleSetsClientMock.Get(%s,%s)\n", resourceGroupName, vmScaleSetName)
 	capacity := int64(2)
+	properties := compute.VirtualMachineScaleSetProperties{}
 	return compute.VirtualMachineScaleSet{
 
 		Name: &vmScaleSetName,
 		Sku: &compute.Sku{
 			Capacity: &capacity,
 		},
+		Properties: &properties,
 	}, nil
 }
 
@@ -50,10 +52,15 @@ type VirtualMachineScaleSetVMsClientMock struct {
 }
 
 func (m *VirtualMachineScaleSetVMsClientMock) List(resourceGroupName string, virtualMachineScaleSetName string, filter string, selectParameter string, expand string) (result compute.VirtualMachineScaleSetVMListResult, err error) {
+
 	value := make([]compute.VirtualMachineScaleSetVM, 1)
 	vmInstanceId := "test-instance-id"
+	properties := compute.VirtualMachineScaleSetVMProperties{}
+	vmId := "67453E12-9BE8-D312-A456-426655440000"
+	properties.VMID = &vmId
 	value[0] = compute.VirtualMachineScaleSetVM{
 		InstanceID: &vmInstanceId,
+		Properties: &properties,
 	}
 
 	return compute.VirtualMachineScaleSetVMListResult{
@@ -111,7 +118,7 @@ func TestNodeGroups(t *testing.T) {
 func TestNodeGroupForNode(t *testing.T) {
 	node := &kube_api.Node{
 		Spec: kube_api.NodeSpec{
-			ProviderID: "azure:///subscriptions/subscripion/resourceGroups/test-resource-group/providers/Microsoft.Compute/virtualMachines/test-instance-id",
+			ProviderID: "azure:////123E4567-E89B-12D3-A456-426655440000",
 		},
 	}
 
@@ -159,12 +166,10 @@ func TestAzureRefFromProviderId(t *testing.T) {
 	assert.Error(t, err)
 
 	// Example id: "azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/kubernetes-master"
-	azureRef, err := AzureRefFromProviderId("azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/kubernetes-master")
+	azureRef, err := AzureRefFromProviderId("azure:////kubernetes-master")
 	assert.NoError(t, err)
 	assert.Equal(t, &AzureRef{
-		Subscription:  "subscriptionId",
-		ResourceGroup: "kubernetes",
-		Name:          "kubernetes-master",
+		Name: "kubernetes-master",
 	}, azureRef)
 }
 
@@ -239,7 +244,7 @@ func TestBelongs(t *testing.T) {
 
 	validNode := &kube_api.Node{
 		Spec: kube_api.NodeSpec{
-			ProviderID: "azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/test-instance-id",
+			ProviderID: "azure:////123E4567-E89B-12D3-A456-426655440000",
 		},
 	}
 	belongs, err := provider.scaleSets[0].Belongs(validNode)
@@ -272,7 +277,7 @@ func TestDeleteNodes(t *testing.T) {
 			Status: "OK",
 		},
 	}
-	scaleSetClient.On("DeleteInstances", "kubernetes", "test-asg", mock.Anything, mock.Anything).Return(response, nil)
+	scaleSetClient.On("DeleteInstances", mock.Anything, "test-asg", mock.Anything, mock.Anything).Return(response, nil)
 
 	provider := testProvider(t, m)
 	err := provider.addNodeGroup("1:5:test-asg")
@@ -280,7 +285,7 @@ func TestDeleteNodes(t *testing.T) {
 
 	node := &kube_api.Node{
 		Spec: kube_api.NodeSpec{
-			ProviderID: "azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/test-instance-id",
+			ProviderID: "azure:////123E4567-E89B-12D3-A456-426655440000",
 		},
 	}
 	err = provider.scaleSets[0].DeleteNodes([]*kube_api.Node{node})

@@ -239,12 +239,11 @@ func (m *AzureManager) SetScaleSetSize(asConfig *ScaleSet, size int64) error {
 // GetScaleSetForInstance returns ScaleSetConfig of the given Instance
 func (m *AzureManager) GetScaleSetForInstance(instance *AzureRef) (*ScaleSet, error) {
 	fmt.Printf("Looking for scale set for instance: %v\n", instance)
-	if m.resourceGroupName == "" {
-		m.resourceGroupName = instance.ResourceGroup
-	}
+	//if m.resourceGroupName == "" {
+	//	m.resourceGroupName = instance.ResourceGroup
+	//}
 
-	instance.Subscription = m.subscription
-	instance.ResourceGroup = m.resourceGroupName
+	fmt.Printf("Cache BEFORE: %v\n", m.scaleSetCache)
 
 	m.cacheMutex.Lock()
 	defer m.cacheMutex.Unlock()
@@ -254,6 +253,9 @@ func (m *AzureManager) GetScaleSetForInstance(instance *AzureRef) (*ScaleSet, er
 	if err := m.regenerateCache(); err != nil {
 		return nil, fmt.Errorf("Error while looking for ScaleSet for instance %+v, error: %v", *instance, err)
 	}
+
+	fmt.Printf("Cache AFTER: %v\n", m.scaleSetCache)
+
 	if config, found := m.scaleSetCache[*instance]; found {
 		return config, nil
 	}
@@ -323,9 +325,7 @@ func (m *AzureManager) regenerateCache() error {
 		for _, instance := range *result.Value {
 			var name = "azure:////" + fixEndiannessUUID(string(strings.ToUpper(*instance.Properties.VMID)))
 			ref := AzureRef{
-				Subscription:  m.subscription,
-				ResourceGroup: m.resourceGroupName,
-				Name:          name,
+				Name: name,
 			}
 			newCache[ref] = sset.config
 
