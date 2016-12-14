@@ -3,10 +3,8 @@ This project contains a Docker image meant to facilitate the deployment of
 [Apache ZooKeeper](https://zookeeper.apache.org/) on [Kubernetes](http://kubernetes.io/) using 
 [StatefulSets](http://kubernetes.io/docs/abstractions/controllers/petset/). 
 ##Limitations
-1. Scaling is not currently supported. Once an ensemble is created, it is not safe to patch the 
-replicas of the Stateful Set. This is primarily due to the lack of the ability to update ensemble's 
-membership in a safe way in ZooKeeper 3.4.9 (The current stable release). When ZooKeeper 3.5.x 
-advances from alpha to stable we will consider adding this feature.
+1. Scaling is not currently supported. An ensemble's membership can not be updated in a safe way 
+in ZooKeeper 3.4.9 (The current stable release).
 2. Observers are currently not supported. Contributions are welcome.
 3. Persistent Volumes must be used. emptyDirs will likely result in a loss of data.
 ##Docker Image
@@ -51,7 +49,7 @@ even log, and the leader-election port is used by the ensemble to perform leader
 ###Stateful Set
 The Stateful Set configuration must match the Headless Service, and it must provide the number of 
 replicas. In the example below we request a ZooKeeper ensemble of size 3. 
-**As weighed quorums are not supported, it is imperative that an odd number of replicas be chosen.
+**As weighted quorums are not supported, it is imperative that an odd number of replicas be chosen.
 Moreover, the number of replicas should be either 1, 3, 5, or 7. Ensembles may be scaled to larger 
 membership for read fan out, but, as this will adversely impact write performance, careful thought
 should be given to selecting a larger value.**
@@ -74,7 +72,7 @@ configuration below.
 containers:
       - name: k8szk
         imagePullPolicy: Always
-        image: kowens/k8szk
+        image: gcr.io/google_samples/k8szk:v1
         ports:
         - containerPort: 2181
           name: client
@@ -130,14 +128,14 @@ environment variables may be omitted from the configuration.
 |ZK_MAX_SESSION_TIMEOUT|integer|20 * ZK_TICK_TIME|The maximum session timeout that the ensemble will allows a client to request.|
 
 ####Data Retention Configuration
-**ZooKeeper does not, by default, purge old transactions logs or snapshots. No, never. Yes, this can cause 
+**ZooKeeper does not, by default, purge old transactions logs or snapshots. This can cause 
 the disk to become full.** If you have backup procedures and retention policies that rely on 
 external systems, the snapshots can be retrieved manually from the /var/lib/zookeeper/data directory,
 and the logs can be retrieved manually from the /var/lib/zookeeper/log directory.
 These will be stored on the persistent volume. The zkCleanup.sh script can be used to manually purge
 outdated logs and snapshots.
 
-If you do not have a existing retention policy and backup procedure, and if you are comfortable with 
+If you do not have an existing retention policy and backup procedure, and if you are comfortable with 
 an automatic procedure, you can use the environment variables below to enable and configure 
 automatic data purge policies.
 
@@ -184,13 +182,13 @@ below demonstrates how to configure liveness and readiness probes for the Pods i
 volumeMounts for the container should be defined as below.
 ```yaml
   volumeMounts:
-          - name: datadir
-            mountPath: /var/lib/zookeeper
+  - name: datadir
+    mountPath: /var/lib/zookeeper
 ```
 ###Storage Configuration
 Currently, the use of Persistent Volumes to provide durable, network attached storage is mandatory.
 **If you use the provided image with emptyDirs, you will likely suffer a data loss.** The example 
-below demonstrates how to request a dynamically provisioned persistent volume of 20 Gib.
+below demonstrates how to request a dynamically provisioned persistent volume of 20 GiB.
 ```yaml
   volumeClaimTemplates:
   - metadata:
