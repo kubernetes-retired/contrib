@@ -15,3 +15,15 @@
     - es-service.yaml
     - kibana-controller.yaml
     - kibana-service.yaml
+
+- name: Install fluentd DaemonSet
+  get_url:
+    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/fluentd-elasticsearch/fluentd-es-ds.yaml
+    dest="{{ kube_addons_dir }}/cluster-logging/"
+    force=yes
+    validate_certs=False
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
+  when: cluster_logging
