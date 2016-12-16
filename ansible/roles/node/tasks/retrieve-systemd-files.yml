@@ -43,4 +43,17 @@
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"
     no_proxy: "{{ no_proxy|default('') }}"
+  when: not is_coreos
 
+- name: CoreOS | Get Systemd tmpfile from Kubernetes repository
+  get_url:
+    url=https://raw.githubusercontent.com/kubernetes/contrib/master/init/systemd/tmpfiles.d/kubernetes.conf
+    dest=/run/tmpfiles.d/kubernetes.conf
+    force=yes
+  notify:
+    - reload systemd
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
+  when: is_coreos
