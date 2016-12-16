@@ -75,6 +75,7 @@ max-empty-bulk-delete
 max-nodes-total
 max-pr-number
 max-sync-failures
+max-grateful-termination-sec
 min-pr-number
 min-replica-count
 netrc-dir
