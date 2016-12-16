@@ -33,10 +33,10 @@ type issueIndexKey string
 
 type issueList []int
 
-func (l *issueList) add(i int) {
-	*l = append(*l, i)
+func (notL *issueList) add(i int) {
+	*notL = append(*notL, i)
 	// Not efficient but we don't expect big lists.
-	sort.Ints([]int(*l))
+	sort.Ints([]int(*notL))
 }
 func (l *issueList) mostRecent() int {
 	n := len(*l)
