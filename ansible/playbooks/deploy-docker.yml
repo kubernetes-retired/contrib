@@ -1,9 +1,0 @@
----
-# Install docker
-- hosts: all
-  become: yes
-  roles:
-    - common
-    - docker
-  tags:
-    - docker

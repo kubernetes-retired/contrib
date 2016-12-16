@@ -1,8 +1,0 @@
----
-- name: Enable apiserver
-  service: name=kube-apiserver enabled=yes
-  when: services_enabled == true
-
-- name: Start apiserver
-  service: name=kube-apiserver state=started
-  register: apiserver_started

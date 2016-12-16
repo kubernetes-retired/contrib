@@ -1,1 +1,0 @@
-^node_collector_evictions_number{
