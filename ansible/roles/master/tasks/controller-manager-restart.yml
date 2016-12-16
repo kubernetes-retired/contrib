@@ -1,4 +1,0 @@
----
-- name: Restart controller-manager
-  service: name=kube-controller-manager state=restarted
-
