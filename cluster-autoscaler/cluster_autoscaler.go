@@ -198,19 +198,6 @@ func run(_ <-chan struct{}) {
 		}
 	}
 
-	autoscalingContext := AutoscalingContext{
-		CloudProvider:                 cloudProvider,
-		ClientSet:                     kubeClient,
-		Recorder:                      createEventRecorder(kubeClient),
-		PredicateChecker:              predicateChecker,
-		MaxEmptyBulkDelete:            *maxEmptyBulkDeleteFlag,
-		ScaleDownUtilizationThreshold: *scaleDownUtilizationThreshold,
-		ScaleDownUnneededTime:         *scaleDownUnneededTime,
-		MaxNodesTotal:                 *maxNodesTotal,
-		EstimatorName:                 *estimatorFlag,
-		MaxGratefulTerminationSec:     *maxGratefulTerminationFlag,
-	}
-
 	var expanderStrategy expander.Strategy
 	{
 		switch *expanderFlag {
@@ -221,6 +208,20 @@ func run(_ <-chan struct{}) {
 		case LeastWasteExpanderName:
 			expanderStrategy = waste.NewStrategy()
 		}
+	}
+
+	autoscalingContext := AutoscalingContext{
+		CloudProvider:                 cloudProvider,
+		ClientSet:                     kubeClient,
+		Recorder:                      createEventRecorder(kubeClient),
+		PredicateChecker:              predicateChecker,
+		MaxEmptyBulkDelete:            *maxEmptyBulkDeleteFlag,
+		ScaleDownUtilizationThreshold: *scaleDownUtilizationThreshold,
+		ScaleDownUnneededTime:         *scaleDownUnneededTime,
+		MaxNodesTotal:                 *maxNodesTotal,
+		EstimatorName:                 *estimatorFlag,
+		ExpanderStrategy:              expanderStrategy,
+		MaxGratefulTerminationSec:     *maxGratefulTerminationFlag,
 	}
 
 	for {

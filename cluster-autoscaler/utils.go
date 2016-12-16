@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
+	"k8s.io/contrib/cluster-autoscaler/expander"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
@@ -56,6 +57,8 @@ type AutoscalingContext struct {
 	MaxNodesTotal int
 	// EstimatorName is the estimator used to estimate the number of needed nodes in scale up.
 	EstimatorName string
+	// ExpanderStrategy is the strategy used to choose which node group to expand when scaling up
+	ExpanderStrategy expander.Strategy
 	// MaxGratefulTerminationSec is maximum number of seconds scale down waits for pods to terminante before
 	// removing the node from cloud provider.
 	MaxGratefulTerminationSec int

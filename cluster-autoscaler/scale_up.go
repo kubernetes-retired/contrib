@@ -82,10 +82,10 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 			}
 		}
 		if len(option.Pods) > 0 {
-			if context.estimatorName == BinpackingEstimatorName {
-				binpackingEstimator := estimator.NewBinpackingNodeEstimator(predicateChecker)
+			if context.EstimatorName == BinpackingEstimatorName {
+				binpackingEstimator := estimator.NewBinpackingNodeEstimator(context.PredicateChecker)
 				option.NodeCount = binpackingEstimator.Estimate(option.Pods, nodeInfo)
-			} else if context.estimatorName == BasicEstimatorName {
+			} else if context.EstimatorName == BasicEstimatorName {
 				basicEstimator := estimator.NewBasicNodeEstimator()
 				for _, pod := range option.Pods {
 					basicEstimator.Add(pod)
@@ -99,7 +99,7 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 	}
 
 	// Pick some expansion option.
-	bestOption := expanderStrategy.BestOption(expansionOptions, nodeInfos)
+	bestOption := context.ExpanderStrategy.BestOption(expansionOptions, nodeInfos)
 	if bestOption != nil && bestOption.NodeCount > 0 {
 		glog.V(1).Infof("Best option to resize: %s", bestOption.NodeGroup.Id())
 		if len(bestOption.Debug) > 0 {
@@ -132,7 +132,7 @@ func ScaleUp(context AutoscalingContext, unschedulablePods []*apiv1.Pod, nodes [
 		}
 
 		for _, pod := range bestOption.Pods {
-			recorder.Eventf(pod, apiv1.EventTypeNormal, "TriggeredScaleUp",
+			context.Recorder.Eventf(pod, apiv1.EventTypeNormal, "TriggeredScaleUp",
 				"pod triggered scale-up, group: %s, sizes (current/new): %d/%d", bestOption.NodeGroup.Id(), currentSize, newSize)
 		}
 
