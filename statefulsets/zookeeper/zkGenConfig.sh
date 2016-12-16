@@ -37,7 +37,13 @@ LOGGER_PROPS_FILE="$ZK_CONF_DIR/log4j.properties"
 JAVA_ENV_FILE="$ZK_CONF_DIR/java.env"
 HOST=`hostname -s`
 DOMAIN=`hostname -d`
-ZK_REPLICAS=3
+
+function print_servers() {
+	 for (( i=1; i<=$ZK_REPLICAS; i++ ))
+	do
+		echo "server.$i=$NAME-$((i-1)).$DOMAIN:$ZK_SERVER_PORT:$ZK_ELECTION_PORT" >> $1
+	done
+}
 
 function validate_env() {
     echo "Validating enviornment"
@@ -46,8 +52,9 @@ function validate_env() {
 		exit 1
 	fi
    
-	if [[ $HOST =~ -([0-9]+)$ ]]; then
-		ORD=${BASH_REMATCH[1]}
+	if [[ $HOST =~ (.*?)-([0-9]+) ]]; then
+		NAME=${BASH_REMATCH[1]}
+		ORD=${BASH_REMATCH[2]}
 	else
 		echo "Failed to extract ordinal from hostname $HOST"
 		exit 1
@@ -72,10 +79,7 @@ function validate_env() {
     echo "ZK_SNAP_RETAIN_COUNT=$ZK_SNAP_RETAIN_COUNT"
     echo "ZK_PURGE_INTERVAL=$ZK_PURGE_INTERVAL"
     echo "ENSEMBLE"
-    for (( i=1; i<=$ZK_REPLICAS; i++ ))
-	do
-		echo "server.$i=${HOST/$ORD/$((i-1))}.$DOMAIN:$ZK_SERVER_PORT:$ZK_ELECTION_PORT"
-	done
+    print_servers 1
     echo "Enviorment validation successful"
 }
 
@@ -96,10 +100,7 @@ function create_config() {
     echo "autopurge.purgeInteval=$ZK_PURGE_INTERVAL" >> $ZK_CONFIG_FILE
     
     if [ $ZK_REPLICAS -gt 1 ]; then 
-    	for (( i=1; i<=$ZK_REPLICAS; i++ ))
-		do
-			echo "server.$i=${HOST/$ORD/$((i-1))}.$DOMAIN:$ZK_SERVER_PORT:$ZK_ELECTION_PORT" >> $ZK_CONFIG_FILE
-		done
+    	print_servers $ZK_CONFIG_FILE
     fi
     echo "Wrote ZooKeeper configuration file to $ZK_CONFIG_FILE"
 }
