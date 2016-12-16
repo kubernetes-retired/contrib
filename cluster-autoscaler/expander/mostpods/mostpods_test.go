@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/contrib/cluster-autoscaler/expander"
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
 
 func TestMostPods(t *testing.T) {
@@ -31,12 +31,12 @@ func TestMostPods(t *testing.T) {
 	ret := e.BestOption([]expander.Option{eo0}, nil)
 	assert.Equal(t, *ret, eo0)
 
-	eo1 := expander.Option{Debug: "EO1", Pods: []*kube_api.Pod{nil}}
+	eo1 := expander.Option{Debug: "EO1", Pods: []*apiv1.Pod{nil}}
 
 	ret = e.BestOption([]expander.Option{eo0, eo1}, nil)
 	assert.Equal(t, *ret, eo1)
 
-	eo1b := expander.Option{Debug: "EO1b", Pods: []*kube_api.Pod{nil}}
+	eo1b := expander.Option{Debug: "EO1b", Pods: []*apiv1.Pod{nil}}
 
 	ret = e.BestOption([]expander.Option{eo0, eo1, eo1b}, nil)
 	assert.NotEqual(t, *ret, eo0)

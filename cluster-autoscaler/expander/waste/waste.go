@@ -20,8 +20,8 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/expander"
 	"k8s.io/contrib/cluster-autoscaler/expander/random"
-	kube_api "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
 
@@ -76,13 +76,13 @@ func (l *leastwaste) BestOption(expansionOptions []expander.Option, nodeInfo map
 	return l.next.BestOption(leastWastedOptions, nodeInfo)
 }
 
-func resourcesForPods(pods []*kube_api.Pod) (cpu resource.Quantity, memory resource.Quantity) {
+func resourcesForPods(pods []*apiv1.Pod) (cpu resource.Quantity, memory resource.Quantity) {
 	for _, pod := range pods {
 		for _, container := range pod.Spec.Containers {
-			if request, ok := container.Resources.Requests[kube_api.ResourceCPU]; ok {
+			if request, ok := container.Resources.Requests[apiv1.ResourceCPU]; ok {
 				cpu.Add(request)
 			}
-			if request, ok := container.Resources.Requests[kube_api.ResourceMemory]; ok {
+			if request, ok := container.Resources.Requests[apiv1.ResourceMemory]; ok {
 				memory.Add(request)
 			}
 		}
@@ -91,9 +91,9 @@ func resourcesForPods(pods []*kube_api.Pod) (cpu resource.Quantity, memory resou
 	return cpu, memory
 }
 
-func resourcesForNode(node *kube_api.Node) (cpu resource.Quantity, memory resource.Quantity) {
-	cpu = node.Status.Capacity[kube_api.ResourceCPU]
-	memory = node.Status.Capacity[kube_api.ResourceMemory]
+func resourcesForNode(node *apiv1.Node) (cpu resource.Quantity, memory resource.Quantity) {
+	cpu = node.Status.Capacity[apiv1.ResourceCPU]
+	memory = node.Status.Capacity[apiv1.ResourceMemory]
 
 	return cpu, memory
 }

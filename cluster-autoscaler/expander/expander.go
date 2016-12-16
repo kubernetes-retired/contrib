@@ -18,7 +18,7 @@ package expander
 
 import (
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
 
@@ -27,7 +27,7 @@ type Option struct {
 	NodeGroup cloudprovider.NodeGroup
 	NodeCount int
 	Debug     string
-	Pods      []*kube_api.Pod
+	Pods      []*apiv1.Pod
 }
 
 // Strategy describes an interface for selecting the best option when scaling up

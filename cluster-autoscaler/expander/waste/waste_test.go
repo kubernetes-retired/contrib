@@ -21,8 +21,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/contrib/cluster-autoscaler/expander"
-	kube_api "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
 
@@ -30,21 +30,21 @@ type FakeNodeGroup struct {
 	id string
 }
 
-func (f *FakeNodeGroup) MaxSize() int                       { return 2 }
-func (f *FakeNodeGroup) MinSize() int                       { return 1 }
-func (f *FakeNodeGroup) TargetSize() (int, error)           { return 2, nil }
-func (f *FakeNodeGroup) IncreaseSize(delta int) error       { return nil }
-func (f *FakeNodeGroup) DeleteNodes([]*kube_api.Node) error { return nil }
-func (f *FakeNodeGroup) Id() string                         { return f.id }
-func (f *FakeNodeGroup) Debug() string                      { return f.id }
+func (f *FakeNodeGroup) MaxSize() int                    { return 2 }
+func (f *FakeNodeGroup) MinSize() int                    { return 1 }
+func (f *FakeNodeGroup) TargetSize() (int, error)        { return 2, nil }
+func (f *FakeNodeGroup) IncreaseSize(delta int) error    { return nil }
+func (f *FakeNodeGroup) DeleteNodes([]*apiv1.Node) error { return nil }
+func (f *FakeNodeGroup) Id() string                      { return f.id }
+func (f *FakeNodeGroup) Debug() string                   { return f.id }
 
 func makeNodeInfo(cpu int64, memory int64, pods int64) *schedulercache.NodeInfo {
-	node := &kube_api.Node{
-		Status: kube_api.NodeStatus{
-			Capacity: kube_api.ResourceList{
-				kube_api.ResourceCPU:    *resource.NewMilliQuantity(cpu, resource.DecimalSI),
-				kube_api.ResourceMemory: *resource.NewQuantity(memory, resource.DecimalSI),
-				kube_api.ResourcePods:   *resource.NewQuantity(pods, resource.DecimalSI),
+	node := &apiv1.Node{
+		Status: apiv1.NodeStatus{
+			Capacity: apiv1.ResourceList{
+				apiv1.ResourceCPU:    *resource.NewMilliQuantity(cpu, resource.DecimalSI),
+				apiv1.ResourceMemory: *resource.NewQuantity(memory, resource.DecimalSI),
+				apiv1.ResourcePods:   *resource.NewQuantity(pods, resource.DecimalSI),
 			},
 		},
 	}
@@ -73,14 +73,14 @@ func TestLeastWaste(t *testing.T) {
 
 	assert.Equal(t, *ret, balancedOption)
 
-	pod := &kube_api.Pod{
-		Spec: kube_api.PodSpec{
-			Containers: []kube_api.Container{
+	pod := &apiv1.Pod{
+		Spec: apiv1.PodSpec{
+			Containers: []apiv1.Container{
 				{
-					Resources: kube_api.ResourceRequirements{
-						Requests: kube_api.ResourceList{
-							kube_api.ResourceCPU:    *resource.NewMilliQuantity(cpuPerPod, resource.DecimalSI),
-							kube_api.ResourceMemory: *resource.NewQuantity(memoryPerPod, resource.DecimalSI),
+					Resources: apiv1.ResourceRequirements{
+						Requests: apiv1.ResourceList{
+							apiv1.ResourceCPU:    *resource.NewMilliQuantity(cpuPerPod, resource.DecimalSI),
+							apiv1.ResourceMemory: *resource.NewQuantity(memoryPerPod, resource.DecimalSI),
 						},
 					},
 				},
@@ -89,7 +89,7 @@ func TestLeastWaste(t *testing.T) {
 	}
 
 	// Test with one pod, one node info
-	balancedOption.Pods = []*kube_api.Pod{pod}
+	balancedOption.Pods = []*apiv1.Pod{pod}
 
 	ret = e.BestOption([]expander.Option{balancedOption}, nodeMap)
 
@@ -99,7 +99,7 @@ func TestLeastWaste(t *testing.T) {
 	highmemNodeInfo := makeNodeInfo(16*cpuPerPod, 32*memoryPerPod, 100)
 	nodeMap["highmem"] = highmemNodeInfo
 
-	highmemOption := expander.Option{NodeGroup: &FakeNodeGroup{"highmem"}, NodeCount: 1, Pods: []*kube_api.Pod{pod}}
+	highmemOption := expander.Option{NodeGroup: &FakeNodeGroup{"highmem"}, NodeCount: 1, Pods: []*apiv1.Pod{pod}}
 
 	ret = e.BestOption([]expander.Option{balancedOption, highmemOption}, nodeMap)
 
@@ -109,7 +109,7 @@ func TestLeastWaste(t *testing.T) {
 	lowcpuNodeInfo := makeNodeInfo(8*cpuPerPod, 16*memoryPerPod, 100)
 	nodeMap["lowcpu"] = lowcpuNodeInfo
 
-	lowcpuOption := expander.Option{NodeGroup: &FakeNodeGroup{"lowcpu"}, NodeCount: 1, Pods: []*kube_api.Pod{pod}}
+	lowcpuOption := expander.Option{NodeGroup: &FakeNodeGroup{"lowcpu"}, NodeCount: 1, Pods: []*apiv1.Pod{pod}}
 
 	ret = e.BestOption([]expander.Option{balancedOption, highmemOption, lowcpuOption}, nodeMap)
 
