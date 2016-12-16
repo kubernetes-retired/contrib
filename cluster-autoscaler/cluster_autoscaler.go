@@ -71,7 +71,7 @@ const (
 	RandomExpanderName = "random"
 	// MostPodsExpanderName selects a node group that fits the most pods
 	MostPodsExpanderName = "most-pods"
-	// LeastWasteExpanderName selects a node group that leaves the least CPU unusued (or Memory in a tie)
+	// LeastWasteExpanderName selects a node group that leaves the least fraction of CPU and Memory
 	LeastWasteExpanderName = "least-waste"
 )
 

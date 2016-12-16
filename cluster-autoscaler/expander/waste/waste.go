@@ -34,7 +34,7 @@ func NewStrategy() expander.Strategy {
 	return &leastwaste{random.NewStrategy()}
 }
 
-// BestOption Finds the option that wastes the least amount of CPU, then the least amount of Memory, then random
+// BestOption Finds the option that wastes the least fraction of CPU and Memory
 func (l *leastwaste) BestOption(expansionOptions []expander.Option, nodeInfo map[string]*schedulercache.NodeInfo) *expander.Option {
 	var leastWastedScore float64
 	var leastWastedOptions []expander.Option
