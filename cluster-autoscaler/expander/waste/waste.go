@@ -36,8 +36,7 @@ func NewStrategy() expander.Strategy {
 
 // BestOption Finds the option that wastes the least amount of CPU, then the least amount of Memory, then random
 func (l *leastwaste) BestOption(expansionOptions []expander.Option, nodeInfo map[string]*schedulercache.NodeInfo) *expander.Option {
-	var leastWastedCPU int64
-	var leastWastedMemory int64
+	var leastWastedScore float64
 	var leastWastedOptions []expander.Option
 
 	for _, option := range expansionOptions {
@@ -49,22 +48,20 @@ func (l *leastwaste) BestOption(expansionOptions []expander.Option, nodeInfo map
 		}
 
 		nodeCPU, nodeMemory := resourcesForNode(node.Node())
-		wastedCPU := nodeCPU.MilliValue()*int64(option.NodeCount) - requestedCPU.MilliValue()
-		wastedMemory := nodeMemory.MilliValue()*int64(option.NodeCount) - requestedMemory.MilliValue()
+		availCPU := nodeCPU.MilliValue() * int64(option.NodeCount)
+		availMemory := nodeMemory.Value() * int64(option.NodeCount)
+		wastedCPU := float64(availCPU-requestedCPU.MilliValue()) / float64(availCPU)
+		wastedMemory := float64(availMemory-requestedMemory.Value()) / float64(availMemory)
+		wastedScore := wastedCPU + wastedMemory
 
-		glog.V(1).Infof("Expanding Node Group %s would waste %d CPU, %d Memory", option.NodeGroup.Id(), wastedCPU, wastedMemory)
+		glog.V(1).Infof("Expanding Node Group %s would waste %0.2f%% CPU, %0.2f%% Memory, %0.2f%% Blended\n", option.NodeGroup.Id(), wastedCPU*100.0, wastedMemory*100.0, wastedScore*50.0)
 
-		if wastedCPU == leastWastedCPU && wastedMemory == leastWastedMemory {
+		if wastedScore == leastWastedScore {
 			leastWastedOptions = append(leastWastedOptions, option)
 		}
 
-		if leastWastedOptions == nil || wastedCPU < leastWastedCPU {
-			leastWastedCPU, leastWastedMemory = wastedCPU, wastedMemory
-			leastWastedOptions = []expander.Option{option}
-		}
-
-		if wastedCPU == leastWastedCPU && wastedMemory < leastWastedMemory {
-			leastWastedMemory = wastedMemory
+		if leastWastedOptions == nil || wastedScore < leastWastedScore {
+			leastWastedScore = wastedScore
 			leastWastedOptions = []expander.Option{option}
 		}
 	}
