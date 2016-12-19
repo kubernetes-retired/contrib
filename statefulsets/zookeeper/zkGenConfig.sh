@@ -52,7 +52,7 @@ function validate_env() {
 		exit 1
 	fi
    
-	if [[ $HOST =~ (.*?)-([0-9]+)$ ]]; then
+	if [[ $HOST =~ (.*)-([0-9]+)$ ]]; then
 		NAME=${BASH_REMATCH[1]}
 		ORD=${BASH_REMATCH[2]}
 	else
