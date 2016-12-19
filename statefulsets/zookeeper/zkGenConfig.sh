@@ -41,7 +41,7 @@ DOMAIN=`hostname -d`
 function print_servers() {
 	 for (( i=1; i<=$ZK_REPLICAS; i++ ))
 	do
-		echo "server.$i=$NAME-$((i-1)).$DOMAIN:$ZK_SERVER_PORT:$ZK_ELECTION_PORT" >> $1
+		echo "server.$i=$NAME-$((i-1)).$DOMAIN:$ZK_SERVER_PORT:$ZK_ELECTION_PORT"
 	done
 }
 
@@ -52,7 +52,7 @@ function validate_env() {
 		exit 1
 	fi
    
-	if [[ $HOST =~ (.*?)-([0-9]+) ]]; then
+	if [[ $HOST =~ (.*?)-([0-9]+)$ ]]; then
 		NAME=${BASH_REMATCH[1]}
 		ORD=${BASH_REMATCH[2]}
 	else
@@ -79,7 +79,7 @@ function validate_env() {
     echo "ZK_SNAP_RETAIN_COUNT=$ZK_SNAP_RETAIN_COUNT"
     echo "ZK_PURGE_INTERVAL=$ZK_PURGE_INTERVAL"
     echo "ENSEMBLE"
-    print_servers 1
+    print_servers
     echo "Enviorment validation successful"
 }
 
@@ -100,7 +100,7 @@ function create_config() {
     echo "autopurge.purgeInteval=$ZK_PURGE_INTERVAL" >> $ZK_CONFIG_FILE
     
     if [ $ZK_REPLICAS -gt 1 ]; then 
-    	print_servers $ZK_CONFIG_FILE
+    	print_servers >> $ZK_CONFIG_FILE
     fi
     echo "Wrote ZooKeeper configuration file to $ZK_CONFIG_FILE"
 }
