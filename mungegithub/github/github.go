@@ -1856,11 +1856,7 @@ func (obj *MungeObject) WriteComment(msg string) error {
 	config := obj.config
 	prNum := obj.Number()
 	config.analytics.CreateComment.Call(config, nil)
-	comment := msg
-	if len(comment) > 512 {
-		comment = comment[:512]
-	}
-	glog.Infof("Commenting in %d: %q", prNum, comment)
+	glog.Infof("Commenting in %d: %q", prNum, msg[:512])
 	if config.DryRun {
 		return nil
 	}
@@ -1933,9 +1929,13 @@ func (obj *MungeObject) EditComment(comment *github.IssueComment, body string) e
 	if comment.User != nil && comment.User.Login != nil {
 		author = *comment.User.Login
 	}
-	glog.Infof("Updating comment %d from Issue %d. Author:%s New Body:%q", *comment.ID, prNum, author, body)
+	glog.Infof("Updating comment %d from Issue %d. Author:%s New Body:%q", *comment.ID, prNum, author, body[:512])
 	if config.DryRun {
 		return nil
+	}
+	if len(body) > maxCommentLen {
+		glog.Info("Comment in %d was larger than %d and was truncated", prNum, maxCommentLen)
+		body = body[:maxCommentLen]
 	}
 	patch := github.IssueComment{Body: &body}
 	resp, _, err := config.client.Issues.EditComment(config.Org, config.Project, *comment.ID, &patch)
