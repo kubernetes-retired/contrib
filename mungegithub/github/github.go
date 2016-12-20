@@ -232,7 +232,7 @@ type analytics struct {
 	ListReviewComments   analytic
 	CreateComment        analytic
 	DeleteComment        analytic
-	UpdateComment        analytic
+	EditComment          analytic
 	Merge                analytic
 	GetUser              analytic
 	SetMilestone         analytic
@@ -1919,11 +1919,11 @@ func (obj *MungeObject) DeleteComment(comment *github.IssueComment) error {
 	return nil
 }
 
-// UpdateComment will change the specified comment's body.
-func (obj *MungeObject) UpdateComment(comment *github.IssueComment, body string) error {
+// EditComment will change the specified comment's body.
+func (obj *MungeObject) EditComment(comment *github.IssueComment, body string) error {
 	config := obj.config
 	prNum := *obj.Issue.Number
-	config.analytics.UpdateComment.Call(config, nil)
+	config.analytics.EditComment.Call(config, nil)
 	if comment.ID == nil {
 		err := fmt.Errorf("Found a comment with nil id for Issue %d", prNum)
 		glog.Errorf("Found a comment with nil id for Issue %d", prNum)
@@ -1933,14 +1933,22 @@ func (obj *MungeObject) UpdateComment(comment *github.IssueComment, body string)
 	if comment.User != nil && comment.User.Login != nil {
 		author = *comment.User.Login
 	}
-	glog.Infof("Updating comment %d from Issue %d. Author:%s New Body:%q", *comment.ID, prNum, author, body)
+	shortBody := body
+	if len(shortBody) > 512 {
+		shortBody = shortBody[:512]
+	}
+	glog.Infof("Editing comment %d from Issue %d. Author:%s New Body:%q", *comment.ID, prNum, author, shortBody)
 	if config.DryRun {
 		return nil
 	}
-	patch := github.RepositoryComment{Body: &body}
-	resp, _, err := config.client.Repositories.UpdateComment(config.Org, config.Project, *comment.ID, &patch)
+	if len(body) > maxCommentLen {
+		glog.Info("Comment in %d was larger than %d and was truncated", prNum, maxCommentLen)
+		body = body[:maxCommentLen]
+	}
+	patch := github.IssueComment{Body: &body}
+	resp, _, err := config.client.Issues.EditComment(config.Org, config.Project, *comment.ID, &patch)
 	if err != nil {
-		glog.Errorf("Error updating comment: %v", err)
+		glog.Errorf("Error editing comment: %v", err)
 		return err
 	}
 	comment.Body = resp.Body

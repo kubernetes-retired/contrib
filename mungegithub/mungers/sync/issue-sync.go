@@ -259,9 +259,13 @@ func (s *IssueSyncer) updateIssue(obj *github.MungeObject, source IssueSource) e
 			continue
 		}
 		combined := source.AddTo(*c.Body)
+		if len(combined) > 65000 {
+			glog.Infof("Not editing comment in issue %v because it would be too long (%dB)", *obj.Issue.Number, len(combined))
+			continue
+		}
 		if combined != "" {
-			glog.Infof("Updating comment in issue %v to add item %v", *obj.Issue.Number, source.ID())
-			return obj.UpdateComment(c, combined)
+			glog.Infof("Editing comment in issue %v to add item %v", *obj.Issue.Number, source.ID())
+			return obj.EditComment(c, combined)
 		}
 	}
 
