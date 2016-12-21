@@ -304,6 +304,14 @@ type MungeObject struct {
 func (obj *MungeObject) Number() int {
 	return *obj.Issue.Number
 }
+// Number is short for *obj.Issue.Number.
+func (obj *MungeObject) Project() string {
+	return obj.config.Project
+}
+// Number is short for *obj.Issue.Number.
+func (obj *MungeObject) Org() string {
+	return obj.config.Org
+}
 
 // DebugStats is a structure that tells information about how we have interacted
 // with github

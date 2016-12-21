@@ -270,7 +270,7 @@ func (o *RepoInfo) FindOwnersForPath(path string) string {
 		}
 		_, ok := o.approvers[d]
 		if ok {
-			return d
+			return "/" + d
 		}
 		if d == "/" {
 			break
