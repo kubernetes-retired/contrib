@@ -132,9 +132,10 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 		return err
 	}
 	path = filepath.Dir(path)
-	// Make the root explicitly / so its easy to distinguish. Nothing else is `/` anchored
+	// Make the root explicitly "" (empty string) for consistency with githubapi convention: nothing is `/` anchored
+	// so the base dir of the project is "" and all other files do not start with "/"
 	if path == "." {
-		path = "/"
+		path = ""
 	}
 	o.approvers[path] = sets.NewString(c.Approvers...)
 	o.approvers[path].Insert(c.Assignees...)
@@ -259,20 +260,20 @@ func (o *RepoInfo) gitCommandDir(args []string, cmdDir string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-// FindOwnersForPath returns the OWNERS file further down the tree for a file
+// FindOwnersForPath returns the OWNERS file path further down the tree for a file
 func (o *RepoInfo) FindOwnersForPath(path string) string {
 	d := path
 
 	for {
 		// special case the root
-		if d == "." || d == "" {
-			d = "/"
+		if d == "." {
+			d = ""
 		}
 		_, ok := o.approvers[d]
 		if ok {
 			return d
 		}
-		if d == "/" {
+		if d == "" {
 			break
 		}
 		d = filepath.Dir(d)
@@ -289,15 +290,15 @@ func (o *RepoInfo) FindOwnersForPath(path string) string {
 func peopleForPath(path string, people map[string]sets.String, leafOnly bool, enableMdYaml bool) sets.String {
 	d := path
 	if !enableMdYaml {
-		// if path is a directory, this will remove the leaf directory
+		// if path is a directory, this will remove the leaf directory, and returns "." for topmost dir
 		d = filepath.Dir(path)
 	}
 
 	out := sets.NewString()
 	for {
 		// special case the root
-		if d == "" {
-			d = "/"
+		if d == "." {
+			d = ""
 		}
 		s, ok := people[d]
 		if ok {
@@ -306,10 +307,10 @@ func peopleForPath(path string, people map[string]sets.String, leafOnly bool, en
 				break
 			}
 		}
-		if d == "/" {
+		if d == "" {
 			break
 		}
-		d, _ = filepath.Split(d)
+		d = filepath.Dir(d)
 		d = strings.TrimSuffix(d, "/")
 	}
 	return out
