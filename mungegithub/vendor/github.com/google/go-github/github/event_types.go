@@ -488,7 +488,7 @@ type TeamAddEvent struct {
 // WatchEvent is related to starring a repository, not watching. See this API
 // blog post for an explanation: https://developer.github.com/changes/2012-09-05-watcher-api/
 //
-// The event’s actor is the user who starred a repository, and the event’s
+// The event's actor is the user who starred a repository, and the event's
 // repository is the repository that was starred.
 //
 // GitHub docs: https://developer.github.com/v3/activity/events/types/#watchevent

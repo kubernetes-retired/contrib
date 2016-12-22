@@ -20,6 +20,6 @@ limitations under the License.
 // they need.
 // Burstable containers will be guaranteed their request and can “burst” and use more resources
 // when available.
-// Best-Effort containers, which don’t specify a request, can use resources only if not being used
+// Best-Effort containers, which don't specify a request, can use resources only if not being used
 // by other pods.
 package qos

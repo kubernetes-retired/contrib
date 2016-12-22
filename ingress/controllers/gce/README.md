@@ -578,7 +578,7 @@ And curling `:80` should just `404`:
 $ curl 130.211.10.121
 ...
   <a href=//www.google.com/><span id=logo aria-label=Google></span></a>
-  <p><b>404.</b> <ins>That’s an error.</ins>
+  <p><b>404.</b> <ins>That's an error.</ins>
 
 $ curl https://130.211.10.121 -k
 ...
@@ -620,8 +620,8 @@ The loadbalancer is probably bootstrapping itself.
 * If a GET responds with a 404 and the following response:
 ```
   <a href=//www.google.com/><span id=logo aria-label=Google></span></a>
-  <p><b>404.</b> <ins>That’s an error.</ins>
-  <p>The requested URL <code>/hostless</code> was not found on this server.  <ins>That’s all we know.</ins>
+  <p><b>404.</b> <ins>That's an error.</ins>
+  <p>The requested URL <code>/hostless</code> was not found on this server.  <ins>That's all we know.</ins>
 ```
 It means you have lost your IP somehow, or just typed in the wrong IP.
 

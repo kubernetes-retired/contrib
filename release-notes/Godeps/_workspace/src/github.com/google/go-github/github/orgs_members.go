@@ -24,7 +24,7 @@ type Membership struct {
 	//     member - a normal member of the team
 	//     maintainer - a team maintainer. Able to add/remove other team
 	//                  members, promote other team members to team
-	//                  maintainer, and edit the team’s name and description
+	//                  maintainer, and edit the team's name and description
 	Role *string `json:"role,omitempty"`
 
 	// For organization membership, the API URL of the organization.

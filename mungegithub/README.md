@@ -88,7 +88,7 @@ The steps below make use of the utility cluster which runs the existing submit-q
 
 * Create a new directory for the repo on which you want to run the submit-queue instance. For example, if we want to call it `<TARGET>`, we create `contrib/submit-queue/deployments/<TARGET>`.
 * Add a service.yaml, pv.yaml, pvc.yaml, secret.yaml, configmap.yaml to the directory and configure them appropriately.
-     * The configmap’s name must be `<TARGET>-sq-flags`.
+     * The configmap's name must be `<TARGET>-sq-flags`.
      * The target-repo must be changed to `<TARGET>`.
      * The PV and PVC must be named `<TARGET>-cache`.
      * The secret must be named `<TARGET>-github-token`.
