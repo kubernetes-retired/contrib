@@ -31,8 +31,8 @@ This is an nginx Ingress controller that uses [ConfigMap](https://github.com/kub
 ## Conventions
 
 Anytime we reference a tls secret, we mean (x509, pem encoded, RSA 2048, etc). You can generate such a certificate with: 
-`openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout $(KEY) -out $(CERT) -subj "/CN=$(HOST)/O=$(HOST)"`
-and create the secret via `kubectl create secret tls --key file --cert file`
+`openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout ${KEY_FILE} -out ${CERT_FILE} -subj "/CN=${HOST}/O=${HOST}"`
+and create the secret via `kubectl create secret tls ${CERT_NAME} --key ${KEY_FILE} --cert ${CERT_FILE}`
 
 
 
@@ -118,9 +118,9 @@ data:
   tls.key: base64 encoded key
 kind: Secret
 metadata:
-  name: testsecret
+  name: foo-secret
   namespace: default
-type: Opaque
+type: kubernetes.io/tls
 ```
 
 Referencing this secret in an Ingress will tell the Ingress controller to secure the channel from the client to the loadbalancer using TLS:
@@ -132,7 +132,7 @@ metadata:
   name: no-rules-map
 spec:
   tls:
-    secretName: testsecret
+    secretName: foo-secret
   backend:
     serviceName: s1
     servicePort: 80
