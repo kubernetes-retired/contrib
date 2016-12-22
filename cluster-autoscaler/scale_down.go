@@ -122,12 +122,11 @@ func (sd *ScaleDown) UpdateUnneededNodes(
 	}
 
 	// Update the timestamp map.
-	now := time.Now()
 	result := make(map[string]time.Time)
 	for _, node := range nodesToRemove {
 		name := node.Node.Name
 		if val, found := sd.unneededNodes[name]; !found {
-			result[name] = now
+			result[name] = timestamp
 		} else {
 			result[name] = val
 		}

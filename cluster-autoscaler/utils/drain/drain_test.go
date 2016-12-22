@@ -17,10 +17,7 @@ limitations under the License.
 package drain
 
 import (
-	"bytes"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"testing"
 
 	api "k8s.io/kubernetes/pkg/api"
