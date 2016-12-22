@@ -193,7 +193,7 @@ func (s *AuthorizationsService) Create(auth *AuthorizationRequest) (*Authorizati
 }
 
 // GetOrCreateForApp creates a new authorization for the specified OAuth
-// application, only if an authorization for that application doesn’t already
+// application, only if an authorization for that application doesn't already
 // exist for the user.
 //
 // If a new token is created, the HTTP status code will be "201 Created", and

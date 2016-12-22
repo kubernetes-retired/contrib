@@ -105,7 +105,7 @@ type APIMeta struct {
 }
 
 // APIMeta returns information about GitHub.com, the service. Or, if you access
-// this endpoint on your organization’s GitHub Enterprise installation, this
+// this endpoint on your organization's GitHub Enterprise installation, this
 // endpoint provides information about that installation.
 //
 // GitHub API docs: https://developer.github.com/v3/meta/

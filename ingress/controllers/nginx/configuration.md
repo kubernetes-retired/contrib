@@ -230,7 +230,7 @@ http://nginx.org/en/docs/http/ngx_http_core_module.html#keepalive_timeout
 **resolver:** Configures name servers used to [resolve](http://nginx.org/en/docs/http/ngx_http_core_module.html#resolver) names of upstream servers into addresses
 
 
-**server-name-hash-max-size:** Sets the maximum size of the [server names hash tables](http://nginx.org/en/docs/http/ngx_http_core_module.html#server_names_hash_max_size) used in server names, map directive’s values, MIME types, names of request header strings, etc.
+**server-name-hash-max-size:** Sets the maximum size of the [server names hash tables](http://nginx.org/en/docs/http/ngx_http_core_module.html#server_names_hash_max_size) used in server names, map directive's values, MIME types, names of request header strings, etc.
 http://nginx.org/en/docs/hash.html
 
 

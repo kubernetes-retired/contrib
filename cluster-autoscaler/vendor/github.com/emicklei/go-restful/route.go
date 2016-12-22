@@ -92,7 +92,7 @@ func (r Route) matchesAccept(mimeTypesWithQuality string) bool {
 func (r Route) matchesContentType(mimeTypes string) bool {
 
 	if len(r.Consumes) == 0 {
-		// did not specify what it can consume ;  any media type (“*/*”) is assumed
+		// did not specify what it can consume ;  any media type ("*/*") is assumed
 		return true
 	}
 

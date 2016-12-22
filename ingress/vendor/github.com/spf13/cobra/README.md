@@ -55,7 +55,7 @@ constructors or initialization methods.
 
 Applications built with Cobra commands are designed to be as user-friendly as
 possible. Flags can be placed before or after the command (as long as a
-confusing space isn’t provided). Both short and long flags can be used. A
+confusing space isn't provided). Both short and long flags can be used. A
 command need not even be fully typed.  Help is automatically generated and
 available for the application or for a specific command using either the help
 command or the `--help` flag.

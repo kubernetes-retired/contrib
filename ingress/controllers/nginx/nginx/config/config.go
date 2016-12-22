@@ -142,7 +142,7 @@ type Configuration struct {
 	MaxWorkerConnections int `structs:"max-worker-connections,omitempty"`
 
 	// Sets the bucket size for the map variables hash tables.
-	// Default value depends on the processor’s cache line size.
+	// Default value depends on the processor's cache line size.
 	// http://nginx.org/en/docs/http/ngx_http_map_module.html#map_hash_bucket_size
 	MapHashBucketSize int `structs:"map-hash-bucket-size,omitempty"`
 
@@ -174,7 +174,7 @@ type Configuration struct {
 	// http://nginx.org/en/docs/http/ngx_http_core_module.html#resolver
 	Resolver string `structs:"resolver,omitempty"`
 
-	// Maximum size of the server names hash tables used in server names, map directive’s values,
+	// Maximum size of the server names hash tables used in server names, map directive's values,
 	// MIME types, names of request header strings, etcd.
 	// http://nginx.org/en/docs/hash.html
 	// http://nginx.org/en/docs/http/ngx_http_core_module.html#server_names_hash_max_size

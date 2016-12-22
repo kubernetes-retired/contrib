@@ -279,7 +279,7 @@ func (s *ActivityService) ListEventsReceivedByUser(user string, publicOnly bool,
 	return *events, resp, err
 }
 
-// ListUserEventsForOrganization provides the user’s organization dashboard. You
+// ListUserEventsForOrganization provides the user's organization dashboard. You
 // must be authenticated as the user to view this.
 //
 // GitHub API docs: http://developer.github.com/v3/activity/events/#list-events-for-an-organization
