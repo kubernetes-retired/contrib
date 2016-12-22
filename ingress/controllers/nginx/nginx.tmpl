@@ -191,7 +191,7 @@ http {
     {{ range $server := .servers }}
     server {
         server_name {{ $server.Name }};
-        listen 80{{ if $cfg.useProxyProtocol }} proxy_protocol{{ end }};
+        listen 80{{ if eq $server.Name "_" }} default_server{{ end }}{{ if $cfg.useProxyProtocol }} proxy_protocol{{ end }};
         {{ if $server.SSL }}listen 443 {{ if $cfg.useProxyProtocol }}proxy_protocol{{ end }} ssl {{ if $cfg.enableSpdy }}spdy{{ end }} {{ if $cfg.useHttp2 }}http2{{ end }};
         {{/* comment PEM sha is required to detect changes in the generated configuration and force a reload */}}
         # PEM sha: {{ $server.SSLPemChecksum }}
