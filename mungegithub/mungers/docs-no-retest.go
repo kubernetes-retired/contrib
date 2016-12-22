@@ -79,6 +79,7 @@ func (DocsNeedNoRetest) Munge(obj *github.MungeObject) {
 	files, err := obj.ListFiles()
 	if err != nil {
 		glog.Errorf("Failed to list files for PR %d: %s", obj.Issue.Number, err)
+		return
 	}
 
 	docsOnly := areFilesDocOnly(files)
