@@ -112,6 +112,11 @@ http {
       ''      $scheme;
     }
 
+    map $http_x_forwarded_proto $pass_server_port {
+      default $http_x_forwarded_port;
+      ''      $server_port;
+    }
+
     # Map a response error watching the header Content-Type
     map $http_accept $httpAccept {
         default          html;
@@ -272,7 +277,7 @@ http {
 
             proxy_set_header X-Forwarded-For        $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Host       $host;
-            proxy_set_header X-Forwarded-Port       $server_port;
+            proxy_set_header X-Forwarded-Port       $pass_server_port;
             proxy_set_header X-Forwarded-Proto      $pass_access_scheme;
 
             # mitigate HTTPoxy Vulnerability
