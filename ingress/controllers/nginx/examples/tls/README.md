@@ -17,7 +17,7 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /tmp/tls.key -out /t
 *Now store the SSL certificate in a secret:*
 
 ```
-kubectl create secret tls foo-secret --key /tmp/tls.key --cert /tmp/tls.crt`
+kubectl create secret tls foo-secret --key /tmp/tls.key --cert /tmp/tls.crt
 ```
 
 *Finally create a tls Ingress rule:*
