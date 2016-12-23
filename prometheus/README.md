@@ -71,7 +71,7 @@ endpoints which can be scraped like so...
 For regular Kubernetes services the env variables are set up automatically and injected at runtime. 
 
 By default the metrics are written to a temporary location (that can be changed
-in the the volumes section of the yaml file). Prometheus' UI is available 
+in the volumes section of the yaml file). Prometheus' UI is available 
 at port 9090.
 
 # TODO

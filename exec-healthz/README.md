@@ -4,7 +4,7 @@ The exec healthz server is a sidecar container meant to serve as a liveness-exec
 
 ## How to release:
 
-The `exechealthz` Makefile supports multiple architecures, which means it may cross-compile and build an docker image easily.
+The `exechealthz` Makefile supports multiple architecures, which means it may cross-compile and build a docker image easily.
 If you are releasing a new version, please bump the `TAG` value in the `Makefile` before building the images.
 
 How to build and push all images:

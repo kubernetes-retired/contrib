@@ -202,7 +202,7 @@ for me but it might not have some of the features you want. If you would
 
 A couple of things to note about this particular update:
 * An Ingress without a default backend inherits the backend of the Ingress controller.
-* A IngressRule without a host gets the wildcard. This is controller specific, some loadbalancer controllers do not respect anything but a DNS subdomain as the host. You *cannot* set the host to a regex.
+* An IngressRule without a host gets the wildcard. This is controller specific, some loadbalancer controllers do not respect anything but a DNS subdomain as the host. You *cannot* set the host to a regex.
 * You never want to delete then re-create an Ingress, as it will result in the controller tearing down and recreating the loadbalancer.
 
 __Unexpected updates__: Since glbc constantly runs a control loop it won't allow you to break links that black hole traffic. An easy link to break is the url map itself, but you can also disconnect a target proxy from the urlmap, or remove an instance from the instance group (note this is different from *deleting* the instance, the loadbalancer controller will not recreate it if you do so). Modify one of the url links in the map to point to another backend through the GCE Control Panel UI, and wait till the controller sync (this happens as frequently as you tell it to, via the --resync-period flag). The same goes for the Kubernetes side of things, the API server will validate against obviously bad updates, but if you relink an Ingress so it points to the wrong backends the controller will blindly follow.

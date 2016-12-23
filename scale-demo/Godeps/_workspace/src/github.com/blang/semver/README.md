@@ -182,7 +182,7 @@ I simply couldn't find any lib supporting the full spec. Others were just wrong 
 Contribution
 -----
 
-Feel free to make a pull request. For bigger changes create a issue first to discuss about it.
+Feel free to make a pull request. For bigger changes create an issue first to discuss about it.
 
 
 License

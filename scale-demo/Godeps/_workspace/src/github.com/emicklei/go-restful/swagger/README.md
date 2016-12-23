@@ -28,7 +28,7 @@ Currently there are 2 ways to document your structs in the go-restful Swagger.
 
 ###### By using struct tags
 - Use tag "description" to annotate a struct field with a description to show in the UI
-- Use tag "modelDescription" to annotate the struct itself with a description to show in the UI. The tag can be added in an field of the struct and in case that there are multiple definition, they will be appended with an empty line.
+- Use tag "modelDescription" to annotate the struct itself with a description to show in the UI. The tag can be added in a field of the struct and in case that there are multiple definition, they will be appended with an empty line.
 
 ###### By using the SwaggerDoc method
 Here is an example with an `Address` struct and the documentation for each of the fields. The `""` is a special entry for **documenting the struct itself**.

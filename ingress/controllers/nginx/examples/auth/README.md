@@ -1,5 +1,5 @@
 
-This example shows how to add authentication in a Ingress rule using a secret that contains a file generated with `htpasswd`.
+This example shows how to add authentication in an Ingress rule using a secret that contains a file generated with `htpasswd`.
 
 
 ```

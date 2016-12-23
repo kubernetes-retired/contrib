@@ -49,7 +49,7 @@ Rich Feature Set includes:
     (struct, slice, map, primitives, pointers, interface{}, etc)
   - Extensions to support efficient encoding/decoding of any named types
   - Support encoding.(Binary|Text)(M|Unm)arshaler interfaces
-  - Decoding without a schema (into a interface{}).
+  - Decoding without a schema (into an interface{}).
     Includes Options to configure what specific map or slice type to use
     when decoding an encoded list or map into a nil interface{}
   - Encode a struct as an array, and decode struct from an array in the data stream
