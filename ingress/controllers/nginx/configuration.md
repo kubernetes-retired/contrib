@@ -21,7 +21,7 @@
 there are 3 ways to customize nginx
 
 1. config map: create a stand alone config map, use this if you want a different global configuration
-2. annoations: [annotate the ingress](#annotations), use this if you want a specific configuration for the site defined in the ingress rule
+2. annotations: [annotate the ingress](#annotations), use this if you want a specific configuration for the site defined in the ingress rule
 3. custom template: when is required a specific setting like [open_file_cache](http://nginx.org/en/docs/http/ngx_http_core_module.html#open_file_cache), custom [log_format](http://nginx.org/en/docs/http/ngx_http_log_module.html#log_format), adjust [listen](http://nginx.org/en/docs/http/ngx_http_core_module.html#listen) options as `rcvbuf` or when is not possible to change an through the config map
 
 

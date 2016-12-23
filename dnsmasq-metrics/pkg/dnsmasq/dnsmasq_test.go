@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/contrib/dnsmasq-metrics/pkg/test"
+
 	"github.com/miekg/dns"
 )
 
@@ -35,12 +37,12 @@ var expectedMetrics = Metrics{
 }
 
 func TestClientOk(t *testing.T) {
-	udpConn, addr, port := setupConn()
+	server := &test.Server{}
+	addr, port := server.Init(t)
 	client := NewMetricsClient(addr, port)
 
-	server := &server{t, udpConn, make(chan struct{})}
-	go server.run(validResponseCallback)
-	<-server.startChan
+	go server.Run(validResponseCallback)
+	<-server.StartChan
 
 	metrics, err := client.GetMetrics()
 	if err != nil {
@@ -53,12 +55,12 @@ func TestClientOk(t *testing.T) {
 }
 
 func TestClientFail(t *testing.T) {
-	udpConn, addr, port := setupConn()
+	server := &test.Server{}
+	addr, port := server.Init(t)
 	client := NewMetricsClient(addr, port)
 
-	server := &server{t, udpConn, make(chan struct{})}
-	go server.run(junkResponseCallback)
-	<-server.startChan
+	go server.Run(junkResponseCallback)
+	<-server.StartChan
 
 	_, err := client.GetMetrics()
 	if err == nil {
@@ -67,7 +69,8 @@ func TestClientFail(t *testing.T) {
 }
 
 func TestClientTimeout(t *testing.T) {
-	_, addr, port := setupConn()
+	server := &test.Server{}
+	addr, port := server.Init(t)
 	client := NewMetricsClient(addr, port)
 
 	_, err := client.GetMetrics()
@@ -76,67 +79,16 @@ func TestClientTimeout(t *testing.T) {
 	}
 }
 
-func setupConn() (server *net.UDPConn, addr string, port int) {
-	var err error
-	server, err = net.ListenUDP(
-		"udp",
-		&net.UDPAddr{
-			IP:   net.ParseIP("127.0.0.1"),
-			Port: 0, // allocate a free emphemeral port
-		})
-	if err != nil {
-		panic(err)
-	}
-
-	localAddr, err := net.ResolveUDPAddr("udp", server.LocalAddr().String())
-	if err != nil {
-		panic(err)
-	}
-
-	addr = localAddr.IP.String()
-	port = localAddr.Port
-	return
-}
-
-type ServerCallback func(server *server, remoteAddr net.Addr, msg *dns.Msg)
-
-type server struct {
-	t         *testing.T
-	conn      *net.UDPConn
-	startChan chan struct{}
-}
-
-func (server *server) run(cb ServerCallback) {
-	close(server.startChan)
-
-	for {
-		buf := make([]byte, 4096)
-		len, remoteAddr, err := server.conn.ReadFrom(buf)
-		if err != nil {
-			server.t.Fatalf("error reading packet: %v", err)
-		}
-		buf = buf[:len]
-
-		msg := &dns.Msg{}
-		err = msg.Unpack(buf)
-		if err != nil {
-			server.t.Fatalf("unable to Unpack %v: %v", buf, err)
-		}
-
-		cb(server, remoteAddr, msg)
-	}
-}
-
 // validResponseCallback responds with the expectedMetrics.
-func validResponseCallback(server *server, remoteAddr net.Addr, msg *dns.Msg) {
+func validResponseCallback(server *test.Server, remoteAddr net.Addr, msg *dns.Msg) {
 	if len(msg.Question) != 1 {
-		server.t.Fatalf("invalid number of question entries: %v", msg.Question)
+		server.T.Fatalf("invalid number of question entries: %v", msg.Question)
 	}
 
 	name := msg.Question[0].Name
 	const suffix = ".bind."
 	if !strings.HasSuffix(name, suffix) {
-		server.t.Fatalf("invalid DNS suffix: %v", name)
+		server.T.Fatalf("invalid DNS suffix: %v", name)
 	}
 
 	metric := MetricName(name[:len(name)-len(suffix)])
@@ -148,23 +100,23 @@ func validResponseCallback(server *server, remoteAddr net.Addr, msg *dns.Msg) {
 		}
 	}
 	if !found {
-		server.t.Fatalf("invalid metric: %v", msg.Question)
+		server.T.Fatalf("invalid metric: %v", msg.Question)
 	}
 
 	val := expectedMetrics[metric]
-	bytes := makeResponsePacket(server.t, msg.Id, name, val)
-	_, err := server.conn.WriteTo(bytes, remoteAddr)
+	bytes := makeResponsePacket(server.T, msg.Id, name, val)
+	_, err := server.Conn.WriteTo(bytes, remoteAddr)
 	if err != nil {
-		server.t.Fatalf("error sending response: %v", err)
+		server.T.Fatalf("error sending response: %v", err)
 	}
 }
 
 // junkResponseCallback responds with an invalid packet.
-func junkResponseCallback(server *server, remoteAddr net.Addr, msg *dns.Msg) {
+func junkResponseCallback(server *test.Server, remoteAddr net.Addr, msg *dns.Msg) {
 	bytes := []byte("junk")
-	_, err := server.conn.WriteTo(bytes, remoteAddr)
+	_, err := server.Conn.WriteTo(bytes, remoteAddr)
 	if err != nil {
-		server.t.Fatalf("error sending response: %v", err)
+		server.T.Fatalf("error sending response: %v", err)
 	}
 }
 

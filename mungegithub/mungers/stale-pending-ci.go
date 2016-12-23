@@ -88,18 +88,18 @@ func (s *StalePendingCI) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	if mergeable, err := obj.IsMergeable(); !mergeable || err != nil {
+	if mergeable, ok := obj.IsMergeable(); !ok || !mergeable {
 		return
 	}
 
-	status := obj.GetStatusState(requiredContexts)
-	if status != "pending" {
+	status, ok := obj.GetStatusState(requiredContexts)
+	if !ok || status != "pending" {
 		return
 	}
 
 	for _, context := range requiredContexts {
-		statusTime := obj.GetStatusTime(context)
-		if statusTime == nil {
+		statusTime, ok := obj.GetStatusTime(context)
+		if !ok || statusTime == nil {
 			glog.Errorf("%d: unable to determine time %q context was set", *obj.Issue.Number, context)
 			return
 		}
@@ -126,5 +126,8 @@ func (s *StalePendingCI) isStaleComment(obj *github.MungeObject, comment *github
 
 // StaleComments returns a slice of stale comments
 func (s *StalePendingCI) StaleComments(obj *github.MungeObject, comments []*githubapi.IssueComment) []*githubapi.IssueComment {
+	if s.features == nil {
+		return nil // munger not initialized, cannot clean stale comments
+	}
 	return forEachCommentTest(obj, comments, s.isStaleComment)
 }

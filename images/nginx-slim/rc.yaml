@@ -29,6 +29,6 @@ spec:
     spec:
       containers:
       - name: nginxslim
-        image: gcr.io/google_containers/nginx-slim:0.9
+        image: gcr.io/google_containers/nginx-slim:0.11
         ports:
         - containerPort: 80

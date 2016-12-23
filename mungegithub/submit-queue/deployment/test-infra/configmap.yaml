@@ -17,6 +17,9 @@ data:
   test-options.required-retest-contexts: "\"\""
 
   # submit-queue options.
+  submit-queue.protected-branches: "\"\""
+  submit-queue.protected-branches-extra-contexts: "\"\""
+
   submit-queue.required-contexts: "continuous-integration/travis-ci/pr"
   submit-queue.nonblocking-jenkins-jobs: "\"\""
   submit-queue.jenkins-jobs: "\"\""
@@ -26,6 +29,7 @@ data:
   submit-queue.admin-port: "9999"
   submit-queue.chart-url: ""
   submit-queue.history-url: ""
+  submit-queue.batch-url: ""
 
   # options used by the GCS feature.
   gcs.gcs-bucket: ""
@@ -42,3 +46,7 @@ data:
   blunderbuss.blunderbuss-reassign: "false"
   size.generated-files-config: ""
   check-labels.label-file: "/gitrepos/test-infra/labels.yaml"
+  alias.alias-file: "/gitrepos/test-infra/OWNERS_ALIASES"
+
+  # Temporary gate approval process
+  approval-activated: "false"

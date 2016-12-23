@@ -34,11 +34,12 @@ token64=$(shell base64 $(TOKEN))
 READONLY ?= true
 
 # just build the binary
-mungegithub:
+mungegithub build:
 	GOBIN=$(PWD) CGO_ENABLED=0 GOOS=linux go install -installsuffix cgo -ldflags '-w'
 
 test: mungegithub
-	CGO_ENABLED=0 GOOS=linux go test ./...
+	# in case of error ignore all lines of 'getsockopt: connection refused' these are background go threads that don't matter
+	CGO_ENABLED=0 GOOS=linux go test $(shell go list ./... | grep -v 'vendor/') | grep -v 'getsockopt: connection refused'
 
 # build the container with the binary
 container: mungegithub
@@ -110,6 +111,7 @@ help:
 	@echo " KUBECONFIG= kubeconfig file for deployment. Default: $(KUBECONFIG)"
 	@echo " READONLY=   should the container actually mute github objects or just do everything else. Default: $(READONLY)"
 	@echo " APP=        which application you are trying to deploy. cherrypick or submit-queue. Default: $(APP)"
+	@echo " TARGET=     which repository this should run against. ex: contrib, test-infra, kubernetes. Default: $(TARGET)"
 	@echo ""
 	@echo "TARGETS:"
 	@echo " all:          runs 'container'"
@@ -117,6 +119,7 @@ help:
 	@echo " container:    builds the binary and creates a container with the binary"
 	@echo " push:         pushes the container to the registry"
 	@echo " deploy:       launches/updates the app on a kubernetes cluster"
+	@echo " push_config:  applys changes to configMaps for the app/target. $(APP)/deployment/$(TARGET)/configmap.yaml"
 	@echo " local_dryrun: tries to launch the container locally with docker"
 	@echo " deployment:   updates $(APP)/deployment.yaml and places results in $(APP)/local.deployment.yaml"
 	@echo " ui-stub:      grab upstream submit-queue data and launch the web ui on port 8000"

@@ -29,9 +29,9 @@ inventory=${INVENTORY_DIR}/localhost.ini
 
 # skipping configure tasks as we don't want to override default configuration
 # of etcd and docker.
-ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-preansible.yml "$@"
-ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-etcd.yml --skip-tags="configure" "$@"
-ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-docker.yml --skip-tags="configure" "$@"
-ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-master.yml "$@"
-ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-addons.yml "$@"
-ansible-playbook -i ${inventory} ${PLAYBOOKS_DIR}/deploy-node.yml "$@"
+ansible_playbook ${inventory} ${PLAYBOOKS_DIR}/deploy-preansible.yml "$@"
+ansible_playbook ${inventory} ${PLAYBOOKS_DIR}/deploy-etcd.yml --skip-tags="configure" "$@"
+ansible_playbook ${inventory} ${PLAYBOOKS_DIR}/deploy-docker.yml --skip-tags="configure" "$@"
+ansible_playbook ${inventory} ${PLAYBOOKS_DIR}/deploy-master.yml "$@"
+ansible_playbook ${inventory} ${PLAYBOOKS_DIR}/deploy-addons.yml "$@"
+ansible_playbook ${inventory} ${PLAYBOOKS_DIR}/deploy-node.yml "$@"

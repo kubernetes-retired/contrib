@@ -4,7 +4,7 @@ Create the Ingress controller
 kubectl create -f rc-default.yaml
 ```
 
-To test if evertyhing is working correctly:
+To test if everything is working correctly:
 
 `curl -v http://<node IP address>:80/foo -H 'Host: foo.bar.com'`
 

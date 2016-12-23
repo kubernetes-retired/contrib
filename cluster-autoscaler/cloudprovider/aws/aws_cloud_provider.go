@@ -26,12 +26,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
+	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
-	kube_api "k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/fields"
-	"k8s.io/kubernetes/pkg/labels"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
 
 // AwsCloudProvider implements CloudProvider interface.
@@ -41,28 +39,17 @@ type AwsCloudProvider struct {
 }
 
 // BuildAwsCloudProvider builds CloudProvider implementation for AWS.
-func BuildAwsCloudProvider(awsManager *AwsManager, specs []string) (*AwsCloudProvider, error) {
+func BuildAwsCloudProvider(awsManager *AwsManager, client kube_client.Interface, specs []string) (*AwsCloudProvider, error) {
 	aws := &AwsCloudProvider{
 		awsManager: awsManager,
 		asgs:       make([]*Asg, 0),
 	}
 
 	if specs != nil && len(specs) == 0 {
+		selector := "master!=true"
 
-		client, err := unversioned.NewInCluster()
-		if err != nil {
-			glog.Errorf("err: %s\n", err)
-			return nil, err
-		}
-
-		selector, err := labels.Parse("master!=true")
-		if err != nil {
-			glog.Errorf("err: %s\n", err)
-			return nil, err
-		}
-
-		listAll := kube_api.ListOptions{LabelSelector: selector, FieldSelector: fields.Everything()}
-		nl, err := client.Nodes().List(listAll)
+		listAll := apiv1.ListOptions{LabelSelector: selector}
+		nl, err := client.Core().Nodes().List(listAll)
 		if err != nil {
 			glog.Errorf("err: %s\n", err)
 			return nil, err
@@ -110,7 +97,7 @@ func (aws *AwsCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
 }
 
 // NodeGroupForNode returns the node group for the given node.
-func (aws *AwsCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudprovider.NodeGroup, error) {
+func (aws *AwsCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	ref, err := AwsRefFromProviderId(node.Spec.ProviderID)
 	if err != nil {
 		return nil, err
@@ -180,7 +167,7 @@ func (asg *Asg) IncreaseSize(delta int) error {
 }
 
 // Belongs returns true if the given node belongs to the NodeGroup.
-func (asg *Asg) Belongs(node *kube_api.Node) (bool, error) {
+func (asg *Asg) Belongs(node *apiv1.Node) (bool, error) {
 	ref, err := AwsRefFromProviderId(node.Spec.ProviderID)
 	if err != nil {
 		return false, err
@@ -199,7 +186,7 @@ func (asg *Asg) Belongs(node *kube_api.Node) (bool, error) {
 }
 
 // DeleteNodes deletes the nodes from the group.
-func (asg *Asg) DeleteNodes(nodes []*kube_api.Node) error {
+func (asg *Asg) DeleteNodes(nodes []*apiv1.Node) error {
 	size, err := asg.awsManager.GetAsgSize(asg)
 	if err != nil {
 		return err
@@ -235,7 +222,7 @@ func (asg *Asg) Debug() string {
 	return fmt.Sprintf("%s (%d:%d)", asg.Id(), asg.MinSize(), asg.MaxSize())
 }
 
-func (aws *AwsCloudProvider) autoDiscoverASG(nl *kube_api.NodeList) error {
+func (aws *AwsCloudProvider) autoDiscoverASG(nl *apiv1.NodeList) error {
 	var nodesList []*string
 
 	for _, n := range nl.Items {
@@ -325,7 +312,7 @@ func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 	}
 
 	if tokens[2] == "" {
-		return nil, fmt.Errorf("asg name must not be blank: %s got error: %v", tokens[2])
+		return nil, fmt.Errorf("asg name must not be blank: got error: %v", tokens[2])
 	}
 
 	asg.Name = tokens[2]

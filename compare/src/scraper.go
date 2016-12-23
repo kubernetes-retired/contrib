@@ -87,7 +87,8 @@ func ProcessSingleTest(scanner *bufio.Scanner, buildNumber int) (map[string]*e2e
 			buff.Reset()
 		}
 		if state != defaultState {
-			buff.WriteString(line + " ")
+			dataStartIndex := strings.Index(line, "]")
+			buff.WriteString(line[dataStartIndex+1:] + " ")
 		}
 		if strings.Contains(line, "LogsSizeDataSummary JSON") {
 			state = readingLogs

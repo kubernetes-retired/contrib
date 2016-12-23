@@ -25,6 +25,7 @@ function SQCntl(dataService, $interval, $location) {
   self.selected = 1;
   self.OverallHealth = "";
   self.StatOrder = "-Count";
+  self.batch = {};
   self.location = $location;
 
   // http://submit-queue.k8s.io/#?prDisplay=eparis&historyDisplay=15999
@@ -147,6 +148,7 @@ function SQCntl(dataService, $interval, $location) {
         self.e2erunning = [response.data.E2ERunning];
       }
       self.e2equeue = response.data.E2EQueue;
+      self.batch = response.data.BatchStatus;
       fixPRAvatars(self.e2equeue);
     });
   }
@@ -423,6 +425,18 @@ app.filter('loginOrPR', function() {
     return out;
   };
 });
+
+app.filter('refToShortRef', function() {
+  return function(ref) {
+    return ref.replace(/:(...)[^,]*/g, ':$1');
+  }
+})
+
+app.filter('refToPRs', function() {
+  return function(ref) {
+    return ref.replace(/(?:(\d+)|[^:]+):[^,]*,?/g, '$1 ').trim().split(' ');
+  }
+})
 
 app.service('DataService', ['$http', dataService]);
 
