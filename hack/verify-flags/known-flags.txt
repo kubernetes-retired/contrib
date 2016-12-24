@@ -158,3 +158,5 @@ vrrp-password
 watch-namespace
 weak-stable-jobs
 whitelist-override-label
+proxy-protocol-mode
+
