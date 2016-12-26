@@ -133,9 +133,11 @@ func (p *nginxLoadbalancerProvisioner) getLoadBalancer() *tprapi.LoadBalancer {
 		},
 		ObjectMeta: v1.ObjectMeta{
 			Name: p.options.LoadBalancerName,
+			Labels: map[string]string{
+				ProvisionerCreateByKey: ProvisionerCreateByValue,
+			},
 			Annotations: map[string]string{
 				controller.IngressParameterVIPKey: p.options.LoadBalancerVIP,
-				"kubernetes.io/createdby":         "loadbalancer-nginx-dynamic-provisioner",
 			},
 		},
 		Spec: tprapi.LoadBalancerSpec{
@@ -154,9 +156,11 @@ func (p *nginxLoadbalancerProvisioner) getService() *v1.Service {
 	return &v1.Service{
 		ObjectMeta: v1.ObjectMeta{
 			Name: p.options.LoadBalancerName,
+			Labels: map[string]string{
+				ProvisionerCreateByKey: ProvisionerCreateByValue,
+			},
 			Annotations: map[string]string{
 				controller.IngressParameterVIPKey: p.options.LoadBalancerVIP,
-				"kubernetes.io/createdby":         "loadbalancer-nginx-dynamic-provisioner",
 			},
 		},
 		Spec: v1.ServiceSpec{
@@ -176,7 +180,7 @@ func (p *nginxLoadbalancerProvisioner) getService() *v1.Service {
 func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.ReplicationController {
 	nginxlbReplicas, terminationGracePeriodSeconds, nginxlbPrivileged := int32(2), int64(60), true
 
-	lbTolerations, _ := json.Marshal([]api.Toleration{{Key: "dedicated", Value: "loadbalancer", Effect: api.TaintEffectNoSchedule}})
+	lbTolerations, _ := json.Marshal([]api.Toleration{{Key: "dedicated", Value: "loadbalancer", Effect: api.TaintEffectPreferNoSchedule}})
 
 	nodeAffinity := &v1.NodeAffinity{
 		RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
@@ -206,10 +210,8 @@ func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.Replicatio
 		ObjectMeta: v1.ObjectMeta{
 			Name: p.options.LoadBalancerName,
 			Labels: map[string]string{
-				"k8s-app": p.options.LoadBalancerName,
-			},
-			Annotations: map[string]string{
-				"kubernetes.io/createdby": "loadbalancer-nginx-dynamic-provisioner",
+				"k8s-app":              p.options.LoadBalancerName,
+				ProvisionerCreateByKey: ProvisionerCreateByValue,
 			},
 		},
 		Spec: v1.ReplicationControllerSpec{
@@ -312,11 +314,13 @@ func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.Replicatio
 							Ports: []v1.ContainerPort{
 								{
 									ContainerPort: 80,
-									HostPort:      80,
+									//HostPort:      80,
+									HostIP: p.options.LoadBalancerVIP,
 								},
 								{
 									ContainerPort: 443,
-									HostPort:      443,
+									//HostPort:      443,
+									HostIP: p.options.LoadBalancerVIP,
 								},
 							},
 							Args: []string{
