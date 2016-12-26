@@ -26,7 +26,10 @@ import (
 
 	"k8s.io/client-go/1.5/dynamic"
 	"k8s.io/client-go/1.5/kubernetes"
+	"k8s.io/client-go/1.5/pkg/api/errors"
 	"k8s.io/client-go/1.5/pkg/api/unversioned"
+	"k8s.io/client-go/1.5/pkg/api/v1"
+	"k8s.io/client-go/1.5/pkg/util/intstr"
 	"k8s.io/client-go/1.5/pkg/util/wait"
 	"k8s.io/client-go/1.5/rest"
 
@@ -58,13 +61,17 @@ func main() {
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		panic(err.Error())
+		panic(err)
 	}
 
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err.Error())
+		panic(err)
+	}
+
+	if err := ensureDefaulBackendService(clientset); err != nil {
+		panic(err)
 	}
 
 	// create dynamic client
@@ -98,4 +105,43 @@ func main() {
 	pc := controller.NewProvisionController(clientset, dynamicClient, loadbalancerprovider.PluginMgr)
 	pc.Run(5, wait.NeverStop)
 
+}
+
+func ensureDefaulBackendService(clientset *kubernetes.Clientset) error {
+	svc := v1.Service{
+		ObjectMeta: v1.ObjectMeta{
+			Namespace: "default",
+			Name:      "default-http-backend",
+			Labels: map[string]string{
+				"app": "default-http-backend",
+			},
+		},
+		Spec: v1.ServiceSpec{
+			Type:            v1.ServiceTypeClusterIP,
+			SessionAffinity: v1.ServiceAffinityNone,
+			Selector: map[string]string{
+				"app": "default-http-backend",
+			},
+			Ports: []v1.ServicePort{
+				{
+					Port:       int32(80),
+					TargetPort: intstr.FromInt(8080),
+					Protocol:   v1.ProtocolTCP,
+				},
+			},
+		},
+	}
+
+	_, err := clientset.Core().Services("default").Get("default-http-backend")
+	if err == nil {
+		return nil
+	}
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	} else if errors.IsNotFound(err) {
+		_, err := clientset.Core().Services("default").Create(&svc)
+		return err
+	}
+
+	return nil
 }
