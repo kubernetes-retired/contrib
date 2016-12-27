@@ -19,11 +19,10 @@ package mungers
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
-	"path/filepath"
-
 
 	"github.com/golang/glog"
 	githubapi "github.com/google/go-github/github"
