@@ -24,9 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
-	"k8s.io/contrib/cluster-autoscaler/cloudprovider/aws"
-	"k8s.io/contrib/cluster-autoscaler/cloudprovider/gce"
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/expander"
 	"k8s.io/contrib/cluster-autoscaler/expander/mostpods"
@@ -45,6 +42,8 @@ import (
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/pflag"
+	"k8s.io/contrib/cluster-autoscaler/cloudprovider/builder"
+	"k8s.io/contrib/cluster-autoscaler/dynamic"
 )
 
 // MultiStringFlag is a flag for passing multiple parameters using same flag
@@ -73,6 +72,8 @@ const (
 	MostPodsExpanderName = "most-pods"
 	// LeastWasteExpanderName selects a node group that leaves the least fraction of CPU and Memory
 	LeastWasteExpanderName = "least-waste"
+	// Namespace in which cluster-autoscaler run
+	KubernetesNamespace = "kube-system"
 )
 
 var (
@@ -80,6 +81,7 @@ var (
 	address                 = flag.String("address", ":8085", "The address to expose prometheus metrics.")
 	kubernetes              = flag.String("kubernetes", "", "Kuberentes master location. Leave blank for default")
 	cloudConfig             = flag.String("cloud-config", "", "The path to the cloud provider configuration file.  Empty string for no configuration file.")
+	configMapName           = flag.String("configmap", "", "The name of the ConfigMap containing settings used for dynamic reconfiguration. Empty string for no ConfigMap.")
 	verifyUnschedulablePods = flag.Bool("verify-unschedulable-pods", true,
 		"If enabled CA will ensure that each pod marked by Scheduler as unschedulable actually can't be scheduled on any node."+
 			"This prevents from adding unnecessary nodes in situation when CA and Scheduler have different configuration.")
@@ -147,52 +149,8 @@ func run(_ <-chan struct{}) {
 	lastScaleUpTime := time.Now()
 	lastScaleDownFailedTrial := time.Now()
 
-	var cloudProvider cloudprovider.CloudProvider
-
-	if *cloudProviderFlag == "gce" {
-		// GCE Manager
-		var gceManager *gce.GceManager
-		var gceError error
-		if *cloudConfig != "" {
-			config, fileErr := os.Open(*cloudConfig)
-			if fileErr != nil {
-				glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", *cloudConfig, err)
-			}
-			defer config.Close()
-			gceManager, gceError = gce.CreateGceManager(config)
-		} else {
-			gceManager, gceError = gce.CreateGceManager(nil)
-		}
-		if gceError != nil {
-			glog.Fatalf("Failed to create GCE Manager: %v", err)
-		}
-		cloudProvider, err = gce.BuildGceCloudProvider(gceManager, nodeGroupsFlag)
-		if err != nil {
-			glog.Fatalf("Failed to create GCE cloud provider: %v", err)
-		}
-	}
-
-	if *cloudProviderFlag == "aws" {
-		var awsManager *aws.AwsManager
-		var awsError error
-		if *cloudConfig != "" {
-			config, fileErr := os.Open(*cloudConfig)
-			if fileErr != nil {
-				glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", *cloudConfig, err)
-			}
-			defer config.Close()
-			awsManager, awsError = aws.CreateAwsManager(config)
-		} else {
-			awsManager, awsError = aws.CreateAwsManager(nil)
-		}
-		if awsError != nil {
-			glog.Fatalf("Failed to create AWS Manager: %v", err)
-		}
-		cloudProvider, err = aws.BuildAwsCloudProvider(awsManager, nodeGroupsFlag)
-		if err != nil {
-			glog.Fatalf("Failed to create AWS cloud provider: %v", err)
-		}
-	}
+	cloudProviderBuilder := builder.NewCloudProviderBuilder(*cloudProviderFlag, *cloudConfig)
+	cloudProvider := cloudProviderBuilder.Build(nodeGroupsFlag)
 
 	var expanderStrategy expander.Strategy
 	{
@@ -222,12 +180,24 @@ func run(_ <-chan struct{}) {
 
 	scaleDown := NewScaleDown(&autoscalingContext)
 
+	configFetcher := dynamic.NewConfigFetcher(*configMapName, KubernetesNamespace, kubeClient)
+	dynamicReconfiguration := NewDynamicReconfiguration(*configMapName, &autoscalingContext, configFetcher, cloudProviderBuilder)
+
 	for {
 		select {
 		case <-time.After(*scanInterval):
 			{
 				loopStart := time.Now()
 				updateLastTime("main")
+
+				if dynamicReconfiguration.Enabled() {
+					reconfigureStart := time.Now()
+					updateLastTime("reconfigure")
+					if err := dynamicReconfiguration.Run(); err != nil {
+						glog.Errorf("Failed to reconfigure : %v", err)
+					}
+					updateDuration("reconfigure", reconfigureStart)
+				}
 
 				nodes, err := nodeLister.List()
 				if err != nil {
@@ -410,7 +380,7 @@ func main() {
 		kube_leaderelection.RunOrDie(kube_leaderelection.LeaderElectionConfig{
 			Lock: &resourcelock.EndpointsLock{
 				EndpointsMeta: apiv1.ObjectMeta{
-					Namespace: "kube-system",
+					Namespace: KubernetesNamespace,
 					Name:      "cluster-autoscaler",
 				},
 				Client: kubeClient,
