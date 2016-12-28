@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package core
 
 import (
 	"fmt"
@@ -26,6 +26,7 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/clusterstate"
 	"k8s.io/contrib/cluster-autoscaler/expander/random"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
+	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,6 +35,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/testing/core"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/contrib/cluster-autoscaler/estimator"
 )
 
 func TestScaleUpOK(t *testing.T) {
@@ -75,12 +77,14 @@ func TestScaleUpOK(t *testing.T) {
 	clusterState := clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{})
 	clusterState.UpdateNodes([]*apiv1.Node{n1, n2}, time.Now())
 	context := &AutoscalingContext{
-		PredicateChecker:     simulator.NewTestPredicateChecker(),
-		CloudProvider:        provider,
-		ClientSet:            fakeClient,
-		Recorder:             createEventRecorder(fakeClient),
-		EstimatorName:        BinpackingEstimatorName,
-		ExpanderStrategy:     random.NewStrategy(),
+		AutoscalingOptions: AutoscalingOptions{
+			EstimatorName:    estimator.BinpackingEstimatorName,
+		},
+		PredicateChecker: simulator.NewTestPredicateChecker(),
+		CloudProvider:    provider,
+		ClientSet:        fakeClient,
+		Recorder:         kube_util.CreateEventRecorder(fakeClient),
+		ExpanderStrategy: random.NewStrategy(),
 		ClusterStateRegistry: clusterState,
 	}
 	p3 := BuildTestPod("p-new", 500, 0)
@@ -134,11 +138,13 @@ func TestScaleUpNodeComingNoScale(t *testing.T) {
 	clusterState.UpdateNodes([]*apiv1.Node{n1, n2}, time.Now())
 
 	context := &AutoscalingContext{
+		AutoscalingOptions: AutoscalingOptions{
+			EstimatorName:        estimator.BinpackingEstimatorName,
+		},
 		PredicateChecker:     simulator.NewTestPredicateChecker(),
 		CloudProvider:        provider,
 		ClientSet:            fakeClient,
-		Recorder:             createEventRecorder(fakeClient),
-		EstimatorName:        BinpackingEstimatorName,
+		Recorder:             kube_util.CreateEventRecorder(fakeClient),
 		ExpanderStrategy:     random.NewStrategy(),
 		ClusterStateRegistry: clusterState,
 	}
@@ -194,11 +200,13 @@ func TestScaleUpNodeComingHasScale(t *testing.T) {
 	clusterState.UpdateNodes([]*apiv1.Node{n1, n2}, time.Now())
 
 	context := &AutoscalingContext{
+		AutoscalingOptions: AutoscalingOptions{
+			EstimatorName:        estimator.BinpackingEstimatorName,
+		},
 		PredicateChecker:     simulator.NewTestPredicateChecker(),
 		CloudProvider:        provider,
 		ClientSet:            fakeClient,
-		Recorder:             createEventRecorder(fakeClient),
-		EstimatorName:        BinpackingEstimatorName,
+		Recorder:             kube_util.CreateEventRecorder(fakeClient),
 		ExpanderStrategy:     random.NewStrategy(),
 		ClusterStateRegistry: clusterState,
 	}
@@ -247,11 +255,13 @@ func TestScaleUpUnhealthy(t *testing.T) {
 	clusterState := clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{})
 	clusterState.UpdateNodes([]*apiv1.Node{n1, n2}, time.Now())
 	context := &AutoscalingContext{
+		AutoscalingOptions: AutoscalingOptions{
+			EstimatorName:        estimator.BinpackingEstimatorName,
+		},
 		PredicateChecker:     simulator.NewTestPredicateChecker(),
 		CloudProvider:        provider,
 		ClientSet:            fakeClient,
-		Recorder:             createEventRecorder(fakeClient),
-		EstimatorName:        BinpackingEstimatorName,
+		Recorder:             kube_util.CreateEventRecorder(fakeClient),
 		ExpanderStrategy:     random.NewStrategy(),
 		ClusterStateRegistry: clusterState,
 	}
@@ -291,12 +301,14 @@ func TestScaleUpNoHelp(t *testing.T) {
 	clusterState := clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{})
 	clusterState.UpdateNodes([]*apiv1.Node{n1}, time.Now())
 	context := &AutoscalingContext{
-		PredicateChecker:     simulator.NewTestPredicateChecker(),
-		CloudProvider:        provider,
-		ClientSet:            fakeClient,
-		Recorder:             createEventRecorder(fakeClient),
-		EstimatorName:        BinpackingEstimatorName,
-		ExpanderStrategy:     random.NewStrategy(),
+		AutoscalingOptions: AutoscalingOptions{
+			EstimatorName:    estimator.BinpackingEstimatorName,
+		},
+		PredicateChecker: simulator.NewTestPredicateChecker(),
+		CloudProvider:    provider,
+		ClientSet:        fakeClient,
+		Recorder:         kube_util.CreateEventRecorder(fakeClient),
+		ExpanderStrategy: random.NewStrategy(),
 		ClusterStateRegistry: clusterState,
 	}
 	p3 := BuildTestPod("p-new", 500, 0)

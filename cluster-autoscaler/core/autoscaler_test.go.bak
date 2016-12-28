@@ -1,0 +1,76 @@
+package core
+
+import (
+	"testing"
+
+	"k8s.io/contrib/cluster-autoscaler/config/dynamic"
+
+	"k8s.io/kubernetes/pkg/client/record"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	v1core "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/typed/core/v1"
+	v1corefake "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/typed/core/v1/fake"
+	v1beta1extensions "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/typed/extensions/v1beta1"
+	v1beta1extensionsfake "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/typed/extensions/v1beta1/fake"
+
+	"github.com/stretchr/testify/assert"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
+)
+
+type TestClientset struct {
+	*fake.Clientset
+}
+
+// Core is required to return a fake CoreV1 object with customized RESTClient() func
+func (c *TestClientset) Core() v1core.CoreV1Interface {
+	return &testCoreV1{FakeCoreV1: &(v1corefake.FakeCoreV1{Fake: &c.Fake})}
+}
+
+// Extensions is required to return a fake CoreV1 object with customized RESTClient() func
+func (c *TestClientset) Extensions() v1beta1extensions.ExtensionsV1beta1Interface {
+	return &testExtensionsV1beta1{FakeExtensionsV1beta1: &(v1beta1extensionsfake.FakeExtensionsV1beta1{Fake: &c.Fake})}
+}
+
+type testCoreV1 struct {
+	*v1corefake.FakeCoreV1
+}
+
+// RESTClient is required to avoid panic when running `cache.NewListWatchFromClient(kubeClient.Core().RESTClient(), ...)
+// See `listers.go` to see relevant block which involves this snippet of code
+func (c *testCoreV1) RESTClient() restclient.Interface {
+	client := &(restclient.RESTClient{})
+	return client
+}
+type testExtensionsV1beta1 struct {
+	*v1beta1extensionsfake.FakeExtensionsV1beta1
+}
+
+// RESTClient is required to avoid panic when running `cache.NewListWatchFromClient(factory.client.Extensions().RESTClient(), ...)`
+// See `listers.go` to see relevant block which involves this snippet of code
+func (c *testExtensionsV1beta1) RESTClient() restclient.Interface {
+	client := &(restclient.RESTClient{})
+	return client
+}
+
+func TestNewAutoscalerStatic(t *testing.T) {
+	kubeClient := &TestClientset{Clientset: &fake.Clientset{}}
+	kubeEventRecorder := record.NewFakeRecorder(0)
+	opts := AutoscalerOptions{
+		ConfigFetcherOptions: dynamic.ConfigFetcherOptions{
+			ConfigMapName: "",
+		},
+	}
+	a := NewAutoscaler(opts, kubeClient, kubeEventRecorder)
+	assert.IsType(t, &StaticAutoscaler{}, a)
+}
+
+func TestNewAutoscalerDynamic(t *testing.T) {
+	kubeClient := &TestClientset{Clientset: &fake.Clientset{}}
+	kubeEventRecorder := record.NewFakeRecorder(0)
+	opts := AutoscalerOptions{
+		ConfigFetcherOptions: dynamic.ConfigFetcherOptions{
+			ConfigMapName: "testconfigmap",
+		},
+	}
+	a := NewAutoscaler(opts, kubeClient, kubeEventRecorder)
+	assert.IsType(t, &DynamicAutoscaler{}, a)
+}
