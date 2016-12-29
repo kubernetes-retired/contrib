@@ -189,7 +189,7 @@ func run(_ <-chan struct{}) {
 		if awsError != nil {
 			glog.Fatalf("Failed to create AWS Manager: %v", err)
 		}
-		cloudProvider, err = aws.BuildAwsCloudProvider(awsManager, nodeGroupsFlag, kubeClient, *autoDiscoverNodeGroup)
+		cloudProvider, err = aws.BuildAwsCloudProvider(awsManager, nodeGroupsFlag, kubeClient, *autoDiscoverNodeGroup, *scanInterval)
 		if err != nil {
 			glog.Fatalf("Failed to create AWS cloud provider: %v", err)
 		}

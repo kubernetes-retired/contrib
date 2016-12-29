@@ -41,7 +41,7 @@ type AwsCloudProvider struct {
 }
 
 // BuildAwsCloudProvider builds CloudProvider implementation for AWS.
-func BuildAwsCloudProvider(awsManager *AwsManager, specs []string, kubeClient kube_client.Interface, autoDiscoverNodeGroup bool) (*AwsCloudProvider, error) {
+func BuildAwsCloudProvider(awsManager *AwsManager, specs []string, kubeClient kube_client.Interface, autoDiscoverNodeGroup bool, scanInterval time.Duration) (*AwsCloudProvider, error) {
 	aws := &AwsCloudProvider{
 		awsManager: awsManager,
 		asgs:       make([]*Asg, 0),
@@ -49,21 +49,25 @@ func BuildAwsCloudProvider(awsManager *AwsManager, specs []string, kubeClient ku
 	if autoDiscoverNodeGroup {
 		go func() {
 			for {
-				selector := "master!=true"
-				listAll := apiv1.ListOptions{LabelSelector: selector}
-				nl, err := kubeClient.Core().Nodes().List(listAll)
-				if err != nil {
-					glog.Errorf("err: %s\n", err)
-				}
+				select {
+				case <-time.After(scanInterval):
+					{
+						selector := "master!=true"
+						listAll := apiv1.ListOptions{LabelSelector: selector}
+						nl, err := kubeClient.Core().Nodes().List(listAll)
+						if err != nil {
+							glog.Errorf("err: %s\n", err)
+						}
 
-				var nodesList []*string
+						var nodesList []*string
 
-				for _, n := range nl.Items {
-					glog.V(4).Infof("Considering node: %s", n.Name)
-					nodesList = append(nodesList, &n.Name)
+						for _, n := range nl.Items {
+							glog.V(4).Infof("Considering node: %s", n.Name)
+							nodesList = append(nodesList, &n.Name)
+						}
+						AutoDiscoverNodeGroup(aws, nodesList)
+					}
 				}
-				AutoDiscoverNodeGroup(aws, nodesList)
-				time.Sleep(30 * time.Second)
 			}
 		}()
 	} else {
