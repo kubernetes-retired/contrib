@@ -18,6 +18,7 @@ package aws
 
 import (
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
@@ -92,17 +93,19 @@ var testAwsManager = &AwsManager{
 }
 
 func testProvider(t *testing.T, m *AwsManager) *AwsCloudProvider {
-	provider, err := BuildAwsCloudProvider(m, nil, nil, false)
+	interval, _ := time.ParseDuration("10s")
+	provider, err := BuildAwsCloudProvider(m, nil, nil, false, interval)
 	assert.NoError(t, err)
 	return provider
 }
 
 func TestBuildAwsCloudProvider(t *testing.T) {
+	interval, _ := time.ParseDuration("10s")
 	m := testAwsManager
-	_, err := BuildAwsCloudProvider(m, []string{"bad spec"}, nil, false)
+	_, err := BuildAwsCloudProvider(m, []string{"bad spec"}, nil, false, interval)
 	assert.Error(t, err)
 
-	_, err = BuildAwsCloudProvider(m, nil, nil, false)
+	_, err = BuildAwsCloudProvider(m, nil, nil, false, interval)
 	assert.NoError(t, err)
 }
 
