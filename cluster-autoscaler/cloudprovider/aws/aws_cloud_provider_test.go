@@ -92,17 +92,17 @@ var testAwsManager = &AwsManager{
 }
 
 func testProvider(t *testing.T, m *AwsManager) *AwsCloudProvider {
-	provider, err := BuildAwsCloudProvider(m, nil)
+	provider, err := BuildAwsCloudProvider(m, nil, nil, false)
 	assert.NoError(t, err)
 	return provider
 }
 
 func TestBuildAwsCloudProvider(t *testing.T) {
 	m := testAwsManager
-	_, err := BuildAwsCloudProvider(m, []string{"bad spec"})
+	_, err := BuildAwsCloudProvider(m, []string{"bad spec"}, nil, false)
 	assert.Error(t, err)
 
-	_, err = BuildAwsCloudProvider(m, nil)
+	_, err = BuildAwsCloudProvider(m, nil, nil, false)
 	assert.NoError(t, err)
 }
 
@@ -306,19 +306,10 @@ func TestBuildAsg(t *testing.T) {
 
 func TestAutoDiscoverASG(t *testing.T) {
 	provider := testProvider(t, testAwsManager)
+	node := "aws:///us-east-1a/test-instance-i"
+	nl := []*string{&node}
 
-	nl := kube_api.NodeList{
-
-		Items: []kube_api.Node{
-			{
-				Spec: kube_api.NodeSpec{
-					ProviderID: "aws:///us-east-1a/test-instance-id",
-				},
-			},
-		},
-	}
-
-	err := provider.autoDiscoverASG(&nl)
+	err := AutoDiscoverNodeGroup(provider, nl)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, provider.asgs[0].MinSize())
 	assert.Equal(t, 10, provider.asgs[0].MaxSize())

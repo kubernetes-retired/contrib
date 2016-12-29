@@ -13,10 +13,11 @@
 # limitations under the License.
 
 FROM gcr.io/google_containers/ubuntu-slim:0.1
-MAINTAINER Marcin Wielgus "mwielgus@google.com"
 
-RUN apt-get update  
-RUN apt-get install -y ca-certificates
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends ca-certificates && \
+  apt-get clean -y && \
+  rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/*
 
 ADD cluster-autoscaler cluster-autoscaler
 

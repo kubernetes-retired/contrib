@@ -104,6 +104,14 @@ func (m *AwsManager) RegisterAsg(asg *Asg) {
 	})
 }
 
+// ClearAsgs removes all asgs in Aws Manager.
+func (m *AwsManager) ClearAsgs() {
+	m.cacheMutex.Lock()
+	defer m.cacheMutex.Unlock()
+
+	m.asgs = m.asgs[:0]
+}
+
 // GetAsgSize gets ASG size.
 func (m *AwsManager) GetAsgSize(asgConfig *Asg) (int64, error) {
 	params := &autoscaling.DescribeAutoScalingGroupsInput{

@@ -107,6 +107,7 @@ var (
 	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName}
 	expanderFlag       = flag.String("expander", RandomExpanderName,
 		"Type of node group expander to be used in scale up. Available values: ["+strings.Join(AvailableExpanders, ",")+"]")
+	autoDiscoverNodeGroup = flag.Bool("auto-discover-node-group", false, "Enables auto discovery of node groups. Currently supported only in AWS.")
 )
 
 func createKubeClient() kube_client.Interface {
@@ -188,7 +189,7 @@ func run(_ <-chan struct{}) {
 		if awsError != nil {
 			glog.Fatalf("Failed to create AWS Manager: %v", err)
 		}
-		cloudProvider, err = aws.BuildAwsCloudProvider(awsManager, kubeClient, nodeGroupsFlag)
+		cloudProvider, err = aws.BuildAwsCloudProvider(awsManager, nodeGroupsFlag, kubeClient, *autoDiscoverNodeGroup)
 		if err != nil {
 			glog.Fatalf("Failed to create AWS cloud provider: %v", err)
 		}
@@ -226,6 +227,7 @@ func run(_ <-chan struct{}) {
 		select {
 		case <-time.After(*scanInterval):
 			{
+
 				loopStart := time.Now()
 				updateLastTime("main")
 

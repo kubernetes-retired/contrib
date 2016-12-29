@@ -21,53 +21,118 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	aws_util "github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
-	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
-
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
 )
 
 // AwsCloudProvider implements CloudProvider interface.
 type AwsCloudProvider struct {
 	awsManager *AwsManager
+	asgMutex   sync.Mutex
 	asgs       []*Asg
 }
 
 // BuildAwsCloudProvider builds CloudProvider implementation for AWS.
-func BuildAwsCloudProvider(awsManager *AwsManager, client kube_client.Interface, specs []string) (*AwsCloudProvider, error) {
+func BuildAwsCloudProvider(awsManager *AwsManager, specs []string, kubeClient kube_client.Interface, autoDiscoverNodeGroup bool) (*AwsCloudProvider, error) {
 	aws := &AwsCloudProvider{
 		awsManager: awsManager,
 		asgs:       make([]*Asg, 0),
 	}
+	if autoDiscoverNodeGroup {
+		go func() {
+			for {
+				selector := "master!=true"
+				listAll := apiv1.ListOptions{LabelSelector: selector}
+				nl, err := kubeClient.Core().Nodes().List(listAll)
+				if err != nil {
+					glog.Errorf("err: %s\n", err)
+				}
 
-	if specs != nil && len(specs) == 0 {
-		selector := "master!=true"
+				var nodesList []*string
 
-		listAll := apiv1.ListOptions{LabelSelector: selector}
-		nl, err := client.Core().Nodes().List(listAll)
-		if err != nil {
-			glog.Errorf("err: %s\n", err)
-			return nil, err
-		}
-
-		err = aws.autoDiscoverASG(nl)
-		if err != nil {
-			return nil, err
-		}
-		return aws, nil
-	}
-
-	for _, spec := range specs {
-		if err := aws.addNodeGroup(spec); err != nil {
-			return nil, err
+				for _, n := range nl.Items {
+					glog.V(4).Infof("Considering node: %s", n.Name)
+					nodesList = append(nodesList, &n.Name)
+				}
+				AutoDiscoverNodeGroup(aws, nodesList)
+				time.Sleep(30 * time.Second)
+			}
+		}()
+	} else {
+		for _, spec := range specs {
+			if err := aws.addNodeGroup(spec); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return aws, nil
+}
+
+func AutoDiscoverNodeGroup(aws *AwsCloudProvider, nodesList []*string) error {
+	params := &ec2.DescribeInstancesInput{
+		Filters: []*ec2.Filter{
+			{
+				Name:   aws_util.String("private-dns-name"),
+				Values: nodesList,
+			},
+		},
+	}
+	instances, err := aws.awsManager.ec2Service.DescribeInstances(params)
+	if err != nil {
+		glog.Errorf("Error describing EC2 instances: %s\n", err)
+		return err
+	}
+
+	//make a "uniq" on the names so that we don't consider autoscaling groups twice
+	asgs := make(map[string]bool, 0)
+	names := make([]*string, 0)
+	for idx := range instances.Reservations {
+		for _, inst := range instances.Reservations[idx].Instances {
+			for _, tag := range inst.Tags {
+				if *(tag.Key) == "aws:autoscaling:groupName" {
+					if _, ok := asgs[*(tag.Value)]; !ok {
+						names = append(names, tag.Value)
+					}
+					asgs[*(tag.Value)] = true
+				}
+			}
+		}
+	}
+
+	request := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: names,
+	}
+	asgGroups, err := aws.awsManager.autoscalingService.DescribeAutoScalingGroups(request)
+	if err != nil {
+		glog.Errorf("Error describing autoscaling groups: %s\n", err)
+		return err
+	}
+
+	aws.asgMutex.Lock()
+	defer aws.asgMutex.Unlock()
+	aws.asgs = aws.asgs[:0]
+	aws.awsManager.ClearAsgs()
+	for _, group := range asgGroups.AutoScalingGroups {
+		glog.V(4).Infof("Adding ASG: %s, with min: %d, max %d\n", *group.AutoScalingGroupName, *group.MinSize, *group.MaxSize)
+		asg := Asg{
+			awsManager: aws.awsManager,
+			AwsRef:     AwsRef{Name: *group.AutoScalingGroupName},
+			maxSize:    int(*group.MaxSize),
+			minSize:    int(*group.MinSize),
+		}
+		aws.asgs = append(aws.asgs, &asg)
+		aws.awsManager.RegisterAsg(&asg)
+	}
+
+	return nil
 }
 
 // addNodeGroup adds node group defined in string spec. Format:
@@ -77,6 +142,8 @@ func (aws *AwsCloudProvider) addNodeGroup(spec string) error {
 	if err != nil {
 		return err
 	}
+	aws.asgMutex.Lock()
+	defer aws.asgMutex.Unlock()
 	aws.asgs = append(aws.asgs, asg)
 	aws.awsManager.RegisterAsg(asg)
 	return nil
@@ -90,6 +157,8 @@ func (aws *AwsCloudProvider) Name() string {
 // NodeGroups returns all node groups configured for this cloud provider.
 func (aws *AwsCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
 	result := make([]cloudprovider.NodeGroup, 0, len(aws.asgs))
+	aws.asgMutex.Lock()
+	defer aws.asgMutex.Unlock()
 	for _, asg := range aws.asgs {
 		result = append(result, asg)
 	}
@@ -220,68 +289,6 @@ func (asg *Asg) Id() string {
 // Debug returns a debug string for the Asg.
 func (asg *Asg) Debug() string {
 	return fmt.Sprintf("%s (%d:%d)", asg.Id(), asg.MinSize(), asg.MaxSize())
-}
-
-func (aws *AwsCloudProvider) autoDiscoverASG(nl *apiv1.NodeList) error {
-	var nodesList []*string
-
-	for _, n := range nl.Items {
-		glog.V(4).Infof("Considering node: %s", &n.Name)
-		nodesList = append(nodesList, &n.Name)
-	}
-
-	params := &ec2.DescribeInstancesInput{
-		Filters: []*ec2.Filter{
-			{
-				Name:   aws_util.String("private-dns-name"),
-				Values: nodesList,
-			},
-		},
-	}
-	instances, err := aws.awsManager.ec2Service.DescribeInstances(params)
-	if err != nil {
-		glog.Errorf("Error describing EC2 instances: %s\n", err)
-		return err
-	}
-
-	//make a "uniq" on the names so that we don't consider autoscaling groups twice
-	asgs := make(map[string]bool, 0)
-	names := make([]*string, 0)
-	for idx := range instances.Reservations {
-		for _, inst := range instances.Reservations[idx].Instances {
-			for _, tag := range inst.Tags {
-				if *(tag.Key) == "aws:autoscaling:groupName" {
-					if _, ok := asgs[*(tag.Value)]; !ok {
-						names = append(names, tag.Value)
-					}
-					asgs[*(tag.Value)] = true
-				}
-			}
-		}
-	}
-
-	request := &autoscaling.DescribeAutoScalingGroupsInput{
-		AutoScalingGroupNames: names,
-	}
-	asgGroups, err := aws.awsManager.autoscalingService.DescribeAutoScalingGroups(request)
-	if err != nil {
-		glog.Errorf("Error describing autoscaling groups: %s\n", err)
-		return err
-	}
-
-	for _, group := range asgGroups.AutoScalingGroups {
-		glog.V(4).Infof("Adding ASG: %s, with min: %d, max %d\n", *group.AutoScalingGroupName, *group.MinSize, *group.MaxSize)
-		asg := Asg{
-			awsManager: aws.awsManager,
-			AwsRef:     AwsRef{Name: *group.AutoScalingGroupName},
-			maxSize:    int(*group.MaxSize),
-			minSize:    int(*group.MinSize),
-		}
-		aws.asgs = append(aws.asgs, &asg)
-		aws.awsManager.RegisterAsg(&asg)
-	}
-
-	return nil
 }
 
 func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
