@@ -76,6 +76,7 @@ func BuildAwsCloudProvider(awsManager *AwsManager, specs []string, kubeClient ku
 	return aws, nil
 }
 
+//AutoDiscoverNodeGroup will auto update the autoscaler group fetching the information directly from the AWS API.
 func AutoDiscoverNodeGroup(aws *AwsCloudProvider, nodesList []*string) error {
 	params := &ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
