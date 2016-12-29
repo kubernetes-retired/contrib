@@ -154,3 +154,4 @@ vrrp-password
 watch-namespace
 weak-stable-jobs
 whitelist-override-label
+auto-discover-node-group
