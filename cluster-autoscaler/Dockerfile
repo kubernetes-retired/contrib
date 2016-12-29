@@ -13,6 +13,7 @@
 # limitations under the License.
 
 FROM gcr.io/google_containers/ubuntu-slim:0.1
+MAINTAINER Marcin Wielgus "mwielgus@google.com"
 
 RUN apt-get update -y && \
   apt-get install -y --no-install-recommends ca-certificates && \
