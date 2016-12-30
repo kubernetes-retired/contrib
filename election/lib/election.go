@@ -106,6 +106,9 @@ func NewElection(electionId, id, namespace string, ttl time.Duration, callback f
 			}
 			callback(leader)
 		},
+		OnNewLeader: func(identity string) {
+			callback(identity)
+		},
 	}
 
 	config := leaderelection.LeaderElectionConfig{
