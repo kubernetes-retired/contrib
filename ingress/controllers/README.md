@@ -8,7 +8,7 @@ An Ingress Controller is a daemon, deployed as a Kubernetes Pod, that watches th
 
 ## Writing an Ingress Controller
 
-Writing an Ingress controller is simple. By way of example, the [nginx controller] (nginx-alpha) does the following:
+Writing an Ingress controller is simple. By way of example, the [nginx controller] (nginx) does the following:
 * Poll until apiserver reports a new Ingress
 * Write the nginx config file based on a [go text/template](https://golang.org/pkg/text/template/)
 * Reload nginx
@@ -61,7 +61,7 @@ All this is doing is:
 * Executes the template and writes results to `/etc/nginx/nginx.conf`
 * Reloads nginx
 
-You can deploy this controller to a Kubernetes cluster by [creating an RC](nginx-alpha/rc.yaml). After doing so, if you were to create an Ingress such as:
+You can deploy this controller to a Kubernetes cluster by [creating an RC](nginx/rc.yaml). After doing so, if you were to create an Ingress such as:
 ```yaml
 apiVersion: extensions/v1beta1
 kind: Ingress

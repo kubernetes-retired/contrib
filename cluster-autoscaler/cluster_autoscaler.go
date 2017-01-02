@@ -28,6 +28,10 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/aws"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/gce"
 	"k8s.io/contrib/cluster-autoscaler/config"
+	"k8s.io/contrib/cluster-autoscaler/expander"
+	"k8s.io/contrib/cluster-autoscaler/expander/mostpods"
+	"k8s.io/contrib/cluster-autoscaler/expander/random"
+	"k8s.io/contrib/cluster-autoscaler/expander/waste"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
@@ -62,6 +66,13 @@ const (
 	BasicEstimatorName = "basic"
 	// BinpackingEstimatorName is the name of binpacking estimator.
 	BinpackingEstimatorName = "binpacking"
+
+	// RandomExpanderName selects a node group at random
+	RandomExpanderName = "random"
+	// MostPodsExpanderName selects a node group that fits the most pods
+	MostPodsExpanderName = "most-pods"
+	// LeastWasteExpanderName selects a node group that leaves the least fraction of CPU and Memory
+	LeastWasteExpanderName = "least-waste"
 )
 
 var (
@@ -91,6 +102,11 @@ var (
 	AvailableEstimators = []string{BasicEstimatorName, BinpackingEstimatorName}
 	estimatorFlag       = flag.String("estimator", BinpackingEstimatorName,
 		"Type of resource estimator to be used in scale up. Available values: ["+strings.Join(AvailableEstimators, ",")+"]")
+
+	// AvailableExpanders is a list of avaialble expander options
+	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName}
+	expanderFlag       = flag.String("expander", RandomExpanderName,
+		"Type of node group expander to be used in scale up. Available values: ["+strings.Join(AvailableExpanders, ",")+"]")
 )
 
 func createKubeClient() kube_client.Interface {
@@ -130,10 +146,6 @@ func run(_ <-chan struct{}) {
 
 	lastScaleUpTime := time.Now()
 	lastScaleDownFailedTrial := time.Now()
-	unneededNodes := make(map[string]time.Time)
-	podLocationHints := make(map[string]string)
-	nodeUtilizationMap := make(map[string]float64)
-	usageTracker := simulator.NewUsageTracker()
 
 	var cloudProvider cloudprovider.CloudProvider
 
@@ -182,6 +194,18 @@ func run(_ <-chan struct{}) {
 		}
 	}
 
+	var expanderStrategy expander.Strategy
+	{
+		switch *expanderFlag {
+		case RandomExpanderName:
+			expanderStrategy = random.NewStrategy()
+		case MostPodsExpanderName:
+			expanderStrategy = mostpods.NewStrategy()
+		case LeastWasteExpanderName:
+			expanderStrategy = waste.NewStrategy()
+		}
+	}
+
 	autoscalingContext := AutoscalingContext{
 		CloudProvider:                 cloudProvider,
 		ClientSet:                     kubeClient,
@@ -192,8 +216,11 @@ func run(_ <-chan struct{}) {
 		ScaleDownUnneededTime:         *scaleDownUnneededTime,
 		MaxNodesTotal:                 *maxNodesTotal,
 		EstimatorName:                 *estimatorFlag,
+		ExpanderStrategy:              expanderStrategy,
 		MaxGratefulTerminationSec:     *maxGratefulTerminationFlag,
 	}
+
+	scaleDown := NewScaleDown(&autoscalingContext)
 
 	for {
 		select {
@@ -218,10 +245,7 @@ func run(_ <-chan struct{}) {
 				}
 
 				// CA can die at any time. Removing taints that might have been left from the previous run.
-				if err := cleanToBeDeleted(nodes, kubeClient, autoscalingContext.Recorder); err != nil {
-					glog.Warningf("Failed to clean ToBeDeleted information: %v", err)
-					continue
-				}
+				cleanToBeDeleted(nodes, kubeClient, autoscalingContext.Recorder)
 
 				allUnschedulablePods, err := unschedulablePodLister.List()
 				if err != nil {
@@ -274,7 +298,8 @@ func run(_ <-chan struct{}) {
 				} else {
 					scaleUpStart := time.Now()
 					updateLastTime("scaleup")
-					scaledUp, err := ScaleUp(autoscalingContext, unschedulablePodsToHelp, nodes)
+					scaledUp, err := ScaleUp(&autoscalingContext, unschedulablePodsToHelp, nodes)
+
 					updateDuration("scaleup", scaleUpStart)
 
 					if err != nil {
@@ -304,18 +329,16 @@ func run(_ <-chan struct{}) {
 					updateLastTime("findUnneeded")
 					glog.V(4).Infof("Calculating unneeded nodes")
 
-					usageTracker.CleanUp(time.Now().Add(-(*scaleDownUnneededTime)))
-					unneededNodes, podLocationHints, nodeUtilizationMap = FindUnneededNodes(
-						autoscalingContext,
-						nodes,
-						unneededNodes,
-						allScheduled,
-						podLocationHints,
-						usageTracker, time.Now())
+					scaleDown.CleanUp(time.Now())
+					err := scaleDown.UpdateUnneededNodes(nodes, allScheduled, time.Now())
+					if err != nil {
+						glog.Warningf("Failed to scale down: %v", err)
+						continue
+					}
 
 					updateDuration("findUnneeded", unneededStart)
 
-					for key, val := range unneededNodes {
+					for key, val := range scaleDown.unneededNodes {
 						if glog.V(4) {
 							glog.V(4).Infof("%s is unneeded since %s duration %s", key, val.String(), time.Now().Sub(val).String())
 						}
@@ -326,16 +349,7 @@ func run(_ <-chan struct{}) {
 
 						scaleDownStart := time.Now()
 						updateLastTime("scaledown")
-
-						result, err := ScaleDown(
-							autoscalingContext,
-							nodes,
-							nodeUtilizationMap,
-							unneededNodes,
-							allScheduled,
-							podLocationHints,
-							usageTracker)
-
+						result, err := scaleDown.TryToScaleDown(nodes, allScheduled)
 						updateDuration("scaledown", scaleDownStart)
 
 						// TODO: revisit result handling

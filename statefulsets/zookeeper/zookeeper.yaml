@@ -20,7 +20,6 @@ kind: ConfigMap
 metadata:
   name: zk-config
 data:
-  ensemble: "zk-0;zk-1;zk-2"
   jvm.heap: "2G"
   tick: "2000"
   init: "10"
@@ -71,7 +70,7 @@ spec:
       containers:
       - name: k8szk
         imagePullPolicy: Always
-        image: gcr.io/google_samples/k8szk:v1
+        image: gcr.io/google_samples/k8szk:v2
         resources:
           requests:
             memory: "4Gi"
@@ -84,11 +83,8 @@ spec:
         - containerPort: 3888
           name: leader-election
         env:
-        - name : ZK_ENSEMBLE
-          valueFrom:
-            configMapKeyRef:
-              name: zk-config
-              key: ensemble
+        - name : ZK_REPLICAS
+          value: "3"
         - name : ZK_HEAP_SIZE
           valueFrom:
             configMapKeyRef:

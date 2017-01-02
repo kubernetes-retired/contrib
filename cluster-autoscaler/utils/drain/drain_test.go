@@ -17,15 +17,14 @@ limitations under the License.
 package drain
 
 import (
-	"bytes"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"testing"
 
+	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 	api "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	appsv1beta1 "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
 	batchv1 "k8s.io/kubernetes/pkg/apis/batch/v1"
 	extensions "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5/fake"
@@ -51,7 +50,7 @@ func TestDrain(t *testing.T) {
 		ObjectMeta: apiv1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
-			Annotations: map[string]string{apiv1.CreatedByAnnotation: refJSON(t, &rc)},
+			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&rc)},
 		},
 		Spec: apiv1.PodSpec{
 			NodeName: "node",
@@ -70,7 +69,7 @@ func TestDrain(t *testing.T) {
 		ObjectMeta: apiv1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
-			Annotations: map[string]string{apiv1.CreatedByAnnotation: refJSON(t, &ds)},
+			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&ds)},
 		},
 		Spec: apiv1.PodSpec{
 			NodeName: "node",
@@ -89,7 +88,23 @@ func TestDrain(t *testing.T) {
 		ObjectMeta: apiv1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
-			Annotations: map[string]string{apiv1.CreatedByAnnotation: refJSON(t, &job)},
+			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&job)},
+		},
+	}
+
+	statefulset := appsv1beta1.StatefulSet{
+		ObjectMeta: apiv1.ObjectMeta{
+			Name:      "ss",
+			Namespace: "default",
+			SelfLink:  "/apiv1s/extensions/v1beta1/namespaces/default/statefulsets/ss",
+		},
+	}
+
+	ssPod := &apiv1.Pod{
+		ObjectMeta: apiv1.ObjectMeta{
+			Name:        "bar",
+			Namespace:   "default",
+			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&statefulset)},
 		},
 	}
 
@@ -108,7 +123,7 @@ func TestDrain(t *testing.T) {
 		ObjectMeta: apiv1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
-			Annotations: map[string]string{apiv1.CreatedByAnnotation: refJSON(t, &rs)},
+			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&rs)},
 		},
 		Spec: apiv1.PodSpec{
 			NodeName: "node",
@@ -170,6 +185,13 @@ func TestDrain(t *testing.T) {
 			expectPods:  []*apiv1.Pod{jobPod},
 		},
 		{
+			description: "SS-managed pod",
+			pods:        []*apiv1.Pod{ssPod},
+			rcs:         []apiv1.ReplicationController{rc},
+			expectFatal: false,
+			expectPods:  []*apiv1.Pod{ssPod},
+		},
+		{
 			description: "RS-managed pod",
 			pods:        []*apiv1.Pod{rsPod},
 			replicaSets: []extensions.ReplicaSet{rs},
@@ -207,6 +229,8 @@ func TestDrain(t *testing.T) {
 		}
 		register("daemonsets", &ds, ds.ObjectMeta)
 		register("jobs", &job, job.ObjectMeta)
+		register("statefulsets", &statefulset, statefulset.ObjectMeta)
+
 		if len(test.replicaSets) > 0 {
 			register("replicasets", &test.replicaSets[0], test.replicaSets[0].ObjectMeta)
 		}
@@ -229,19 +253,4 @@ func TestDrain(t *testing.T) {
 			t.Fatalf("Wrong pod list content: %v", test.description)
 		}
 	}
-}
-
-func refJSON(t *testing.T, o runtime.Object) string {
-	ref, err := apiv1.GetReference(o)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	codec := testapi.Default.Codec()
-	json := runtime.EncodeOrDie(codec, &apiv1.SerializedReference{Reference: *ref})
-	return string(json)
-}
-
-func objBody(codec runtime.Codec, obj runtime.Object) io.ReadCloser {
-	return ioutil.NopCloser(bytes.NewReader([]byte(runtime.EncodeOrDie(codec, obj))))
 }
