@@ -17,7 +17,9 @@ KUBELET_API_SERVER="--api-servers=https://{{ cluster_hostname }}:{{ cluster_port
 KUBELET_API_SERVER="--api-servers=https://{{ groups['masters'][0] }}:{{ kube_master_api_port }}"
 {% endif %}
 
+{% if kubelet_options is undefined -%}
 {% set kubelet_options = [] -%}
+{% endif -%}
 {% if dns_setup -%}
 {{ kubelet_options.append('--cluster-dns=' + dns_server)|default('', true) -}}
 {{ kubelet_options.append('--cluster-domain=' + dns_domain)|default('', true) -}}

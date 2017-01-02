@@ -17,9 +17,9 @@ limitations under the License.
 package mungers
 
 import (
+	"path"
 	"regexp"
 
-	"github.com/golang/glog"
 	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 	"k8s.io/contrib/mungegithub/features"
@@ -31,7 +31,8 @@ const (
 )
 
 var (
-	ignoreFilesRegex = regexp.MustCompile(".*\\.(md|png|svg|dia)$")
+	docFilesRegex    = regexp.MustCompile("^.*\\.(md|png|svg|dia)$")
+	ownersFilesRegex = regexp.MustCompile("^OWNERS$")
 )
 
 // DocsNeedNoRetest automatically labels documentation only pull-requests as retest-not-required
@@ -62,11 +63,15 @@ func (DocsNeedNoRetest) AddFlags(cmd *cobra.Command, config *github.Config) {
 
 func areFilesDocOnly(files []*githubapi.CommitFile) bool {
 	for _, file := range files {
-		if !ignoreFilesRegex.MatchString(*file.Filename) {
-			return false
+		_, basename := path.Split(*file.Filename)
+		if docFilesRegex.MatchString(basename) {
+			continue
 		}
+		if ownersFilesRegex.MatchString(basename) {
+			continue
+		}
+		return false
 	}
-
 	return true
 }
 
@@ -76,9 +81,9 @@ func (DocsNeedNoRetest) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	files, err := obj.ListFiles()
-	if err != nil {
-		glog.Errorf("Failed to list files for PR %d: %s", obj.Issue.Number, err)
+	files, ok := obj.ListFiles()
+	if !ok {
+		return
 	}
 
 	docsOnly := areFilesDocOnly(files)

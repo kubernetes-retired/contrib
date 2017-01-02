@@ -1,5 +1,5 @@
 # Version of Kubernetes binaries
-kube_version: 1.2.4
+kube_version: 1.4.5
 
 # Set source of kubernetes binaries
 # Available: packageManager, localBuild, github-release, distribution-rpm

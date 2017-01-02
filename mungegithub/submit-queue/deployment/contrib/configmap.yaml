@@ -7,7 +7,7 @@ data:
   config.http-cache-dir: /cache/httpcache
   config.organization: kubernetes
   config.project: contrib
-  config.pr-mungers: blunderbuss,lgtm-after-commit,submit-queue,check-labels,needs-rebase,cla,approval-handler
+  config.pr-mungers: blunderbuss,lgtm-after-commit,submit-queue,needs-rebase
   config.state: open
   config.token-file: /etc/secret-volume/token
   gitrepo.repo-dir: /gitrepos
@@ -17,6 +17,8 @@ data:
   test-options.required-retest-contexts: "\"\""
 
   # submit-queue options.
+  submit-queue.protected-branches: "master"
+  submit-queue.protected-branches-extra-contexts: "cla/linuxfoundation"
   submit-queue.required-contexts: "continuous-integration/travis-ci/pr"
   submit-queue.nonblocking-jenkins-jobs: "\"\""
   submit-queue.jenkins-jobs: "\"\""
@@ -26,6 +28,7 @@ data:
   submit-queue.admin-port: "9999"
   submit-queue.chart-url: ""
   submit-queue.history-url: ""
+  submit-queue.batch-url: ""
 
   # options used by the GCS feature.
   gcs.gcs-bucket: ""
@@ -45,3 +48,6 @@ data:
   issue-categorizer.triager-url: ""
   cla.cla-status-context: "cla/linuxfoundation"
   alias.alias-file: "/gitrepos/contrib/OWNERS_ALIASES"
+
+  # Temporary gate approval process
+  approval-activated: "false"

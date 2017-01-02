@@ -244,19 +244,44 @@ func TestGetReleaseNote(t *testing.T) {
 		expectedReleaseNoteVariable string
 	}{
 		{
-			body:                        "**Release note**: <other unimportant information> ```NONE```",
+			body:                        "**Release note**:  ```NONE```",
 			expectedReleaseNote:         "NONE",
 			expectedReleaseNoteVariable: releaseNoteNone,
 		},
 		{
-			body:                        "**Release note**: <other unimportant information> ```This is a description of my feature```",
+			body:                        "**Release note**:\n\n ```\nNONE\n```",
+			expectedReleaseNote:         "NONE",
+			expectedReleaseNoteVariable: releaseNoteNone,
+		},
+		{
+			body:                        "**Release note**:\n<!--  Steps to write your release note:\n...\n-->\n```NONE\n```",
+			expectedReleaseNote:         "NONE",
+			expectedReleaseNoteVariable: releaseNoteNone,
+		},
+		{
+			body:                        "**Release note**:\n\n  ```This is a description of my feature```",
 			expectedReleaseNote:         "This is a description of my feature",
 			expectedReleaseNoteVariable: releaseNote,
 		},
 		{
-			body:                        "**Release note**: <other unimportant information> ```This is my feature. There is some action required for my feature.```",
+			body:                        "**Release note**: ```This is my feature. There is some action required for my feature.```",
 			expectedReleaseNote:         "This is my feature. There is some action required for my feature.",
 			expectedReleaseNoteVariable: releaseNoteActionRequired,
+		},
+		{
+			body:                        "```release-note\nsomething great.\n```",
+			expectedReleaseNote:         "something great.",
+			expectedReleaseNoteVariable: releaseNote,
+		},
+		{
+			body:                        "```release-note\nNONE\n```",
+			expectedReleaseNote:         "NONE",
+			expectedReleaseNoteVariable: releaseNoteNone,
+		},
+		{
+			body:                        "**Release note**:\n```release-note\nNONE\n```\n",
+			expectedReleaseNote:         "NONE",
+			expectedReleaseNoteVariable: releaseNoteNone,
 		},
 		{
 			body:                        "",

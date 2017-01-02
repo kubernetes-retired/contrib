@@ -88,6 +88,8 @@ Supported images:
 * `centos7` (default) - CentOS 7 supported on OpenStack, VirtualBox, Libvirt providers.
 * `coreos` - [CoreOS](https://coreos.com/) supported on VirtualBox provider.
 * `fedora` - supported at least on Libvirt provider
+* `ubuntu14` - supported on Libvirt provider, based on Ubuntu-14.04
+* `ubuntu16` - supported on Libvirt provider, based on Ubuntu-16.04
 
 ### Start your cluster
 

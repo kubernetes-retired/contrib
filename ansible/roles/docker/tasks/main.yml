@@ -75,6 +75,25 @@
     - restart docker
   tags: configure
 
+# The client version is enough for this deployment as the installer will always sync
+# client and server version.
+# As the server is not yet running the command exits with non-zero value.
+# The carriage return char is related to https://github.com/docker/docker/issues/8513
+- name: Detect docker version
+  script: detect-docker-version.sh
+  register: docker_version
+
+- name: Detected version
+  debug:
+    msg: "{{ docker_version.stdout | regex_replace('(\\r\\n)','') }}"
+
+- name: Write docker daemon.conf file
+  copy: src=daemon.json dest=/etc/docker/daemon.json
+  when: "{{ docker_version.stdout | regex_replace('(\\r\\n)','') | version_compare('1.12', '>=') }}"
+  notify:
+    - reload docker
+  tags: configure
+
 - name: Enable Docker
   service: name=docker enabled=yes
   notify:

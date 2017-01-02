@@ -22,6 +22,8 @@ spec:
         - --pr-mungers=$(PR_MUNGERS)
         - --state=$(STATE)
         - --token-file=$(TOKEN_FILE)
+        - --protected-branches=$(PROTECTED_BRANCHES)
+        - --protected-branches-extra-contexts=$(PROTECTED_BRANCHES_EXTRA_CONTEXTS)
         - --required-retest-contexts=$(REQUIRED_RETEST_CONTEXTS)
         - --required-contexts=$(REQUIRED_CONTEXTS)
         - --nonblocking-jenkins-jobs=$(NONBLOCKING_JENKINS_JOBS)
@@ -49,6 +51,9 @@ spec:
         - --triager-url=$(TRIAGER_URL)
         - --cla-status-context=$(CLA_STATUS_CONTEXT)
         - --alias-file=$(ALIAS_FILE_PATH)
+        - --batch-url=$(BATCH_URL)
+        - --use-reviewers=$(APPROVAL_ACTIVATED)
+        - --gate-approved=$(APPROVAL_ACTIVATED)
         image: gcr.io/google_containers/submit-queue:2016-05-24-86f86cd
         env:
           - name: HTTP_CACHE_DIR
@@ -81,6 +86,16 @@ spec:
               configMapKeyRef:
                 name: @@-sq-config
                 key: config.token-file
+          - name: PROTECTED_BRANCHES
+            valueFrom:
+              configMapKeyRef:
+                name: @@-sq-config
+                key: submit-queue.protected-branches
+          - name: PROTECTED_BRANCHES_EXTRA_CONTEXTS
+            valueFrom:
+              configMapKeyRef:
+                name: @@-sq-config
+                key: submit-queue.protected-branches-extra-contexts
           - name: REQUIRED_RETEST_CONTEXTS
             valueFrom:
               configMapKeyRef:
@@ -121,6 +136,11 @@ spec:
               configMapKeyRef:
                 name: @@-sq-config
                 key: submit-queue.admin-port
+          - name: BATCH_URL
+            valueFrom:
+              configMapKeyRef:
+                name: @@-sq-config
+                key: submit-queue.batch-url
           - name: GCS_BUCKET
             valueFrom:
               configMapKeyRef:
@@ -216,6 +236,11 @@ spec:
               configMapKeyRef:
                 name: @@-sq-config
                 key: alias.alias-file
+          - name: APPROVAL_ACTIVATED
+            valueFrom:
+              configMapKeyRef:
+                name: @@-sq-config
+                key: approval-activated
         ports:
         - name: status
           containerPort: 8080

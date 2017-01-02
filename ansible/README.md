@@ -51,6 +51,9 @@ You may override the inventory file by running:
 
 `INVENTORY=myinventory ./deploy-cluster.sh`
 
+The directory containing ``myinventory`` file must contain the default ``inventory/group_vars`` directory as well (or its equivalent).
+Otherwise variables defined in ``group_vars/all.yml`` will not be set.
+
 In general this will work on very recent Fedora, rawhide or F21.  Future work to
 support RHEL7, CentOS, and possible other distros should be forthcoming.
 
