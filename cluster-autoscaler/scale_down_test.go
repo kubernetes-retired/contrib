@@ -135,7 +135,9 @@ func TestScaleDown(t *testing.T) {
 		},
 	}
 	n1 := BuildTestNode("n1", 1000, 1000)
+	SetNodeReadyState(n1, true, time.Time{})
 	n2 := BuildTestNode("n2", 1000, 1000)
+	SetNodeReadyState(n2, true, time.Time{})
 	p1 := BuildTestPod("p1", 100, 0)
 	p1.Annotations = map[string]string{
 		"kubernetes.io/created-by": RefJSON(&job),

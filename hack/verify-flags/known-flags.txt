@@ -115,6 +115,7 @@ scale-down-delay
 scale-down-enabled
 scale-down-trial-interval
 scale-down-unneeded-time
+scale-down-unready-time
 scale-down-utilization-threshold
 scan-interval
 services-configmap
