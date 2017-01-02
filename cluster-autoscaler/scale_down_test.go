@@ -17,14 +17,17 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"k8s.io/contrib/cluster-autoscaler/cloudprovider/test"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 
 	"k8s.io/kubernetes/pkg/api/errors"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	batchv1 "k8s.io/kubernetes/pkg/apis/batch/v1"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5/fake"
 	"k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -63,27 +66,23 @@ func TestFindUnneededNodes(t *testing.T) {
 		PredicateChecker:              simulator.NewTestPredicateChecker(),
 		ScaleDownUtilizationThreshold: 0.35,
 	}
+	sd := NewScaleDown(&context)
+	sd.UpdateUnneededNodes([]*apiv1.Node{n1, n2, n3, n4}, []*apiv1.Pod{p1, p2, p3, p4}, time.Now())
 
-	result, hints, utilization := FindUnneededNodes(context, []*apiv1.Node{n1, n2, n3, n4}, map[string]time.Time{},
-		[]*apiv1.Pod{p1, p2, p3, p4}, make(map[string]string),
-		simulator.NewUsageTracker(), time.Now())
-
-	assert.Equal(t, 1, len(result))
-	addTime, found := result["n2"]
+	assert.Equal(t, 1, len(sd.unneededNodes))
+	addTime, found := sd.unneededNodes["n2"]
 	assert.True(t, found)
-	assert.Contains(t, hints, p2.Namespace+"/"+p2.Name)
-	assert.Equal(t, 4, len(utilization))
+	assert.Contains(t, sd.podLocationHints, p2.Namespace+"/"+p2.Name)
+	assert.Equal(t, 4, len(sd.nodeUtilizationMap))
 
-	result["n1"] = time.Now()
-	result2, hints, utilization := FindUnneededNodes(context, []*apiv1.Node{n1, n2, n3, n4}, result,
-		[]*apiv1.Pod{p1, p2, p3, p4}, hints,
-		simulator.NewUsageTracker(), time.Now())
+	sd.unneededNodes["n1"] = time.Now()
+	sd.UpdateUnneededNodes([]*apiv1.Node{n1, n2, n3, n4}, []*apiv1.Pod{p1, p2, p3, p4}, time.Now())
 
-	assert.Equal(t, 1, len(result2))
-	addTime2, found := result2["n2"]
+	assert.Equal(t, 1, len(sd.unneededNodes))
+	addTime2, found := sd.unneededNodes["n2"]
 	assert.True(t, found)
 	assert.Equal(t, addTime, addTime2)
-	assert.Equal(t, 4, len(utilization))
+	assert.Equal(t, 4, len(sd.nodeUtilizationMap))
 }
 
 func TestDrainNode(t *testing.T) {
@@ -122,23 +121,50 @@ func TestDrainNode(t *testing.T) {
 	assert.Equal(t, n1.Name, getStringFromChan(updatedNodes))
 }
 
-func TestCleanNodes(t *testing.T) {
+func TestScaleDown(t *testing.T) {
+	deletedPods := make(chan string, 10)
 	updatedNodes := make(chan string, 10)
+	deletedNodes := make(chan string, 10)
 	fakeClient := &fake.Clientset{}
 
+	job := batchv1.Job{
+		ObjectMeta: apiv1.ObjectMeta{
+			Name:      "job",
+			Namespace: "default",
+			SelfLink:  "/apivs/extensions/v1beta1/namespaces/default/jobs/job",
+		},
+	}
 	n1 := BuildTestNode("n1", 1000, 1000)
-	addToBeDeletedTaint(n1)
 	n2 := BuildTestNode("n2", 1000, 1000)
+	p1 := BuildTestPod("p1", 100, 0)
+	p1.Annotations = map[string]string{
+		"kubernetes.io/created-by": RefJSON(&job),
+	}
 
+	p2 := BuildTestPod("p2", 800, 0)
+	p1.Spec.NodeName = "n1"
+	p2.Spec.NodeName = "n2"
+
+	fakeClient.Fake.AddReactor("list", "pods", func(action core.Action) (bool, runtime.Object, error) {
+		return true, &apiv1.PodList{Items: []apiv1.Pod{*p1, *p2}}, nil
+	})
+	fakeClient.Fake.AddReactor("get", "pods", func(action core.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.NewNotFound(apiv1.Resource("pod"), "whatever")
+	})
 	fakeClient.Fake.AddReactor("get", "nodes", func(action core.Action) (bool, runtime.Object, error) {
-		get := action.(core.GetAction)
-		if get.GetName() == n1.Name {
+		getAction := action.(core.GetAction)
+		switch getAction.GetName() {
+		case n1.Name:
 			return true, n1, nil
-		}
-		if get.GetName() == n2.Name {
+		case n2.Name:
 			return true, n2, nil
 		}
-		return true, nil, errors.NewNotFound(apiv1.Resource("node"), get.GetName())
+		return true, nil, fmt.Errorf("Wrong node: %v", getAction.GetName())
+	})
+	fakeClient.Fake.AddReactor("delete", "pods", func(action core.Action) (bool, runtime.Object, error) {
+		deleteAction := action.(core.DeleteAction)
+		deletedPods <- deleteAction.GetName()
+		return true, nil, nil
 	})
 	fakeClient.Fake.AddReactor("update", "nodes", func(action core.Action) (bool, runtime.Object, error) {
 		update := action.(core.UpdateAction)
@@ -146,8 +172,31 @@ func TestCleanNodes(t *testing.T) {
 		updatedNodes <- obj.Name
 		return true, obj, nil
 	})
-	err := cleanToBeDeleted([]*apiv1.Node{n1, n2}, fakeClient, createEventRecorder(fakeClient))
+
+	provider := testprovider.NewTestCloudProvider(nil, func(nodeGroup string, node string) error {
+		deletedNodes <- node
+		return nil
+	})
+	provider.AddNodeGroup("ng1", 1, 10, 2)
+	provider.AddNode("ng1", n1)
+	provider.AddNode("ng1", n2)
+	assert.NotNil(t, provider)
+
+	context := &AutoscalingContext{
+		PredicateChecker:              simulator.NewTestPredicateChecker(),
+		CloudProvider:                 provider,
+		ClientSet:                     fakeClient,
+		Recorder:                      createEventRecorder(fakeClient),
+		ScaleDownUtilizationThreshold: 0.5,
+		ScaleDownUnneededTime:         time.Minute,
+		MaxGratefulTerminationSec:     60,
+	}
+	scaleDown := NewScaleDown(context)
+	scaleDown.UpdateUnneededNodes([]*apiv1.Node{n1, n2}, []*apiv1.Pod{p1, p2}, time.Now().Add(-5*time.Minute))
+	result, err := scaleDown.TryToScaleDown([]*apiv1.Node{n1, n2}, []*apiv1.Pod{p1, p2})
 	assert.NoError(t, err)
+	assert.Equal(t, ScaleDownNodeDeleted, result)
+	assert.Equal(t, n1.Name, getStringFromChan(deletedNodes))
 	assert.Equal(t, n1.Name, getStringFromChan(updatedNodes))
 }
 

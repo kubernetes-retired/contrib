@@ -17,25 +17,28 @@ limitations under the License.
 package mungers
 
 import (
+	"bytes"
+	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
+	"time"
+
+	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
+	"github.com/spf13/cobra"
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
 	c "k8s.io/contrib/mungegithub/mungers/matchers/comment"
 	"k8s.io/kubernetes/pkg/util/sets"
-
-	"bytes"
-	"fmt"
-	"sort"
-
-	"github.com/golang/glog"
-	githubapi "github.com/google/go-github/github"
-	"github.com/spf13/cobra"
 )
 
 const (
 	approvalNotificationName = "ApprovalNotifier"
 	approveCommand           = "approve"
+	cancel                   = "cancel"
+	ownersFileName           = "OWNERS"
 )
 
 // ApprovalHandler will try to add "approved" label once
@@ -85,15 +88,13 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
 		return
 	}
-	files, err := obj.ListFiles()
-	if err != nil {
-		glog.Errorf("failed to list files in this PR: %v", err)
+	files, ok := obj.ListFiles()
+	if !ok {
 		return
 	}
 
-	comments, err := getCommentsAfterLastModified(obj)
-	if err != nil {
-		glog.Errorf("failed to get comments in this PR: %v", err)
+	comments, ok := getCommentsAfterLastModified(obj)
+	if !ok {
 		return
 	}
 
@@ -119,11 +120,11 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 
 func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, ownersMap map[string]sets.String) error {
 	notificationMatcher := c.MungerNotificationName(approvalNotificationName)
-	comments, err := obj.ListComments()
-	if err != nil {
-		glog.Error("Could not list the comments for PR%v", obj.Issue.Number)
-		return err
+	comments, ok := obj.ListComments()
+	if !ok {
+		return fmt.Errorf("Unable to ListComments for %d", obj.Number())
 	}
+
 	notifications := c.FilterComments(comments, notificationMatcher)
 	latestNotification := notifications.GetLast()
 	if latestNotification == nil {
@@ -138,25 +139,35 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, ownersMap 
 	if latestApprove.CreatedAt.After(*latestNotification.CreatedAt) {
 		// if we can't tell when latestApprove happened, we should make a new one
 		obj.DeleteComment(latestNotification)
+		glog.Infof("Latest approve was after last time notified")
 		return h.createMessage(obj, ownersMap)
 	}
-	lastModified := obj.LastModifiedTime()
+	lastModified, ok := obj.LastModifiedTime()
+	if !ok {
+		return fmt.Errorf("Unable to get LastModifiedTime for %d", obj.Number())
+	}
 	if latestNotification.CreatedAt.Before(*lastModified) {
 		obj.DeleteComment(latestNotification)
+		glog.Infof("PR Modified After Last Notification")
 		return h.createMessage(obj, ownersMap)
 	}
 	return nil
 }
 
-// findApproverSet Takes all the Owners Files that Are Needed for the PR and chooses a good
-// subset of Approvers that are guaranteed to be from all of them (exact cover)
+// findPeopleToApprove Takes the Owners Files that Are Needed for the PR and chooses a good
+// subset of Approvers that are guaranteed to cover all of them (exact cover)
 // This is a greedy approximation and not guaranteed to find the minimum number of OWNERS
-func (h ApprovalHandler) findApproverSet(ownersPath sets.String) sets.String {
+func (h ApprovalHandler) findPeopleToApprove(ownersPaths sets.String, prAuthor string) sets.String {
 
 	// approverCount contains a map: person -> set of relevant OWNERS file they are in
 	approverCount := make(map[string]sets.String)
-	for ownersFile := range ownersPath {
-		for approver := range h.features.Repos.LeafApprovers(ownersFile) {
+	for ownersFile := range ownersPaths {
+		// LeafApprovers removes the last part of a path for dirs and files, so we append owners to the path
+		for approver := range h.features.Repos.LeafApprovers(filepath.Join(ownersFile, ownersFileName)) {
+			if approver == prAuthor {
+				// don't add the author of the PR to the list of candidates that can approve
+				continue
+			}
 			if _, ok := approverCount[approver]; ok {
 				approverCount[approver].Insert(ownersFile)
 			} else {
@@ -166,14 +177,14 @@ func (h ApprovalHandler) findApproverSet(ownersPath sets.String) sets.String {
 	}
 
 	copyOfFiles := sets.NewString()
-	for fn := range ownersPath {
+	for fn := range ownersPaths {
 		copyOfFiles.Insert(fn)
 	}
 
 	approverGroup := sets.NewString()
+	var bestPerson string
 	for copyOfFiles.Len() > 0 {
 		maxCovered := 0
-		var bestPerson string
 		for k, v := range approverCount {
 			if v.Intersection(copyOfFiles).Len() > maxCovered {
 				maxCovered = len(v)
@@ -182,9 +193,39 @@ func (h ApprovalHandler) findApproverSet(ownersPath sets.String) sets.String {
 		}
 
 		approverGroup.Insert(bestPerson)
-		copyOfFiles.Delete(approverCount[bestPerson].List()...)
+		toDelete := sets.NewString()
+		// remove all files in the directories that our approver approved AND
+		// in the subdirectories that s/he approved.  HasPrefix finds subdirs
+		for fn := range copyOfFiles {
+			for approvedFile := range approverCount[bestPerson] {
+				if strings.HasPrefix(fn, approvedFile) {
+					toDelete.Insert(fn)
+				}
+
+			}
+		}
+		copyOfFiles.Delete(toDelete.List()...)
 	}
 	return approverGroup
+}
+
+// removeSubdirs takes a list of directories as an input and returns a set of directories with all
+// subdirectories removed.  E.g. [/a,/a/b/c,/d/e,/d/e/f] -> [/a, /d/e]
+func removeSubdirs(dirList []string) sets.String {
+	toDel := sets.String{}
+	for i := 0; i < len(dirList)-1; i++ {
+		for j := i + 1; j < len(dirList); j++ {
+			// ex /a/b has prefix /a so if remove /a/b since its already covered
+			if strings.HasPrefix(dirList[i], dirList[j]) {
+				toDel.Insert(dirList[i])
+			} else if strings.HasPrefix(dirList[j], dirList[i]) {
+				toDel.Insert(dirList[j])
+			}
+		}
+	}
+	finalSet := sets.NewString(dirList...)
+	finalSet.Delete(toDel.List()...)
+	return finalSet
 }
 
 func (h *ApprovalHandler) createMessage(obj *github.MungeObject, ownersMap map[string]sets.String) error {
@@ -202,7 +243,9 @@ func (h *ApprovalHandler) createMessage(obj *github.MungeObject, ownersMap map[s
 	for _, path := range sliceOfKeys {
 		approverSet := ownersMap[path]
 		if approverSet.Len() == 0 {
-			context.WriteString(fmt.Sprintf("- **%s**\n", path))
+			fullOwnersPath := filepath.Join(path, ownersFileName)
+			link := fmt.Sprintf("https://github.com/%s/%s/blob/master/%v", obj.Org(), obj.Project(), fullOwnersPath)
+			context.WriteString(fmt.Sprintf("- **[%s](%s)** \n", fullOwnersPath, link))
 			unapprovedOwners.Insert(path)
 		} else {
 			context.WriteString(fmt.Sprintf("- ~~%s~~ [%v]\n", path, strings.Join(approverSet.List(), ",")))
@@ -212,14 +255,14 @@ func (h *ApprovalHandler) createMessage(obj *github.MungeObject, ownersMap map[s
 	if unapprovedOwners.Len() > 0 {
 		context.WriteString("We suggest the following people:\n")
 		context.WriteString("cc ")
-		toBeAssigned := h.findApproverSet(unapprovedOwners)
+		toBeAssigned := h.findPeopleToApprove(unapprovedOwners, *obj.Issue.User.Login)
 		for person := range toBeAssigned {
 			context.WriteString("@" + person + " ")
 		}
 	}
 	context.WriteString("\n You can indicate your approval by writing `/approve` in a comment")
-	context.WriteString("\n You can cancel your approval by writing `/approve cancel`in a comment")
-	return c.Notification{approvalNotificationName, "The Following OWNERS Files Need Approval:\n", context.String()}.Post(obj)
+	context.WriteString("\n You can cancel your approval by writing `/approve cancel` in a comment")
+	return c.Notification{approvalNotificationName, "Needs approval from an approver in each of these OWNERS Files:\n", context.String()}.Post(obj)
 }
 
 // createApproverSet iterates through the list of comments on a PR
@@ -232,7 +275,7 @@ func createApproverSet(comments []*githubapi.IssueComment) sets.String {
 	approverMatcher := c.CommandName(approveCommand)
 	for _, comment := range c.FilterComments(comments, approverMatcher) {
 		cmd := c.ParseCommand(comment)
-		if cmd.Arguments == "cancel" {
+		if cmd.Arguments == cancel {
 			approverSet.Delete(*comment.User.Login)
 		} else {
 			approverSet.Insert(*comment.User.Login)
@@ -242,23 +285,42 @@ func createApproverSet(comments []*githubapi.IssueComment) sets.String {
 }
 
 // getApprovedOwners finds all the relevant OWNERS files for the PRs and identifies all the people from them
-// that have approved the PR
+// that have approved the PR.  For all files that have not been approved, it finds the minimum number of owners files
+// that cover all of them.  E.g. If /a/b/c.txt and /a/d.txt need approval, it will only indicate that an approval from
+// someone in /a/OWNERS is needed
 func (h ApprovalHandler) getApprovedOwners(files []*githubapi.CommitFile, approverSet sets.String) map[string]sets.String {
 	ownersApprovers := make(map[string]sets.String)
+	// TODO: go through the files starting at the top of the tree
+	needsApproval := sets.NewString()
 	for _, file := range files {
 		fileOwners := h.features.Repos.Approvers(*file.Filename)
-		ownersApprovers[h.features.Repos.FindOwnersForPath(*file.Filename)] = fileOwners.Intersection(approverSet)
+		ownersFile := h.features.Repos.FindOwnersForPath(*file.Filename)
+		hasApproved := fileOwners.Intersection(approverSet)
+		if len(hasApproved) != 0 {
+			ownersApprovers[ownersFile] = hasApproved
+		} else {
+			needsApproval.Insert(ownersFile)
+		}
+
+	}
+	needsApproval = removeSubdirs(needsApproval.List())
+	for fn := range needsApproval {
+		ownersApprovers[fn] = sets.NewString()
 	}
 	return ownersApprovers
 }
 
-func getCommentsAfterLastModified(obj *github.MungeObject) ([]*githubapi.IssueComment, error) {
+func getCommentsAfterLastModified(obj *github.MungeObject) ([]*githubapi.IssueComment, bool) {
 	afterLastModified := func(opt *githubapi.IssueListCommentsOptions) *githubapi.IssueListCommentsOptions {
 		// Only comments updated at or after this time are returned.
 		// One possible case is that reviewer might "/lgtm" first, contributor updated PR, and reviewer updated "/lgtm".
 		// This is still valid. We don't recommend user to update it.
-		lastModified := *obj.LastModifiedTime()
-		opt.Since = lastModified
+		lastModified, ok := obj.LastModifiedTime()
+		if !ok {
+			opt.Since = time.Time{}
+		} else {
+			opt.Since = *lastModified
+		}
 		return opt
 	}
 	return obj.ListComments(afterLastModified)

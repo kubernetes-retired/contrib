@@ -53,7 +53,7 @@ __Lines 8-9__: Each http rule contains the following information: A host (eg: fo
 
 __Lines 10-12__: A `backend` is a service:port combination. It selects a group of pods capable of servicing traffic sent to the path specified in the parent rule.
 
-__Global Prameters__: For the sake of simplicity the example Ingress has no global parameters. However, one can specify a default backend (see examples below) in the absence of which requests that don't match a path in the spec are sent to the default backend of glbc. Though glbc doesn't support HTTPS yet, security configs would also be global.
+__Global Parameters__: For the sake of simplicity the example Ingress has no global parameters. However, one can specify a default backend (see examples below) in the absence of which requests that don't match a path in the spec are sent to the default backend of glbc. Though glbc doesn't support HTTPS yet, security configs would also be global.
 
 
 ## Load Balancer Management

@@ -122,6 +122,7 @@ func NoRetestIssue() *github.Issue {
 
 func OldLGTMEvents() []*github.IssueEvent {
 	return github_test.Events([]github_test.LabelTime{
+		{"bob", approvedLabel, 20},
 		{"bob", lgtmLabel, 6},
 		{"bob", lgtmLabel, 7},
 		{"bob", lgtmLabel, 8},
@@ -130,6 +131,7 @@ func OldLGTMEvents() []*github.IssueEvent {
 
 func NewLGTMEvents() []*github.IssueEvent {
 	return github_test.Events([]github_test.LabelTime{
+		{"bob", approvedLabel, 20},
 		{"bob", lgtmLabel, 10},
 		{"bob", lgtmLabel, 11},
 		{"bob", lgtmLabel, 12},
@@ -138,9 +140,19 @@ func NewLGTMEvents() []*github.IssueEvent {
 
 func OverlappingLGTMEvents() []*github.IssueEvent {
 	return github_test.Events([]github_test.LabelTime{
+		{"bob", approvedLabel, 20},
 		{"bob", lgtmLabel, 8},
 		{"bob", lgtmLabel, 9},
 		{"bob", lgtmLabel, 10},
+	})
+}
+
+func OldApprovedEvents() []*github.IssueEvent {
+	return github_test.Events([]github_test.LabelTime{
+		{"bob", approvedLabel, 6},
+		{"bob", lgtmLabel, 10},
+		{"bob", lgtmLabel, 11},
+		{"bob", lgtmLabel, 12},
 	})
 }
 
@@ -384,18 +396,18 @@ func TestValidateLGTMAfterPush(t *testing.T) {
 
 		obj := github_util.TestObject(config, BareIssue(), nil, nil, nil)
 
-		if _, err := obj.GetCommits(); err != nil {
-			t.Errorf("Unexpected error getting filled commits: %v", err)
+		if _, ok := obj.GetCommits(); !ok {
+			t.Errorf("Unexpected error getting filled commits")
 		}
 
-		if _, err := obj.GetEvents(); err != nil {
-			t.Errorf("Unexpected error getting events commits: %v", err)
+		if _, ok := obj.GetEvents(); !ok {
+			t.Errorf("Unexpected error getting events commits")
 		}
 
-		lastModifiedTime := obj.LastModifiedTime()
-		lgtmTime := obj.LabelTime(lgtmLabel)
+		lastModifiedTime, ok1 := obj.LastModifiedTime()
+		lgtmTime, ok2 := obj.LabelTime(lgtmLabel)
 
-		if lastModifiedTime == nil || lgtmTime == nil {
+		if !ok1 || !ok2 || lastModifiedTime == nil || lgtmTime == nil {
 			t.Errorf("unexpected lastModifiedTime or lgtmTime == nil")
 		}
 
@@ -831,6 +843,16 @@ func TestSubmitQueue(t *testing.T) {
 			retest2Pass:     true,
 			reason:          fmt.Sprintf(ciFailureFmt, notRequiredReTestContext2),
 			state:           "pending",
+		},
+		{
+			name:     "Fail because changed after approval",
+			pr:       ValidPR(),
+			issue:    LGTMApprovedIssue(),
+			events:   OldApprovedEvents(),
+			commits:  Commits(), // Modified at time.Unix(7), 8, and 9
+			ciStatus: SuccessStatus(),
+			reason:   approvedEarly,
+			state:    "pending",
 		},
 
 		// // Should pass even though last 'weakStable' build failed, as it wasn't "strong" failure

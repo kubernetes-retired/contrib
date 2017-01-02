@@ -12,7 +12,7 @@ data:
   config.token-file: /etc/secret-volume/token
 
   # test-options feature options.
-  test-options.required-retest-contexts: "\"Jenkins GCE e2e\",\"Jenkins unit/integration\",\"Jenkins verification\",\"Jenkins GCE Node e2e\",\"Jenkins Kubemark GCE e2e\",\"Jenkins GCE etcd3 e2e\""
+  test-options.required-retest-contexts: "\"Jenkins GCE e2e\",\"Jenkins unit/integration\",\"Jenkins verification\",\"Jenkins GCE Node e2e\",\"Jenkins Kubemark GCE e2e\",\"Jenkins GCE etcd3 e2e\",\"Jenkins Bazel Build\""
 
   submit-queue.protected-branches: "master"
   submit-queue.protected-branches-extra-contexts: "cla/linuxfoundation"
@@ -159,6 +159,7 @@ data:
     ci-kubernetes-kubemark-500-gce,\
     ci-kubernetes-node-kubelet,\
     ci-kubernetes-test-go,\
+    ci-kubernetes-e2e-gci-gce-ingress,\
     ci-kubernetes-verify-master"
   submit-queue.presubmit-jobs: "\
     kubernetes-pull-build-test-e2e-gce,\

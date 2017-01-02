@@ -686,8 +686,8 @@ func objToStatusPullRequest(obj *github.MungeObject) *statusPullRequest {
 		Login:     *obj.Issue.User.Login,
 		AvatarURL: *obj.Issue.User.AvatarURL,
 	}
-	pr, err := obj.GetPR()
-	if err != nil {
+	pr, ok := obj.GetPR()
+	if !ok {
 		return &res
 	}
 	if pr.Additions != nil {
@@ -717,7 +717,7 @@ func objToStatusPullRequest(obj *github.MungeObject) *statusPullRequest {
 
 	milestone, ok := obj.Annotations["milestone"]
 	if !ok {
-		milestone = obj.ReleaseMilestone()
+		milestone, ok = obj.ReleaseMilestone()
 		obj.Annotations["milestone"] = milestone
 	}
 	if milestone != "" {
@@ -752,10 +752,10 @@ func (sq *SubmitQueue) SetMergeStatus(obj *github.MungeObject, reason string) {
 		Reason:            reason,
 	}
 
-	status := obj.GetStatus(sqContext)
-	if status == nil || *status.Description != reason {
+	status, ok := obj.GetStatus(sqContext)
+	if !ok || status == nil || *status.Description != reason {
 		state := reasonToState(reason)
-		url := fmt.Sprintf("http://submit-queue.k8s.io/#/prs/?prDisplay=%d&historyDisplay=%d", *obj.Issue.Number, *obj.Issue.Number)
+		url := fmt.Sprintf("http://submit-queue.k8s.io/#/prs?prDisplay=%d&historyDisplay=%d", *obj.Issue.Number, *obj.Issue.Number)
 		_ = obj.SetStatus(state, url, reason, sqContext)
 	}
 
@@ -785,11 +785,13 @@ func (sq *SubmitQueue) setContextFailedStatus(obj *github.MungeObject, contexts 
 	sort.Strings(contexts)
 	for i, context := range contexts {
 		contextSlice := contexts[i : i+1]
-		if !obj.IsStatusSuccess(contextSlice) {
-			failMsg := fmt.Sprintf(ciFailureFmt, context)
-			sq.SetMergeStatus(obj, failMsg)
-			return
+		success, ok := obj.IsStatusSuccess(contextSlice)
+		if ok && success {
+			continue
 		}
+		failMsg := fmt.Sprintf(ciFailureFmt, context)
+		sq.SetMergeStatus(obj, failMsg)
+		return
 	}
 	glog.Errorf("Inside setContextFailedStatus() but none of the status's failed! %d: %v", obj.Number(), contexts)
 	sq.SetMergeStatus(obj, ciFailure)
@@ -871,7 +873,8 @@ const (
 	noCLA                   = "PR is missing CLA label; needs one of " + claYesLabel + ", " + cncfClaYesLabel + " or " + claHumanLabel
 	noLGTM                  = "PR does not have " + lgtmLabel + " label."
 	noApproved              = "PR does not have " + approvedLabel + " label."
-	lgtmEarly               = "The PR was changed after the LGTM label was added."
+	lgtmEarly               = "The PR was changed after the " + lgtmLabel + " label was added."
+	approvedEarly           = "The PR was changed after the " + approvedLabel + " label was added."
 	unmergeable             = "PR is unable to be automatically merged. Needs rebase."
 	undeterminedMergability = "Unable to determine is PR is mergeable. Will try again later."
 	noMerge                 = "Will not auto merge because " + doNotMergeLabel + " is present"
@@ -891,20 +894,6 @@ const (
 	headCommitChanged       = "This PR has changed since we ran the tests"
 )
 
-func getEarliestApprovedTime(obj *github.MungeObject) *time.Time {
-	lgtmTime := obj.LabelTime(lgtmLabel)
-	approvedTime := obj.LabelTime(approvedLabel)
-	// if both lgtmTime and approvedTime are nil, this func will return nil pointer
-	if lgtmTime == nil {
-		return approvedTime
-	} else if approvedTime == nil {
-		return lgtmTime
-	} else if lgtmTime.Before(*approvedTime) {
-		return lgtmTime
-	}
-	return approvedTime
-}
-
 // validForMergeExt is the base logic about what PR can be automatically merged.
 // PRs must pass this logic to be placed on the queue and they must pass this
 // logic a second time to be retested/merged after they get to the top of
@@ -921,8 +910,8 @@ func (sq *SubmitQueue) validForMergeExt(obj *github.MungeObject, checkStatus boo
 	}
 
 	// Can't merge something already merged.
-	if m, err := obj.IsMerged(); err != nil {
-		glog.Errorf("%d: unknown err: %v", *obj.Issue.Number, err)
+	if m, ok := obj.IsMerged(); !ok {
+		glog.Errorf("%d: unknown err", *obj.Issue.Number)
 		sq.SetMergeStatus(obj, unknown)
 		return false
 	} else if m {
@@ -951,7 +940,7 @@ func (sq *SubmitQueue) validForMergeExt(obj *github.MungeObject, checkStatus boo
 	}
 
 	// Obviously must be mergeable
-	if mergeable, err := obj.IsMergeable(); err != nil {
+	if mergeable, ok := obj.IsMergeable(); !ok {
 		sq.SetMergeStatus(obj, undeterminedMergability)
 		return false
 	} else if !mergeable {
@@ -962,13 +951,13 @@ func (sq *SubmitQueue) validForMergeExt(obj *github.MungeObject, checkStatus boo
 	// Validate the status information for this PR
 	if checkStatus {
 		if len(sq.RequiredStatusContexts) > 0 {
-			if ok := obj.IsStatusSuccess(sq.RequiredStatusContexts); !ok {
+			if success, ok := obj.IsStatusSuccess(sq.RequiredStatusContexts); !ok || !success {
 				sq.setContextFailedStatus(obj, sq.RequiredStatusContexts)
 				return false
 			}
 		}
 		if len(sq.RequiredRetestContexts) > 0 {
-			if ok := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok {
+			if success, ok := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok || !success {
 				sq.setContextFailedStatus(obj, sq.RequiredRetestContexts)
 				return false
 			}
@@ -979,26 +968,29 @@ func (sq *SubmitQueue) validForMergeExt(obj *github.MungeObject, checkStatus boo
 		sq.SetMergeStatus(obj, noLGTM)
 		return false
 	}
-	if sq.GateApproved && !obj.HasLabel(approvedLabel) {
-		sq.SetMergeStatus(obj, noApproved)
-		return false
-	}
 
 	// PR cannot change since LGTM was added
-	lastModifiedTime := obj.LastModifiedTime()
-
-	// lgtmTime and approvedTime cannot both be nil at this point (see check above)
-	earliestApproved := getEarliestApprovedTime(obj)
-
-	if lastModifiedTime == nil || earliestApproved == nil {
-		glog.Errorf("PR %d was unable to determine when LGTM was added or when last modified", *obj.Issue.Number)
+	if after, ok := obj.ModifiedAfterLabeled(lgtmLabel); !ok {
 		sq.SetMergeStatus(obj, unknown)
+		return false
+	} else if after {
+		sq.SetMergeStatus(obj, lgtmEarly)
 		return false
 	}
 
-	if lastModifiedTime.After(*earliestApproved) {
-		sq.SetMergeStatus(obj, lgtmEarly)
-		return false
+	if sq.GateApproved {
+		if !obj.HasLabel(approvedLabel) {
+			sq.SetMergeStatus(obj, noApproved)
+			return false
+		}
+		// PR cannot change since approvedLabel was added
+		if after, ok := obj.ModifiedAfterLabeled(approvedLabel); !ok {
+			sq.SetMergeStatus(obj, unknown)
+			return false
+		} else if after {
+			sq.SetMergeStatus(obj, approvedEarly)
+			return false
+		}
 	}
 
 	// PR cannot have the label which prevents merging.
@@ -1110,8 +1102,8 @@ func (s queueSorter) Less(i, j int) bool {
 		return false
 	}
 
-	aDue := a.ReleaseMilestoneDue()
-	bDue := b.ReleaseMilestoneDue()
+	aDue, _ := a.ReleaseMilestoneDue()
+	bDue, _ := b.ReleaseMilestoneDue()
 
 	if aDue.Before(bDue) {
 		return true
@@ -1191,14 +1183,14 @@ func (sq *SubmitQueue) handleGithubE2EAndMerge() {
 	}
 }
 
-func (sq *SubmitQueue) mergePullRequest(obj *github.MungeObject, msg, extra string) error {
-	err := obj.MergePR("submit-queue" + extra)
-	if err != nil {
-		return err
+func (sq *SubmitQueue) mergePullRequest(obj *github.MungeObject, msg, extra string) bool {
+	ok := obj.MergePR("submit-queue" + extra)
+	if !ok {
+		return ok
 	}
 	sq.SetMergeStatus(obj, msg)
 	sq.updateMergeRate()
-	return nil
+	return true
 }
 
 func (sq *SubmitQueue) selectPullRequest() *github.MungeObject {
@@ -1248,9 +1240,9 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 	interruptedObj := sq.interruptedObj
 	sq.interruptedObj = nil
 
-	err := obj.Refresh()
-	if err != nil {
-		glog.Errorf("%d: unknown err: %v", *obj.Issue.Number, err)
+	ok := obj.Refresh()
+	if !ok {
+		glog.Errorf("%d: unknown err", *obj.Issue.Number)
 		sq.SetMergeStatus(obj, unknown)
 		return true
 	}
@@ -1284,9 +1276,8 @@ func (sq *SubmitQueue) doGithubE2EAndMerge(obj *github.MungeObject) bool {
 			return true
 		}
 
-		err := obj.Refresh()
-		if err != nil {
-			glog.Errorf("%d: unknown err: %v", *obj.Issue.Number, err)
+		ok := obj.Refresh()
+		if !ok {
 			sq.SetMergeStatus(obj, unknown)
 			return true
 		}
@@ -1338,22 +1329,22 @@ func (sq *SubmitQueue) retestPR(obj *github.MungeObject) bool {
 	// Wait for the retest to start
 	sq.SetMergeStatus(obj, ghE2EWaitingStart)
 	atomic.AddInt32(&sq.prsTested, 1)
-	err := obj.WaitForPending(sq.RequiredRetestContexts)
-	if err != nil {
-		sq.SetMergeStatus(obj, fmt.Sprintf("Failed waiting for PR to start testing: %v", err))
+	done := obj.WaitForPending(sq.RequiredRetestContexts)
+	if !done {
+		sq.SetMergeStatus(obj, fmt.Sprintf("Timed out waiting for PR %d to start testing", obj.Number()))
 		return true
 	}
 
 	// Wait for the status to go back to something other than pending
 	sq.SetMergeStatus(obj, ghE2ERunning)
-	err = obj.WaitForNotPending(sq.RequiredRetestContexts)
-	if err != nil {
-		sq.SetMergeStatus(obj, fmt.Sprintf("Failed waiting for PR to finish testing: %v", err))
+	done = obj.WaitForNotPending(sq.RequiredRetestContexts)
+	if !done {
+		sq.SetMergeStatus(obj, fmt.Sprintf("Timed out waiting for PR %d to finish testing", obj.Number()))
 		return true
 	}
 
 	// Check if the thing we care about is success
-	if ok := obj.IsStatusSuccess(sq.RequiredRetestContexts); !ok {
+	if success, ok := obj.IsStatusSuccess(sq.RequiredRetestContexts); !success || !ok {
 		sq.SetMergeStatus(obj, ghE2EFailed)
 		return true
 	}
@@ -1452,6 +1443,10 @@ func (sq *SubmitQueue) serveMergeInfo(res http.ResponseWriter, req *http.Request
 	out.WriteString(fmt.Sprintf("<li>The PR cannot have any of the following milestones: %q</li>", sq.DoNotMergeMilestones))
 	out.WriteString(fmt.Sprintf(`<li>The PR must have the %q label</li>`, lgtmLabel))
 	out.WriteString(fmt.Sprintf("<li>The PR must not have been updated since the %q label was applied</li>", lgtmLabel))
+	if sq.GateApproved {
+		out.WriteString(fmt.Sprintf(`<li>The PR must have the %q label</li>`, approvedLabel))
+		out.WriteString(fmt.Sprintf("<li>The PR must not have been updated since the %q label was applied</li>", approvedLabel))
+	}
 	out.WriteString(fmt.Sprintf("<li>The PR must not have the %q label</li>", doNotMergeLabel))
 	out.WriteString(`</ol><br>`)
 	out.WriteString("The PR can then be queued to re-test before merge. Once it reaches the top of the queue all of the above conditions must be true but so must the following:")
