@@ -36,7 +36,7 @@ func (nginx *Manager) AddOrUpdateCertAndKey(name string, cert string, key string
 	temporaryPemFileName := fmt.Sprintf("%v.pem", name)
 	pemFileName := fmt.Sprintf("%v/%v.pem", config.SSLDirectory, name)
 
-	temporaryPemFile, err := ioutil.TempFile("", temporaryPemFileName)
+	temporaryPemFile, err := ioutil.TempFile(config.SSLDirectory, temporaryPemFileName)
 	if err != nil {
 		return ingress.SSLCert{}, fmt.Errorf("Couldn't create temp pem file %v: %v", temporaryPemFile.Name(), err)
 	}
