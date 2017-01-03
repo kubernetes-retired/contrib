@@ -11,7 +11,11 @@ KUBELET_ADDRESS="--address=0.0.0.0"
 KUBELET_HOSTNAME="--hostname-override={{ inventory_hostname }}"
 
 # location of the api-server
+{% if cluster_hostname | default("") != "" %}
+KUBELET_API_SERVER="--api-servers=https://{{ cluster_hostname }}:{{ cluster_port}}"
+{% else %}
 KUBELET_API_SERVER="--api-servers=https://{{ groups['masters'][0] }}:{{ kube_master_api_port }}"
+{% endif %}
 
 {% if kubelet_options is undefined -%}
 {% set kubelet_options = [] -%}
