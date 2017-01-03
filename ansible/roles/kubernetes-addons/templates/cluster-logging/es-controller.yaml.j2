@@ -41,3 +41,6 @@ spec:
       volumes:
       - name: es-persistent-storage
         emptyDir: {}
+      securityContext:
+        seLinuxOptions:
+          type: spc_t
