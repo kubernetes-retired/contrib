@@ -42,3 +42,6 @@ spec:
       - name: varlibdockercontainers
         hostPath:
           path: /var/lib/docker/containers
+      securityContext:
+        seLinuxOptions:
+          type: spc_t
