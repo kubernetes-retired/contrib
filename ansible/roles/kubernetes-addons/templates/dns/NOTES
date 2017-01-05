@@ -1,0 +1,2 @@
+Use the *.base files for the rc and svc and not more!!
+Replace the __*__ vars with the ansible variables.
