@@ -1,3 +1,4 @@
+# This file should be kept in sync with cluster/gce/coreos/kube-manifests/addons/cluster-monitoring/influxdb/heapster-service.yaml
 kind: Service
 apiVersion: v1
 metadata:
@@ -6,9 +7,9 @@ metadata:
   labels:
     kubernetes.io/cluster-service: "true"
     kubernetes.io/name: "Heapster"
-spec: 
-  ports: 
+spec:
+  ports:
     - port: 80
       targetPort: 8082
-  selector: 
+  selector:
     k8s-app: heapster
