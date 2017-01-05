@@ -2,7 +2,7 @@
 - name: MONITORING | Assures {{ kube_config_dir }}/addons/cluster-monitoring dir exists
   file: path={{ kube_addons_dir }}/cluster-monitoring state=directory
 
-- name: MONITORING | Install template from converted saltfile
+- name: MONITORING | Install heapster template
   template:
   args:
     src: "cluster-monitoring/{{ item }}.j2"

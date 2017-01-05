@@ -30,6 +30,9 @@
 - include: kube-dash.yml
   when: kube_dash
 
+- include: node-problem-detector.yml
+  when: node_problem_detector
+
 - name: Get kube-addons script from Kubernetes
   copy:
     src=common/kube-addons.sh
