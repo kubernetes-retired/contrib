@@ -15,10 +15,6 @@
   include: kubelet-configure.yml
   tags: configure
 
-- name: Install fluentd logging layer
-  include: fluentd-install.yml
-  tags: install
-
 - name: Start kubelet
   include: kubelet-start.yml
 

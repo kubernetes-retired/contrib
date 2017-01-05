@@ -37,6 +37,7 @@
     CERT_GROUP: "{{ kube_cert_group }}"
     HTTP_PROXY: "{{ http_proxy|default('') }}"
     HTTPS_PROXY: "{{ https_proxy|default('') }}"
+    CLUSTER_HOSTNAME: "{{ master_cluster_hostname |default('') }}"
 
 - name: Verify certificate permissions
   file:

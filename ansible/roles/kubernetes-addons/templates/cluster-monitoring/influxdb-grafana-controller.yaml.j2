@@ -71,4 +71,6 @@ spec:
         emptyDir: {}
       - name: grafana-persistent-storage
         emptyDir: {}
-
+      securityContext:
+        seLinuxOptions:
+          type: spc_t
