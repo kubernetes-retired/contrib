@@ -110,6 +110,7 @@ rate-limit-burst
 relnote-filter
 repo-dir
 required-contexts
+required-label-prefixes
 required-retest-contexts
 retest-body
 right-build-number
