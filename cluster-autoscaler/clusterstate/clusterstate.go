@@ -70,17 +70,30 @@ type ClusterStateRegistryConfig struct {
 	OkTotalUnreadyCount int
 }
 
+// IncorrectNodeGroupSize contains information about how much the current size of the node group
+// differs from the expected size. Prolonged, stable mismatch is an indication of quota
+// or startup issues.
+type IncorrectNodeGroupSize struct {
+	// ExpectedSize is the size of the node group measured on the cloud provider side.
+	ExpectedSize int
+	// CurrentSize is the size of the node group measured on the kubernetes side.
+	CurrentSize int
+	// FirstObserved is the time whtn the given difference occurred.
+	FirstObserved time.Time
+}
+
 // ClusterStateRegistry is a structure to keep track the current state of the cluster.
 type ClusterStateRegistry struct {
 	sync.Mutex
-	config                ClusterStateRegistryConfig
-	scaleUpRequests       []*ScaleUpRequest
-	scaleDownRequests     []*ScaleDownRequest
-	nodes                 []*apiv1.Node
-	cloudProvider         cloudprovider.CloudProvider
-	perNodeGroupReadiness map[string]Readiness
-	totalReadiness        Readiness
-	acceptableRanges      map[string]AcceptableRange
+	config                  ClusterStateRegistryConfig
+	scaleUpRequests         []*ScaleUpRequest
+	scaleDownRequests       []*ScaleDownRequest
+	nodes                   []*apiv1.Node
+	cloudProvider           cloudprovider.CloudProvider
+	perNodeGroupReadiness   map[string]Readiness
+	totalReadiness          Readiness
+	acceptableRanges        map[string]AcceptableRange
+	incorrectNodeGroupSizes map[string]IncorrectNodeGroupSize
 }
 
 // NewClusterStateRegistry creates new ClusterStateRegistry.
@@ -143,6 +156,7 @@ func (csr *ClusterStateRegistry) UpdateNodes(nodes []*apiv1.Node, currentTime ti
 	csr.nodes = nodes
 	csr.perNodeGroupReadiness, csr.totalReadiness = csr.calculateReadinessStats(currentTime)
 	csr.acceptableRanges = csr.calculateAcceptableRanges(targetSizes)
+	csr.incorrectNodeGroupSizes = csr.calculateIncorrectNodeGroupSizes(currentTime)
 	return nil
 }
 
@@ -262,6 +276,8 @@ type Readiness struct {
 	LongNotStarted int
 	// Number of nodes that are not yet fully started.
 	NotStarted int
+	// Number of all registered nodes in the group (ready/unready/deleted/etc).
+	Registered int
 }
 
 func (csr *ClusterStateRegistry) calculateReadinessStats(currentTime time.Time) (perNodeGroup map[string]Readiness, total Readiness) {
@@ -269,6 +285,7 @@ func (csr *ClusterStateRegistry) calculateReadinessStats(currentTime time.Time) 
 	perNodeGroup = make(map[string]Readiness)
 
 	update := func(current Readiness, node *apiv1.Node, ready bool) Readiness {
+		current.Registered++
 		if deletetaint.HasToBeDeletedTaint(node) {
 			current.Deleted++
 		} else if isNodeNotStarted(node) && node.CreationTimestamp.Time.Add(MaxNodeStartupTime).Before(currentTime) {
@@ -301,6 +318,40 @@ func (csr *ClusterStateRegistry) calculateReadinessStats(currentTime time.Time) 
 		total = update(total, node, ready)
 	}
 	return perNodeGroup, total
+}
+
+// Calculates which node groups have incorrect size.
+func (csr *ClusterStateRegistry) calculateIncorrectNodeGroupSizes(currentTime time.Time) map[string]IncorrectNodeGroupSize {
+	result := make(map[string]IncorrectNodeGroupSize)
+	for _, nodeGroup := range csr.cloudProvider.NodeGroups() {
+		readiness, found := csr.perNodeGroupReadiness[nodeGroup.Id()]
+		if !found {
+			glog.Warningf("Readiness for node group %s not found", nodeGroup.Id())
+			continue
+		}
+		acceptableRange, found := csr.acceptableRanges[nodeGroup.Id()]
+		if !found {
+			glog.Warningf("Acceptable range for node group %s not found", nodeGroup.Id())
+			continue
+		}
+		if readiness.Registered > acceptableRange.MaxNodes ||
+			readiness.Registered < acceptableRange.MinNodes {
+			incorrect := IncorrectNodeGroupSize{
+				CurrentSize:   readiness.Registered,
+				ExpectedSize:  acceptableRange.CurrentTarget,
+				FirstObserved: currentTime,
+			}
+			existing, found := csr.incorrectNodeGroupSizes[nodeGroup.Id()]
+			if found {
+				if incorrect.CurrentSize == existing.CurrentSize &&
+					incorrect.ExpectedSize == existing.ExpectedSize {
+					incorrect = existing
+				}
+			}
+			result[nodeGroup.Id()] = incorrect
+		}
+	}
+	return result
 }
 
 // GetReadinessState gets readiness state for the node
