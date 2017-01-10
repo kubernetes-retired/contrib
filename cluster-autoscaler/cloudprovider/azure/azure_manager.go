@@ -338,6 +338,23 @@ func (m *AzureManager) regenerateCache() error {
 	return nil
 }
 
+func (m *AzureManager) GetScaleSetVms(scaleSet *ScaleSet) ([]string, error) {
+	instances, err := m.scaleSetVmClient.List(m.resourceGroupName, scaleSet.Name, "", "", "")
+
+	if err != nil {
+		glog.V(4).Infof("Failed AS info request for %s: %v", scaleSet.Name, err)
+		return []string{}, err
+	}
+	result := make([]string, 0)
+	for _, instance := range *instances.Value {
+		var name = "azure:////" + fixEndiannessUUID(string(strings.ToUpper(*instance.Properties.VMID)))
+
+		result = append(result, name)
+	}
+	return result, nil
+
+}
+
 // fixEndiannessUUID fixes UUID representation broken because of the bug in linux kernel.
 // According to RFC 4122 (http://tools.ietf.org/html/rfc4122), Section 4.1.2 first three fields have Big Endian encoding.
 // There is a bug in DMI code in Linux kernel (https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1551419) which

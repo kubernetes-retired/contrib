@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
 
 // AwsCloudProvider implements CloudProvider interface.
@@ -55,7 +55,7 @@ func (azure *AzureCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
 }
 
 // NodeGroupForNode returns the node group for the given node.
-func (azure *AzureCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudprovider.NodeGroup, error) {
+func (azure *AzureCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	fmt.Printf("Searching for node group for the node: %s, %s\n", node.Spec.ExternalID, node.Spec.ProviderID)
 	ref := &AzureRef{
 		Name: node.Spec.ProviderID,
@@ -129,7 +129,7 @@ func (scaleSet *ScaleSet) IncreaseSize(delta int) error {
 }
 
 // Belongs returns true if the given node belongs to the NodeGroup.
-func (scaleSet *ScaleSet) Belongs(node *kube_api.Node) (bool, error) {
+func (scaleSet *ScaleSet) Belongs(node *apiv1.Node) (bool, error) {
 	fmt.Printf("Check if node belongs to this scale set: scaleset:%v, node:%v\n", scaleSet, node)
 
 	ref := &AzureRef{
@@ -150,7 +150,7 @@ func (scaleSet *ScaleSet) Belongs(node *kube_api.Node) (bool, error) {
 }
 
 // DeleteNodes deletes the nodes from the group.
-func (scaleSet *ScaleSet) DeleteNodes(nodes []*kube_api.Node) error {
+func (scaleSet *ScaleSet) DeleteNodes(nodes []*apiv1.Node) error {
 	fmt.Printf("Delete nodes requested: %v\n", nodes)
 	size, err := scaleSet.azureManager.GetScaleSetSize(scaleSet)
 	if err != nil {
@@ -221,4 +221,9 @@ func buildScaleSet(spec string, azureManager *AzureManager) (*ScaleSet, error) {
 
 	scaleSet.Name = tokens[2]
 	return &scaleSet, nil
+}
+
+// Nodes returns a list of all nodes that belong to this node group.
+func (scaleSet *ScaleSet) Nodes() ([]string, error) {
+	return scaleSet.azureManager.GetScaleSetVms(scaleSet)
 }
