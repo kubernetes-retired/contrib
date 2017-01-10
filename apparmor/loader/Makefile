@@ -25,7 +25,7 @@ endif
 ifeq ("", "$(wildcard libapparmor.so.1)")
 	$(error Missing required libapparmor.so.1 library)
 endif
-	docker build -t google/apparmor-loader:$(VERSION) -f Dockerfile .
+	docker build --pull -t google/apparmor-loader:$(VERSION) -f Dockerfile .
 
 .PHONY: clean
 clean:

@@ -11,7 +11,7 @@ service_loadbalancer: $(SRC)
 	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o $@ $(SRC)
 
 container: service_loadbalancer
-	docker build -t $(PREFIX):$(TAG) .
+	docker build --pull -t $(PREFIX):$(TAG) .
 
 push: container
 	$(GCLOUD) docker push $(PREFIX):$(TAG)
