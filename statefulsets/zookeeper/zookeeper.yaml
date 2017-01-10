@@ -59,7 +59,7 @@ spec:
                     "matchExpressions": [{
                       "key": "app",
                       "operator": "In",
-                      "values": ["zk-headless"]
+                      "values": ["zk"]
                     }]
                   },
                   "topologyKey": "kubernetes.io/hostname"
