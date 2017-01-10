@@ -87,18 +87,18 @@ spec:
   - host: foo.bar.com
     http:
       paths:
-      - path: /foo
+      - path: /foo/
         backend:
           serviceName: echoheaders-x
           servicePort: 80
   - host: bar.baz.com
     http:
       paths:
-      - path: /bar
+      - path: /bar/
         backend:
           serviceName: echoheaders-y
           servicePort: 80
-      - path: /foo
+      - path: /foo/
         backend:
           serviceName: echoheaders-x
           servicePort: 80
