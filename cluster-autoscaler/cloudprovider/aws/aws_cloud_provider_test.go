@@ -147,7 +147,7 @@ func TestNodeGroupForNode(t *testing.T) {
 		},
 	}
 	provider := testProvider(t, testAwsManager)
-	err := provider.addNodeGroup("1:5:test-asg")
+	err := provider.addNodeGroup("1:5:test-asg:0")
 	assert.NoError(t, err)
 	group, err := provider.NodeGroupForNode(node)
 

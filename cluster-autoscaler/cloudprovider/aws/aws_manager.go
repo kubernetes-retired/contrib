@@ -314,19 +314,19 @@ func (m *AwsManager) getAutoscalingGroup(name string) (*autoscaling.Group, error
 	return groups.AutoScalingGroups[0], nil
 }
 
-func (m *AwsManager) getLaunchConfiguration(name string) (*autoscaling.LaunchConfiguration, error) {
+func (m *AwsManager) getLaunchConfiguration(name *string) (*autoscaling.LaunchConfiguration, error) {
 	params := &autoscaling.DescribeLaunchConfigurationsInput{
 		LaunchConfigurationNames: []*string{name},
 	}
 	lcs, err := m.service.DescribeLaunchConfigurations(params)
 	if err != nil {
 		glog.V(4).Infof("Failed LC info request for %s: %v", name, err)
-		return err
+		return nil, err
 	}
 	if len(lcs.LaunchConfigurations) < 1 {
-		return fmt.Errorf("Unable to get first lc.LaunchConfiguration for %s", name)
+		return nil, fmt.Errorf("Unable to get first lc.LaunchConfiguration for %s", name)
 	}
-	return *lcs.LaunchConfigurations[0], nil
+	return lcs.LaunchConfigurations[0], nil
 }
 
 // GetAsgNodes returns Asg nodes.

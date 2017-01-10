@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/contrib/cluster-autoscaler/expander"
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
 
 type FakeNodeGroup struct {
@@ -44,11 +44,12 @@ func (f *FakeNodeGroup) NodeCost() (float64, error) {
 		return 0, nil
 	}
 }
-func (f *FakeNodeGroup) TargetSize() (int, error)           { return 2, nil }
-func (f *FakeNodeGroup) IncreaseSize(delta int) error       { return nil }
-func (f *FakeNodeGroup) DeleteNodes([]*kube_api.Node) error { return nil }
-func (f *FakeNodeGroup) Id() string                         { return f.id }
-func (f *FakeNodeGroup) Debug() string                      { return f.id }
+func (f *FakeNodeGroup) TargetSize() (int, error)        { return 2, nil }
+func (f *FakeNodeGroup) IncreaseSize(delta int) error    { return nil }
+func (f *FakeNodeGroup) DeleteNodes([]*apiv1.Node) error { return nil }
+func (f *FakeNodeGroup) Id() string                      { return f.id }
+func (f *FakeNodeGroup) Debug() string                   { return f.id }
+func (f *FakeNodeGroup) Nodes() ([]string, error)        { return []string{}, nil }
 
 func TestLeastCost(t *testing.T) {
 	od1 := expander.Option{NodeGroup: &FakeNodeGroup{"OnDemand"}}
