@@ -275,10 +275,18 @@ func (m *AwsManager) regenerateCache() error {
 		if err != nil {
 			return err
 		}
-		if len(groups.AutoScalingGroups) < 1 {
-			return fmt.Errorf("Unable to get first autoscaling.Group for %s", asg.config.Name)
+
+		lc, err := m.getLaunchConfiguration(group.LaunchConfigurationName)
+		if err != nil {
+			return err
 		}
-		group := *groups.AutoScalingGroups[0]
+
+		asg.config.launchConfig = &Lc{
+			AwsRef{Name: *lc.LaunchConfigurationName},
+			group.AvailabilityZones,
+			lc.InstanceType,
+			lc.SpotPrice,
+		}
 
 		for _, instance := range group.Instances {
 			ref := AwsRef{Name: *instance.InstanceId}
@@ -304,6 +312,21 @@ func (m *AwsManager) getAutoscalingGroup(name string) (*autoscaling.Group, error
 		return nil, fmt.Errorf("Unable to get first autoscaling.Group for %s", name)
 	}
 	return groups.AutoScalingGroups[0], nil
+}
+
+func (m *AwsManager) getLaunchConfiguration(name string) (*autoscaling.LaunchConfiguration, error) {
+	params := &autoscaling.DescribeLaunchConfigurationsInput{
+		LaunchConfigurationNames: []*string{name},
+	}
+	lcs, err := m.service.DescribeLaunchConfigurations(params)
+	if err != nil {
+		glog.V(4).Infof("Failed LC info request for %s: %v", name, err)
+		return err
+	}
+	if len(lcs.LaunchConfigurations) < 1 {
+		return fmt.Errorf("Unable to get first lc.LaunchConfiguration for %s", name)
+	}
+	return *lcs.LaunchConfigurations[0], nil
 }
 
 // GetAsgNodes returns Asg nodes.
