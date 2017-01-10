@@ -20,9 +20,6 @@ RUN echo "Yes, do as I say!" | apt-get purge \
     libudev1 \
     tzdata
 
-# replace shell bash with sh
-RUN sed -i 's/bash/sh/g' /etc/passwd
-
 # cleanup
 RUN apt-get autoremove -y && \
     apt-get clean -y && \
