@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1  "k8s.io/kubernetes/pkg/api/v1"
 	"net/http"
 )
 
@@ -116,8 +116,8 @@ func TestNodeGroups(t *testing.T) {
 }
 
 func TestNodeGroupForNode(t *testing.T) {
-	node := &kube_api.Node{
-		Spec: kube_api.NodeSpec{
+	node := &apiv1.Node{
+		Spec: apiv1.NodeSpec{
 			ProviderID: "azure:////123E4567-E89B-12D3-A456-426655440000",
 		},
 	}
@@ -147,8 +147,8 @@ func TestNodeGroupForNode(t *testing.T) {
 	assert.Equal(t, group.MaxSize(), 5)
 
 	// test node in cluster that is not in a group managed by cluster autoscaler
-	nodeNotInGroup := &kube_api.Node{
-		Spec: kube_api.NodeSpec{
+	nodeNotInGroup := &apiv1.Node{
+		Spec: apiv1.NodeSpec{
 			ProviderID: "azure:///subscriptions/subscripion/resourceGroups/test-resource-group/providers/Microsoft.Compute/virtualMachines/test-instance-id-not-in-group",
 		},
 	}
@@ -233,8 +233,8 @@ func TestBelongs(t *testing.T) {
 	err := provider.addNodeGroup("1:5:test-asg")
 	assert.NoError(t, err)
 
-	invalidNode := &kube_api.Node{
-		Spec: kube_api.NodeSpec{
+	invalidNode := &apiv1.Node{
+		Spec: apiv1.NodeSpec{
 			ProviderID: "azure:///subscriptions/subscriptionId/resourceGroups/kubernetes/providers/Microsoft.Compute/virtualMachines/invalid-instance-id",
 		},
 	}
@@ -242,8 +242,8 @@ func TestBelongs(t *testing.T) {
 	_, err = provider.scaleSets[0].Belongs(invalidNode)
 	assert.Error(t, err)
 
-	validNode := &kube_api.Node{
-		Spec: kube_api.NodeSpec{
+	validNode := &apiv1.Node{
+		Spec: apiv1.NodeSpec{
 			ProviderID: "azure:////123E4567-E89B-12D3-A456-426655440000",
 		},
 	}
@@ -283,12 +283,12 @@ func TestDeleteNodes(t *testing.T) {
 	err := provider.addNodeGroup("1:5:test-asg")
 	assert.NoError(t, err)
 
-	node := &kube_api.Node{
-		Spec: kube_api.NodeSpec{
+	node := &apiv1.Node{
+		Spec: apiv1.NodeSpec{
 			ProviderID: "azure:////123E4567-E89B-12D3-A456-426655440000",
 		},
 	}
-	err = provider.scaleSets[0].DeleteNodes([]*kube_api.Node{node})
+	err = provider.scaleSets[0].DeleteNodes([]*apiv1.Node{node})
 	assert.NoError(t, err)
 	scaleSetClient.AssertNumberOfCalls(t, "DeleteInstances", 1)
 }
