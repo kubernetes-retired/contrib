@@ -6,19 +6,22 @@ The idea is to use the headers `X-Code` and `X-Format` that NGINX pass to the ba
 
 First create the custom backend to use in the Ingress controller
 
-```$ kubectl create -f custom-default-backend.yaml
+```
+$ kubectl create -f custom-default-backend.yaml
 service "nginx-errors" created
 replicationcontroller "nginx-errors" created
 ```
 
-```$ kubectl get svc
+```
+$ kubectl get svc
 NAME                    CLUSTER-IP   EXTERNAL-IP   PORT(S)         AGE
 echoheaders             10.3.0.7     nodes         80/TCP          23d
 kubernetes              10.3.0.1     <none>        443/TCP         34d
 nginx-errors            10.3.0.102   <none>        80/TCP          11s
 ```
 
-```$ kubectl get rc
+```
+$ kubectl get rc
 CONTROLLER             REPLICAS   AGE
 echoheaders            1          19d
 nginx-errors           1          19s
