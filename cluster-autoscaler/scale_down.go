@@ -17,14 +17,16 @@ limitations under the License.
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
+	"k8s.io/contrib/cluster-autoscaler/clusterstate"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
+	"k8s.io/contrib/cluster-autoscaler/utils/deletetaint"
+
 	"k8s.io/kubernetes/pkg/api/errors"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
@@ -49,8 +51,10 @@ const (
 )
 
 const (
-	// ToBeDeletedTaint is a taint used to make the node unschedulable.
-	ToBeDeletedTaint = "ToBeDeletedByClusterAutoscaler"
+	// MaxKubernetesEmptyNodeDeletionTime is the maximum time needed by Kubernetes to delete an empty node.
+	MaxKubernetesEmptyNodeDeletionTime = 3 * time.Minute
+	// MaxCloudProviderNodeDeletionTime is the maximum time needed by cloud provider to delete a node.
+	MaxCloudProviderNodeDeletionTime = 5 * time.Minute
 )
 
 // ScaleDown is responsible for maintaining the state needed to perform unneded node removals.
@@ -149,8 +153,15 @@ func (sd *ScaleDown) TryToScaleDown(nodes []*apiv1.Node, pods []*apiv1.Pod) (Sca
 
 			glog.V(2).Infof("%s was unneeded for %s", node.Name, now.Sub(val).String())
 
+			ready, _, _ := clusterstate.GetReadinessState(node)
+
 			// Check how long the node was underutilized.
-			if !val.Add(sd.context.ScaleDownUnneededTime).Before(now) {
+			if ready && !val.Add(sd.context.ScaleDownUnneededTime).Before(now) {
+				continue
+			}
+
+			// Unready nodes may be deleted after a different time than unrerutilized.
+			if !ready && !val.Add(sd.context.ScaleDownUnreadyTime).Before(now) {
 				continue
 			}
 
@@ -193,14 +204,28 @@ func (sd *ScaleDown) TryToScaleDown(nodes []*apiv1.Node, pods []*apiv1.Pod) (Sca
 			glog.V(0).Infof("Scale-down: removing empty node %s", node.Name)
 			simulator.RemoveNodeFromTracker(sd.usageTracker, node.Name, sd.unneededNodes)
 			go func(nodeToDelete *apiv1.Node) {
-				confirmation <- deleteNodeFromCloudProvider(nodeToDelete, sd.context.CloudProvider, sd.context.Recorder)
+				confirmation <- deleteNodeFromCloudProvider(nodeToDelete, sd.context.CloudProvider,
+					sd.context.Recorder, sd.context.ClusterStateRegistry)
 			}(node)
 		}
 		var finalError error
+
+		startTime := time.Now()
 		for range emptyNodes {
-			if err := <-confirmation; err != nil {
-				glog.Errorf("Problem with empty node deletion: %v", err)
-				finalError = err
+			timeElapsed := time.Now().Sub(startTime)
+			timeLeft := MaxCloudProviderNodeDeletionTime - timeElapsed
+			if timeLeft < 0 {
+				finalError = fmt.Errorf("Failed to delete nodes in time")
+				break
+			}
+			select {
+			case err := <-confirmation:
+				if err != nil {
+					glog.Errorf("Problem with empty node deletion: %v", err)
+					finalError = err
+				}
+			case <-time.After(timeLeft):
+				finalError = fmt.Errorf("Failed to delete nodes in time")
 			}
 		}
 		if finalError == nil {
@@ -286,16 +311,18 @@ func deleteNode(context *AutoscalingContext, node *apiv1.Node, pods []*apiv1.Pod
 	if err := drainNode(node, pods, context.ClientSet, context.Recorder, context.MaxGratefulTerminationSec); err != nil {
 		return err
 	}
-	return deleteNodeFromCloudProvider(node, context.CloudProvider, context.Recorder)
+	return deleteNodeFromCloudProvider(node, context.CloudProvider, context.Recorder, context.ClusterStateRegistry)
 }
 
 // Performs drain logic on the node. Marks the node as unschedulable and later removes all pods, giving
 // them up to MaxGracefulTerminationTime to finish.
 func drainNode(node *apiv1.Node, pods []*apiv1.Pod, client kube_client.Interface, recorder kube_record.EventRecorder,
 	maxGratefulTerminationSec int) error {
-	if err := markToBeDeleted(node, client, recorder); err != nil {
+	if err := deletetaint.MarkToBeDeleted(node, client); err != nil {
+		recorder.Eventf(node, apiv1.EventTypeWarning, "ScaleDown", "failed to mark the node as toBeDeleted/unschedulable: %v", err)
 		return err
 	}
+	recorder.Eventf(node, apiv1.EventTypeNormal, "ScaleDown", "marked the node as toBeDeleted/unschedulable")
 
 	maxGraceful64 := int64(maxGratefulTerminationSec)
 	for _, pod := range pods {
@@ -335,101 +362,25 @@ func drainNode(node *apiv1.Node, pods []*apiv1.Pod, client kube_client.Interface
 	return nil
 }
 
-// Sets unschedulable=true and adds an annotation.
-func markToBeDeleted(node *apiv1.Node, client kube_client.Interface, recorder kube_record.EventRecorder) error {
-	// Get the newest version of the node.
-	freshNode, err := client.Core().Nodes().Get(node.Name)
-	if err != nil || freshNode == nil {
-		return fmt.Errorf("failed to get node %v: %v", node.Name, err)
-	}
-
-	added, err := addToBeDeletedTaint(freshNode)
-	if added == false {
-		return err
-	}
-	_, err = client.Core().Nodes().Update(freshNode)
-	if err != nil {
-		glog.Warningf("Error while adding taints on node %v: %v", node.Name, err)
-		return err
-	}
-	glog.V(1).Infof("Successfully added toBeDeletedTaint on node %v", node.Name)
-	recorder.Eventf(node, apiv1.EventTypeNormal, "ScaleDown", "marking the node as unschedulable")
-	return nil
-}
-
-func addToBeDeletedTaint(node *apiv1.Node) (bool, error) {
-	taints, err := apiv1.GetTaintsFromNodeAnnotations(node.Annotations)
-	if err != nil {
-		glog.Warningf("Error while getting Taints for node %v: %v", node.Name, err)
-		return false, err
-	}
-	for _, taint := range taints {
-		if taint.Key == ToBeDeletedTaint {
-			glog.Infof("ToBeDeletedTaint already present on on node %v", taint, node.Name)
-			return false, nil
-		}
-	}
-	taints = append(taints, apiv1.Taint{
-		Key:    ToBeDeletedTaint,
-		Value:  time.Now().String(),
-		Effect: apiv1.TaintEffectNoSchedule,
-	})
-	taintsJson, err := json.Marshal(taints)
-	if err != nil {
-		glog.Warningf("Error while adding taints on node %v: %v", node.Name, err)
-		return false, err
-	}
-	if node.Annotations == nil {
-		node.Annotations = make(map[string]string)
-	}
-	node.Annotations[apiv1.TaintsAnnotationKey] = string(taintsJson)
-	return true, nil
-}
-
-// cleanToBeDeleted clean ToBeDeleted taints.
-func cleanToBeDeleted(nodes []*apiv1.Node, client kube_client.Interface, recorder kube_record.EventRecorder) error {
+// cleanToBeDeleted cleans ToBeDeleted taints.
+func cleanToBeDeleted(nodes []*apiv1.Node, client kube_client.Interface, recorder kube_record.EventRecorder) {
 	for _, node := range nodes {
-
-		taints, err := apiv1.GetTaintsFromNodeAnnotations(node.Annotations)
+		cleaned, err := deletetaint.CleanToBeDeleted(node, client)
 		if err != nil {
-			glog.Warningf("Error while getting Taints for node %v: %v", node.Name, err)
-			continue
-		}
-
-		newTaints := make([]apiv1.Taint, 0)
-		for _, taint := range taints {
-			if taint.Key == ToBeDeletedTaint {
-				glog.Infof("Releasing taint %+v on node %v", taint, node.Name)
-			} else {
-				newTaints = append(newTaints, taint)
-			}
-		}
-
-		if len(newTaints) != len(taints) {
-			taintsJson, err := json.Marshal(newTaints)
-			if err != nil {
-				glog.Warningf("Error while releasing taints on node %v: %v", node.Name, err)
-				continue
-			}
-			if node.Annotations == nil {
-				node.Annotations = make(map[string]string)
-			}
-			node.Annotations[apiv1.TaintsAnnotationKey] = string(taintsJson)
-			_, err = client.Core().Nodes().Update(node)
-			if err != nil {
-				glog.Warningf("Error while releasing taints on node %v: %v", node.Name, err)
-			} else {
-				glog.V(1).Infof("Successfully released toBeDeletedTaint on node %v", node.Name)
-				recorder.Eventf(node, apiv1.EventTypeNormal, "ClusterAutoscalerCleanup", "marking the node as schedulable")
-			}
+			glog.Warningf("Error while releasing taints on node %v: %v", node.Name, err)
+			recorder.Eventf(node, apiv1.EventTypeWarning, "ClusterAutoscalerCleanup",
+				"failed to clean toBeDeletedTaint: %v", err)
+		} else if cleaned {
+			glog.V(1).Infof("Successfully released toBeDeletedTaint on node %v", node.Name)
+			recorder.Eventf(node, apiv1.EventTypeNormal, "ClusterAutoscalerCleanup", "marking the node as schedulable")
 		}
 	}
-	return nil
 }
 
 // Removes the given node from cloud provider. No extra pre-deletion actions are executed on
 // the Kubernetes side.
-func deleteNodeFromCloudProvider(node *apiv1.Node, cloudProvider cloudprovider.CloudProvider, recorder kube_record.EventRecorder) error {
+func deleteNodeFromCloudProvider(node *apiv1.Node, cloudProvider cloudprovider.CloudProvider,
+	recorder kube_record.EventRecorder, registry *clusterstate.ClusterStateRegistry) error {
 	nodeGroup, err := cloudProvider.NodeGroupForNode(node)
 	if err != nil {
 		return fmt.Errorf("failed to node group for %s: %v", node.Name, err)
@@ -441,5 +392,11 @@ func deleteNodeFromCloudProvider(node *apiv1.Node, cloudProvider cloudprovider.C
 		return fmt.Errorf("failed to delete %s: %v", node.Name, err)
 	}
 	recorder.Eventf(node, apiv1.EventTypeNormal, "ScaleDown", "node removed by cluster autoscaler")
+	registry.RegisterScaleDown(&clusterstate.ScaleDownRequest{
+		NodeGroupName:      nodeGroup.Id(),
+		NodeName:           node.Name,
+		Time:               time.Now(),
+		ExpectedDeleteTime: time.Now().Add(MaxCloudProviderNodeDeletionTime),
+	})
 	return nil
 }

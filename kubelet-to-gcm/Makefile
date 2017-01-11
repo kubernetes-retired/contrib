@@ -45,7 +45,7 @@ clean:
 	rm -rf build
 
 build: go
-	docker build -t ${PREFIX}/kubelet-to-gcm:$(TAG) .
+	docker build --pull -t ${PREFIX}/kubelet-to-gcm:$(TAG) .
 
 docker: build
 

@@ -48,7 +48,12 @@ func (unschedulablePodLister *UnschedulablePodLister) List() ([]*apiv1.Pod, erro
 }
 
 // NewUnschedulablePodLister returns a lister providing pods that failed to be scheduled.
-func NewUnschedulablePodLister(kubeClient client.Interface, namespace string) *UnschedulablePodLister {
+func NewUnschedulablePodLister(kubeClient client.Interface, stopchannel <-chan struct{}) *UnschedulablePodLister {
+	return NewUnschedulablePodInNamespaceLister(kubeClient, apiv1.NamespaceAll, stopchannel)
+}
+
+// NewUnschedulablePodInNamespaceLister returns a lister providing pods that failed to be scheduled in the given namespace.
+func NewUnschedulablePodInNamespaceLister(kubeClient client.Interface, namespace string, stopchannel <-chan struct{}) *UnschedulablePodLister {
 	// watch unscheduled pods
 	selector := fields.ParseSelectorOrDie("spec.nodeName==" + "" + ",status.phase!=" +
 		string(apiv1.PodSucceeded) + ",status.phase!=" + string(apiv1.PodFailed))
@@ -56,8 +61,7 @@ func NewUnschedulablePodLister(kubeClient client.Interface, namespace string) *U
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	podLister := &cache.StoreToPodLister{store}
 	podReflector := cache.NewReflector(podListWatch, &apiv1.Pod{}, store, time.Hour)
-	podReflector.Run()
-
+	podReflector.RunUntil(stopchannel)
 	return &UnschedulablePodLister{
 		podLister: podLister,
 	}
@@ -74,7 +78,7 @@ func (lister *ScheduledPodLister) List() ([]*apiv1.Pod, error) {
 }
 
 // NewScheduledPodLister builds ScheduledPodLister
-func NewScheduledPodLister(kubeClient client.Interface) *ScheduledPodLister {
+func NewScheduledPodLister(kubeClient client.Interface, stopchannel <-chan struct{}) *ScheduledPodLister {
 	// watch unscheduled pods
 	selector := fields.ParseSelectorOrDie("spec.nodeName!=" + "" + ",status.phase!=" +
 		string(apiv1.PodSucceeded) + ",status.phase!=" + string(apiv1.PodFailed))
@@ -82,7 +86,7 @@ func NewScheduledPodLister(kubeClient client.Interface) *ScheduledPodLister {
 	store := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	podLister := &cache.StoreToPodLister{store}
 	podReflector := cache.NewReflector(podListWatch, &apiv1.Pod{}, store, time.Hour)
-	podReflector.Run()
+	podReflector.RunUntil(stopchannel)
 
 	return &ScheduledPodLister{
 		podLister: podLister,
@@ -112,13 +116,42 @@ func (readyNodeLister *ReadyNodeLister) List() ([]*apiv1.Node, error) {
 	return readyNodes, nil
 }
 
-// NewNodeLister builds a node lister.
-func NewNodeLister(kubeClient client.Interface) *ReadyNodeLister {
+// NewReadyNodeLister builds a node lister.
+func NewReadyNodeLister(kubeClient client.Interface, stopChannel <-chan struct{}) *ReadyNodeLister {
 	listWatcher := cache.NewListWatchFromClient(kubeClient.Core().RESTClient(), "nodes", apiv1.NamespaceAll, fields.Everything())
 	nodeLister := &cache.StoreToNodeLister{Store: cache.NewStore(cache.MetaNamespaceKeyFunc)}
 	reflector := cache.NewReflector(listWatcher, &apiv1.Node{}, nodeLister.Store, time.Hour)
-	reflector.Run()
+	reflector.RunUntil(stopChannel)
 	return &ReadyNodeLister{
+		nodeLister: nodeLister,
+	}
+}
+
+// AllNodeLister lists all nodes
+type AllNodeLister struct {
+	nodeLister *cache.StoreToNodeLister
+}
+
+// List returns all nodes
+func (allNodeLister *AllNodeLister) List() ([]*apiv1.Node, error) {
+	nodes, err := allNodeLister.nodeLister.List()
+	if err != nil {
+		return []*apiv1.Node{}, err
+	}
+	allNodes := make([]*apiv1.Node, 0, len(nodes.Items))
+	for i := range nodes.Items {
+		allNodes = append(allNodes, &nodes.Items[i])
+	}
+	return allNodes, nil
+}
+
+// NewAllNodeLister builds a node lister that returns all nodes (ready and unready)
+func NewAllNodeLister(kubeClient client.Interface, stopchannel <-chan struct{}) *AllNodeLister {
+	listWatcher := cache.NewListWatchFromClient(kubeClient.Core().RESTClient(), "nodes", apiv1.NamespaceAll, fields.Everything())
+	nodeLister := &cache.StoreToNodeLister{Store: cache.NewStore(cache.MetaNamespaceKeyFunc)}
+	reflector := cache.NewReflector(listWatcher, &apiv1.Node{}, nodeLister.Store, time.Hour)
+	reflector.RunUntil(stopchannel)
+	return &AllNodeLister{
 		nodeLister: nodeLister,
 	}
 }

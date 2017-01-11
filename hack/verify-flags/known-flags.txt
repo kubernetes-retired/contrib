@@ -77,6 +77,8 @@ max-nodes-total
 max-pr-number
 max-sync-failures
 max-grateful-termination-sec
+max-node-provision-time
+max-total-unready-percentage
 min-pr-number
 min-replica-count
 netrc-dir
@@ -84,6 +86,7 @@ network-config
 nginx-configmap
 nonblocking-jenkins-jobs
 number-of-old-test-results
+ok-total-unready-count
 on-change
 on-start
 one-time
@@ -115,6 +118,7 @@ scale-down-delay
 scale-down-enabled
 scale-down-trial-interval
 scale-down-unneeded-time
+scale-down-unready-time
 scale-down-utilization-threshold
 scan-interval
 services-configmap
