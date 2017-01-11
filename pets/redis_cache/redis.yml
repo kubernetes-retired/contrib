@@ -1,0 +1,80 @@
+# A headless service to create DNS records
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  name: cache 
+  labels:
+    app: rd-cache
+spec:
+  ports:
+  - port: 6379 
+    name: peer 
+  # *.nginx.default.svc.cluster.local
+  clusterIP: None 
+  selector:
+    app: rd-redis
+---
+apiVersion: apps/v1alpha1
+kind: PetSet
+metadata:
+  name: cache
+spec:
+  serviceName: "cache"
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: rd-redis
+      annotations:
+        pod.alpha.kubernetes.io/initialized: "true"
+        pod.beta.kubernetes.io/init-containers: '[
+           {
+             "name":"sentinel-micro",
+             "image":"dhilipkumars/peer-finder",
+             "args": ["-on-start=\"/redis-sentinel-micro\"", "-service=cache"],
+             "env": [
+               {
+                  "name": "POD_NAMESPACE",
+                  "valueFrom": {
+                     "fieldRef" : {
+                        "apiVersion" : "v1",
+                        "fieldPath" : "metadata.namespace"
+                     }
+                  }
+               }
+
+             ],
+            "volumeMounts": [
+               {
+                  "name": "config",
+                  "mountPath": "/config"
+               }
+            ]
+           }
+        ]'
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: redis
+        image: redis:3.0-alpine
+        #args: ["--slaveof", "0.0.0.0", "1331"]
+        ports:
+        - containerPort: 6379 
+          name: peer 
+      - name: pf
+        image: dhilipkumars/peer-finder 
+        command: ["/makeslave"]
+        env: 
+          - name: POD_NAMESPACE
+            valueFrom: 
+              fieldRef: 
+                apiVersion: "v1"
+                fieldPath: metadata.namespace
+        volumeMounts: 
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        emptyDir: {}
