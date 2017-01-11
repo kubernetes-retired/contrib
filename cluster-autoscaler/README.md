@@ -3,7 +3,7 @@
 # Introduction
 
 Cluster Autoscaler is a tool that automatically adjusts the size of the Kubernetes cluster when:
-* there is a pod that doesn’t have enough space to run in the cluster
+* there is a pod that doesn't have enough space to run in the cluster
 * some nodes in the cluster are so underutilized, for an extended period of time, 
 that they can be deleted and their pods will be easily placed on some other, existing nodes.  
 

@@ -90,7 +90,7 @@ type createCommit struct {
 //
 // The commit.Committer is optional and will be filled with the commit.Author
 // data if omitted. If the commit.Author is omitted, it will be filled in with
-// the authenticated user’s information and the current date.
+// the authenticated user's information and the current date.
 //
 // GitHub API docs: http://developer.github.com/v3/git/commits/#create-a-commit
 func (s *GitService) CreateCommit(owner string, repo string, commit *Commit) (*Commit, *Response, error) {

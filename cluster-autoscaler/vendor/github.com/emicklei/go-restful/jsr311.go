@@ -107,7 +107,7 @@ func (r RouterJSR311) selectRoutes(dispatcher *WebService, pathRemainder string)
 		matches := pathExpr.Matcher.FindStringSubmatch(pathRemainder)
 		if matches != nil {
 			lastMatch := matches[len(matches)-1]
-			if len(lastMatch) == 0 || lastMatch == "/" { // do not include if value is neither empty nor ‘/’.
+			if len(lastMatch) == 0 || lastMatch == "/" { // do not include if value is neither empty nor '/'.
 				filtered.candidates = append(filtered.candidates,
 					routeCandidate{each, len(matches) - 1, pathExpr.LiteralCount, pathExpr.VarCount})
 			}
