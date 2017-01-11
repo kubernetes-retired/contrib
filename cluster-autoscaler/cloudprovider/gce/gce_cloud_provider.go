@@ -218,9 +218,6 @@ func buildMig(value string, gceManager *GceManager) (*Mig, error) {
 		gceManager: gceManager,
 	}
 	if size, err := strconv.Atoi(tokens[0]); err == nil {
-		if size <= 0 {
-			return nil, fmt.Errorf("min size must be >= 1")
-		}
 		mig.minSize = size
 	} else {
 		return nil, fmt.Errorf("failed to set min size: %s, expected integer", tokens[0])

@@ -213,9 +213,6 @@ func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 		awsManager: awsManager,
 	}
 	if size, err := strconv.Atoi(tokens[0]); err == nil {
-		if size <= 0 {
-			return nil, fmt.Errorf("min size must be >= 1")
-		}
 		asg.minSize = size
 	} else {
 		return nil, fmt.Errorf("failed to set min size: %s, expected integer", tokens[0])
@@ -231,7 +228,7 @@ func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 	}
 
 	if tokens[2] == "" {
-		return nil, fmt.Errorf("asg name must not be blank: %s got error: %v", tokens[2])
+		return nil, fmt.Errorf("asg name must not be blank: %s", tokens[2])
 	}
 
 	asg.Name = tokens[2]
