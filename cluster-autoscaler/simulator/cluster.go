@@ -23,10 +23,9 @@ import (
 	"math/rand"
 	"time"
 
-	kube_api "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
-	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
-	cmd "k8s.io/kubernetes/pkg/kubectl/cmd"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
@@ -38,22 +37,28 @@ var (
 			"or mirror pods)")
 	skipNodesWithLocalStorage = flag.Bool("skip-nodes-with-local-storage", true,
 		"If true cluster autoscaler will never delete nodes with pods with local storage, e.g. EmptyDir or HostPath")
+
+	minReplicaCount = flag.Int("min-replica-count", 0,
+		"Minimum number or replicas that a replica set or replication controller should have to allow their pods deletion in scale down")
 )
+
+// NodeToBeRemoved contain information about a node that can be removed.
+type NodeToBeRemoved struct {
+	// Node to be removed.
+	Node *apiv1.Node
+	// PodsToReschedule contains pods on the node that should be rescheduled elsewhere.
+	PodsToReschedule []*apiv1.Pod
+}
 
 // FindNodesToRemove finds nodes that can be removed. Returns also an information about good
 // rescheduling location for each of the pods.
-func FindNodesToRemove(candidates []*kube_api.Node, allNodes []*kube_api.Node, pods []*kube_api.Pod,
-	client *kube_client.Client, predicateChecker *PredicateChecker, maxCount int,
+func FindNodesToRemove(candidates []*apiv1.Node, allNodes []*apiv1.Node, pods []*apiv1.Pod,
+	client client.Interface, predicateChecker *PredicateChecker, maxCount int,
 	fastCheck bool, oldHints map[string]string, usageTracker *UsageTracker,
-	timestamp time.Time) (nodesToRemove []*kube_api.Node, podReschedulingHints map[string]string, finalError error) {
+	timestamp time.Time) (nodesToRemove []NodeToBeRemoved, podReschedulingHints map[string]string, finalError error) {
 
-	nodeNameToNodeInfo := schedulercache.CreateNodeNameToInfoMap(pods)
-	for _, node := range allNodes {
-		if nodeInfo, found := nodeNameToNodeInfo[node.Name]; found {
-			nodeInfo.SetNode(node)
-		}
-	}
-	result := make([]*kube_api.Node, 0)
+	nodeNameToNodeInfo := schedulercache.CreateNodeNameToInfoMap(pods, allNodes)
+	result := make([]NodeToBeRemoved, 0)
 
 	evaluationType := "Detailed evaluation"
 	if fastCheck {
@@ -65,38 +70,31 @@ candidateloop:
 	for _, node := range candidates {
 		glog.V(2).Infof("%s: %s for removal", evaluationType, node.Name)
 
-		var podsToRemove []*kube_api.Pod
+		var podsToRemove []*apiv1.Pod
 		var err error
 
-		if fastCheck {
-			if nodeInfo, found := nodeNameToNodeInfo[node.Name]; found {
-				podsToRemove, err = FastGetPodsToMove(nodeInfo, false, *skipNodesWithSystemPods, *skipNodesWithLocalStorage)
-				if err != nil {
-					glog.V(2).Infof("%s: node %s cannot be removed: %v", evaluationType, node.Name, err)
-					continue candidateloop
-				}
+		if nodeInfo, found := nodeNameToNodeInfo[node.Name]; found {
+			if fastCheck {
+				podsToRemove, err = FastGetPodsToMove(nodeInfo, *skipNodesWithSystemPods, *skipNodesWithLocalStorage)
 			} else {
-				glog.V(2).Infof("%s: nodeInfo for %s not found", evaluationType, node.Name)
-				continue candidateloop
+				podsToRemove, err = DetailedGetPodsForMove(nodeInfo, *skipNodesWithSystemPods, *skipNodesWithLocalStorage, client, int32(*minReplicaCount))
 			}
-		} else {
-			drainResult, _, _, err := cmd.GetPodsForDeletionOnNodeDrain(client, node.Name,
-				kube_api.Codecs.UniversalDecoder(), false, true)
-
 			if err != nil {
 				glog.V(2).Infof("%s: node %s cannot be removed: %v", evaluationType, node.Name, err)
 				continue candidateloop
 			}
-			podsToRemove = make([]*kube_api.Pod, 0, len(drainResult))
-			for i := range drainResult {
-				podsToRemove = append(podsToRemove, &drainResult[i])
-			}
+		} else {
+			glog.V(2).Infof("%s: nodeInfo for %s not found", evaluationType, node.Name)
+			continue candidateloop
 		}
 		findProblems := findPlaceFor(node.Name, podsToRemove, allNodes, nodeNameToNodeInfo, predicateChecker, oldHints, newHints,
 			usageTracker, timestamp)
 
 		if findProblems == nil {
-			result = append(result, node)
+			result = append(result, NodeToBeRemoved{
+				Node:             node,
+				PodsToReschedule: podsToRemove,
+			})
 			glog.V(2).Infof("%s: node %s may be removed", evaluationType, node.Name)
 			if len(result) >= maxCount {
 				break candidateloop
@@ -108,20 +106,39 @@ candidateloop:
 	return result, newHints, nil
 }
 
+// FindEmptyNodesToRemove finds empty nodes that can be removed.
+func FindEmptyNodesToRemove(candidates []*apiv1.Node, pods []*apiv1.Pod) []*apiv1.Node {
+	nodeNameToNodeInfo := schedulercache.CreateNodeNameToInfoMap(pods, candidates)
+	result := make([]*apiv1.Node, 0)
+	for _, node := range candidates {
+		if nodeInfo, found := nodeNameToNodeInfo[node.Name]; found {
+			// Should block on all pods.
+			podsToRemove, err := FastGetPodsToMove(nodeInfo, true, true)
+			if err == nil && len(podsToRemove) == 0 {
+				result = append(result, node)
+			}
+		} else {
+			// Node without pods.
+			result = append(result, node)
+		}
+	}
+	return result
+}
+
 // CalculateUtilization calculates utilization of a node, defined as total amount of requested resources divided by capacity.
-func CalculateUtilization(node *kube_api.Node, nodeInfo *schedulercache.NodeInfo) (float64, error) {
-	cpu, err := calculateUtilizationOfResource(node, nodeInfo, kube_api.ResourceCPU)
+func CalculateUtilization(node *apiv1.Node, nodeInfo *schedulercache.NodeInfo) (float64, error) {
+	cpu, err := calculateUtilizationOfResource(node, nodeInfo, apiv1.ResourceCPU)
 	if err != nil {
 		return 0, err
 	}
-	mem, err := calculateUtilizationOfResource(node, nodeInfo, kube_api.ResourceMemory)
+	mem, err := calculateUtilizationOfResource(node, nodeInfo, apiv1.ResourceMemory)
 	if err != nil {
 		return 0, err
 	}
 	return math.Max(cpu, mem), nil
 }
 
-func calculateUtilizationOfResource(node *kube_api.Node, nodeInfo *schedulercache.NodeInfo, resourceName kube_api.ResourceName) (float64, error) {
+func calculateUtilizationOfResource(node *apiv1.Node, nodeInfo *schedulercache.NodeInfo, resourceName apiv1.ResourceName) (float64, error) {
 	nodeCapacity, found := node.Status.Capacity[resourceName]
 	if !found {
 		return 0, fmt.Errorf("Failed to get %v from %s", resourceName, node.Name)
@@ -141,17 +158,17 @@ func calculateUtilizationOfResource(node *kube_api.Node, nodeInfo *schedulercach
 }
 
 // TODO: We don't need to pass list of nodes here as they are already available in nodeInfos.
-func findPlaceFor(removedNode string, pods []*kube_api.Pod, nodes []*kube_api.Node, nodeInfos map[string]*schedulercache.NodeInfo,
+func findPlaceFor(removedNode string, pods []*apiv1.Pod, nodes []*apiv1.Node, nodeInfos map[string]*schedulercache.NodeInfo,
 	predicateChecker *PredicateChecker, oldHints map[string]string, newHints map[string]string, usageTracker *UsageTracker,
 	timestamp time.Time) error {
 
 	newNodeInfos := make(map[string]*schedulercache.NodeInfo)
 
-	podKey := func(pod *kube_api.Pod) string {
+	podKey := func(pod *apiv1.Pod) string {
 		return fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 	}
 
-	tryNodeForPod := func(nodename string, pod *kube_api.Pod) bool {
+	tryNodeForPod := func(nodename string, pod *apiv1.Pod) bool {
 		nodeInfo, found := newNodeInfos[nodename]
 		if !found {
 			nodeInfo, found = nodeInfos[nodename]
@@ -223,8 +240,8 @@ func findPlaceFor(removedNode string, pods []*kube_api.Pod, nodes []*kube_api.No
 	return nil
 }
 
-func shuffleNodes(nodes []*kube_api.Node) []*kube_api.Node {
-	result := make([]*kube_api.Node, len(nodes))
+func shuffleNodes(nodes []*apiv1.Node) []*apiv1.Node {
+	result := make([]*apiv1.Node, len(nodes))
 	for i := range nodes {
 		result[i] = nodes[i]
 	}

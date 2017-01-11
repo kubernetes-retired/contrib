@@ -17,15 +17,7 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /tmp/tls.key -out /t
 *Now store the SSL certificate in a secret:*
 
 ```
-echo "
-apiVersion: v1
-kind: Secret
-metadata:
-  name: foo-secret
-data:
-  tls.crt: `base64 /tmp/tls.crt`
-  tls.key: `base64 /tmp/tls.key`
-" | kubectl create -f -
+kubectl create secret tls foo-secret --key /tmp/tls.key --cert /tmp/tls.crt
 ```
 
 *Finally create a tls Ingress rule:*

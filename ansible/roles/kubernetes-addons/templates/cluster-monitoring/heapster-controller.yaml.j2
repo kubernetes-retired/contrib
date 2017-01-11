@@ -106,4 +106,7 @@ spec:
             - --deployment=heapster-v1.0.2
             - --container=eventer
             - --poll-period=300000
+      securityContext:
+        seLinuxOptions:
+          type: spc_t
 

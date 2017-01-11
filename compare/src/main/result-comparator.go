@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	job           = "kubernetes-e2e-gce-scalability"
+	job           = "ci-kubernetes-e2e-gce-scalability"
 	buildFilePath = "build-log.txt"
 )
 

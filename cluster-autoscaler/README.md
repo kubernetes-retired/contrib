@@ -42,7 +42,9 @@ node groups and checks if any of the unschedulable pods would fit to a brand new
 While it may sound similar to what the real scheduler does it is currently quite simplified and 
 may require multiple iterations before all of the pods are eventually scheduled.
 If there are multiple node groups that, if increased, would help with getting some pods running, 
-one of them is selected at random. 
+different strategies can be selected for choosing which node group is increased. The default is
+random, but other options include selecting the group that can fit the most unschedulable pods,
+or the group that will leave the least amount of CPU or Memory available after the scale up.
 
 It may take some time before the nodes from node group appear in Kubernetes. It almost entirely 
 depends on the cloud provider and the speed of node provisioning.
@@ -67,6 +69,9 @@ somewhere else.
 * There are no kube-system pods on the node (except these that run on all nodes by default like 
 manifest-run pods or pods created by daemonsets).
 
+* There are no pods with local storage. Applications with local storage would lose their 
+data if a node is deleted, even if they are replicated.
+
 If a node is not needed for more than 10 min (configurable) then it can be deleted. Cluster Autoscaler
 deletes one node at a time to reduce the risk of creating new unschedulable pods. The next node 
 can be deleted when it is also not needed for more than 10 min. It may happen just after
@@ -83,7 +88,7 @@ But if another node C, in case of deletion, can move its pods to node Y then it
 may still do it, because noone touched Y. So C can be deleted immediatelly after A. And B not. 
 
 Cluster Autoscaler does all of this acounting based on the simulations and memorized new pod location.
-They may not always be precise (pods can land elswehere) but it seemed to be a good heuristic so far.
+They may not always be precise (pods can land elswehere) but it seems to be a good heuristic so far.
 
 
 # When scaling is executed

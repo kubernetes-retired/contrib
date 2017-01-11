@@ -22,8 +22,10 @@ import (
 
 	"k8s.io/contrib/mungegithub/features"
 	"k8s.io/contrib/mungegithub/github"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
+	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 )
 
@@ -84,6 +86,48 @@ func printChance(owners weightMap, total int64) {
 	}
 }
 
+func getPotentialOwners(author string, feats *features.Features, files []*githubapi.CommitFile, leafOnly bool) (weightMap, int64) {
+	potentialOwners := weightMap{}
+	weightSum := int64(0)
+	aliases := feats.Aliases
+	var fileOwners sets.String
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		fileWeight := int64(1)
+		if file.Changes != nil && *file.Changes != 0 {
+			fileWeight = int64(*file.Changes)
+		}
+		// Judge file size on a log scale-- effectively this
+		// makes three buckets, we shouldn't have many 10k+
+		// line changes.
+		fileWeight = int64(math.Log10(float64(fileWeight))) + 1
+		if leafOnly {
+			fileOwners = feats.Repos.LeafReviewers(*file.Filename)
+		} else {
+			fileOwners = feats.Repos.Reviewers(*file.Filename)
+		}
+
+		if fileOwners.Len() == 0 {
+			glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
+		}
+
+		if aliases != nil && aliases.IsEnabled {
+			fileOwners = aliases.Expand(fileOwners)
+		}
+
+		for _, owner := range fileOwners.List() {
+			if owner == author {
+				continue
+			}
+			potentialOwners[owner] = potentialOwners[owner] + fileWeight
+			weightSum += fileWeight
+		}
+	}
+	return potentialOwners, weightSum
+}
+
 // Munge is the workhorse the will actually make updates to the PR
 func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 	if !obj.IsPR() {
@@ -96,42 +140,18 @@ func (b *BlunderbussMunger) Munge(obj *github.MungeObject) {
 		return
 	}
 
-	files, err := obj.ListFiles()
-	if err != nil {
+	files, ok := obj.ListFiles()
+	if !ok {
 		return
 	}
 
-	potentialOwners := weightMap{}
-	weightSum := int64(0)
-	for _, file := range files {
-		fileWeight := int64(1)
-		if file.Changes != nil && *file.Changes != 0 {
-			fileWeight = int64(*file.Changes)
-		}
-		// Judge file size on a log scale-- effectively this
-		// makes three buckets, we shouldn't have many 10k+
-		// line changes.
-		fileWeight = int64(math.Log10(float64(fileWeight))) + 1
-		fileOwners := b.features.Repos.LeafAssignees(*file.Filename)
-		if fileOwners.Len() == 0 {
-			glog.Warningf("Couldn't find an owner for: %s", *file.Filename)
-		}
-
-		if b.features.Aliases != nil && b.features.Aliases.IsEnabled {
-			fileOwners = b.features.Aliases.Expand(fileOwners)
-		}
-
-		for _, owner := range fileOwners.List() {
-			if owner == *issue.User.Login {
-				continue
-			}
-			potentialOwners[owner] = potentialOwners[owner] + fileWeight
-			weightSum += fileWeight
-		}
-	}
+	potentialOwners, weightSum := getPotentialOwners(*obj.Issue.User.Login, b.features, files, true)
 	if len(potentialOwners) == 0 {
-		glog.Errorf("No owners found for PR %d", *issue.Number)
-		return
+		potentialOwners, weightSum = getPotentialOwners(*obj.Issue.User.Login, b.features, files, false)
+		if len(potentialOwners) == 0 {
+			glog.Errorf("No OWNERS found for PR %d", *issue.Number)
+			return
+		}
 	}
 	printChance(potentialOwners, weightSum)
 	if issue.Assignee != nil {

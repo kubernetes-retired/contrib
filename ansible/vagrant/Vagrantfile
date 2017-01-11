@@ -45,6 +45,13 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provider "aws"
   config.vm.provider "openstack"
 
+  # By default, Vagrant itself assumes that sudo requires no
+  # password, therefore it does not need a tty. Some OS images
+  # instead require a tty in order to run sudo.
+  # Below configuration enable the tty on Vagrant 1.4+
+  # See https://goo.gl/fC5sPW for details
+  config.ssh.pty = true
+
   def set_openstack_box(config)
     case $os_image
     when :centos7
@@ -81,9 +88,13 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     when :centosatomic
       config.vm.box = "centos/atomic-host"
     when :fedora
-      config.vm.box = "fedora/23-cloud-base"
+      config.vm.box = "fedora/24-cloud-base"
     when :fedoraatomic
       config.vm.box = "fedora/23-atomic-host"
+    when :ubuntu14
+      config.vm.box = "baremettle/ubuntu-14.04"
+    when :ubuntu16
+      config.vm.box = "yk0/ubuntu-xenial"
     end
   end
 
@@ -107,8 +118,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       _config['security_group'] = []
     end
 
-    config.ssh.username = "fedora"
-    config.ssh.private_key_path = "~/.ssh/id_rsa"
+    config.ssh.username = _config["os_instance_username"]
+    config.ssh.private_key_path = _config['os_ssh_pub_key_path']
     config.vm.boot_timeout = 60*10
 
     ### The below parameters need to be modified per your openstack instance.

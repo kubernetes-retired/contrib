@@ -22,7 +22,8 @@ import (
 
 	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/stretchr/testify/assert"
@@ -65,8 +66,8 @@ func TestFindPlaceAllOk(t *testing.T) {
 
 	err := findPlaceFor(
 		"x",
-		[]*kube_api.Pod{new1, new2},
-		[]*kube_api.Node{node1, node2},
+		[]*apiv1.Pod{new1, new2},
+		[]*apiv1.Node{node1, node2},
 		nodeInfos, NewTestPredicateChecker(),
 		oldHints, newHints, tracker, time.Now())
 
@@ -100,8 +101,8 @@ func TestFindPlaceAllBas(t *testing.T) {
 
 	err := findPlaceFor(
 		"nbad",
-		[]*kube_api.Pod{new1, new2, new3},
-		[]*kube_api.Node{nodebad, node1, node2},
+		[]*apiv1.Pod{new1, new2, new3},
+		[]*apiv1.Node{nodebad, node1, node2},
 		nodeInfos, NewTestPredicateChecker(),
 		oldHints, newHints, tracker, time.Now())
 
@@ -125,8 +126,8 @@ func TestFindNone(t *testing.T) {
 
 	err := findPlaceFor(
 		"x",
-		[]*kube_api.Pod{},
-		[]*kube_api.Node{node1, node2},
+		[]*apiv1.Pod{},
+		[]*apiv1.Node{node1, node2},
 		nodeInfos, NewTestPredicateChecker(),
 		make(map[string]string),
 		make(map[string]string),
@@ -136,7 +137,7 @@ func TestFindNone(t *testing.T) {
 }
 
 func TestShuffleNodes(t *testing.T) {
-	nodes := []*kube_api.Node{
+	nodes := []*apiv1.Node{
 		BuildTestNode("n1", 0, 0),
 		BuildTestNode("n2", 0, 0),
 		BuildTestNode("n3", 0, 0)}
@@ -149,4 +150,22 @@ func TestShuffleNodes(t *testing.T) {
 		}
 	}
 	assert.True(t, gotPermutation)
+}
+
+func TestFindEmptyNodes(t *testing.T) {
+	pod1 := BuildTestPod("p1", 300, 500000)
+	pod1.Spec.NodeName = "n1"
+	pod2 := BuildTestPod("p2", 300, 500000)
+	pod2.Spec.NodeName = "n2"
+	pod2.Annotations = map[string]string{
+		types.ConfigMirrorAnnotationKey: "",
+	}
+
+	node1 := BuildTestNode("n1", 1000, 2000000)
+	node2 := BuildTestNode("n2", 1000, 2000000)
+	node3 := BuildTestNode("n3", 1000, 2000000)
+	node4 := BuildTestNode("n4", 1000, 2000000)
+
+	emptyNodes := FindEmptyNodesToRemove([]*apiv1.Node{node1, node2, node3, node4}, []*apiv1.Pod{pod1, pod2})
+	assert.Equal(t, []*apiv1.Node{node2, node3, node4}, emptyNodes)
 }

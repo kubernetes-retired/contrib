@@ -51,7 +51,7 @@ $ kubectl get svc --all-namespaces -o yaml  | grep -i "selfLink"
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-heapster
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-influxdb
 ```
-These are all the [cluster addon](https://github.com/kubernetes/kubernetes/tree/master/cluster/addons) services in `namespace=kube-system`.
+These are all the [cluster addon](https://github.com/kubernetes/kubernetes/tree/master/cluster/addons) services in all namespaces `--all-namespaces`.
 
 #### Create a loadbalancer
 * Loadbalancers are created via a ReplicationController.
@@ -361,7 +361,7 @@ Europe
 
 #### Advanced features
 
-* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L155).
+* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L188).
 * __Name based virtual hosting__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L148).
 * __Configurable algorithms__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L153).
 

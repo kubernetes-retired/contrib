@@ -6,13 +6,16 @@
 - include: ubuntu-14.04.yml
   when: ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
 
-- name: Set selinux permissive because tokens and selinux don't work together
-  selinux: state=permissive policy={{ ansible_selinux.type }}
-  when: ansible_selinux is defined and ansible_selinux.status == "enabled"
-
 - name: Retrieve systemd files for github-release kube_source_type type
   include: retrieve-systemd-files.yml
   when: kube_source_type == "github-release" or (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int == 16)
+
+- name: Install conntrack (kube-proxy's runtime dependency)
+  action: "{{ ansible_pkg_mgr }}"
+  args:
+    name: conntrack
+    state: latest
+  when: ansible_distribution == 'Ubuntu'
 
 # Change default value of kube_source_type
 - name: Force kube_source_type to github
