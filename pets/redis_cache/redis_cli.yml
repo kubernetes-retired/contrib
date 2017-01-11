@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rediscli
+spec:
+  restartPolicy: Always 
+  containers:
+    - name: cli 
+      image: redis:3-alpine 
+      #command: ["redis-cli", "-h","cache-1.cache.default.svc.cluster.local", "-p", "6379", "info", "replication"]
