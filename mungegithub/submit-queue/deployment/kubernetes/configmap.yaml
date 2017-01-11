@@ -12,7 +12,15 @@ data:
   config.token-file: /etc/secret-volume/token
 
   # test-options feature options.
-  test-options.required-retest-contexts: "\"Jenkins GCE e2e\",\"Jenkins unit/integration\",\"Jenkins verification\",\"Jenkins GCE Node e2e\",\"Jenkins Kubemark GCE e2e\",\"Jenkins GCE etcd3 e2e\",\"Jenkins Bazel Build\""
+  test-options.required-retest-contexts: "\
+    \"Jenkins GCE e2e\",\
+    \"Jenkins unit/integration\",\
+    \"Jenkins verification\",\
+    \"Jenkins GCE Node e2e\",\
+    \"Jenkins Kubemark GCE e2e\",\
+    \"Jenkins GCE etcd3 e2e\",\
+    \"Jenkins Bazel Build\",\
+    \"Jenkins kops AWS e2e\""
 
   submit-queue.protected-branches: "master"
   submit-queue.protected-branches-extra-contexts: "cla/linuxfoundation"
@@ -147,19 +155,19 @@ data:
     ci-kubernetes-e2e-gce-latest-1.4-latest-1.5-gci-kubectl-skew,\
     ci-kubernetes-e2e-gce-1.4-1.5-upgrade-cluster,\
     ci-kubernetes-e2e-gce-1.4-1.5-upgrade-cluster-new,\
-    ci-kubernetes-e2e-gce-1.4-1.5-upgrade-master,\
-    ci-kubernetes-e2e-kops-aws"
+    ci-kubernetes-e2e-gce-1.4-1.5-upgrade-master"
   submit-queue.jenkins-jobs: "\
     ci-kubernetes-build,\
     ci-kubernetes-e2e-gce-etcd3,\
     ci-kubernetes-e2e-gci-gce,\
     ci-kubernetes-e2e-gci-gce-slow,\
+    ci-kubernetes-e2e-gci-gce-ingress,\
     ci-kubernetes-e2e-gci-gke,\
     ci-kubernetes-e2e-gci-gke-slow,\
+    ci-kubernetes-e2e-kops-aws,\
     ci-kubernetes-kubemark-500-gce,\
     ci-kubernetes-node-kubelet,\
     ci-kubernetes-test-go,\
-    ci-kubernetes-e2e-gci-gce-ingress,\
     ci-kubernetes-verify-master"
   submit-queue.presubmit-jobs: "\
     kubernetes-pull-build-test-e2e-gce,\

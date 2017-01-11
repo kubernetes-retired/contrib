@@ -37,4 +37,7 @@
             name: "ssl-certs"
             hostPath:
               path: "/etc/ssl/certs"
+    securityContext:
+        seLinuxOptions:
+          type: spc_t
 

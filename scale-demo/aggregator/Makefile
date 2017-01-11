@@ -9,7 +9,7 @@ aggregator:
 	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o aggregator
 
 container: aggregator
-	docker build -t gcr.io/google_containers/aggregator:$(TAG) .
+	docker build --pull -t gcr.io/google_containers/aggregator:$(TAG) .
 
 local_dryrun: container
 	docker run --rm -p 8090:8080 gcr.io/google_containers/aggregator:$(TAG)
