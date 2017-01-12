@@ -119,7 +119,7 @@ func ParseAnnotations(ing *extensions.Ingress) (*RateLimit, error) {
 		RPS: Zone{
 			Name:       fmt.Sprintf("%v_rps", zoneName),
 			Limit:      rps,
-			Burst:      conn * defBurst,
+			Burst:      rps * defBurst,
 			SharedSize: defSharedSize,
 		},
 	}, nil
