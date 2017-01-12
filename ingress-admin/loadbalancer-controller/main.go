@@ -132,14 +132,7 @@ func ensureDefaulBackendService(clientset *kubernetes.Clientset) error {
 		},
 	}
 
-	_, err := clientset.Core().Services("default").Get("default-http-backend")
-	if err == nil {
-		return nil
-	}
-	if err != nil && !errors.IsNotFound(err) {
-		return err
-	} else if errors.IsNotFound(err) {
-		_, err := clientset.Core().Services("default").Create(&svc)
+	if _, err := clientset.Core().Services("default").Create(&svc); err != nil && !errors.IsAlreadyExists(err) {
 		return err
 	}
 
