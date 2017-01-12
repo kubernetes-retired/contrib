@@ -17,7 +17,7 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-CHECKPOINT_PATH="${CHECKPOINT_PATH:-/tmp/startup-script.kubernetes.io}"
+CHECKPOINT_PATH="${CHECKPOINT_PATH:-/tmp/startup-script.kubernetes.io_$(md5sum <<<"${STARTUP_SCRIPT}" | cut -c-32)}"
 CHECK_INTERVAL_SECONDS="30"
 EXEC=(nsenter -t 1 -m -u -i -n -p --)
 
