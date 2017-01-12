@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/1.5/dynamic"
 	"k8s.io/client-go/1.5/kubernetes"
 	"k8s.io/client-go/1.5/pkg/api/errors"
+	"k8s.io/client-go/1.5/pkg/api/resource"
 	"k8s.io/client-go/1.5/pkg/api/unversioned"
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/util/intstr"
@@ -46,6 +47,15 @@ func init() {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 	go wait.Until(glog.Flush, 10*time.Second, wait.NeverStop)
+}
+
+var defaultBackendImage string
+
+func init() {
+	defaultBackendImage = os.Getenv("INGRESS_DEFAULT_BACKEND_IMAGE")
+	if defaultBackendImage == "" {
+		defaultBackendImage = "index.caicloud.io/caicloud/default-http-backend:v0.0.1"
+	}
 }
 
 func init() {
@@ -108,6 +118,35 @@ func main() {
 }
 
 func ensureDefaulBackendService(clientset *kubernetes.Clientset) error {
+	pod := v1.Pod{
+		ObjectMeta: v1.ObjectMeta{
+			Namespace: "default",
+			Name:      "default-http-backend",
+			Labels: map[string]string{
+				"app": "default-http-backend",
+			},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name:            "default-http-backend",
+					Image:           defaultBackendImage,
+					ImagePullPolicy: v1.PullAlways,
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("50m"),
+							v1.ResourceMemory: resource.MustParse("50Mi"),
+						},
+						Limits: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse("50m"),
+							v1.ResourceMemory: resource.MustParse("50Mi"),
+						},
+					},
+				},
+			},
+		},
+	}
+
 	svc := v1.Service{
 		ObjectMeta: v1.ObjectMeta{
 			Namespace: "default",
@@ -125,11 +164,15 @@ func ensureDefaulBackendService(clientset *kubernetes.Clientset) error {
 			Ports: []v1.ServicePort{
 				{
 					Port:       int32(80),
-					TargetPort: intstr.FromInt(8080),
+					TargetPort: intstr.FromInt(80),
 					Protocol:   v1.ProtocolTCP,
 				},
 			},
 		},
+	}
+
+	if _, err := clientset.Core().Pods("default").Create(&pod); err != nil && !errors.IsAlreadyExists(err) {
+		return err
 	}
 
 	if _, err := clientset.Core().Services("default").Create(&svc); err != nil && !errors.IsAlreadyExists(err) {
