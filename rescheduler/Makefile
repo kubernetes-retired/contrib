@@ -16,7 +16,7 @@ test-unit: clean deps build
 	$(ENVVAR) godep go test --test.short -race ./... $(FLAGS)
 
 container: build
-	docker build -t ${REGISTRY}/rescheduler:$(TAG) .
+	docker build --pull -t ${REGISTRY}/rescheduler:$(TAG) .
 
 push: container
 	gcloud docker push ${REGISTRY}/rescheduler:$(TAG)

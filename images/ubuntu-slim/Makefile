@@ -6,10 +6,10 @@ BUILD_IMAGE ?= ubuntu-build
 TAR_FILE ?= rootfs.tar
 
 container: clean
-	docker build -t $(BUILD_IMAGE) -f Dockerfile.build .
+	docker build --pull -t $(BUILD_IMAGE) -f Dockerfile.build .
 	docker create --name $(BUILD_IMAGE) $(BUILD_IMAGE)
 	docker export $(BUILD_IMAGE) > $(TAR_FILE)
-	docker build -t $(PREFIX):$(TAG) .
+	docker build --pull -t $(PREFIX):$(TAG) .
 
 push: container
 	docker push $(PREFIX):$(TAG)

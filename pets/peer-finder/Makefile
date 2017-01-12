@@ -24,7 +24,7 @@ release: server
 	gsutil cp peer-finder gs://kubernetes-release/pets/peer-finder
 
 container: server
-	docker build -t $(PREFIX):$(TAG) .
+	docker build --pull -t $(PREFIX):$(TAG) .
 
 push: container
 	gcloud docker push $(PREFIX):$(TAG)
