@@ -33,8 +33,9 @@ import (
 )
 
 const (
-	customHTTPErrors  = "custom-http-errors"
-	skipAccessLogUrls = "skip-access-log-urls"
+	customHTTPErrors     = "custom-http-errors"
+	skipAccessLogUrls    = "skip-access-log-urls"
+	whitelistSourceRange = "whitelist-source-range"
 )
 
 // getDNSServers returns the list of nameservers located in the file /etc/resolv.conf
@@ -79,6 +80,16 @@ func getConfigKeyToStructKeyMap() map[string]string {
 	return keyMap
 }
 
+// splitConfigList splits a config param by "," and returns the slice.
+func splitConfigList(conf *api.ConfigMap, key string) []string {
+	s := make([]string, 0)
+	if val, ok := conf.Data[key]; ok {
+		delete(conf.Data, key)
+		s = strings.Split(val, ",")
+	}
+	return s
+}
+
 // ReadConfig obtains the configuration defined by the user merged with the defaults.
 func (ngx *Manager) ReadConfig(conf *api.ConfigMap) config.Configuration {
 	if len(conf.Data) == 0 {
@@ -110,11 +121,8 @@ func (ngx *Manager) ReadConfig(conf *api.ConfigMap) config.Configuration {
 		}
 	}
 
-	cSkipUrls := make([]string, 0)
-	if val, ok := conf.Data[skipAccessLogUrls]; ok {
-		delete(conf.Data, skipAccessLogUrls)
-		cSkipUrls = strings.Split(val, ",")
-	}
+	cSkipUrls := splitConfigList(conf, skipAccessLogUrls)
+	wl := splitConfigList(conf, whitelistSourceRange)
 
 	err = decoder.Decode(conf.Data)
 	if err != nil {
@@ -142,6 +150,7 @@ func (ngx *Manager) ReadConfig(conf *api.ConfigMap) config.Configuration {
 
 	cfgDefault.CustomHTTPErrors = ngx.filterErrors(cErrors)
 	cfgDefault.SkipAccessLogURLs = cSkipUrls
+	cfgDefault.WhitelistSourceRange = wl
 	// no custom resolver means use the system resolver
 	if cfgDefault.Resolver == "" {
 		cfgDefault.Resolver = ngx.defResolver
