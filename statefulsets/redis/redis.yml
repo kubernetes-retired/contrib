@@ -16,8 +16,18 @@ spec:
   selector:
     app: rd-redis
 ---
-apiVersion: apps/v1alpha1
-kind: PetSet
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: cache-budget
+spec:
+  selector:
+    matchLabels:
+      app: rd-redis
+  minAvailable: 2
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet 
 metadata:
   name: cache
 spec:
@@ -28,12 +38,24 @@ spec:
       labels:
         app: rd-redis
       annotations:
-        pod.alpha.kubernetes.io/initialized: "true"
+        scheduler.alpha.kubernetes.io/affinity: > 
+           {
+              "podAntiAffinity": {
+                 "requiredDuringSchedulingRequiredDuringExecution": [{
+                      "labelSelector": {
+                         "matchExpressions": [{
+                             "key": "app",
+                             "operator": "In",
+                              "values": ["rd-redis"]
+                          }]
+                      }
+                  }]
+               }
+           }
         pod.beta.kubernetes.io/init-containers: '[
            {
              "name":"sentinel-micro",
-             "image":"dhilipkumars/peer-finder",
-             "args": ["-on-start=\"/redis-sentinel-micro\"", "-service=cache"],
+             "image":"dhilipkumars/redis-sentinel-micro",
              "env": [
                {
                   "name": "POD_NAMESPACE",
@@ -63,9 +85,9 @@ spec:
         ports:
         - containerPort: 6379 
           name: peer 
-      - name: pf
-        image: dhilipkumars/peer-finder 
-        command: ["/makeslave"]
+      - name: make-slave 
+        image: dhilipkumars/mk-redis-slave 
+        # command: ["/mk_redis_slave"]
         env: 
           - name: POD_NAMESPACE
             valueFrom: 
