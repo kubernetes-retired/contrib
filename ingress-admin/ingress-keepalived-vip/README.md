@@ -4,8 +4,8 @@
 
 Ingress can be used to expose a service in the kubernetes cluster:
 
-cluster admin deploys an ingress-controller Pod beforehand user creates Ingress
-resource the ingress-controller Pod list&watch All Ingress Resources in the
+cluster admin deploys an ingress-controller Pod. Before hand user creates Ingress
+resource, the ingress-controller Pod list&watch all Ingress Resources in the
 cluster, when it sees a new Ingress resource:
 
 * on cloud provider, it calls the cloud provider to sync the ingress L7
