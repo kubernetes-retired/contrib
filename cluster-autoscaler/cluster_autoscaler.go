@@ -27,13 +27,20 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/aws"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/gce"
+	"k8s.io/contrib/cluster-autoscaler/clusterstate"
 	"k8s.io/contrib/cluster-autoscaler/config"
+	"k8s.io/contrib/cluster-autoscaler/expander"
+	"k8s.io/contrib/cluster-autoscaler/expander/mostpods"
+	"k8s.io/contrib/cluster-autoscaler/expander/random"
+	"k8s.io/contrib/cluster-autoscaler/expander/waste"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
+	v1core "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5/typed/core/v1"
 	kube_leaderelection "k8s.io/kubernetes/pkg/client/leaderelection"
+	"k8s.io/kubernetes/pkg/client/leaderelection/resourcelock"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
-	kube_client "k8s.io/kubernetes/pkg/client/unversioned"
 	kube_flag "k8s.io/kubernetes/pkg/util/flag"
 
 	"github.com/golang/glog"
@@ -60,6 +67,13 @@ const (
 	BasicEstimatorName = "basic"
 	// BinpackingEstimatorName is the name of binpacking estimator.
 	BinpackingEstimatorName = "binpacking"
+
+	// RandomExpanderName selects a node group at random
+	RandomExpanderName = "random"
+	// MostPodsExpanderName selects a node group that fits the most pods
+	MostPodsExpanderName = "most-pods"
+	// LeastWasteExpanderName selects a node group that leaves the least fraction of CPU and Memory
+	LeastWasteExpanderName = "least-waste"
 )
 
 var (
@@ -74,23 +88,35 @@ var (
 	scaleDownDelay   = flag.Duration("scale-down-delay", 10*time.Minute,
 		"Duration from the last scale up to the time when CA starts to check scale down options")
 	scaleDownUnneededTime = flag.Duration("scale-down-unneeded-time", 10*time.Minute,
-		"How long the node should be unneeded before it is eligible for scale down")
+		"How long a node should be unneeded before it is eligible for scale down")
+	scaleDownUnreadyTime = flag.Duration("scale-down-unready-time", 20*time.Minute,
+		"How long an unready node should be unneeded before it is eligible for scale down")
 	scaleDownUtilizationThreshold = flag.Float64("scale-down-utilization-threshold", 0.5,
 		"Node utilization level, defined as sum of requested resources divided by capacity, below which a node can be considered for scale down")
 	scaleDownTrialInterval = flag.Duration("scale-down-trial-interval", 1*time.Minute,
 		"How often scale down possiblity is check")
-	scanInterval           = flag.Duration("scan-interval", 10*time.Second, "How often cluster is reevaluated for scale up or down")
-	maxNodesTotal          = flag.Int("max-nodes-total", 0, "Maximum number of nodes in all node groups. Cluster autoscaler will not grow the cluster beyond this number.")
-	cloudProviderFlag      = flag.String("cloud-provider", "gce", "Cloud provider type. Allowed values: gce, aws")
-	maxEmptyBulkDeleteFlag = flag.Int("max-empty-bulk-delete", 10, "Maximum number of empty nodes that can be deleted at the same time.")
+	scanInterval                = flag.Duration("scan-interval", 10*time.Second, "How often cluster is reevaluated for scale up or down")
+	maxNodesTotal               = flag.Int("max-nodes-total", 0, "Maximum number of nodes in all node groups. Cluster autoscaler will not grow the cluster beyond this number.")
+	cloudProviderFlag           = flag.String("cloud-provider", "gce", "Cloud provider type. Allowed values: gce, aws")
+	maxEmptyBulkDeleteFlag      = flag.Int("max-empty-bulk-delete", 10, "Maximum number of empty nodes that can be deleted at the same time.")
+	maxGratefulTerminationFlag  = flag.Int("max-grateful-termination-sec", 60, "Maximum number of seconds CA waints for pod termination when trying to scale down a node.")
+	maxTotalUnreadyPercentage   = flag.Float64("max-total-unready-percentage", 33, "Maximum percentage of unready nodes after which CA halts operations")
+	okTotalUnreadyCount         = flag.Int("ok-total-unready-count", 3, "Number of allowed unready nodes, irrespective of max-total-unready-percentage")
+	maxNodeProvisionTime        = flag.Duration("max-node-provision-time", 15*time.Minute, "Maximum time CA waits for node to be provisioned")
+	unregisteredNodeRemovalTime = flag.Duration("unregistered-node-removal-time", 5*time.Minute, "Time that CA waits before removing nodes that are not registered in Kubernetes")
 
 	// AvailableEstimators is a list of available estimators.
 	AvailableEstimators = []string{BasicEstimatorName, BinpackingEstimatorName}
 	estimatorFlag       = flag.String("estimator", BinpackingEstimatorName,
 		"Type of resource estimator to be used in scale up. Available values: ["+strings.Join(AvailableEstimators, ",")+"]")
+
+	// AvailableExpanders is a list of avaialble expander options
+	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName}
+	expanderFlag       = flag.String("expander", RandomExpanderName,
+		"Type of node group expander to be used in scale up. Available values: ["+strings.Join(AvailableExpanders, ",")+"]")
 )
 
-func createKubeClient() *kube_client.Client {
+func createKubeClient() kube_client.Interface {
 	url, err := url.Parse(*kubernetes)
 	if err != nil {
 		glog.Fatalf("Failed to parse Kuberentes url: %v", err)
@@ -101,14 +127,14 @@ func createKubeClient() *kube_client.Client {
 		glog.Fatalf("Failed to build Kuberentes client configuration: %v", err)
 	}
 
-	return kube_client.NewOrDie(kubeConfig)
+	return kube_client.NewForConfigOrDie(kubeConfig)
 }
 
-func createEventRecorder(kubeClient *kube_client.Client) kube_record.EventRecorder {
+func createEventRecorder(kubeClient kube_client.Interface) kube_record.EventRecorder {
 	eventBroadcaster := kube_record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
-	eventBroadcaster.StartRecordingToSink(kubeClient.Events(""))
-	return eventBroadcaster.NewRecorder(kube_api.EventSource{Component: "cluster-autoscaler"})
+	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: kubeClient.Core().Events("")})
+	return eventBroadcaster.NewRecorder(apiv1.EventSource{Component: "cluster-autoscaler"})
 }
 
 // In order to meet interface criteria for LeaderElectionConfig we need to
@@ -121,18 +147,14 @@ func run(_ <-chan struct{}) {
 	if err != nil {
 		glog.Fatalf("Failed to create predicate checker: %v", err)
 	}
-	unschedulablePodLister := kube_util.NewUnschedulablePodLister(kubeClient, kube_api.NamespaceAll)
-	scheduledPodLister := kube_util.NewScheduledPodLister(kubeClient)
-	nodeLister := kube_util.NewNodeLister(kubeClient)
+	stopchannel := make(chan struct{})
+	unschedulablePodLister := kube_util.NewUnschedulablePodLister(kubeClient, stopchannel)
+	scheduledPodLister := kube_util.NewScheduledPodLister(kubeClient, stopchannel)
+	readyNodeLister := kube_util.NewReadyNodeLister(kubeClient, stopchannel)
+	allNodeLister := kube_util.NewAllNodeLister(kubeClient, stopchannel)
 
 	lastScaleUpTime := time.Now()
 	lastScaleDownFailedTrial := time.Now()
-	unneededNodes := make(map[string]time.Time)
-	podLocationHints := make(map[string]string)
-	nodeUtilizationMap := make(map[string]float64)
-	usageTracker := simulator.NewUsageTracker()
-
-	recorder := createEventRecorder(kubeClient)
 
 	var cloudProvider cloudprovider.CloudProvider
 
@@ -181,6 +203,43 @@ func run(_ <-chan struct{}) {
 		}
 	}
 
+	var expanderStrategy expander.Strategy
+	{
+		switch *expanderFlag {
+		case RandomExpanderName:
+			expanderStrategy = random.NewStrategy()
+		case MostPodsExpanderName:
+			expanderStrategy = mostpods.NewStrategy()
+		case LeastWasteExpanderName:
+			expanderStrategy = waste.NewStrategy()
+		}
+	}
+
+	clusterStateConfig := clusterstate.ClusterStateRegistryConfig{
+		MaxTotalUnreadyPercentage: *maxTotalUnreadyPercentage,
+		OkTotalUnreadyCount:       *okTotalUnreadyCount,
+	}
+
+	autoscalingContext := AutoscalingContext{
+		CloudProvider:                 cloudProvider,
+		ClientSet:                     kubeClient,
+		ClusterStateRegistry:          clusterstate.NewClusterStateRegistry(cloudProvider, clusterStateConfig),
+		Recorder:                      createEventRecorder(kubeClient),
+		PredicateChecker:              predicateChecker,
+		MaxEmptyBulkDelete:            *maxEmptyBulkDeleteFlag,
+		ScaleDownUtilizationThreshold: *scaleDownUtilizationThreshold,
+		ScaleDownUnneededTime:         *scaleDownUnneededTime,
+		ScaleDownUnreadyTime:          *scaleDownUnreadyTime,
+		MaxNodesTotal:                 *maxNodesTotal,
+		EstimatorName:                 *estimatorFlag,
+		ExpanderStrategy:              expanderStrategy,
+		MaxGratefulTerminationSec:     *maxGratefulTerminationFlag,
+		MaxNodeProvisionTime:          *maxNodeProvisionTime,
+		UnregisteredNodeRemovalTime:   *unregisteredNodeRemovalTime,
+	}
+
+	scaleDown := NewScaleDown(&autoscalingContext)
+
 	for {
 		select {
 		case <-time.After(*scanInterval):
@@ -188,20 +247,65 @@ func run(_ <-chan struct{}) {
 				loopStart := time.Now()
 				updateLastTime("main")
 
-				nodes, err := nodeLister.List()
+				// TODO: remove once switched to all nodes.
+				readyNodes, err := readyNodeLister.List()
 				if err != nil {
-					glog.Errorf("Failed to list nodes: %v", err)
+					glog.Errorf("Failed to list ready nodes: %v", err)
 					continue
 				}
-				if len(nodes) == 0 {
+				if len(readyNodes) == 0 {
+					glog.Errorf("No ready nodes in the cluster")
+					continue
+				}
+
+				allNodes, err := allNodeLister.List()
+				if err != nil {
+					glog.Errorf("Failed to list all nodes: %v", err)
+					continue
+				}
+				if len(allNodes) == 0 {
 					glog.Errorf("No nodes in the cluster")
 					continue
 				}
 
-				if err := CheckGroupsAndNodes(nodes, cloudProvider); err != nil {
+				currentTime := loopStart
+				autoscalingContext.ClusterStateRegistry.UpdateNodes(allNodes, currentTime)
+				if !autoscalingContext.ClusterStateRegistry.IsClusterHealthy(time.Now()) {
 					glog.Warningf("Cluster is not ready for autoscaling: %v", err)
 					continue
 				}
+
+				// Check if there are any nodes that failed to register in kuberentes
+				// master.
+				unregisteredNodes := autoscalingContext.ClusterStateRegistry.GetUnregisteredNodes()
+				if len(unregisteredNodes) > 0 {
+					glog.V(1).Infof("%d unregistered nodes present", len(unregisteredNodes))
+					removedAny, err := removeOldUnregisteredNodes(unregisteredNodes, &autoscalingContext, time.Now())
+					// There was a problem with removing unregistered nodes. Retry in the next loop.
+					if err != nil {
+						if removedAny {
+							glog.Warningf("Some unregistered nodes were removed, but got error: %v", err)
+						} else {
+							glog.Warningf("Failed to remove unregistered nodes: %v", err)
+
+						}
+						continue
+					}
+					// Some nodes were removed. Let's skip this iteration, the next one should be better.
+					if removedAny {
+						glog.V(0).Infof("Some unregistered nodes were removed, skipping iteration")
+						continue
+					}
+				}
+
+				// TODO: remove once all of the unready node handling elements are in place.
+				if err := CheckGroupsAndNodes(readyNodes, autoscalingContext.CloudProvider); err != nil {
+					glog.Warningf("Cluster is not ready for autoscaling: %v", err)
+					continue
+				}
+
+				// CA can die at any time. Removing taints that might have been left from the previous run.
+				cleanToBeDeleted(readyNodes, kubeClient, autoscalingContext.Recorder)
 
 				allUnschedulablePods, err := unschedulablePodLister.List()
 				if err != nil {
@@ -217,9 +321,9 @@ func run(_ <-chan struct{}) {
 
 				// We need to reset all pods that have been marked as unschedulable not after
 				// the newest node became available for the scheduler.
-				allNodesAvailableTime := GetAllNodesAvailableTime(nodes)
+				allNodesAvailableTime := GetAllNodesAvailableTime(readyNodes)
 				podsToReset, unschedulablePodsToHelp := SlicePodsByPodScheduledTime(allUnschedulablePods, allNodesAvailableTime)
-				ResetPodScheduledCondition(kubeClient, podsToReset)
+				ResetPodScheduledCondition(autoscalingContext.ClientSet, podsToReset)
 
 				// We need to check whether pods marked as unschedulable are actually unschedulable.
 				// This should prevent from adding unnecessary nodes. Example of such situation:
@@ -237,7 +341,8 @@ func run(_ <-chan struct{}) {
 				// in the describe situation.
 				schedulablePodsPresent := false
 				if *verifyUnschedulablePods {
-					newUnschedulablePodsToHelp := FilterOutSchedulable(unschedulablePodsToHelp, nodes, allScheduled, predicateChecker)
+					newUnschedulablePodsToHelp := FilterOutSchedulable(unschedulablePodsToHelp, readyNodes, allScheduled,
+						autoscalingContext.PredicateChecker)
 
 					if len(newUnschedulablePodsToHelp) != len(unschedulablePodsToHelp) {
 						glog.V(2).Info("Schedulable pods present")
@@ -248,13 +353,12 @@ func run(_ <-chan struct{}) {
 
 				if len(unschedulablePodsToHelp) == 0 {
 					glog.V(1).Info("No unschedulable pods")
-				} else if *maxNodesTotal > 0 && len(nodes) >= *maxNodesTotal {
+				} else if *maxNodesTotal > 0 && len(readyNodes) >= *maxNodesTotal {
 					glog.V(1).Info("Max total nodes in cluster reached")
 				} else {
 					scaleUpStart := time.Now()
 					updateLastTime("scaleup")
-					scaledUp, err := ScaleUp(unschedulablePodsToHelp, nodes, cloudProvider, kubeClient, predicateChecker, recorder,
-						*maxNodesTotal, *estimatorFlag)
+					scaledUp, err := ScaleUp(&autoscalingContext, unschedulablePodsToHelp, readyNodes)
 
 					updateDuration("scaleup", scaleUpStart)
 
@@ -285,19 +389,16 @@ func run(_ <-chan struct{}) {
 					updateLastTime("findUnneeded")
 					glog.V(4).Infof("Calculating unneeded nodes")
 
-					usageTracker.CleanUp(time.Now().Add(-(*scaleDownUnneededTime)))
-					unneededNodes, podLocationHints, nodeUtilizationMap = FindUnneededNodes(
-						nodes,
-						unneededNodes,
-						*scaleDownUtilizationThreshold,
-						allScheduled,
-						predicateChecker,
-						podLocationHints,
-						usageTracker, time.Now())
+					scaleDown.CleanUp(time.Now())
+					err := scaleDown.UpdateUnneededNodes(readyNodes, allScheduled, time.Now())
+					if err != nil {
+						glog.Warningf("Failed to scale down: %v", err)
+						continue
+					}
 
 					updateDuration("findUnneeded", unneededStart)
 
-					for key, val := range unneededNodes {
+					for key, val := range scaleDown.unneededNodes {
 						if glog.V(4) {
 							glog.V(4).Infof("%s is unneeded since %s duration %s", key, val.String(), time.Now().Sub(val).String())
 						}
@@ -308,21 +409,7 @@ func run(_ <-chan struct{}) {
 
 						scaleDownStart := time.Now()
 						updateLastTime("scaledown")
-
-						result, err := ScaleDown(
-							nodes,
-							nodeUtilizationMap,
-							unneededNodes,
-							*scaleDownUnneededTime,
-							allScheduled,
-							cloudProvider,
-							kubeClient,
-							predicateChecker,
-							podLocationHints,
-							usageTracker,
-							recorder,
-							*maxEmptyBulkDeleteFlag)
-
+						result, err := scaleDown.TryToScaleDown(readyNodes, allScheduled)
 						updateDuration("scaledown", scaleDownStart)
 
 						// TODO: revisit result handling
@@ -378,13 +465,17 @@ func main() {
 
 		kubeClient := createKubeClient()
 		kube_leaderelection.RunOrDie(kube_leaderelection.LeaderElectionConfig{
-			EndpointsMeta: kube_api.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "cluster-autoscaler",
+			Lock: &resourcelock.EndpointsLock{
+				EndpointsMeta: apiv1.ObjectMeta{
+					Namespace: "kube-system",
+					Name:      "cluster-autoscaler",
+				},
+				Client: kubeClient,
+				LockConfig: resourcelock.ResourceLockConfig{
+					Identity:      id,
+					EventRecorder: createEventRecorder(kubeClient),
+				},
 			},
-			Client:        kubeClient,
-			Identity:      id,
-			EventRecorder: createEventRecorder(kubeClient),
 			LeaseDuration: leaderElection.LeaseDuration.Duration,
 			RenewDeadline: leaderElection.RenewDeadline.Duration,
 			RetryPeriod:   leaderElection.RetryPeriod.Duration,

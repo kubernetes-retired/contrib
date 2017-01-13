@@ -36,28 +36,30 @@ import (
 )
 
 const (
-	ownerFilename = "OWNERS" // file which contains owners and assignees
+	ownerFilename = "OWNERS" // file which contains approvers and reviewers
 	// RepoFeatureName is how mungers should indicate this is required
 	RepoFeatureName = "gitrepos"
+	// Github's api uses "" (empty) string as basedir by convention but it's clearer to use "/"
+	baseDirConvention = ""
 )
 
 type assignmentConfig struct {
 	Assignees []string `json:assignees yaml:assignees`
 	Approvers []string `json:approvers yaml:approvers`
-	//Reviewers []string `json:reviewers yaml:reviewers`
-	//Owners []string `json:owners`
+	Reviewers []string `json:reviewers yaml:reviewers`
 }
 
 // RepoInfo provides information about users in OWNERS files in a git repo
 type RepoInfo struct {
 	BaseDir      string
 	EnableMdYaml bool
+	UseReviewers bool
 
 	enabled    bool
 	projectDir string
-	assignees  map[string]sets.String
+	approvers  map[string]sets.String
+	reviewers  map[string]sets.String
 	config     *github.Config
-	//owners   map[string]sets.String
 }
 
 func init() {
@@ -67,6 +69,16 @@ func init() {
 // Name is just going to return the name mungers use to request this feature
 func (o *RepoInfo) Name() string {
 	return RepoFeatureName
+}
+
+// by default, github's api doesn't root the project directory at "/" and instead uses the empty string for the base dir
+// of the project. And the built-in dir function returns "." for empty strings, so for consistency, we use this
+// canonicalize to get the directories of files in a consistent format with NO "/" at the root (a/b/c/ -> a/b/c)
+func canonicalize(path string) string {
+	if path == "." {
+		return baseDirConvention
+	}
+	return strings.TrimSuffix(path, "/")
 }
 
 func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
@@ -104,14 +116,9 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 			glog.Errorf("Unable to find relative path between %q and %q: %v", o.projectDir, path, err)
 			return err
 		}
-		o.assignees[path] = sets.NewString()
-		if len(c.Assignees) > 0 {
-			o.assignees[path] = o.assignees[path].Union(sets.NewString(c.Assignees...))
-		}
-		if len(c.Approvers) > 0 {
-			o.assignees[path] = o.assignees[path].Union(sets.NewString(c.Approvers...))
-		}
-
+		o.approvers[path] = sets.NewString(c.Approvers...)
+		o.approvers[path].Insert(c.Assignees...)
+		o.reviewers[path] = sets.NewString(c.Reviewers...)
 		return nil
 	}
 
@@ -132,24 +139,15 @@ func (o *RepoInfo) walkFunc(path string, info os.FileInfo, err error) error {
 	}
 
 	path, err = filepath.Rel(o.projectDir, path)
+	path = filepath.Dir(path)
 	if err != nil {
 		glog.Errorf("Unable to find relative path between %q and %q: %v", o.projectDir, path, err)
 		return err
 	}
-	path = filepath.Dir(path)
-	// Make the root explicitly / so its easy to distinguish. Nothing else is `/` anchored
-	if path == "." {
-		path = "/"
-	}
-	o.assignees[path] = sets.NewString()
-	if len(c.Assignees) > 0 {
-		o.assignees[path] = o.assignees[path].Union(sets.NewString(c.Assignees...))
-	} else if len(c.Approvers) > 0 {
-		o.assignees[path] = o.assignees[path].Union(sets.NewString(c.Approvers...))
-	}
-	//if len(c.Owners) > 0 {
-	//o.owners[path] = sets.NewString(c.Owners...)
-	//}
+	path = canonicalize(path)
+	o.approvers[path] = sets.NewString(c.Approvers...)
+	o.approvers[path].Insert(c.Assignees...)
+	o.reviewers[path] = sets.NewString(c.Reviewers...)
 	return nil
 }
 
@@ -184,15 +182,15 @@ func (o *RepoInfo) updateRepoUsers() error {
 	}
 	sha := out
 
-	o.assignees = map[string]sets.String{}
-	//o.owners = map[string]sets.String{}
+	o.approvers = map[string]sets.String{}
+	o.reviewers = map[string]sets.String{}
 	err = filepath.Walk(o.projectDir, o.walkFunc)
 	if err != nil {
 		glog.Errorf("Got error %v", err)
 	}
 	glog.Infof("Loaded config from %s:%s", o.projectDir, sha)
-	glog.V(5).Infof("assignees: %v", o.assignees)
-	//glog.V(5).Infof("owners: %v", o.owners)
+	glog.V(5).Infof("approvers: %v", o.approvers)
+	glog.V(5).Infof("reviewers: %v", o.reviewers)
 	return nil
 }
 
@@ -255,6 +253,7 @@ func (o *RepoInfo) EachLoop() error {
 func (o *RepoInfo) AddFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&o.BaseDir, "repo-dir", "", "Path to perform checkout of repository")
 	cmd.Flags().BoolVar(&o.EnableMdYaml, "enable-md-yaml", false, "If true, look for assignees in md yaml headers.")
+	cmd.Flags().BoolVar(&o.UseReviewers, "use-reviewers", false, "Use \"reviewers\" rather than \"approvers\" for review")
 }
 
 // GitCommand will execute the git command with the `args` within the project directory.
@@ -269,52 +268,87 @@ func (o *RepoInfo) gitCommandDir(args []string, cmdDir string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
+// FindOwnersForPath returns the OWNERS file path further down the tree for a file
+func (o *RepoInfo) FindOwnersForPath(path string) string {
+	d := path
+
+	for {
+		_, ok := o.approvers[d]
+		if ok {
+			return d
+		}
+		if d == baseDirConvention {
+			break
+		}
+		d = filepath.Dir(d)
+		d = canonicalize(d)
+	}
+	return ""
+}
+
+// peopleForPath returns a set of users who are assignees to the
+// requested file. The path variable should be a full path to a filename
+// and not directory as the final directory will be discounted if enableMdYaml is true
+// leafOnly indicates whether only the OWNERS deepest in the tree (closest to the file)
+// should be returned or if all OWNERS in filepath should be returned
 func peopleForPath(path string, people map[string]sets.String, leafOnly bool, enableMdYaml bool) sets.String {
 	d := path
 	if !enableMdYaml {
-		d = filepath.Dir(path)
+		// if path is a directory, this will remove the leaf directory, and returns "." for topmost dir
+		d = filepath.Dir(d)
+		d = canonicalize(path)
 	}
 
 	out := sets.NewString()
 	for {
-		// special case the root
-		if d == "" {
-			d = "/"
-		}
 		s, ok := people[d]
 		if ok {
 			out = out.Union(s)
-			if leafOnly {
+			if leafOnly && out.Len() > 0 {
 				break
 			}
 		}
-		if d == "/" {
+		if d == baseDirConvention {
 			break
 		}
-		d, _ = filepath.Split(d)
-		d = strings.TrimSuffix(d, "/")
+		d = filepath.Dir(d)
+		d = canonicalize(d)
 	}
 	return out
 }
 
-// LeafAssignees returns a set of users who are the closest assignees to the
+// LeafApprovers returns a set of users who are the closest approvers to the
 // requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
 // will only return user2 for the path pkg/util/sets/file.go
-func (o *RepoInfo) LeafAssignees(path string) sets.String {
-	return peopleForPath(path, o.assignees, true, o.EnableMdYaml)
+func (o *RepoInfo) LeafApprovers(path string) sets.String {
+	return peopleForPath(path, o.approvers, true, o.EnableMdYaml)
 }
 
-// Assignees returns a set of users who are the closest assignees to the
-// requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
+// Approvers returns ALL of the users who are approvers for the
+// requested file (including approvers in parent dirs' OWNERS).
+// If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
 // will return both user1 and user2 for the path pkg/util/sets/file.go
-func (o *RepoInfo) Assignees(path string) sets.String {
-	return peopleForPath(path, o.assignees, false, o.EnableMdYaml)
+func (o *RepoInfo) Approvers(path string) sets.String {
+	return peopleForPath(path, o.approvers, false, o.EnableMdYaml)
 }
 
-//func (o *RepoInfo) LeafOwners(path string) sets.String {
-//return people(path, o.owners, true)
-//}
+// LeafReviewers returns a set of users who are the closest reviewers to the
+// requested file. If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
+// will only return user2 for the path pkg/util/sets/file.go
+func (o *RepoInfo) LeafReviewers(path string) sets.String {
+	if !o.UseReviewers {
+		return o.LeafApprovers(path)
+	}
+	return peopleForPath(path, o.reviewers, true, o.EnableMdYaml)
+}
 
-//func (o *RepoInfo) Owners(path string) sets.String {
-//return people(path, o.owners, false)
-//}
+// Reviewers returns ALL of the users who are reviewers for the
+// requested file (including reviewers in parent dirs' OWNERS).
+// If pkg/OWNERS has user1 and pkg/util/OWNERS has user2 this
+// will return both user1 and user2 for the path pkg/util/sets/file.go
+func (o *RepoInfo) Reviewers(path string) sets.String {
+	if !o.UseReviewers {
+		return o.Approvers(path)
+	}
+	return peopleForPath(path, o.reviewers, false, o.EnableMdYaml)
+}

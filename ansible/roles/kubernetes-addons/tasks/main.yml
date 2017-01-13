@@ -6,10 +6,9 @@
   when: not is_atomic and not is_coreos
 
 - name: Assures local addon dir exists
-  local_action: file
-    path={{ local_temp_addon_dir }}
-    state=directory
-  become: no
+  local_action: file path={{ local_temp_addon_dir }} state=directory
+  vars:
+    ansible_become: false
 
 - name: Make sure the system services namespace exists
   copy:
@@ -54,7 +53,7 @@
   register: kube_addons_python_image_dockerfile
 
 - name: Build Python image to use in Kubernetes Addons
-  shell: "docker build -t python:2.7-slim-pyyaml {{ kube_script_dir }}/python-image"
+  shell: "docker build --pull -t python:2.7-slim-pyyaml {{ kube_script_dir }}/python-image"
   when: is_coreos or (ansible_distribution == "Fedora" and is_atomic) and kube_addons_python_image_dockerfile | changed
 
 - name: Run kube-gen-token script to create {{ kube_token_dir }}/known_tokens.csv

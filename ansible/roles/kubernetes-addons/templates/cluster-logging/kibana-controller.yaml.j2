@@ -35,3 +35,6 @@ spec:
         - containerPort: 5601
           name: ui
           protocol: TCP
+      securityContext:
+        seLinuxOptions:
+          type: spc_t

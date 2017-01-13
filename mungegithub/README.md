@@ -3,8 +3,8 @@
 Mungegithub provides a number of tools intended to automate github processes. While mainly for the kubernetes community, some thought is put into making it generic. Mungegithub is built as a single binary, but is run in 3 different ways for 3 different purposes.
 
 1. submit-queue: This looks at open PRs and attempts to help automate the process getting PRs from open to merged.
-2. cherrypick: This looks at open and closed PRs with the `cherry-pick-candidate` label and attempts to help the branch managers deal with the cherry-pick process.
-3. shame-mailer: This looks at open issues and e-mails assignees who have not closed their issues rapidly.
+1. cherrypick: This looks at open and closed PRs with the `cherry-pick-candidate` label and attempts to help the branch managers deal with the cherry-pick process.
+1. shame-mailer: This looks at open issues and e-mails assignees who have not closed their issues rapidly.
 
 One can see the specifics of how the `submit-queue` and `cherrypick` options are executed by looking at the deployment definition in their respective subdirectories.
 
@@ -14,7 +14,7 @@ One may also look in the `example-one-off` directory for a small skeleton progra
 
 Executing `make help` inside the `mungegithub` directory should inform you about the functions provided by the Makefile. A common pattern when developing is to run something like:
 ```sh
-make mungegithub && ./mungegithub --dry-run --token-file=/path/to/token --once --www=submit-queue/www --kube-dir=$GOPATH/src/k8s.io/kubernetes --pr-mungers=submit-queue --min-pr-number=25000 --max-pr-number=25500 --organization=kubernetes --project=kubernetes --repo-dir=/tmp
+make mungegithub && ./mungegithub --dry-run --token-file=/path/to/token --once --www=submit-queue/www --pr-mungers=submit-queue --min-pr-number=25000 --max-pr-number=25500 --organization=kubernetes --project=kubernetes --repo-dir=/tmp --stderrthreshold=0
 ```
 
 A Github oauth token is required, even in readonly/test mode. For production, we use a token with write access to the repo in question. https://help.github.com/articles/creating-an-access-token-for-command-line-use/ discusses the procedure to get a personal oauth token. These tokens will need to be loaded into kubernetes `secret`s for use by the submit and/or cherry-pick queue. It is extremely easy to use up the 5,000 API calls per hour so the production token should not be re-used for tests.
@@ -38,6 +38,9 @@ It can finally deployed as:
 TARGET=kubernetes REPO=docker.io/$USERNAME APP=submit-queue KUBECONFIG=/path/to/kubeconfig make deploy
 ```
 
+**Note** The submit-queue should always be deployed from master so that look at
+the master branch (configmap, etc) reflects what is currently running.
+
 After this has successfully deployed to the test cluster in read-only mode, running in production involves running any required `kubectl config` commands to point to the production cluster, pushing a configmap if necessary, and then running:
 ```sh
 TARGET=kubernetes REPO=docker.io/$USERNAME APP=submit-queue KUBECONFIG=/path/to/kubeconfig READONLY=false make deploy
@@ -48,12 +51,16 @@ TARGET=kubernetes REPO=docker.io/$USERNAME APP=submit-queue KUBECONFIG=/path/to/
 A small amount of information about some of the individual mungers inside each of the 3 varieties are listed below:
 
 ### submit-queue
+* approval-handler - reads approvers from OWNERs files and decides if a PR
+  should get the approved label based on who has written `/approve`
 * block-paths - add `do-not-merge` label to PRs which change files which should not be changed (mainly old docs moved to kubernetes.github.io)
 * blunderbuss - assigned PRs to individuals based on the contents of OWNERS files in the main repo
 * cherrypick-auto-approve - adds `cherrypick-approved` to PRs in a release branch if the 'parent' pr in master was approved
 * cherrypick-label-unapproved - adds `do-not-merge` label to PRs against a release-\* branch which do not have `cherrypick-approved`
 * comment-deleter - deletes comments created by the k8s-merge-robot which are no longer relevant. Such as comments about a rebase being required if it has been rebased.
 * comment-deleter-jenkins - deleted comments create by the k8s-bot jenkins bot which are no longer relevant. Such as old test results.
+* issue-triager - takes the title and body of an issue and asks another web
+  service to guess the appropriate routing label
 * lgtm-after-commit - removes `lgtm` label if a PR is changed after the label was added
 * needs-rebase - adds and removes a `needs-rebase` label if a PR needs to be rebased before it can be applied.
 * path-label - adds labels, such as `kind/new-api` based on if ANY file which matches changed

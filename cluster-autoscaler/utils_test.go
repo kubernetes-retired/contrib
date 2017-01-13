@@ -17,12 +17,16 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
+	"k8s.io/contrib/cluster-autoscaler/cloudprovider/test"
+	"k8s.io/contrib/cluster-autoscaler/clusterstate"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -31,7 +35,7 @@ func TestFilterOutSchedulable(t *testing.T) {
 	p1 := BuildTestPod("p1", 1500, 200000)
 	p2 := BuildTestPod("p2", 3000, 200000)
 	p3 := BuildTestPod("p3", 100, 200000)
-	unschedulablePods := []*kube_api.Pod{p1, p2, p3}
+	unschedulablePods := []*apiv1.Pod{p1, p2, p3}
 
 	scheduledPod1 := BuildTestPod("s1", 100, 200000)
 	scheduledPod2 := BuildTestPod("s2", 1500, 200000)
@@ -42,12 +46,57 @@ func TestFilterOutSchedulable(t *testing.T) {
 
 	predicateChecker := simulator.NewTestPredicateChecker()
 
-	res := FilterOutSchedulable(unschedulablePods, []*kube_api.Node{node}, []*kube_api.Pod{scheduledPod1}, predicateChecker)
+	res := FilterOutSchedulable(unschedulablePods, []*apiv1.Node{node}, []*apiv1.Pod{scheduledPod1}, predicateChecker)
 	assert.Equal(t, 1, len(res))
 	assert.Equal(t, p2, res[0])
 
-	res2 := FilterOutSchedulable(unschedulablePods, []*kube_api.Node{node}, []*kube_api.Pod{scheduledPod1, scheduledPod2}, predicateChecker)
+	res2 := FilterOutSchedulable(unschedulablePods, []*apiv1.Node{node}, []*apiv1.Pod{scheduledPod1, scheduledPod2}, predicateChecker)
 	assert.Equal(t, 2, len(res2))
 	assert.Equal(t, p1, res2[0])
 	assert.Equal(t, p2, res2[1])
+}
+
+func TestRemoveOldUnregisteredNodes(t *testing.T) {
+	deletedNodes := make(chan string, 10)
+
+	now := time.Now()
+
+	ng1_1 := BuildTestNode("ng1-1", 1000, 1000)
+	ng1_1.Spec.ProviderID = "ng1-1"
+	ng1_2 := BuildTestNode("ng1-2", 1000, 1000)
+	ng1_2.Spec.ProviderID = "ng1-2"
+	provider := testprovider.NewTestCloudProvider(nil, func(nodegroup string, node string) error {
+		deletedNodes <- fmt.Sprintf("%s/%s", nodegroup, node)
+		return nil
+	})
+	provider.AddNodeGroup("ng1", 1, 10, 2)
+	provider.AddNode("ng1", ng1_1)
+	provider.AddNode("ng1", ng1_2)
+
+	clusterState := clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{
+		MaxTotalUnreadyPercentage: 10,
+		OkTotalUnreadyCount:       1,
+	})
+	err := clusterState.UpdateNodes([]*apiv1.Node{ng1_1}, now.Add(-time.Hour))
+	assert.NoError(t, err)
+
+	context := &AutoscalingContext{
+		CloudProvider:               provider,
+		ClusterStateRegistry:        clusterState,
+		UnregisteredNodeRemovalTime: 45 * time.Minute,
+	}
+	unregisteredNodes := clusterState.GetUnregisteredNodes()
+	assert.Equal(t, 1, len(unregisteredNodes))
+
+	// Nothing should be removed. The unregistered node is not old enough.
+	removed, err := removeOldUnregisteredNodes(unregisteredNodes, context, now.Add(-50*time.Minute))
+	assert.NoError(t, err)
+	assert.False(t, removed)
+
+	// ng1_2 should be removed.
+	removed, err = removeOldUnregisteredNodes(unregisteredNodes, context, now)
+	assert.NoError(t, err)
+	assert.True(t, removed)
+	deletedNode := getStringFromChan(deletedNodes)
+	assert.Equal(t, "ng1/ng1-2", deletedNode)
 }

@@ -17,6 +17,9 @@ data:
   test-options.required-retest-contexts: "\"\""
 
   # submit-queue options.
+  submit-queue.protected-branches: "\"\""
+  submit-queue.protected-branches-extra-contexts: "\"\""
+
   submit-queue.required-contexts: "\"\""
   submit-queue.nonblocking-jenkins-jobs: "\"\""
   submit-queue.jenkins-jobs: "\"\""
@@ -26,6 +29,7 @@ data:
   submit-queue.admin-port: "9999"
   submit-queue.chart-url: ""
   submit-queue.history-url: ""
+  submit-queue.batch-url: ""
 
   # options used by the GCS feature.
   gcs.gcs-bucket: ""
@@ -45,3 +49,6 @@ data:
   issue-categorizer.triager-url: ""
   cla.cla-status-context: ""
   alias.alias-file: "/gitrepos/kubernetes.github.io/OWNERS_ALIASES"
+
+  # Temporary gate approval process
+  approval-activated: "false"

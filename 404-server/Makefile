@@ -51,7 +51,7 @@ container:
 	# Compile the binary inside a container for reliable builds
 	docker run --rm -it -v $(TEMP_DIR):/build golang:$(GOLANG_VERSION) /bin/bash -c "make -C /build server ARCH=$(ARCH)"
 
-	docker build -t $(PREFIX)-$(ARCH):$(TAG) $(TEMP_DIR)
+	docker build --pull -t $(PREFIX)-$(ARCH):$(TAG) $(TEMP_DIR)
 
 	rm -rf $(TEMP_DIR)
 
