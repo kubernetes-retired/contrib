@@ -89,7 +89,7 @@ type nginxLoadbalancerProvisioner struct {
 var _ loadbalancerprovider.Provisioner = &nginxLoadbalancerProvisioner{}
 
 func (p *nginxLoadbalancerProvisioner) Provision(clientset *kubernetes.Clientset, dynamicClient *dynamic.Client) (string, error) {
-	service, rc, loadbalancer := p.getService(), p.getReplicationController(), p.getLoadBalancer()
+	service, rc, configmap, loadbalancer := p.getService(), p.getReplicationController(), p.getConfigMap(), p.getLoadBalancer()
 
 	lbUnstructed, err := loadbalancer.ToUnstructured()
 	if err != nil {
@@ -103,6 +103,9 @@ func (p *nginxLoadbalancerProvisioner) Provision(clientset *kubernetes.Clientset
 		if _, err := clientset.Core().ReplicationControllers("kube-system").Create(rc); err != nil {
 			return err
 		}
+		if _, err := clientset.Core().ConfigMaps("kube-system").Create(configmap); err != nil {
+			return err
+		}
 		if _, err := dynamicClient.Resource(lbresource, "kube-system").Create(lbUnstructed); err != nil {
 			return err
 		}
@@ -110,13 +113,16 @@ func (p *nginxLoadbalancerProvisioner) Provision(clientset *kubernetes.Clientset
 	}()
 
 	if err != nil {
-		if err := clientset.Core().Services("kube-system").Delete(service.Name, &api.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+		if err := clientset.Core().Services("kube-system").Delete(service.Name, nil); err != nil && !errors.IsNotFound(err) {
 			glog.Errorf("Faile do delete service due to: %v", err)
 		}
-		if err := clientset.Core().ReplicationControllers("kube-system").Delete(rc.Name, &api.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+		if err := clientset.Core().ReplicationControllers("kube-system").Delete(rc.Name, nil); err != nil && !errors.IsNotFound(err) {
 			glog.Errorf("Faile do delete rc due to: %v", err)
 		}
-		if err := dynamicClient.Resource(lbresource, "kube-system").Delete(lbUnstructed.GetName(), &v1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+		if err := clientset.Core().ConfigMaps("kube-system").Delete(configmap.Name, nil); err != nil && !errors.IsNotFound(err) {
+			glog.Errorf("Faile do delete configmap due to: %v", err)
+		}
+		if err := dynamicClient.Resource(lbresource, "kube-system").Delete(lbUnstructed.GetName(), nil); err != nil && !errors.IsNotFound(err) {
 			glog.Errorf("Faile do delete lb due to: %v", err)
 		}
 
@@ -173,6 +179,21 @@ func (p *nginxLoadbalancerProvisioner) getService() *v1.Service {
 					TargetPort: intstr.FromInt(80),
 				},
 			},
+		},
+	}
+}
+
+func (p *nginxLoadbalancerProvisioner) getConfigMap() *v1.ConfigMap {
+	return &v1.ConfigMap{
+		ObjectMeta: v1.ObjectMeta{
+			Name: p.options.LoadBalancerName,
+			Labels: map[string]string{
+				"k8s-app":              p.options.LoadBalancerName,
+				ProvisionerCreateByKey: ProvisionerCreateByValue,
+			},
+		},
+		Data: map[string]string{
+			"enable-sticky-sessions": "true",
 		},
 	}
 }
@@ -326,6 +347,7 @@ func (p *nginxLoadbalancerProvisioner) getReplicationController() *v1.Replicatio
 							Args: []string{
 								"/nginx-ingress-controller",
 								"--default-backend-service=default/default-http-backend",
+								"--nginx-configmap=kube-system/" + p.options.LoadBalancerName,
 							},
 						},
 					},
