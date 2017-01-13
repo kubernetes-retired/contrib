@@ -5,11 +5,26 @@ Install Redis Petset as an in-memory cache.
 * Uses [redis-sentinel-micro](https://github.com/dhilipkumars/redis-sentinel-micro) for automatic slave promotion if master fails
 * Super fast caching as no persistance involved
 
+Quick Benchmark comparision between [redis petset](https://github.com/kubernetes/contrib/tree/master/pets/redis) with persistence enabled and [this redis statefulset](https://github.com/kubernetes/contrib/tree/master/statefulsets/redis), as you can notice the writes are atleast 3 times slower.
+
+Redis Petset with persistance enabled
+```
+$ k exec rediscli -- redis-benchmark -q -h rd-0.redis.default.svc.cluster.local -p 6379 -t set,get -n 100000 -d 100 -r 1000000
+SET: 22026.43 requests per second
+GET: 76161.46 requests per second
+```
+Redis Statefulset configured without persistance
+```
+$ k exec rediscli -- redis-benchmark -q -h cache-0.cache.default.svc.cluster.local -p 6379 -t set,get -n 100000 -d 100 -r 1000000
+SET: 60060.06 requests per second
+GET: 89285.71 requests per second
+```
+
 Here is a sample demo of master slave promotion.
 
-Install the petset 
+Install the Statefulset 
 ```
-$k create -f pets/redis_cache/redis.yml
+$k create -f pets/statefulsets/redis.yml
 service "cache" created
 petset "cache" created
 ```
