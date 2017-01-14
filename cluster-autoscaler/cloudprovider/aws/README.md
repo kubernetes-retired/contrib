@@ -64,16 +64,7 @@ spec:
           env:
             - name: AWS_REGION
               value: us-east-1
-          volumeMounts:
-            - name: ssl-certs
-              mountPath: /etc/ssl/certs/ca-certificates.crt
-              readOnly: true
           imagePullPolicy: "Always"
-      volumes:
-        - name: ssl-certs
-          hostPath:
-            path: "/etc/ssl/certs/ca-certificates.crt"
 ```
 Note:
-- The `/etc/ssl/certs/ca-certificates.crt` should exist by default on your ec2 instance.
 - The autoscaling group should span 1 availability zone for the cluster autoscaler to work. If you want to distribute workloads evenly across zones, set up multiple ASGs, with a cluster autoscaler for each ASG. At the time of writing this, cluster autoscaler is unaware of availability zones and although autoscaling groups can contain instances in multiple availability zones when configured so, the cluster autoscaler can't reliably add nodes to desired zones. That's because AWS AutoScaling determines which zone to add nodes which is out of the control of the cluster autoscaler. For more information, see https://github.com/kubernetes/contrib/pull/1552#discussion_r75533090.
