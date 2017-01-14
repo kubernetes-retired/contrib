@@ -414,6 +414,10 @@ func main() {
 		"Can be used multiple times. Format: <min>:<max>:<other...>")
 	kube_flag.InitFlags()
 
+	if *autoDiscoverNodeGroup == true && *cloudProviderFlag != "aws" {
+		glog.Fatalf("Cannot turn on node group autodiscovery for cloud provider: %s", cloudProviderFlag)
+	}
+
 	glog.Infof("Cluster Autoscaler %s", ClusterAutoscalerVersion)
 
 	correctEstimator := false

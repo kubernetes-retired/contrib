@@ -53,10 +53,10 @@ func BuildAwsCloudProvider(awsManager *AwsManager, specs []string, kubeClient ku
 				case <-time.After(scanInterval):
 					{
 						selector := "master!=true"
-						listAll := apiv1.ListOptions{LabelSelector: selector}
-						nl, err := kubeClient.Core().Nodes().List(listAll)
+						noMaster := apiv1.ListOptions{LabelSelector: selector}
+						nl, err := kubeClient.Core().Nodes().List(noMaster)
 						if err != nil {
-							glog.Errorf("err: %s\n", err)
+							glog.Errorf("Failed to list nodes from API server: %v\n", err)
 						}
 
 						var nodesList []*string
@@ -92,21 +92,21 @@ func AutoDiscoverNodeGroup(aws *AwsCloudProvider, nodesList []*string) error {
 	}
 	instances, err := aws.awsManager.ec2Service.DescribeInstances(params)
 	if err != nil {
-		glog.Errorf("Error describing EC2 instances: %s\n", err)
+		glog.Errorf("Error describing EC2 instances: %v\n", err)
 		return err
 	}
 
 	//make a "uniq" on the names so that we don't consider autoscaling groups twice
-	asgs := make(map[string]bool, 0)
+	discoveredASGs := make(map[string]bool, 0)
 	names := make([]*string, 0)
-	for idx := range instances.Reservations {
-		for _, inst := range instances.Reservations[idx].Instances {
+	for _, r := range instances.Reservations {
+		for _, inst := range r.Instances {
 			for _, tag := range inst.Tags {
 				if *(tag.Key) == "aws:autoscaling:groupName" {
-					if _, ok := asgs[*(tag.Value)]; !ok {
+					if _, ok := discoveredASGs[*(tag.Value)]; !ok {
 						names = append(names, tag.Value)
 					}
-					asgs[*(tag.Value)] = true
+					discoveredASGs[*(tag.Value)] = true
 				}
 			}
 		}
