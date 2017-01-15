@@ -1,0 +1,102 @@
+# A headless service to create DNS records
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  name: cache 
+  labels:
+    app: rd-cache
+spec:
+  ports:
+  - port: 6379 
+    name: peer 
+  # *.nginx.default.svc.cluster.local
+  clusterIP: None 
+  selector:
+    app: rd-redis
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: cache-budget
+spec:
+  selector:
+    matchLabels:
+      app: rd-redis
+  minAvailable: 2
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet 
+metadata:
+  name: cache
+spec:
+  serviceName: "cache"
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: rd-redis
+      annotations:
+        scheduler.alpha.kubernetes.io/affinity: > 
+           {
+              "podAntiAffinity": {
+                 "requiredDuringSchedulingRequiredDuringExecution": [{
+                      "labelSelector": {
+                         "matchExpressions": [{
+                             "key": "app",
+                             "operator": "In",
+                              "values": ["rd-redis"]
+                          }]
+                      }
+                  }]
+               }
+           }
+        pod.beta.kubernetes.io/init-containers: '[
+           {
+             "name":"sentinel-micro",
+             "image":"dhilipkumars/redis-sentinel-micro",
+             "env": [
+               {
+                  "name": "POD_NAMESPACE",
+                  "valueFrom": {
+                     "fieldRef" : {
+                        "apiVersion" : "v1",
+                        "fieldPath" : "metadata.namespace"
+                     }
+                  }
+               }
+
+             ],
+            "volumeMounts": [
+               {
+                  "name": "config",
+                  "mountPath": "/config"
+               }
+            ]
+           }
+        ]'
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: redis
+        image: redis:3.0-alpine
+        #args: ["--slaveof", "0.0.0.0", "1331"]
+        ports:
+        - containerPort: 6379 
+          name: peer 
+      - name: make-slave 
+        image: dhilipkumars/mk-redis-slave 
+        # command: ["/mk_redis_slave"]
+        env: 
+          - name: POD_NAMESPACE
+            valueFrom: 
+              fieldRef: 
+                apiVersion: "v1"
+                fieldPath: metadata.namespace
+        volumeMounts: 
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        emptyDir: {}
