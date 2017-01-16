@@ -145,6 +145,7 @@ triager-url
 ttl-secs
 udp-services-configmap
 unit-status-context
+unregistered-node-removal-time
 url-list
 use-cluster-credentials
 use-ip

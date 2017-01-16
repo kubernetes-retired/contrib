@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/golang/glog"
 	githubapi "github.com/google/go-github/github"
@@ -94,6 +93,7 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 
 	comments, ok := getCommentsAfterLastModified(obj)
+
 	if !ok {
 		return
 	}
@@ -128,8 +128,10 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, ownersMap 
 	notifications := c.FilterComments(comments, notificationMatcher)
 	latestNotification := notifications.GetLast()
 	if latestNotification == nil {
-		return h.createMessage(obj, ownersMap)
+		body := h.getMessage(obj, ownersMap)
+		obj.WriteComment(body)
 	}
+
 	latestApprove := c.FilterComments(comments, c.CommandName(approveCommand)).GetLast()
 	if latestApprove == nil || latestApprove.CreatedAt == nil {
 		// there was already a bot notification and nothing has changed since
@@ -137,19 +139,21 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, ownersMap 
 		return nil
 	}
 	if latestApprove.CreatedAt.After(*latestNotification.CreatedAt) {
-		// if we can't tell when latestApprove happened, we should make a new one
-		obj.DeleteComment(latestNotification)
+		// if someone approved since the last comment, we should update the comment
 		glog.Infof("Latest approve was after last time notified")
-		return h.createMessage(obj, ownersMap)
+		body := h.getMessage(obj, ownersMap)
+		return obj.EditComment(latestNotification, body)
 	}
 	lastModified, ok := obj.LastModifiedTime()
 	if !ok {
 		return fmt.Errorf("Unable to get LastModifiedTime for %d", obj.Number())
 	}
 	if latestNotification.CreatedAt.Before(*lastModified) {
-		obj.DeleteComment(latestNotification)
+		// the PR was modified After our last notification, so we should update the approvers notification
+		// i.e. People that have formerly approved haven't necessarily approved of new changes
 		glog.Infof("PR Modified After Last Notification")
-		return h.createMessage(obj, ownersMap)
+		body := h.getMessage(obj, ownersMap)
+		return obj.EditComment(latestNotification, body)
 	}
 	return nil
 }
@@ -228,7 +232,14 @@ func removeSubdirs(dirList []string) sets.String {
 	return finalSet
 }
 
-func (h *ApprovalHandler) createMessage(obj *github.MungeObject, ownersMap map[string]sets.String) error {
+// getMessage returns the comment body that we want the approval-handler to display on PRs
+// The comment shows:
+// 	- a list of approvers files (and links) needed to get the PR approved
+// 	- a list of approvers files with strikethroughs that already have an approver's approval
+// 	- a suggested list of people from each OWNERS files that can fully approve the PR
+// 	- how an approver can indicate their approval
+// 	- how an approver can cancel their approval
+func (h *ApprovalHandler) getMessage(obj *github.MungeObject, ownersMap map[string]sets.String) string {
 	// sort the keys so we always display OWNERS files in same order
 	sliceOfKeys := make([]string, len(ownersMap))
 	i := 0
@@ -242,13 +253,14 @@ func (h *ApprovalHandler) createMessage(obj *github.MungeObject, ownersMap map[s
 	context := bytes.NewBufferString("")
 	for _, path := range sliceOfKeys {
 		approverSet := ownersMap[path]
+		fullOwnersPath := filepath.Join(path, ownersFileName)
+		link := fmt.Sprintf("https://github.com/%s/%s/blob/master/%v", obj.Org(), obj.Project(), fullOwnersPath)
+
 		if approverSet.Len() == 0 {
-			fullOwnersPath := filepath.Join(path, ownersFileName)
-			link := fmt.Sprintf("https://github.com/%s/%s/blob/master/%v", obj.Org(), obj.Project(), fullOwnersPath)
 			context.WriteString(fmt.Sprintf("- **[%s](%s)** \n", fullOwnersPath, link))
 			unapprovedOwners.Insert(path)
 		} else {
-			context.WriteString(fmt.Sprintf("- ~~%s~~ [%v]\n", path, strings.Join(approverSet.List(), ",")))
+			context.WriteString(fmt.Sprintf("- ~~[%s](%s)~~ [%v]\n", fullOwnersPath, link, strings.Join(approverSet.List(), ",")))
 		}
 	}
 	context.WriteString("\n")
@@ -262,7 +274,8 @@ func (h *ApprovalHandler) createMessage(obj *github.MungeObject, ownersMap map[s
 	}
 	context.WriteString("\n You can indicate your approval by writing `/approve` in a comment")
 	context.WriteString("\n You can cancel your approval by writing `/approve cancel` in a comment")
-	return c.Notification{approvalNotificationName, "Needs approval from an approver in each of these OWNERS Files:\n", context.String()}.Post(obj)
+	notif := c.Notification{approvalNotificationName, "Needs approval from an approver in each of these OWNERS Files:\n", context.String()}
+	return notif.String()
 }
 
 // createApproverSet iterates through the list of comments on a PR
@@ -273,6 +286,7 @@ func createApproverSet(comments []*githubapi.IssueComment) sets.String {
 	approverSet := sets.NewString()
 
 	approverMatcher := c.CommandName(approveCommand)
+
 	for _, comment := range c.FilterComments(comments, approverMatcher) {
 		cmd := c.ParseCommand(comment)
 		if cmd.Arguments == cancel {
@@ -310,18 +324,16 @@ func (h ApprovalHandler) getApprovedOwners(files []*githubapi.CommitFile, approv
 	return ownersApprovers
 }
 
+// gets the comments since the obj was last changed.  If we can't figure out when the object was last changed
+// return all the comments on the issue
 func getCommentsAfterLastModified(obj *github.MungeObject) ([]*githubapi.IssueComment, bool) {
-	afterLastModified := func(opt *githubapi.IssueListCommentsOptions) *githubapi.IssueListCommentsOptions {
-		// Only comments updated at or after this time are returned.
-		// One possible case is that reviewer might "/lgtm" first, contributor updated PR, and reviewer updated "/lgtm".
-		// This is still valid. We don't recommend user to update it.
-		lastModified, ok := obj.LastModifiedTime()
-		if !ok {
-			opt.Since = time.Time{}
-		} else {
-			opt.Since = *lastModified
-		}
-		return opt
+	comments, ok := obj.ListComments()
+	if !ok {
+		return comments, ok
 	}
-	return obj.ListComments(afterLastModified)
+	lastModified, ok := obj.LastModifiedTime()
+	if !ok {
+		return comments, ok
+	}
+	return c.FilterComments(comments, c.CreatedAfter(*lastModified)), true
 }

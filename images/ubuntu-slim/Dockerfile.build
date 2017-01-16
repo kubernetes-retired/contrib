@@ -14,15 +14,11 @@ RUN apt-mark hold apt gnupg adduser passwd libsemanage1
 
 # dpkg --get-selections | grep -v deinstall
 RUN echo "Yes, do as I say!" | apt-get purge \
-    bash \
     libcap2-bin \
     libkmod2 \
     libsmartcols1 \
     libudev1 \
     tzdata
-
-# replace shell bash with sh
-RUN sed -i 's/bash/sh/g' /etc/passwd
 
 # cleanup
 RUN apt-get autoremove -y && \

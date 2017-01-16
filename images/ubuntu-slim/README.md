@@ -20,4 +20,3 @@ This is possible by the removal of packages that are not required in a container
 - tzdata
 - udev
 - util-linux
-- bash

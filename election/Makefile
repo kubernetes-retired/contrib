@@ -12,8 +12,8 @@ server:
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' -o server example/main.go
 
 container: server
-	docker build -t $(PREFIX):$(TAG) .
-	docker build -t $(NODEJS_PREFIX):$(NODEJS_TAG) client/nodejs
+	docker build --pull -t $(PREFIX):$(TAG) .
+	docker build --pull -t $(NODEJS_PREFIX):$(NODEJS_TAG) client/nodejs
 
 push: container
 	gcloud docker push $(PREFIX):$(TAG)
