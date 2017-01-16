@@ -705,7 +705,10 @@ func main() {
 		if err != nil {
 			glog.Fatalf("error connecting to the client: %v", err)
 		}
-		kubeClient, err = unversioned.New(config)
+		if kubeClient, err = unversioned.New(config); err != nil {
+			glog.Fatalf("Failed to create client: %v", err)
+		}
+
 	}
 	namespace, specified, err := clientConfig.Namespace()
 	if err != nil {
