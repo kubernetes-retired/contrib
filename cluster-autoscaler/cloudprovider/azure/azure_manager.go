@@ -226,7 +226,7 @@ func (m *AzureManager) SetScaleSetSize(asConfig *ScaleSet, size int64) error {
 		return err
 	}
 	op.Sku.Capacity = &size
-	op.Properties.ProvisioningState = nil
+	op.VirtualMachineScaleSetProperties.ProvisioningState = nil
 	cancel := make(chan struct{})
 	_, err = m.scaleSetClient.CreateOrUpdate(m.resourceGroupName, asConfig.Name, op, cancel)
 
@@ -323,7 +323,7 @@ func (m *AzureManager) regenerateCache() error {
 		}
 
 		for _, instance := range *result.Value {
-			var name = "azure:////" + fixEndiannessUUID(string(strings.ToUpper(*instance.Properties.VMID)))
+			var name = "azure:////" + fixEndiannessUUID(string(strings.ToUpper(*instance.VirtualMachineScaleSetVMProperties.VMID)))
 			ref := AzureRef{
 				Name: name,
 			}
@@ -347,7 +347,7 @@ func (m *AzureManager) GetScaleSetVms(scaleSet *ScaleSet) ([]string, error) {
 	}
 	result := make([]string, 0)
 	for _, instance := range *instances.Value {
-		var name = "azure:////" + fixEndiannessUUID(string(strings.ToUpper(*instance.Properties.VMID)))
+		var name = "azure:////" + fixEndiannessUUID(string(strings.ToUpper(*instance.VirtualMachineScaleSetVMProperties.VMID)))
 
 		result = append(result, name)
 	}
