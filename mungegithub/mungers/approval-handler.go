@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/golang/glog"
 	githubapi "github.com/google/go-github/github"
@@ -94,6 +93,7 @@ func (h *ApprovalHandler) Munge(obj *github.MungeObject) {
 	}
 
 	comments, ok := getCommentsAfterLastModified(obj)
+
 	if !ok {
 		return
 	}
@@ -142,7 +142,7 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, ownersMap 
 		// if someone approved since the last comment, we should update the comment
 		glog.Infof("Latest approve was after last time notified")
 		body := h.getMessage(obj, ownersMap)
-		return obj.EditComment(latestApprove, body)
+		return obj.EditComment(latestNotification, body)
 	}
 	lastModified, ok := obj.LastModifiedTime()
 	if !ok {
@@ -153,7 +153,7 @@ func (h *ApprovalHandler) updateNotification(obj *github.MungeObject, ownersMap 
 		// i.e. People that have formerly approved haven't necessarily approved of new changes
 		glog.Infof("PR Modified After Last Notification")
 		body := h.getMessage(obj, ownersMap)
-		return obj.EditComment(latestApprove, body)
+		return obj.EditComment(latestNotification, body)
 	}
 	return nil
 }
@@ -253,13 +253,14 @@ func (h *ApprovalHandler) getMessage(obj *github.MungeObject, ownersMap map[stri
 	context := bytes.NewBufferString("")
 	for _, path := range sliceOfKeys {
 		approverSet := ownersMap[path]
+		fullOwnersPath := filepath.Join(path, ownersFileName)
+		link := fmt.Sprintf("https://github.com/%s/%s/blob/master/%v", obj.Org(), obj.Project(), fullOwnersPath)
+
 		if approverSet.Len() == 0 {
-			fullOwnersPath := filepath.Join(path, ownersFileName)
-			link := fmt.Sprintf("https://github.com/%s/%s/blob/master/%v", obj.Org(), obj.Project(), fullOwnersPath)
 			context.WriteString(fmt.Sprintf("- **[%s](%s)** \n", fullOwnersPath, link))
 			unapprovedOwners.Insert(path)
 		} else {
-			context.WriteString(fmt.Sprintf("- ~~%s~~ [%v]\n", path, strings.Join(approverSet.List(), ",")))
+			context.WriteString(fmt.Sprintf("- ~~[%s](%s)~~ [%v]\n", fullOwnersPath, link, strings.Join(approverSet.List(), ",")))
 		}
 	}
 	context.WriteString("\n")
@@ -285,6 +286,7 @@ func createApproverSet(comments []*githubapi.IssueComment) sets.String {
 	approverSet := sets.NewString()
 
 	approverMatcher := c.CommandName(approveCommand)
+
 	for _, comment := range c.FilterComments(comments, approverMatcher) {
 		cmd := c.ParseCommand(comment)
 		if cmd.Arguments == cancel {
@@ -322,18 +324,16 @@ func (h ApprovalHandler) getApprovedOwners(files []*githubapi.CommitFile, approv
 	return ownersApprovers
 }
 
+// gets the comments since the obj was last changed.  If we can't figure out when the object was last changed
+// return all the comments on the issue
 func getCommentsAfterLastModified(obj *github.MungeObject) ([]*githubapi.IssueComment, bool) {
-	afterLastModified := func(opt *githubapi.IssueListCommentsOptions) *githubapi.IssueListCommentsOptions {
-		// Only comments updated at or after this time are returned.
-		// One possible case is that reviewer might "/lgtm" first, contributor updated PR, and reviewer updated "/lgtm".
-		// This is still valid. We don't recommend user to update it.
-		lastModified, ok := obj.LastModifiedTime()
-		if !ok {
-			opt.Since = time.Time{}
-		} else {
-			opt.Since = *lastModified
-		}
-		return opt
+	comments, ok := obj.ListComments()
+	if !ok {
+		return comments, ok
 	}
-	return obj.ListComments(afterLastModified)
+	lastModified, ok := obj.LastModifiedTime()
+	if !ok {
+		return comments, ok
+	}
+	return c.FilterComments(comments, c.CreatedAfter(*lastModified)), true
 }
