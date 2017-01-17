@@ -23,7 +23,7 @@ import (
 	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm/predicates"
-	// We need to import provider to intialize default scheduler.
+	// We need to import provider to initalize default scheduler.
 	_ "k8s.io/kubernetes/plugin/pkg/scheduler/algorithmprovider"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/factory"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
