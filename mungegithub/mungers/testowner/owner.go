@@ -41,22 +41,34 @@ func normalize(name string) string {
 	return strings.ToLower(strings.TrimSpace(string(squeezed)))
 }
 
+// Owner stores the SIG and user which have responsibility for the test.
+type Owner struct {
+	// User assigned to this test.
+	User string
+	// SIG holding responsibility for this test.
+	SIG string
+}
+
+func (o Owner) String() string {
+	return "Owner{User:'" + o.User + "', SIG:'" + o.SIG + "'}"
+}
+
 // OwnerList uses a map to get owners for a given test name.
 type OwnerList struct {
-	mapping map[string]string
+	mapping map[string]*Owner
 	rng     *rand.Rand
 }
 
 // TestOwner returns the owner for a test, an owner from default if present,
-// or else the empty string if none is found.
-func (o *OwnerList) TestOwner(testName string) string {
+// or nil if none is found.
+func (o *OwnerList) TestOwner(testName string) *Owner {
 	name := normalize(testName)
 
 	// exact mapping
 	owner, _ := o.mapping[name]
 
 	// glob matching
-	if owner == "" {
+	if owner == nil {
 		keys := []string{}
 		for k := range o.mapping {
 			keys = append(keys, k)
@@ -71,22 +83,26 @@ func (o *OwnerList) TestOwner(testName string) string {
 	}
 
 	// falls into default
-	if owner == "" {
+	if owner == nil {
 		owner, _ = o.mapping["default"]
 	}
 
-	if strings.Contains(owner, "/") {
-		ownerSet := strings.Split(owner, "/")
-		owner = ownerSet[o.rng.Intn(len(ownerSet))]
+	if owner != nil && strings.Contains(owner.User, "/") {
+		ownerSet := strings.Split(owner.User, "/")
+		// return copy of owner with assigned user
+		return &Owner{
+			User: ownerSet[o.rng.Intn(len(ownerSet))],
+			SIG:  owner.SIG,
+		}
 	}
 	return owner
 }
 
 // NewOwnerList constructs an OwnerList given a mapping from test names to test owners.
-func NewOwnerList(mapping map[string]string) *OwnerList {
+func NewOwnerList(mapping map[string]*Owner) *OwnerList {
 	list := OwnerList{}
 	list.rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-	list.mapping = make(map[string]string)
+	list.mapping = make(map[string]*Owner)
 	for input, output := range mapping {
 		list.mapping[normalize(input)] = output
 	}
@@ -101,21 +117,27 @@ func NewOwnerListFromCsv(r io.Reader) (*OwnerList, error) {
 	if err != nil {
 		return nil, err
 	}
-	mapping := make(map[string]string)
+	mapping := make(map[string]*Owner)
 	ownerCol := -1
 	nameCol := -1
+	sigCol := -1
 	for _, record := range records {
-		if ownerCol == -1 || nameCol == -1 {
+		if ownerCol == -1 || nameCol == -1 || sigCol == -1 {
 			for col, val := range record {
 				switch strings.ToLower(val) {
 				case "owner":
 					ownerCol = col
 				case "name":
 					nameCol = col
+				case "sig":
+					sigCol = col
 				}
 			}
 		} else {
-			mapping[record[nameCol]] = record[ownerCol]
+			mapping[record[nameCol]] = &Owner{
+				User: record[ownerCol],
+				SIG:  record[sigCol],
+			}
 		}
 	}
 	if len(mapping) == 0 {
@@ -143,8 +165,8 @@ func NewReloadingOwnerList(path string) (*ReloadingOwnerList, error) {
 	return ownerList, nil
 }
 
-// TestOwner returns the owner for a test, or the empty string if none is found.
-func (o *ReloadingOwnerList) TestOwner(testName string) string {
+// TestOwner returns the owner for a test, or nil if none is found.
+func (o *ReloadingOwnerList) TestOwner(testName string) *Owner {
 	err := o.reload()
 	if err != nil {
 		glog.Errorf("Unable to reload test owners at %s: %v", o.path, err)
