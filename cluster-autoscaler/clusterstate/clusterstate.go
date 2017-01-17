@@ -401,15 +401,39 @@ func (csr *ClusterStateRegistry) GetUnregisteredNodes() []UnregisteredNode {
 
 // GetReadinessState gets readiness state for the node
 func GetReadinessState(node *apiv1.Node) (isNodeReady bool, lastTransitionTime time.Time, err error) {
-	for _, condition := range node.Status.Conditions {
-		if condition.Type == apiv1.NodeReady {
-			if condition.Status == apiv1.ConditionTrue {
-				return true, condition.LastTransitionTime.Time, nil
+	canNodeBeReady, readyFound := true, false
+	lastTransitionTime = time.Time{}
+
+	for _, cond := range node.Status.Conditions {
+		switch cond.Type {
+		case apiv1.NodeReady:
+			readyFound = true
+			if cond.Status == apiv1.ConditionFalse {
+				canNodeBeReady = false
 			}
-			return false, condition.LastTransitionTime.Time, nil
+			if lastTransitionTime.Before(cond.LastTransitionTime.Time) {
+				lastTransitionTime = cond.LastTransitionTime.Time
+			}
+		case apiv1.NodeOutOfDisk:
+			if cond.Status == apiv1.ConditionTrue {
+				canNodeBeReady = false
+			}
+			if lastTransitionTime.Before(cond.LastTransitionTime.Time) {
+				lastTransitionTime = cond.LastTransitionTime.Time
+			}
+		case apiv1.NodeNetworkUnavailable:
+			if cond.Status == apiv1.ConditionTrue {
+				canNodeBeReady = false
+			}
+			if lastTransitionTime.Before(cond.LastTransitionTime.Time) {
+				lastTransitionTime = cond.LastTransitionTime.Time
+			}
 		}
 	}
-	return false, time.Time{}, fmt.Errorf("NodeReady condition for %s not found", node.Name)
+	if !readyFound {
+		return false, time.Time{}, fmt.Errorf("NodeReady condition for %s not found", node.Name)
+	}
+	return canNodeBeReady, lastTransitionTime, nil
 }
 
 func isNodeNotStarted(node *apiv1.Node) bool {
