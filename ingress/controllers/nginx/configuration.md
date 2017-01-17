@@ -358,7 +358,7 @@ A more adequate value to support websockets is a value higher than one hour (`36
 
 NGINX provides the configuration option [ssl_buffer_size](http://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_buffer_size) to allow the optimization of the TLS record size. This improves the [Time To First Byte](https://www.igvita.com/2013/12/16/optimizing-nginx-tls-time-to-first-byte/) (TTTFB). The default value in the Ingress controller is `4k` (nginx default is `16k`);
 
-#### Retries in no idempotent methods
+#### Retries in non-idempotent methods
 
 Since 1.9.13 NGINX will not retry non-idempotent requests (POST, LOCK, PATCH) in case of an error.
 The previous behavior can be restored using `retry-non-idempotent=true` in the configuration config map
