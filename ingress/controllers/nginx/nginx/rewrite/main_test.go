@@ -96,9 +96,13 @@ func TestAnnotations(t *testing.T) {
 
 func TestWithoutAnnotations(t *testing.T) {
 	ing := buildIngress()
-	_, err := ParseAnnotations(config.NewDefault(), ing)
+	redirect, err := ParseAnnotations(config.NewDefault(), ing)
 	if err == nil {
 		t.Error("Expected error with ingress without annotations")
+	}
+
+	if !redirect.SSLRedirect {
+		t.Errorf("Expected true but returned false")
 	}
 }
 

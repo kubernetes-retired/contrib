@@ -42,6 +42,12 @@ type Redirect struct {
 	SSLRedirect bool
 }
 
+// newRedirect returns a pointer to a new Redirect config that has been
+// initialized with the correct default values.
+func newRedirect(cfg config.Configuration) *Redirect {
+	return &Redirect{SSLRedirect: cfg.SSLRedirect}
+}
+
 var (
 	// ErrMissingSSLRedirect returned error when the ingress does not contains the
 	// ssl-redirect annotation
@@ -88,22 +94,20 @@ func (a ingAnnotations) sslRedirect() (bool, error) {
 // ParseAnnotations parses the annotations contained in the ingress
 // rule used to rewrite the defined paths
 func ParseAnnotations(cfg config.Configuration, ing *extensions.Ingress) (*Redirect, error) {
+	r := newRedirect(cfg)
+
 	if ing.GetAnnotations() == nil {
-		return &Redirect{}, errors.New("no annotations present")
+		return r, errors.New("no annotations present")
 	}
 
 	annotations := ingAnnotations(ing.GetAnnotations())
 
 	sslRe, err := annotations.sslRedirect()
-	if err != nil {
-		sslRe = cfg.SSLRedirect
+	if err == nil {
+		r.SSLRedirect = sslRe
 	}
+	r.Target = annotations.rewriteTo()
+	r.AddBaseURL = annotations.addBaseURL()
 
-	rt := annotations.rewriteTo()
-	abu := annotations.addBaseURL()
-	return &Redirect{
-		Target:      rt,
-		AddBaseURL:  abu,
-		SSLRedirect: sslRe,
-	}, nil
+	return r, nil
 }
