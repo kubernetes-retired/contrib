@@ -103,7 +103,7 @@ var (
 	maxTotalUnreadyPercentage   = flag.Float64("max-total-unready-percentage", 33, "Maximum percentage of unready nodes after which CA halts operations")
 	okTotalUnreadyCount         = flag.Int("ok-total-unready-count", 3, "Number of allowed unready nodes, irrespective of max-total-unready-percentage")
 	maxNodeProvisionTime        = flag.Duration("max-node-provision-time", 15*time.Minute, "Maximum time CA waits for node to be provisioned")
-	unregisteredNodeRemovalTime = flag.Duration("unregistered-node-removal-time", 5*time.Minute, "Time that CA waits before removing nodes that are not registered in Kubernetes")
+	unregisteredNodeRemovalTime = flag.Duration("unregistered-node-removal-time", 15*time.Minute, "Time that CA waits before removing nodes that are not registered in Kubernetes")
 
 	// AvailableEstimators is a list of available estimators.
 	AvailableEstimators = []string{BasicEstimatorName, BinpackingEstimatorName}
@@ -301,6 +301,19 @@ func run(_ <-chan struct{}) {
 						glog.V(0).Infof("Some unregistered nodes were removed, skipping iteration")
 						continue
 					}
+				}
+
+				// Check if there has been a constant difference between the number of nodes in k8s and
+				// the number of nodes on the cloud provider side.
+				// TODO: andrewskim - add protection for ready AWS nodes.
+				fixedSomething, err := fixNodeGroupSize(&autoscalingContext, time.Now())
+				if err != nil {
+					glog.Warningf("Failed to fix node group sizes: %v", err)
+					continue
+				}
+				if fixedSomething {
+					glog.V(0).Infof("Some node group target size was fixed, skipping the iteration")
+					continue
 				}
 
 				// TODO: remove once all of the unready node handling elements are in place.
