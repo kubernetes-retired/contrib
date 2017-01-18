@@ -30,7 +30,7 @@ This is an nginx Ingress controller that uses [ConfigMap](https://github.com/kub
 
 ## Conventions
 
-Anytime we reference a tls secret, we mean (x509, pem encoded, RSA 2048, etc). You can generate such a certificate with: 
+Anytime we reference a TLS secret, we mean (x509, pem encoded, RSA 2048, etc). You can generate such a certificate with: 
  `openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout ${KEY_FILE} -out ${CERT_FILE} -subj "/CN=${HOST}/O=${HOST}"`
  and create the secret via `kubectl create secret tls ${CERT_NAME} --key ${KEY_FILE} --cert ${CERT_FILE}`
 
@@ -77,12 +77,12 @@ kubectl expose deployment echoheaders --port=80 --target-port=8080 --name=echohe
 kubectl expose deployment echoheaders --port=80 --target-port=8080 --name=echoheaders-y
 ```
 
-Next we create a couple of Ingress rules
+Next we create a couple of Ingress rules:
 ```
 kubectl create -f examples/ingress.yaml
 ```
 
-we check that ingress rules are defined:
+We check that ingress rules are defined:
 ```
 $ kubectl get ing
 NAME      RULE          BACKEND   ADDRESS
@@ -94,13 +94,13 @@ echomap   -
           /foo          echoheaders-x:80
 ```
 
-Before the deploy of the Ingress controller we need a default backend [404-server](https://github.com/kubernetes/contrib/tree/master/404-server)
+Before deploying the Ingress controller, we need a default backend [404-server](https://github.com/kubernetes/contrib/tree/master/404-server):
 ```
 kubectl create -f examples/default-backend.yaml
 kubectl expose rc default-http-backend --port=80 --target-port=8080 --name=default-http-backend
 ```
 
-Check NGINX it is running with the defined Ingress rules:
+Check that NGINX is running with the defined Ingress rules:
 
 ```
 $ LBIP=$(kubectl get node `kubectl get po -l name=nginx-ingress-lb --template '{{range .items}}{{.spec.nodeName}}{{end}}'` --template '{{range $i, $n := .status.addresses}}{{if eq $n.type "ExternalIP"}}{{$n.address}}{{end}}{{end}}')
@@ -143,7 +143,7 @@ Check the [example](examples/tls/README.md)
 
 ### Default SSL Certificate
 
-NGINX provides the option [server name](http://nginx.org/en/docs/http/server_names.html) as a catch-all in case of requests that do not match one of the configured server names. This configuration works without issues for HTTP traffic. In case of HTTPS NGINX requires a certificate. For this reason the Ingress controller provides the flag `--default-ssl-certificate`. The secret behind this flag contains the default certificate to be used in the mentioned case.
+NGINX provides the option [server name](http://nginx.org/en/docs/http/server_names.html) as a catch-all in case of requests that do not match one of the configured server names. This configuration works without issues for HTTP traffic. In the case of HTTPS, NGINX requires a certificate. For this reason the Ingress controller provides the flag `--default-ssl-certificate`. The secret behind this flag contains the default certificate to be used in the mentioned case.
 If this flag is not provided NGINX will use a self signed certificate.
 
 Running without the flag `--default-ssl-certificate`:
@@ -264,7 +264,7 @@ To disable this behavior use `hsts=false` in the NGINX config map.
 ### Automated Certificate Management with Kube-Lego
 
 [Kube-Lego] automatically requests missing certificates or expired from
-[Let's Encrypt] by monitoring ingress resources and its referenced secrets. To
+[Let's Encrypt] by monitoring ingress resources and their referenced secrets. To
 enable this for an ingress resource you have to add an annotation:
 
 ```
@@ -320,9 +320,9 @@ Please check the [udp services](examples/udp/README.md) example
 
 If you are using a L4 proxy to forward the traffic to the NGINX pods and terminate HTTP/HTTPS there, you will lose the remote endpoint's IP addresses. To prevent this you could use the [Proxy Protocol](http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt) for forwarding traffic, this will send the connection details before forwarding the actual TCP connection itself.
 
-Amongst others [ELBs in AWS](http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/enable-proxy-protocol.html) and [HAProxy](http://www.haproxy.org/) support Proxy Protocol.
+Amongst others, [ELBs in AWS](http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/enable-proxy-protocol.html) and [HAProxy](http://www.haproxy.org/) support Proxy Protocol.
 
-Please check the [proxy-protocol](examples/proxy-protocol/) example
+Please check the [proxy-protocol](examples/proxy-protocol/) example.
 
 
 ### Custom errors
@@ -331,13 +331,13 @@ In case of an error in a request the body of the response is obtained from the `
 - `X-Code` indicates the HTTP code
 - `X-Format` the value of the `Accept` header
 
-Using this two headers is possible to use a custom backend service like [this one](https://github.com/aledbf/contrib/tree/nginx-debug-server/Ingress/images/nginx-error-server) that inspect each request and returns a custom error page with the format expected by the client. Please check the example [custom-errors](examples/custom-errors/README.md)
+Using these two headers, it is possible to use a custom backend service like [this one](https://github.com/aledbf/contrib/tree/nginx-debug-server/Ingress/images/nginx-error-server) that inspects each request and returns a custom error page with the format expected by the client. Please check the example [custom-errors](examples/custom-errors/README.md)
 
 ### NGINX status page
 
-The ngx_http_stub_status_module module provides access to basic status information. This is the default module active in the url `/nginx_status`.
-This controller provides an alternative to this module using [nginx-module-vts](https://github.com/vozlt/nginx-module-vts) third party module.
-To use this module just provide a config map with the key `enable-vts-status=true`. The URL is exposed in the port 8080.
+The ngx_http_stub_status_module module provides access to basic status information. This is the default module active in the URL `/nginx_status`.
+This controller provides an alternative to this module using the [nginx-module-vts](https://github.com/vozlt/nginx-module-vts) third party module.
+To use this module just provide a config map with the key `enable-vts-status=true`. The URL is exposed on port 8080.
 Please check the example `example/rc-default.yaml`
 
 ![nginx-module-vts screenshot](https://cloud.githubusercontent.com/assets/3648408/10876811/77a67b70-8183-11e5-9924-6a6d0c5dc73a.png "screenshot with filter")
@@ -398,9 +398,9 @@ Description:
 
 ### Local cluster
 
-Using [`hack/local-up-cluster.sh`](https://github.com/kubernetes/kubernetes/blob/master/hack/local-up-cluster.sh) is possible to start a local kubernetes cluster consisting of a master and a single node. Please read [running-locally.md](https://github.com/kubernetes/kubernetes/blob/master/docs/devel/running-locally.md) for more details.
+Using [`hack/local-up-cluster.sh`](https://github.com/kubernetes/kubernetes/blob/master/hack/local-up-cluster.sh), it is possible to start a local kubernetes cluster consisting of a master and a single node. Please read [running-locally.md](https://github.com/kubernetes/kubernetes/blob/master/docs/devel/running-locally.md) for more details.
 
-Use of `hostNetwork: true` in the ingress controller is required to falls back at localhost:8080 for the apiserver if every other client creation check fails (eg: service account not present, kubeconfig doesn't exist, no master env vars...)
+Use of `hostNetwork: true` in the ingress controller is required to fall back at localhost:8080 for the apiserver if every other client creation check fails (eg: service account not present, kubeconfig doesn't exist, no master env vars...)
 
 
 ### Debug & Troubleshooting
@@ -433,7 +433,7 @@ I0316 12:24:37.610073       1 command.go:69] change in configuration detected. R
 
 [1.2.0-alpha7 deployment](https://github.com/kubernetes/kubernetes/blob/master/docs/getting-started-guides/docker.md):
 
-* make setup-files.sh file in hypercube does not provide 10.0.0.1 IP to make-ca-certs, resulting in CA certs that are issued to the external cluster IP address rather then 10.0.0.1 -> this results in nginx-third-party-lb appearing to get stuck at "Utils.go:177 - Waiting for default/default-http-backend" in the docker logs.  Kubernetes will eventually kill the container before nginx-third-party-lb times out with a message indicating that the CA certificate issuer is invalid (wrong ip), to verify this add zeros to the end of initialDelaySeconds and timeoutSeconds and reload the RC, and docker will log this error before kubernetes kills the container.
+* make setup-files.sh file in hypercube does not provide 10.0.0.1 IP to make-ca-certs, resulting in CA certs that are issued to the external cluster IP address rather then 10.0.0.1 -> this results in nginx-third-party-lb appearing to get stuck at "Utils.go:177 - Waiting for default/default-http-backend" in the docker logs. Kubernetes will eventually kill the container before nginx-third-party-lb times out with a message indicating that the CA certificate issuer is invalid (wrong ip), to verify this add zeros to the end of initialDelaySeconds and timeoutSeconds and reload the RC, and docker will log this error before kubernetes kills the container.
   * To fix the above, setup-files.sh must be patched before the cluster is inited (refer to https://github.com/kubernetes/kubernetes/pull/21504)
 
 
@@ -444,7 +444,7 @@ I0316 12:24:37.610073       1 command.go:69] change in configuration detected. R
 
 ### Why endpoints and not services
 
-The NGINX ingress controller does not uses [Services](http://kubernetes.io/docs/user-guide/services) to route traffic to the pods. Instead it uses the Endpoints API in order to bypass [kube-proxy](http://kubernetes.io/docs/admin/kube-proxy/) to allow NGINX features like session affinity and custom load balancing algorithms. It also removes some overhead, such as conntrack entries for iptables DNAT.
+The NGINX ingress controller does not use [Services](http://kubernetes.io/docs/user-guide/services) to route traffic to the pods. Instead it uses the Endpoints API in order to bypass [kube-proxy](http://kubernetes.io/docs/admin/kube-proxy/) to allow NGINX features like session affinity and custom load balancing algorithms. It also removes some overhead, such as conntrack entries for iptables DNAT.
 
 
 ### NGINX notes
@@ -454,7 +454,7 @@ Since `gcr.io/google_containers/nginx-slim:0.8` NGINX contains the next patches:
 NGINX provides the parameter `ssl_buffer_size` to adjust the size of the buffer. Default value in NGINX is 16KB. The ingress controller changes the default to 4KB. This improves the [TLS Time To First Byte (TTTFB)](https://www.igvita.com/2013/12/16/optimizing-nginx-tls-time-to-first-byte/) but the size is fixed. This patches adapts the size of the buffer to the content is being served helping to improve the perceived latency.
 
 - Add SPDY support back to Nginx with HTTP/2 [nginx_1_9_15_http2_spdy.patch](https://github.com/cloudflare/sslconfig/pull/36)
-At the same NGINX introduced HTTP/2 support for SPDY was removed. This patch add support for SPDY without compromising HTTP/2 support using the Application-Layer Protocol Negotiation (ALPN) or Next Protocol Negotiation (NPN) Transport Layer Security (TLS) extension to negotiate what protocol the server and client support
+At the same time NGINX introduced HTTP/2, support for SPDY was removed. This patch adds support for SPDY without compromising HTTP/2 support using the Application-Layer Protocol Negotiation (ALPN) or Next Protocol Negotiation (NPN) Transport Layer Security (TLS) extension to negotiate what protocol the server and client support.
 ```
 openssl s_client -servername www.my-site.com -connect www.my-site.com:443 -nextprotoneg ''
 CONNECTED(00000003)
