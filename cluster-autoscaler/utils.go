@@ -271,3 +271,15 @@ func fixNodeGroupSize(context *AutoscalingContext, currentTime time.Time) (bool,
 	}
 	return fixed, nil
 }
+
+// Enables cloud provider specific node protection for each node group.
+func protectNodes(context *AutoscalingContext) error {
+	for _, group := range context.CloudProvider.NodeGroups() {
+		err := group.Protect()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

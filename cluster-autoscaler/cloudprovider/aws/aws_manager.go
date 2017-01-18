@@ -46,6 +46,7 @@ type autoScaling interface {
 	DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error)
 	SetDesiredCapacity(input *autoscaling.SetDesiredCapacityInput) (*autoscaling.SetDesiredCapacityOutput, error)
 	TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error)
+	SetInstanceProtection(input *autoscaling.SetInstanceProtectionInput) (*autoscaling.SetInstanceProtectionOutput, error)
 }
 
 // AwsManager is handles aws communication and data caching.
@@ -227,4 +228,26 @@ func (m *AwsManager) GetAsgNodes(asg *Asg) ([]string, error) {
 		result = append(result, *instance.InstanceId)
 	}
 	return result, nil
+}
+
+func (m *AwsManager) EnableInstanceProtection(asg *Asg) error {
+	group, err := m.getAutoscalingGroup(asg.Id())
+	if err != nil {
+		return err
+	}
+
+	unprotectedInstances := make([]*string, 0)
+	for _, instance := range group.Instances {
+		if !*instance.ProtectedFromScaleIn {
+			unprotectedInstances = append(unprotectedInstances, instance.InstanceId)
+		}
+	}
+
+	params := &autoscaling.SetInstanceProtectionInput{
+		AutoScalingGroupName: aws.String(asg.Id()),
+		InstanceIds: unprotectedInstances,
+	}
+
+	_, err = m.service.SetInstanceProtection(params)
+	return err
 }

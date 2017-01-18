@@ -75,4 +75,7 @@ type NodeGroup interface {
 
 	// Nodes returns a list of all nodes that belong to this node group.
 	Nodes() ([]string, error)
+
+	// Protect prevents unexpected termination of nodes.
+	Protect() error
 }
