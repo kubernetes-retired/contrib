@@ -38,9 +38,11 @@ func (a *AutoScalingMock) DescribeAutoScalingGroups(i *autoscaling.DescribeAutoS
 				Instances: []*autoscaling.Instance{
 					{
 						InstanceId: aws.String("test-instance-id"),
+						ProtectedFromScaleIn: aws.Bool(false),
 					},
 					{
 						InstanceId: aws.String("second-test-instance-id"),
+						ProtectedFromScaleIn: aws.Bool(false),
 					},
 				},
 			},
@@ -56,6 +58,10 @@ func (a *AutoScalingMock) SetDesiredCapacity(input *autoscaling.SetDesiredCapaci
 func (a *AutoScalingMock) TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error) {
 	args := a.Called(input)
 	return args.Get(0).(*autoscaling.TerminateInstanceInAutoScalingGroupOutput), nil
+}
+
+func (a *AutoScalingMock) SetInstanceProtection(input *autoscaling.SetInstanceProtectionInput) (*autoscaling.SetInstanceProtectionOutput, error) {
+	return &autoscaling.SetInstanceProtectionOutput{}, nil
 }
 
 var testAwsManager = &AwsManager{
@@ -129,6 +135,18 @@ func TestNodeGroupForNode(t *testing.T) {
 	group, err = provider.NodeGroupForNode(nodeNotInGroup)
 	assert.NoError(t, err)
 	assert.Nil(t, group)
+}
+
+func TestProtect(t *testing.T) {
+	provider := testProvider(t, testAwsManager)
+	err := provider.addNodeGroup("1:5:test-asg")
+	assert.NoError(t, err)
+
+	groups := provider.NodeGroups()
+	for _, group := range groups {
+		err = group.Protect()
+		assert.NoError(t, err)
+	}
 }
 
 func TestAwsRefFromProviderId(t *testing.T) {

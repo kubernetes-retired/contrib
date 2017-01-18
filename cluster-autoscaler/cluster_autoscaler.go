@@ -104,6 +104,7 @@ var (
 	okTotalUnreadyCount         = flag.Int("ok-total-unready-count", 3, "Number of allowed unready nodes, irrespective of max-total-unready-percentage")
 	maxNodeProvisionTime        = flag.Duration("max-node-provision-time", 15*time.Minute, "Maximum time CA waits for node to be provisioned")
 	unregisteredNodeRemovalTime = flag.Duration("unregistered-node-removal-time", 15*time.Minute, "Time that CA waits before removing nodes that are not registered in Kubernetes")
+	protectNodesFlag 		    = flag.Bool("protect-nodes", true, "Prevents nodes from being terminated unexpectedly, uses protection features available from cloud provider. Currently only available in AWS (instance protection). Defaults to true")
 
 	// AvailableEstimators is a list of available estimators.
 	AvailableEstimators = []string{BasicEstimatorName, BinpackingEstimatorName}
@@ -302,9 +303,21 @@ func run(_ <-chan struct{}) {
 					}
 				}
 
+				// Protect nodes from being terminated unexpectedly. Unexpected termination usually involves decreasing the node group size
+				// because the cloud provider rejected the initial request to increase node group size. In this event its possible for
+				// the cloud provider to replace existing nodes. Enabling node protection ensures that only nodes authorized by cluster-autoscaler
+				// can be terminated. Node protection policies varies between cloud providers.
+				// Currently only supported in AWS.
+				if *protectNodesFlag {
+					err := protectNodes(&autoscalingContext)
+					if err != nil {
+						glog.Errorf("Failed to enable node protection: %v", err)
+						continue
+					}
+				}
+
 				// Check if there has been a constant difference between the number of nodes in k8s and
 				// the number of nodes on the cloud provider side.
-				// TODO: andrewskim - add protection for ready AWS nodes.
 				fixedSomething, err := fixNodeGroupSize(&autoscalingContext, time.Now())
 				if err != nil {
 					glog.Warningf("Failed to fix node group sizes: %v", err)
