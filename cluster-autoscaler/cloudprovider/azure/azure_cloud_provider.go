@@ -113,7 +113,7 @@ func (scaleSet *ScaleSet) TargetSize() (int, error) {
 	return int(size), err
 }
 
-// IncreaseSize increases Asg size
+// IncreaseSize increases Scale Set size
 func (scaleSet *ScaleSet) IncreaseSize(delta int) error {
 	if delta <= 0 {
 		return fmt.Errorf("size increase must be positive")
@@ -124,6 +124,30 @@ func (scaleSet *ScaleSet) IncreaseSize(delta int) error {
 	}
 	if int(size)+delta > scaleSet.MaxSize() {
 		return fmt.Errorf("size increase too large - desired:%d max:%d", int(size)+delta, scaleSet.MaxSize())
+	}
+	return scaleSet.azureManager.SetScaleSetSize(scaleSet, size+int64(delta))
+}
+
+// DecreaseTargetSize decreases the target size of the node group. This function
+// doesn't permit to delete any existing node and can be used only to reduce the
+// request for new nodes that have not been yet fulfilled. Delta should be negative.
+// It is assumed that cloud provider will not delete the existing nodes if the size
+// when there is an option to just decrease the target.
+func (scaleSet *ScaleSet) DecreaseTargetSize(delta int) error {
+	if delta >= 0 {
+		return fmt.Errorf("size decrease size must be negative")
+	}
+	size, err := scaleSet.azureManager.GetScaleSetSize(scaleSet)
+	if err != nil {
+		return err
+	}
+	nodes, err := scaleSet.azureManager.GetScaleSetVms(scaleSet)
+	if err != nil {
+		return err
+	}
+	if int(size)+delta < len(nodes) {
+		return fmt.Errorf("attempt to delete existing nodes targetSize:%d delta:%d existingNodes: %d",
+			size, delta, len(nodes))
 	}
 	return scaleSet.azureManager.SetScaleSetSize(scaleSet, size+int64(delta))
 }
