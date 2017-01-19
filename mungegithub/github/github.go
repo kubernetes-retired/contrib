@@ -1563,7 +1563,7 @@ func (obj *MungeObject) UnassignPR(assignees ...string) error {
 	config := obj.config
 	prNum := *obj.Issue.Number
 	config.analytics.UnassignPR.Call(config, nil)
-	glog.Infof("Unassigning %v from PR# %d  to %v", assignees, prNum)
+	glog.Infof("Unassigning %v from PR #%d", assignees, prNum)
 	if config.DryRun {
 		return nil
 	}

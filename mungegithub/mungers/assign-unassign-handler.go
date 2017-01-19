@@ -24,6 +24,7 @@ import (
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"github.com/golang/glog"
 	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 	c "k8s.io/contrib/mungegithub/mungers/matchers/comment"
@@ -87,9 +88,18 @@ func (h AssignUnassignHandler) Munge(obj *github.MungeObject) {
 
 	toAssign, toUnassign := h.getAssigneesAndUnassignees(obj, comments, fileList, potentialOwners)
 	for _, username := range toAssign.List() {
-		obj.AssignPR(username)
+		err := obj.AssignPR(username)
+		if err != nil {
+			glog.Errorf("Could not assign %v to PR %v because %v", username, obj.Issue.Number, err)
+		}
 	}
-	obj.UnassignPR(toUnassign.List()...)
+	for _, username := range toUnassign.List() {
+		err := obj.UnassignPR(username)
+		if err != nil {
+			glog.Errorf("Could not unassign %v from PR %v because %v", username, obj.Issue.Number, err)
+		}
+	}
+
 }
 
 // getAssigneesAndUnassignees checks to see when someone comments "/assign" or "/unassign"
