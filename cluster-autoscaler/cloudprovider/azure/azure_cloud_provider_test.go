@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	apiv1  "k8s.io/kubernetes/pkg/api/v1"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	"net/http"
 )
 
@@ -29,7 +29,7 @@ func (client *VirtualMachineScaleSetsClientMock) Get(resourceGroupName string,
 		Sku: &compute.Sku{
 			Capacity: &capacity,
 		},
-		Properties: &properties,
+		VirtualMachineScaleSetProperties: &properties,
 	}, nil
 }
 
@@ -59,8 +59,8 @@ func (m *VirtualMachineScaleSetVMsClientMock) List(resourceGroupName string, vir
 	vmId := "67453E12-9BE8-D312-A456-426655440000"
 	properties.VMID = &vmId
 	value[0] = compute.VirtualMachineScaleSetVM{
-		InstanceID: &vmInstanceId,
-		Properties: &properties,
+		InstanceID:                         &vmInstanceId,
+		VirtualMachineScaleSetVMProperties: &properties,
 	}
 
 	return compute.VirtualMachineScaleSetVMListResult{
