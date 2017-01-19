@@ -70,6 +70,8 @@ type AutoscalingContext struct {
 	MaxGratefulTerminationSec int
 	// Maximum time that CA waits for a node to be provisioned. This is cloud provider specific.
 	MaxNodeProvisionTime time.Duration
+	// Time that CA waits before starting to remove nodes that exist in cloud provider but not in Kubernetes.
+	UnregisteredNodeRemovalTime time.Duration
 }
 
 // GetAllNodesAvailableTime returns time when the newest node became available for scheduler.
@@ -166,35 +168,6 @@ func createNodeNameToInfoMap(pods []*apiv1.Pod, nodes []*apiv1.Node) map[string]
 	return nodeNameToNodeInfo
 }
 
-// CheckGroupsAndNodes checks if all node groups have all required nodes.
-func CheckGroupsAndNodes(nodes []*apiv1.Node, cloudProvider cloudprovider.CloudProvider) error {
-	groupCount := make(map[string]int)
-	for _, node := range nodes {
-
-		group, err := cloudProvider.NodeGroupForNode(node)
-		if err != nil {
-			return err
-		}
-		if group == nil || reflect.ValueOf(group).IsNil() {
-			continue
-		}
-		id := group.Id()
-		count, _ := groupCount[id]
-		groupCount[id] = count + 1
-	}
-	for _, nodeGroup := range cloudProvider.NodeGroups() {
-		size, err := nodeGroup.TargetSize()
-		if err != nil {
-			return err
-		}
-		count := groupCount[nodeGroup.Id()]
-		if size != count {
-			return fmt.Errorf("wrong number of nodes for node group: %s expected: %d actual: %d", nodeGroup.Id(), size, count)
-		}
-	}
-	return nil
-}
-
 // GetNodeInfosForGroups finds NodeInfos for all node groups used to manage the given nodes. It also returns a node group to sample node mapping.
 // TODO(mwielgus): This returns map keyed by url, while most code (including scheduler) uses node.Name for a key.
 func GetNodeInfosForGroups(nodes []*apiv1.Node, cloudProvider cloudprovider.CloudProvider, kubeClient kube_client.Interface) (map[string]*schedulercache.NodeInfo, error) {
@@ -218,4 +191,54 @@ func GetNodeInfosForGroups(nodes []*apiv1.Node, cloudProvider cloudprovider.Clou
 		}
 	}
 	return result, nil
+}
+
+// Removes unregisterd nodes if needed. Returns true if anything was removed and error if such occurred.
+func removeOldUnregisteredNodes(unregisteredNodes []clusterstate.UnregisteredNode, context *AutoscalingContext,
+	currentTime time.Time) (bool, error) {
+	removedAny := false
+	for _, unregisteredNode := range unregisteredNodes {
+		if unregisteredNode.UnregisteredSince.Add(context.UnregisteredNodeRemovalTime).Before(currentTime) {
+			glog.V(0).Infof("Removing unregistered node %v", unregisteredNode.Node.Name)
+			nodeGroup, err := context.CloudProvider.NodeGroupForNode(unregisteredNode.Node)
+			if err != nil {
+				glog.Warningf("Failed to get node group for %s: %v", unregisteredNode.Node.Name, err)
+				return removedAny, err
+			}
+			err = nodeGroup.DeleteNodes([]*apiv1.Node{unregisteredNode.Node})
+			if err != nil {
+				glog.Warningf("Failed to remove node %s: %v", unregisteredNode.Node.Name, err)
+				return removedAny, err
+			}
+			removedAny = true
+		}
+	}
+	return removedAny, nil
+}
+
+// Sets the target size of node groups to the current number of nodes in them
+// if the difference was constant for a prolonged time. Returns true if managed
+// to fix something.
+func fixNodeGroupSize(context *AutoscalingContext, currentTime time.Time) (bool, error) {
+	fixed := false
+	for _, nodeGroup := range context.CloudProvider.NodeGroups() {
+		incorrectSize := context.ClusterStateRegistry.GetIncorrectNodeGroupSize(nodeGroup.Id())
+		if incorrectSize == nil {
+			continue
+		}
+		if incorrectSize.FirstObserved.Add(context.UnregisteredNodeRemovalTime).Before(currentTime) {
+			delta := incorrectSize.CurrentSize - incorrectSize.ExpectedSize
+			if delta < 0 {
+				glog.V(0).Infof("Decreasing size of %s, expected=%d current=%d delta=%d", nodeGroup.Id(),
+					incorrectSize.ExpectedSize,
+					incorrectSize.CurrentSize,
+					delta)
+				if err := nodeGroup.DecreaseTargetSize(delta); err != nil {
+					return fixed, fmt.Errorf("Failed to decrease %s: %v", nodeGroup.Id(), err)
+				}
+				fixed = true
+			}
+		}
+	}
+	return fixed, nil
 }

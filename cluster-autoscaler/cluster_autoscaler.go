@@ -95,14 +95,15 @@ var (
 		"Node utilization level, defined as sum of requested resources divided by capacity, below which a node can be considered for scale down")
 	scaleDownTrialInterval = flag.Duration("scale-down-trial-interval", 1*time.Minute,
 		"How often scale down possiblity is check")
-	scanInterval               = flag.Duration("scan-interval", 10*time.Second, "How often cluster is reevaluated for scale up or down")
-	maxNodesTotal              = flag.Int("max-nodes-total", 0, "Maximum number of nodes in all node groups. Cluster autoscaler will not grow the cluster beyond this number.")
-	cloudProviderFlag          = flag.String("cloud-provider", "gce", "Cloud provider type. Allowed values: gce, aws")
-	maxEmptyBulkDeleteFlag     = flag.Int("max-empty-bulk-delete", 10, "Maximum number of empty nodes that can be deleted at the same time.")
-	maxGratefulTerminationFlag = flag.Int("max-grateful-termination-sec", 60, "Maximum number of seconds CA waints for pod termination when trying to scale down a node.")
-	maxTotalUnreadyPercentage  = flag.Float64("max-total-unready-percentage", 33, "Maximum percentage of unready nodes after which CA halts operations")
-	okTotalUnreadyCount        = flag.Int("ok-total-unready-count", 3, "Number of unready nodes that is allowed, irrespective of max-total-unready-percentage")
-	maxNodeProvisionTime       = flag.Duration("max-node-provision-time", 15*time.Minute, "Maximum time CA waits for node to be provisioned")
+	scanInterval                = flag.Duration("scan-interval", 10*time.Second, "How often cluster is reevaluated for scale up or down")
+	maxNodesTotal               = flag.Int("max-nodes-total", 0, "Maximum number of nodes in all node groups. Cluster autoscaler will not grow the cluster beyond this number.")
+	cloudProviderFlag           = flag.String("cloud-provider", "gce", "Cloud provider type. Allowed values: gce, aws")
+	maxEmptyBulkDeleteFlag      = flag.Int("max-empty-bulk-delete", 10, "Maximum number of empty nodes that can be deleted at the same time.")
+	maxGratefulTerminationFlag  = flag.Int("max-grateful-termination-sec", 60, "Maximum number of seconds CA waints for pod termination when trying to scale down a node.")
+	maxTotalUnreadyPercentage   = flag.Float64("max-total-unready-percentage", 33, "Maximum percentage of unready nodes after which CA halts operations")
+	okTotalUnreadyCount         = flag.Int("ok-total-unready-count", 3, "Number of allowed unready nodes, irrespective of max-total-unready-percentage")
+	maxNodeProvisionTime        = flag.Duration("max-node-provision-time", 15*time.Minute, "Maximum time CA waits for node to be provisioned")
+	unregisteredNodeRemovalTime = flag.Duration("unregistered-node-removal-time", 15*time.Minute, "Time that CA waits before removing nodes that are not registered in Kubernetes")
 
 	// AvailableEstimators is a list of available estimators.
 	AvailableEstimators = []string{BasicEstimatorName, BinpackingEstimatorName}
@@ -234,9 +235,15 @@ func run(_ <-chan struct{}) {
 		ExpanderStrategy:              expanderStrategy,
 		MaxGratefulTerminationSec:     *maxGratefulTerminationFlag,
 		MaxNodeProvisionTime:          *maxNodeProvisionTime,
+		UnregisteredNodeRemovalTime:   *unregisteredNodeRemovalTime,
 	}
 
 	scaleDown := NewScaleDown(&autoscalingContext)
+
+	// CA can die at any time. Removing taints that might have been left from the previous run.
+	if readyNodes, err := readyNodeLister.List(); err != nil {
+		cleanToBeDeleted(readyNodes, kubeClient, autoscalingContext.Recorder)
+	}
 
 	for {
 		select {
@@ -245,7 +252,6 @@ func run(_ <-chan struct{}) {
 				loopStart := time.Now()
 				updateLastTime("main")
 
-				// TODO: remove once switched to all nodes.
 				readyNodes, err := readyNodeLister.List()
 				if err != nil {
 					glog.Errorf("Failed to list ready nodes: %v", err)
@@ -273,14 +279,41 @@ func run(_ <-chan struct{}) {
 					continue
 				}
 
-				// TODO: remove once all of the unready node handling elements are in place.
-				if err := CheckGroupsAndNodes(readyNodes, autoscalingContext.CloudProvider); err != nil {
-					glog.Warningf("Cluster is not ready for autoscaling: %v", err)
-					continue
+				// Check if there are any nodes that failed to register in kuberentes
+				// master.
+				unregisteredNodes := autoscalingContext.ClusterStateRegistry.GetUnregisteredNodes()
+				if len(unregisteredNodes) > 0 {
+					glog.V(1).Infof("%d unregistered nodes present", len(unregisteredNodes))
+					removedAny, err := removeOldUnregisteredNodes(unregisteredNodes, &autoscalingContext, time.Now())
+					// There was a problem with removing unregistered nodes. Retry in the next loop.
+					if err != nil {
+						if removedAny {
+							glog.Warningf("Some unregistered nodes were removed, but got error: %v", err)
+						} else {
+							glog.Warningf("Failed to remove unregistered nodes: %v", err)
+
+						}
+						continue
+					}
+					// Some nodes were removed. Let's skip this iteration, the next one should be better.
+					if removedAny {
+						glog.V(0).Infof("Some unregistered nodes were removed, skipping iteration")
+						continue
+					}
 				}
 
-				// CA can die at any time. Removing taints that might have been left from the previous run.
-				cleanToBeDeleted(readyNodes, kubeClient, autoscalingContext.Recorder)
+				// Check if there has been a constant difference between the number of nodes in k8s and
+				// the number of nodes on the cloud provider side.
+				// TODO: andrewskim - add protection for ready AWS nodes.
+				fixedSomething, err := fixNodeGroupSize(&autoscalingContext, time.Now())
+				if err != nil {
+					glog.Warningf("Failed to fix node group sizes: %v", err)
+					continue
+				}
+				if fixedSomething {
+					glog.V(0).Infof("Some node group target size was fixed, skipping the iteration")
+					continue
+				}
 
 				allUnschedulablePods, err := unschedulablePodLister.List()
 				if err != nil {
@@ -365,7 +398,7 @@ func run(_ <-chan struct{}) {
 					glog.V(4).Infof("Calculating unneeded nodes")
 
 					scaleDown.CleanUp(time.Now())
-					err := scaleDown.UpdateUnneededNodes(readyNodes, allScheduled, time.Now())
+					err := scaleDown.UpdateUnneededNodes(allNodes, allScheduled, time.Now())
 					if err != nil {
 						glog.Warningf("Failed to scale down: %v", err)
 						continue
@@ -384,7 +417,7 @@ func run(_ <-chan struct{}) {
 
 						scaleDownStart := time.Now()
 						updateLastTime("scaledown")
-						result, err := scaleDown.TryToScaleDown(readyNodes, allScheduled)
+						result, err := scaleDown.TryToScaleDown(allNodes, allScheduled)
 						updateDuration("scaledown", scaleDownStart)
 
 						// TODO: revisit result handling
