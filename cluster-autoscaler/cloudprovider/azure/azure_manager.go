@@ -75,8 +75,8 @@ func CreateAzureManager(configReader io.Reader) (*AzureManager, error) {
 	tenantId := string("")
 	clientId := string("")
 	clientSecret := string("")
-	var scaleSetAPI scaleSetClient = nil
-	var scaleSetVmAPI scaleSetVMClient = nil
+	var scaleSetAPI scaleSetClient
+	var scaleSetVmAPI scaleSetVMClient
 	if configReader != nil {
 		var cfg Config
 		if err := gcfg.ReadInto(&cfg, configReader); err != nil {
@@ -194,7 +194,7 @@ func byInspecting() autorest.RespondDecorator {
 	}
 }
 
-// RegisterAvailabilitySet registers scale set in Azure Manager.
+// RegisterScaleSet registers scale set in Azure Manager.
 func (m *AzureManager) RegisterScaleSet(scaleSet *ScaleSet) {
 	m.cacheMutex.Lock()
 	defer m.cacheMutex.Unlock()
@@ -338,6 +338,7 @@ func (m *AzureManager) regenerateCache() error {
 	return nil
 }
 
+// GetScaleSetVms returns list of nodes for the given scale set.
 func (m *AzureManager) GetScaleSetVms(scaleSet *ScaleSet) ([]string, error) {
 	instances, err := m.scaleSetVmClient.List(m.resourceGroupName, scaleSet.Name, "", "", "")
 

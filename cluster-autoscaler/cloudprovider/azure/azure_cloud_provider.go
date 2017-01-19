@@ -9,12 +9,13 @@ import (
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
 
-// AwsCloudProvider implements CloudProvider interface.
+// AzureCloudProvider provides implementation of CloudProvider interface for Azure.
 type AzureCloudProvider struct {
 	azureManager *AzureManager
 	scaleSets    []*ScaleSet
 }
 
+// BuildAzureCloudProvider creates new AzureCloudProvider
 func BuildAzureCloudProvider(azureManager *AzureManager, specs []string) (*AzureCloudProvider, error) {
 	azure := &AzureCloudProvider{
 		azureManager: azureManager,
@@ -71,6 +72,7 @@ type AzureRef struct {
 	Name string
 }
 
+// GetKey returns key of the given azure reference.
 func (m *AzureRef) GetKey() string {
 	return m.Name
 }
@@ -96,12 +98,12 @@ type ScaleSet struct {
 	maxSize      int
 }
 
-// MaxSize returns maximum size of the node group.
+// MinSize returns minimum size of the node group.
 func (scaleSet *ScaleSet) MinSize() int {
 	return scaleSet.minSize
 }
 
-// MinSize returns minimum size of the node group.
+// MaxSize returns maximum size of the node group.
 func (scaleSet *ScaleSet) MaxSize() int {
 	return scaleSet.maxSize
 }
@@ -206,8 +208,8 @@ func (scaleSet *ScaleSet) Id() string {
 }
 
 // Debug returns a debug string for the Scale Set.
-func (asg *ScaleSet) Debug() string {
-	return fmt.Sprintf("%s (%d:%d)", asg.Id(), asg.MinSize(), asg.MaxSize())
+func (scaleSet *ScaleSet) Debug() string {
+	return fmt.Sprintf("%s (%d:%d)", scaleSet.Id(), scaleSet.MinSize(), scaleSet.MaxSize())
 }
 
 // Create ScaleSet from provided spec.
@@ -223,7 +225,7 @@ func buildScaleSet(spec string, azureManager *AzureManager) (*ScaleSet, error) {
 	}
 	if size, err := strconv.Atoi(tokens[0]); err == nil {
 		if size <= 0 {
-			return nil, fmt.Errorf("min size must be >= 1")
+			return nil, fmt.Errorf("min size must be >= 1, got: %d", size)
 		}
 		scaleSet.minSize = size
 	} else {
@@ -240,7 +242,7 @@ func buildScaleSet(spec string, azureManager *AzureManager) (*ScaleSet, error) {
 	}
 
 	if tokens[2] == "" {
-		return nil, fmt.Errorf("scale set name must not be blank: %s got error: %v", tokens[2])
+		return nil, fmt.Errorf("scale set name must not be blank, got spec: %s", spec)
 	}
 
 	scaleSet.Name = tokens[2]
