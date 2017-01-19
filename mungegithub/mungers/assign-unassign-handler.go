@@ -24,6 +24,7 @@ import (
 	"k8s.io/contrib/mungegithub/github"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"github.com/golang/glog"
 	githubapi "github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 	c "k8s.io/contrib/mungegithub/mungers/matchers/comment"
@@ -84,10 +85,14 @@ func (h AssignUnassignHandler) Munge(obj *github.MungeObject) {
 
 	//get ALL (not just leaf) the people that could potentially own the file based on the blunderbuss.go implementation
 	potentialOwners, _ := getPotentialOwners(*obj.Issue.User.Login, h.features, fileList, false)
+	glog.Infof("potential owners %+v", potentialOwners)
 
 	toAssign, toUnassign := h.getAssigneesAndUnassignees(obj, comments, fileList, potentialOwners)
 	for _, username := range toAssign.List() {
-		obj.AssignPR(username)
+		err := obj.AssignPR(username)
+		if err != nil {
+			glog.Infof("Could not assign %v to PR %v because %v", username, obj.Issue.Number, err)
+		}
 	}
 	obj.UnassignPR(toUnassign.List()...)
 }
