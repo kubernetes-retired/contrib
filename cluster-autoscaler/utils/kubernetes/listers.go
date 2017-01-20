@@ -19,11 +19,11 @@ package kubernetes
 import (
 	"time"
 
+	"k8s.io/apimachinery/pkg/labels"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/client/cache"
-	client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
+	client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/fields"
-	"k8s.io/kubernetes/pkg/labels"
 )
 
 // UnschedulablePodLister lists unscheduled pods
@@ -106,11 +106,9 @@ func (readyNodeLister *ReadyNodeLister) List() ([]*apiv1.Node, error) {
 	}
 	readyNodes := make([]*apiv1.Node, 0, len(nodes.Items))
 	for i, node := range nodes.Items {
-		for _, condition := range node.Status.Conditions {
-			if condition.Type == apiv1.NodeReady && condition.Status == apiv1.ConditionTrue {
-				readyNodes = append(readyNodes, &nodes.Items[i])
-				break
-			}
+		if IsNodeReadyAndSchedulable(&node) {
+			readyNodes = append(readyNodes, &nodes.Items[i])
+			break
 		}
 	}
 	return readyNodes, nil

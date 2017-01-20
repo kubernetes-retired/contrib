@@ -17,16 +17,17 @@ limitations under the License.
 package clusterstate
 
 import (
-	"fmt"
 	"reflect"
 	"sync"
 	"time"
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/utils/deletetaint"
+	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
 )
@@ -80,7 +81,7 @@ type IncorrectNodeGroupSize struct {
 	ExpectedSize int
 	// CurrentSize is the size of the node group measured on the kubernetes side.
 	CurrentSize int
-	// FirstObserved is the time whtn the given difference occurred.
+	// FirstObserved is the time when the given difference occurred.
 	FirstObserved time.Time
 }
 
@@ -89,8 +90,8 @@ type IncorrectNodeGroupSize struct {
 type UnregisteredNode struct {
 	// Node is a dummy node that contains only the name of the node.
 	Node *apiv1.Node
-	// UnregisteredSice is the time when the node was first spotted.
-	UnregisteredSice time.Time
+	// UnregisteredSince is the time when the node was first spotted.
+	UnregisteredSince time.Time
 }
 
 // ClusterStateRegistry is a structure to keep track the current state of the cluster.
@@ -254,7 +255,7 @@ type AcceptableRange struct {
 	CurrentTarget int
 }
 
-// calculateAcceptableRanges calcualtes how many nodes can be in a cluster.
+// updateAcceptableRanges updates cluster state registry with how many nodes can be in a cluster.
 // The function assumes that the nodeGroup.TargetSize() is the desired number of nodes.
 // So if there has been a recent scale up of size 5 then there should be between targetSize-5 and targetSize
 // nodes in ready state. In the same way, if there have been 3 nodes removed recently then
@@ -322,7 +323,7 @@ func (csr *ClusterStateRegistry) updateReadinessStats(currentTime time.Time) {
 
 	for _, node := range csr.nodes {
 		nodeGroup, errNg := csr.cloudProvider.NodeGroupForNode(node)
-		ready, _, errReady := GetReadinessState(node)
+		ready, _, errReady := kube_util.GetReadinessState(node)
 
 		// Node is most likely not autoscaled, however check the errors.
 		if reflect.ValueOf(nodeGroup).IsNil() {
@@ -399,19 +400,6 @@ func (csr *ClusterStateRegistry) GetUnregisteredNodes() []UnregisteredNode {
 	return result
 }
 
-// GetReadinessState gets readiness state for the node
-func GetReadinessState(node *apiv1.Node) (isNodeReady bool, lastTransitionTime time.Time, err error) {
-	for _, condition := range node.Status.Conditions {
-		if condition.Type == apiv1.NodeReady {
-			if condition.Status == apiv1.ConditionTrue {
-				return true, condition.LastTransitionTime.Time, nil
-			}
-			return false, condition.LastTransitionTime.Time, nil
-		}
-	}
-	return false, time.Time{}, fmt.Errorf("NodeReady condition for %s not found", node.Name)
-}
-
 func isNodeNotStarted(node *apiv1.Node) bool {
 	for _, condition := range node.Status.Conditions {
 		if condition.Type == apiv1.NodeReady &&
@@ -470,14 +458,14 @@ func getNotRegisteredNodes(allNodes []*apiv1.Node, cloudProvider cloudprovider.C
 			if !registered.Has(node) {
 				notRegistered = append(notRegistered, UnregisteredNode{
 					Node: &apiv1.Node{
-						ObjectMeta: apiv1.ObjectMeta{
+						ObjectMeta: metav1.ObjectMeta{
 							Name: node,
 						},
 						Spec: apiv1.NodeSpec{
 							ProviderID: node,
 						},
 					},
-					UnregisteredSice: time,
+					UnregisteredSince: time,
 				})
 			}
 		}
