@@ -4,7 +4,7 @@ metadata:
   name: contrib-sq-config
 data:
   # basic config options.
-  config.http-cache-dir: /cache/httpcache
+  config.http-cache-dir:
   config.organization: kubernetes
   config.project: contrib
   config.pr-mungers: blunderbuss,lgtm-after-commit,submit-queue,needs-rebase,approval-handler
