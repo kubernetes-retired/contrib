@@ -1575,17 +1575,17 @@ func (obj *MungeObject) UnassignPR(assignees ...string) error {
 }
 
 // AssignPR will assign `prNum` to the `owner` where the `owner` is asignee's github login
-func (obj *MungeObject) AssignPR(owner string) error {
+func (obj *MungeObject) AssignPR(assignees ...string) error {
 	config := obj.config
 	prNum := *obj.Issue.Number
-	assignee := &github.IssueRequest{Assignee: &owner}
+	assignee := &github.IssueRequest{Assignees: &assignees}
 	config.analytics.AssignPR.Call(config, nil)
-	glog.Infof("Assigning PR# %d  to %v", prNum, owner)
+	glog.Infof("Assigning PR# %d to %v", prNum, assignees)
 	if config.DryRun {
 		return nil
 	}
 	if _, _, err := config.client.Issues.Edit(config.Org, config.Project, prNum, assignee); err != nil {
-		glog.Errorf("Error assigning issue# %d to %v: %v", prNum, owner, err)
+		glog.Errorf("Error assigning issue# %d to %v: %v", prNum, assignees, err)
 		return err
 	}
 	return nil
