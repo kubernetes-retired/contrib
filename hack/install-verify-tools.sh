@@ -27,5 +27,5 @@ if [[ -z $(echo "${GO_VERSION[2]}" | grep -E 'go1.1|go1.2|go1.3|go1.4') ]]; then
 fi
 
 go get -u github.com/tools/godep
-
+godep version
 # ex: ts=2 sw=2 et filetype=sh
