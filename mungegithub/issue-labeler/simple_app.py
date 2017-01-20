@@ -28,6 +28,9 @@ from nltk.tokenize import RegexpTokenizer
 from nltk.stem.porter import PorterStemmer
 app = Flask(__name__)
 #Parameters
+
+
+#add extra whitespace for this test
 team_fn= "./models/trained_teams_model.pkl"
 component_fn= "./models/trained_components_model.pkl"
 logFile = "/tmp/issue-labeler.log"
