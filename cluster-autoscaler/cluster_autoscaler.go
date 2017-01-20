@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/aws"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/gce"
@@ -36,8 +37,8 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
-	v1core "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5/typed/core/v1"
+	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	v1core "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/typed/core/v1"
 	kube_leaderelection "k8s.io/kubernetes/pkg/client/leaderelection"
 	"k8s.io/kubernetes/pkg/client/leaderelection/resourcelock"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
@@ -254,7 +255,6 @@ func run(_ <-chan struct{}) {
 				loopStart := time.Now()
 				updateLastTime("main")
 
-				// TODO: remove once switched to all nodes.
 				readyNodes, err := readyNodeLister.List()
 				if err != nil {
 					glog.Errorf("Failed to list ready nodes: %v", err)
@@ -305,9 +305,16 @@ func run(_ <-chan struct{}) {
 					}
 				}
 
-				// TODO: remove once all of the unready node handling elements are in place.
-				if err := CheckGroupsAndNodes(readyNodes, autoscalingContext.CloudProvider); err != nil {
-					glog.Warningf("Cluster is not ready for autoscaling: %v", err)
+				// Check if there has been a constant difference between the number of nodes in k8s and
+				// the number of nodes on the cloud provider side.
+				// TODO: andrewskim - add protection for ready AWS nodes.
+				fixedSomething, err := fixNodeGroupSize(&autoscalingContext, time.Now())
+				if err != nil {
+					glog.Warningf("Failed to fix node group sizes: %v", err)
+					continue
+				}
+				if fixedSomething {
+					glog.V(0).Infof("Some node group target size was fixed, skipping the iteration")
 					continue
 				}
 
@@ -394,7 +401,7 @@ func run(_ <-chan struct{}) {
 					glog.V(4).Infof("Calculating unneeded nodes")
 
 					scaleDown.CleanUp(time.Now())
-					err := scaleDown.UpdateUnneededNodes(readyNodes, allScheduled, time.Now())
+					err := scaleDown.UpdateUnneededNodes(allNodes, allScheduled, time.Now())
 					if err != nil {
 						glog.Warningf("Failed to scale down: %v", err)
 						continue
@@ -413,7 +420,7 @@ func run(_ <-chan struct{}) {
 
 						scaleDownStart := time.Now()
 						updateLastTime("scaledown")
-						result, err := scaleDown.TryToScaleDown(readyNodes, allScheduled)
+						result, err := scaleDown.TryToScaleDown(allNodes, allScheduled)
 						updateDuration("scaledown", scaleDownStart)
 
 						// TODO: revisit result handling
@@ -474,7 +481,7 @@ func main() {
 		kubeClient := createKubeClient()
 		kube_leaderelection.RunOrDie(kube_leaderelection.LeaderElectionConfig{
 			Lock: &resourcelock.EndpointsLock{
-				EndpointsMeta: apiv1.ObjectMeta{
+				EndpointsMeta: metav1.ObjectMeta{
 					Namespace: "kube-system",
 					Name:      "cluster-autoscaler",
 				},

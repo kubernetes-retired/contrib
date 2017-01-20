@@ -30,8 +30,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 
 	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/util/wait"
 	provider_aws "k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
-	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 const (
