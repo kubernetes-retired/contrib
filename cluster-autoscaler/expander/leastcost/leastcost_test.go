@@ -44,12 +44,13 @@ func (f *FakeNodeGroup) NodeCost() (float64, error) {
 		return 0, nil
 	}
 }
-func (f *FakeNodeGroup) TargetSize() (int, error)        { return 2, nil }
-func (f *FakeNodeGroup) IncreaseSize(delta int) error    { return nil }
-func (f *FakeNodeGroup) DeleteNodes([]*apiv1.Node) error { return nil }
-func (f *FakeNodeGroup) Id() string                      { return f.id }
-func (f *FakeNodeGroup) Debug() string                   { return f.id }
-func (f *FakeNodeGroup) Nodes() ([]string, error)        { return []string{}, nil }
+func (f *FakeNodeGroup) TargetSize() (int, error)           { return 2, nil }
+func (f *FakeNodeGroup) IncreaseSize(delta int) error       { return nil }
+func (f *FakeNodeGroup) DecreaseTargetSize(delta int) error { return nil }
+func (f *FakeNodeGroup) DeleteNodes([]*apiv1.Node) error    { return nil }
+func (f *FakeNodeGroup) Id() string                         { return f.id }
+func (f *FakeNodeGroup) Debug() string                      { return f.id }
+func (f *FakeNodeGroup) Nodes() ([]string, error)           { return []string{}, nil }
 
 func TestLeastCost(t *testing.T) {
 	od1 := expander.Option{NodeGroup: &FakeNodeGroup{"OnDemand"}}
