@@ -101,6 +101,12 @@ func (cla *ClaMunger) Munge(obj *githubhelper.MungeObject) {
 		return
 	}
 
+	pr, err := obj.GetPR()
+	if err != nil {
+		glog.Error(err)
+		return
+	}
+
 	if obj.HasLabel(claHumanLabel) {
 		return
 	}
@@ -139,7 +145,7 @@ func (cla *ClaMunger) Munge(obj *githubhelper.MungeObject) {
 	notif := cla.pinger.PingNotification(
 		comments,
 		who,
-		nil,
+		pr.CreatedAt,
 	)
 	if notif != nil {
 		obj.WriteComment(notif.String())
