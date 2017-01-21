@@ -55,7 +55,7 @@ type IssueEvent struct {
 	//       The Actor subscribed to or unsubscribed from notifications for an issue.
 	//
 	//     head_ref_deleted, head_ref_restored
-	//       The pull request’s branch was deleted or restored.
+	//       The pull request's branch was deleted or restored.
 	//
 	Event *string `json:"event,omitempty"`
 

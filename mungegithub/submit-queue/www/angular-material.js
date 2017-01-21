@@ -12886,7 +12886,7 @@ angular.module('material.components.progressCircular', [
  * For operations where the percentage of the operation completed can be determined, use a
  * determinate indicator. They give users a quick sense of how long an operation will take.
  *
- * For operations where the user is asked to wait a moment while something finishes up, and it’s
+ * For operations where the user is asked to wait a moment while something finishes up, and it's
  * not necessary to expose what's happening behind the scenes and how long it will take, use an
  * indeterminate indicator.
  *
@@ -13156,7 +13156,7 @@ angular.module('material.components.progressLinear', [
  * a quick sense of how long an operation will take.
  *
  * For operations where the user is asked to wait a moment while
- * something finishes up, and it’s not necessary to expose what's
+ * something finishes up, and it's not necessary to expose what's
  * happening behind the scenes and how long it will take, use an
  * indeterminate indicator.
  *

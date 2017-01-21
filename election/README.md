@@ -8,7 +8,7 @@ To perform leader election, we use two properties of all Kubernetes API objects:
 ResourceVersions - Every API object has a unique ResourceVersion, and you can use these versions to perform compare-and-swap on Kubernetes objects 
 Annotations - Every API object can be annotated with arbitrary key/value pairs to be used by clients. 
 
-Given these primitives, the code to use master election is relatively straightforward, and you can find it here. Let’s run it ourselves. 
+Given these primitives, the code to use master election is relatively straightforward, and you can find it here. Let's run it ourselves. 
 
 ```console
 $ kubectl run leader-elector --image=gcr.io/google_containers/leader-elector:0.5 --replicas=3 -- --election=example
@@ -24,7 +24,7 @@ leader-elector-qkq00   1/1       Running   0          13s
 leader-elector-sgwcq   1/1       Running   0          13s
 ```
 
-To see which pod was chosen as the leader, you can access the logs of one of the pods, substituting one of your own pod’s names in place of 
+To see which pod was chosen as the leader, you can access the logs of one of the pods, substituting one of your own pod's names in place of 
 `${pod_name}`, (e.g. leader-elector-inmr1 from the above)
 
 ```console
@@ -67,9 +67,9 @@ And you will see:
 `{"name":"(name-of-leader-here)"}`
 Leader election with sidecars 
 
-Ok, that’s great, you can do leader election and find out the leader over HTTP, but how can you use it from your own application? This is where the notion of sidecars come in. In Kubernetes, Pods are made up of one or more containers. Often times, this means that you add sidecar containers to your main application to make up a Pod. (for a much more detailed treatment of this subject see my earlier blog post).
+Ok, that's great, you can do leader election and find out the leader over HTTP, but how can you use it from your own application? This is where the notion of sidecars come in. In Kubernetes, Pods are made up of one or more containers. Often times, this means that you add sidecar containers to your main application to make up a Pod. (for a much more detailed treatment of this subject see my earlier blog post).
 
-The leader-election container can serve as a sidecar that you can use from your own application. Any container in the Pod that’s interested in who the current master is can simply access http://localhost:4040 and they’ll get back a simple JSON object that contains the name of the current master. Since all containers in a Pod share the same network namespace, there’s no service discovery required!
+The leader-election container can serve as a sidecar that you can use from your own application. Any container in the Pod that's interested in who the current master is can simply access http://localhost:4040 and they'll get back a simple JSON object that contains the name of the current master. Since all containers in a Pod share the same network namespace, there's no service discovery required!
 
 For example, here is a simple Node.js application that connects to the leader election sidecar and prints out whether or not it is currently the master. The leader election sidecar sets its identifier to `hostname` by default. 
 
