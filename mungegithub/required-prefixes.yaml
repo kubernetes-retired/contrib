@@ -1,0 +1,4 @@
+pr-required-prefs:
+  - release-note
+issue-required-prefs:
+  - area
