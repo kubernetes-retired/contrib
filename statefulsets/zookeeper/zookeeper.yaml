@@ -54,7 +54,7 @@ spec:
         scheduler.alpha.kubernetes.io/affinity: >
             {
               "podAntiAffinity": {
-                "requiredDuringSchedulingRequiredDuringExecution": [{
+                "requiredDuringSchedulingIgnoredDuringExecution": [{
                   "labelSelector": {
                     "matchExpressions": [{
                       "key": "app",
