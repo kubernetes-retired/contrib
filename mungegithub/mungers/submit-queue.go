@@ -219,9 +219,9 @@ type SubmitQueue struct {
 	AdminPort              int
 
 	sync.Mutex
-	lastPRStatus  map[string]submitStatus
-	prStatus      map[string]submitStatus // protected by sync.Mutex
-	statusHistory []submitStatus          // protected by sync.Mutex
+	prStatus             map[string]submitStatus // protected by sync.Mutex
+	statusHistory        []submitStatus          // protected by sync.Mutex
+	lastModificationTime time.Time
 
 	clock         utilclock.Clock
 	startTime     time.Time // when the queue started (duh)
@@ -272,7 +272,6 @@ func init() {
 		lastMergeTime:  clock.Now(),
 		lastE2EStable:  true,
 		prStatus:       map[string]submitStatus{},
-		lastPRStatus:   map[string]submitStatus{},
 		githubE2EQueue: map[int]*github.MungeObject{},
 	}
 	RegisterMungerOrDie(sq)
@@ -519,11 +518,22 @@ func (sq *SubmitQueue) internalInitialize(config *github.Config, features *featu
 
 // EachLoop is called at the start of every munge loop
 func (sq *SubmitQueue) EachLoop() error {
+	listOpts := &githubapi.IssueListByRepoOptions{
+		State: "closed",
+		Since: sq.lastModificationTime,
+	}
+	issues, err := sq.githubConfig.ListAllIssues(listOpts)
+	if err != nil {
+		return err
+	}
+
 	sq.Lock()
+	for _, issue := range issues {
+		delete(sq.prStatus, strconv.Itoa(*issue.Number))
+	}
+
 	sq.updateHealth()
-	sq.lastPRStatus = sq.prStatus
-	sq.prStatus = map[string]submitStatus{}
-	promMetrics.OpenPRs.Set(float64(len(sq.lastPRStatus)))
+	promMetrics.OpenPRs.Set(float64(len(sq.prStatus)))
 	promMetrics.QueuedPRs.Set(float64(len(sq.githubE2EQueue)))
 
 	objs := []*github.MungeObject{}
@@ -827,15 +837,13 @@ func (sq *SubmitQueue) getQueueHistory() []byte {
 // GetQueueStatus returns a json representation of the state of the submit
 // queue. This can be used to generate web pages about the submit queue.
 func (sq *SubmitQueue) getQueueStatus() []byte {
-	status := submitQueueStatus{}
+	status := submitQueueStatus{PRStatus: map[string]submitStatus{}}
 	sq.Lock()
 	defer sq.Unlock()
-	outputStatus := sq.lastPRStatus
-	for key, value := range sq.prStatus {
-		outputStatus[key] = value
-	}
-	status.PRStatus = outputStatus
 
+	for key, value := range sq.prStatus {
+		status.PRStatus[key] = value
+	}
 	return sq.marshal(status)
 }
 
@@ -1008,6 +1016,9 @@ func (sq *SubmitQueue) validForMerge(obj *github.MungeObject) bool {
 
 // Munge is the workhorse the will actually make updates to the PR
 func (sq *SubmitQueue) Munge(obj *github.MungeObject) {
+	if obj.Issue.UpdatedAt != nil && obj.Issue.UpdatedAt.After(sq.lastModificationTime) {
+		sq.lastModificationTime = *obj.Issue.UpdatedAt
+	}
 	if !sq.validForMerge(obj) {
 		return
 	}

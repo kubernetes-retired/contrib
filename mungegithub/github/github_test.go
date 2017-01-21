@@ -189,6 +189,9 @@ func TestForEachIssueDo(t *testing.T) {
 			MaxPRNumber: 15,
 		}
 		count := 0
+		mux.HandleFunc("/repos/foo/bar/pulls/", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
 		mux.HandleFunc("/repos/foo/bar/issues", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != "GET" {
 				t.Errorf("Unexpected method: %s", r.Method)
