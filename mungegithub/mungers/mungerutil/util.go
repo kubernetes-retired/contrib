@@ -17,6 +17,7 @@ limitations under the License.
 package mungerutil
 
 import (
+	"regexp"
 	"strings"
 
 	"k8s.io/kubernetes/pkg/util/sets"
@@ -31,6 +32,15 @@ const (
 
 // UserSet is a set a of users
 type UserSet sets.String
+
+func GetMentionedUsers(body string) UserSet {
+	// According to github:
+	// "Username may only contain alphanumeric characters or
+	// single hyphens, and cannot begin or end with a hyphen"
+	regex := regexp.MustCompile(`@[[:alnum:]]+(-[[:alnum:]]+)?`)
+
+	return UserSet(sets.NewString(regex.FindAllString(body, -1)...))
+}
 
 // GetUsers returns a UserSet
 func GetUsers(users ...*github.User) UserSet {
@@ -64,6 +74,20 @@ func (u UserSet) Mention() UserSet {
 	}
 
 	return UserSet(mentionedUsers)
+}
+
+func (u UserSet) UnMention() UserSet {
+	users := sets.NewString()
+
+	for _, user := range u.List() {
+		if strings.HasPrefix(user, "@") {
+			users.Insert(user[1:])
+		} else {
+			users.Insert(user)
+		}
+	}
+
+	return UserSet(users)
 }
 
 // List makes a list from the set
