@@ -23,6 +23,7 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/contrib/mungegithub/github"
+	"k8s.io/contrib/mungegithub/mungers/testowner"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -60,8 +61,8 @@ func (p Priority) Priority() int {
 
 // OwnerMapper finds an owner for a given test name.
 type OwnerMapper interface {
-	// TestOwner returns a GitHub username for a test, or "" if none are found.
-	TestOwner(testName string) string
+	// TestOwner returns a struct with the GitHub username and SIG who own the test, or nil if none are found.
+	TestOwner(testName string) *testowner.Owner
 }
 
 // IssueFinder finds an issue for a given key.
@@ -296,7 +297,9 @@ func (s *IssueSyncer) createIssue(source IssueSource) (*github.MungeObject, erro
 
 	var owner string
 	if s.owner != nil {
-		owner = s.owner.TestOwner(source.Title())
+		if o := s.owner.TestOwner(source.Title()); o != nil {
+			owner = o.User
+		}
 	}
 
 	obj, err := s.config.NewIssue(
