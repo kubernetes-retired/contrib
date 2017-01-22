@@ -52,17 +52,17 @@ var (
     the default backend.`)
 
 	nxgConfigMap = flags.String("nginx-configmap", "",
-		`Name of the ConfigMap that containes the custom nginx configuration to use`)
+		`Name of the ConfigMap that contains the custom nginx configuration to use`)
 
 	tcpConfigMapName = flags.String("tcp-services-configmap", "",
-		`Name of the ConfigMap that containes the definition of the TCP services to expose.
+		`Name of the ConfigMap that contains the definition of the TCP services to expose.
 		The key in the map indicates the external port to be used. The value is the name of the
 		service with the format namespace/serviceName and the port of the service could be a number of the
 		name of the port.
 		The ports 80 and 443 are not allowed as external ports. This ports are reserved for nginx`)
 
 	udpConfigMapName = flags.String("udp-services-configmap", "",
-		`Name of the ConfigMap that containes the definition of the UDP services to expose.
+		`Name of the ConfigMap that contains the definition of the UDP services to expose.
 		The key in the map indicates the external port to be used. The value is the name of the
 		service with the format namespace/serviceName and the port of the service could be a number of the
 		name of the port.`)
