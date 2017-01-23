@@ -162,6 +162,8 @@ func registerHandlers(lbc *loadBalancerController) {
 		lbc.Stop()
 	})
 
+	mux.Handle("/debug/vars", http.DefaultServeMux)
+
 	if *profiling {
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
