@@ -29,6 +29,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
+	"expvar"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/healthz"
@@ -160,6 +161,20 @@ func registerHandlers(lbc *loadBalancerController) {
 
 	mux.HandleFunc("/stop", func(w http.ResponseWriter, r *http.Request) {
 		lbc.Stop()
+	})
+
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		fmt.Fprintf(w, "{\n")
+		first := true
+		expvar.Do(func(kv expvar.KeyValue) {
+			if !first {
+				fmt.Fprintf(w, ",\n")
+			}
+			first = false
+			fmt.Fprintf(w, "%q: %s", kv.Key, kv.Value)
+		})
+		fmt.Fprintf(w, "\n}\n")
 	})
 
 	if *profiling {
