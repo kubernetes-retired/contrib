@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -26,12 +27,20 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/kubernetes/pkg/api"
-	apierrs "k8s.io/kubernetes/pkg/api/errors"
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/cloudprovider"
+	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
+)
+
+const (
+	cloudSvcName = "cloud-nginx-ingress-lb"
+	httpPort     = 80
+	httpsPort    = 443
 )
 
 // StoreToIngressLister makes a Store that lists Ingress.
@@ -115,6 +124,8 @@ func NewTaskQueue(syncFn func(string) error) *taskQueue {
 }
 
 // getPodDetails  returns runtime information about the pod: name, namespace and IP of the node
+// If the pod is running in the cloud it will check the existence of the service with the name
+// cloud-nginx-ingress-lb or one will be created setting type=lb
 func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 	podName := os.Getenv("POD_NAME")
 	podNs := os.Getenv("POD_NAMESPACE")
@@ -139,16 +150,27 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 	}
 
 	var externalIP string
-	for _, address := range node.Status.Addresses {
-		if address.Type == api.NodeExternalIP {
-			if address.Address != "" {
-				externalIP = address.Address
-				break
-			}
-		}
 
-		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
-			externalIP = address.Address
+	cp, isRCP := isRunningInCloud()
+	if isRCP {
+		glog.Infof("Ingress controller running in a cloud provider (%v)", cp)
+		svc, err := ingCloudService(kubeClient, pod)
+		if err != nil {
+			return nil, err
+		}
+		externalIP = svc.Spec.LoadBalancerIP
+	} else {
+		for _, address := range node.Status.Addresses {
+			if address.Type == api.NodeExternalIP {
+				if address.Address != "" {
+					externalIP = address.Address
+					break
+				}
+			}
+
+			if externalIP == "" && address.Type == api.NodeLegacyHostIP {
+				externalIP = address.Address
+			}
 		}
 	}
 
@@ -236,7 +258,7 @@ func waitForPodCondition(kubeClient *unversioned.Client, ns, podName string, con
 	return wait.PollImmediate(interval, timeout, func() (bool, error) {
 		pod, err := kubeClient.Pods(ns).Get(podName)
 		if err != nil {
-			if apierrs.IsNotFound(err) {
+			if apierrors.IsNotFound(err) {
 				return false, nil
 			}
 		}
@@ -298,4 +320,56 @@ func getFakeSSLCert() (string, string) {
 	}
 
 	return string(cert), string(key)
+}
+
+// isRunningInCloud determines if the pod is running in a cloud provider
+func isRunningInCloud() (string, bool) {
+	cfg := (io.Reader)(nil)
+	providers := []string{"aws", "azure", "gce", "openstack"}
+	for _, provider := range providers {
+		_, err := cloudprovider.GetCloudProvider(provider, cfg)
+		if err == nil {
+			return provider, true
+		}
+	}
+
+	return "", false
+}
+
+func ingCloudService(kubeClient *unversioned.Client, pod *api.Pod) (*api.Service, error) {
+	csvc, err := kubeClient.Services(pod.Namespace).Get(cloudSvcName)
+	if apierrors.IsNotFound(err) {
+		// we need to create a new service
+		return kubeClient.Services(pod.Namespace).Create(&api.Service{
+			ObjectMeta: api.ObjectMeta{
+				Name:      cloudSvcName,
+				Namespace: pod.Namespace,
+				Labels:    pod.Labels,
+			},
+			Spec: api.ServiceSpec{
+				Type: api.ServiceTypeLoadBalancer,
+				Ports: []api.ServicePort{
+					{
+						Name:       "http",
+						Protocol:   api.ProtocolTCP,
+						Port:       httpPort,
+						TargetPort: intstr.FromInt(httpPort),
+					},
+					{
+						Name:       "https",
+						Protocol:   api.ProtocolTCP,
+						Port:       httpsPort,
+						TargetPort: intstr.FromInt(httpsPort),
+					},
+				},
+				Selector: pod.Labels,
+			},
+		})
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return csvc, nil
 }
