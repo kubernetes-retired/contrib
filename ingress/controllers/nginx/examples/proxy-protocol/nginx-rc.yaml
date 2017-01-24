@@ -47,4 +47,4 @@ spec:
         args:
         - /nginx-ingress-controller
         - --default-backend-service=$(POD_NAMESPACE)/default-http-backend
-        - --nginx-configmap=$(POD_NAMESPACE)/nginx-ingress-controller
+        - --configmap=$(POD_NAMESPACE)/nginx-ingress-controller

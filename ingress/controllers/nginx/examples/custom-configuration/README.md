@@ -3,7 +3,7 @@ The next command shows the defaults:
 $ ./nginx-third-party-lb --dump-nginx—configuration
 Example of ConfigMap to customize NGINX configuration:
 data:
-  body-size: 1m
+  proxy-body-size: 1m
   error-log-level: info
   gzip-types: application/atom+xml application/javascript application/json application/rss+xml
     application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json
