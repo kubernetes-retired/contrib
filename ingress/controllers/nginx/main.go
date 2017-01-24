@@ -41,7 +41,7 @@ const (
 
 var (
 	// value overwritten during build. This can be used to resolve issues.
-	version = "0.8.3"
+	version = "0.9"
 	gitRepo = "https://github.com/kubernetes/contrib"
 
 	flags = pflag.NewFlagSet("", pflag.ExitOnError)
