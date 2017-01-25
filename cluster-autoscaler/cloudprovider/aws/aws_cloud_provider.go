@@ -30,7 +30,8 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
+
+	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 )
 
 // AwsCloudProvider implements CloudProvider interface.
