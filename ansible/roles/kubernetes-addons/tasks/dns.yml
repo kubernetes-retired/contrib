@@ -11,5 +11,5 @@
     owner: root
     group: root
   with_items:
-  - skydns-rc.yaml
-  - skydns-svc.yaml
+  - kubedns-rc.yaml
+  - kubedns-svc.yaml
