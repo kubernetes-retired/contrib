@@ -1,0 +1,12 @@
+---
+- name: NODE-PROBLEM-DETECTOR | Assures {{ kube_addons_dir }}/node-problem-detector dir exists
+  file: path={{ kube_addons_dir }}/node-problem-detector state=directory
+
+- name: NODE-PROBLEM-DETECTOR | Copy node-problem-detector manifests to master
+  template:
+  args:
+    src: "node-problem-detector/node-problem-detector.yaml.j2"
+    dest: "{{ kube_addons_dir }}/node-problem-detector/node-problem-detector.yaml"
+    mode: 0644
+    owner: root
+    group: root
