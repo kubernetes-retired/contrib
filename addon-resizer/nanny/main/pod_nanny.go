@@ -53,7 +53,7 @@ var (
 
 func main() {
 	// First log our starting config, and then set up.
-	log.Infof("Invoked by %v", os.Args)
+	log.V(1).Infof("Invoked by %v", os.Args)
 	flag.Parse()
 
 	// Perform further validation of flags.
@@ -65,8 +65,8 @@ func main() {
 		log.Fatalf("Threshold must be between 0 and 100 inclusively, was %d.", threshold)
 	}
 
-	log.Infof("Watching namespace: %s, pod: %s, container: %s.", *podNamespace, *podName, *containerName)
-	log.Infof("cpu: %s, extra_cpu: %s, memory: %s, extra_memory: %s, storage: %s, extra_storage: %s", *baseCPU, *cpuPerNode, *baseMemory, *memoryPerNode, *baseStorage, *storagePerNode)
+	log.V(1).Infof("Watching namespace: %s, pod: %s, container: %s.", *podNamespace, *podName, *containerName)
+	log.V(1).Infof("cpu: %s, extra_cpu: %s, memory: %s, extra_memory: %s, storage: %s, extra_storage: %s", *baseCPU, *cpuPerNode, *baseMemory, *memoryPerNode, *baseStorage, *storagePerNode)
 
 	// Set up work objects.
 	config, err := restclient.InClusterConfig()
@@ -107,7 +107,7 @@ func main() {
 		})
 	}
 
-	log.Infof("Resources: %+v", resources)
+	log.V(1).Infof("Resources: %+v", resources)
 
 	var est nanny.ResourceEstimator
 	if *estimator == "linear" {
