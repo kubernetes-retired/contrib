@@ -157,5 +157,6 @@ user-whitelist
 verify-unschedulable-pods
 vrrp-password
 watch-namespace
+watch-all-namespaces
 weak-stable-jobs
 whitelist-override-label

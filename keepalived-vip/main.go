@@ -38,6 +38,8 @@ var (
 	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the built in kubernetes
         cluster for creating the client`)
 
+	watchAllNamespaces = flags.Bool("watch-all-namespaces", false, `If true, watch for services in all the namespaces`)
+
 	useUnicast = flags.Bool("use-unicast", false, `use unicast instead of multicast for communication
 		with other keepalived instances`)
 
@@ -89,8 +91,11 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 
-	if !specified {
+	if !specified || *watchAllNamespaces {
 		namespace = api.NamespaceAll
+		glog.Info("watching all namespaces")
+	} else {
+		glog.Infof("watching namespace: '%v'", namespace)
 	}
 
 	err = loadIPVModule()
