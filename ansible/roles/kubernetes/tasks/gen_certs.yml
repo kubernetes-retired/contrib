@@ -22,7 +22,6 @@
     mode=0500
   changed_when: false
 
-# FIXME This only generates a cert for one master...
 - name: Run create cert script on master
   command:
     "{{ kube_script_dir }}/make-ca-cert.sh"
@@ -30,7 +29,7 @@
     creates: "{{ kube_cert_dir }}/server.crt"
   environment:
     MASTER_IP: "{{ kube_cert_ip }}"
-    MASTER_NAME: "{{ inventory_hostname }}"
+    MASTERS: "{{ groups['masters']|join(',') }}"
     DNS_DOMAIN: "{{ dns_domain }}"
     SERVICE_CLUSTER_IP_RANGE: "{{ kube_service_addresses }}"
     CERT_DIR: "{{ kube_cert_dir }}"
