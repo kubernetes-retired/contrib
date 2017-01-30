@@ -22,6 +22,12 @@
     mode=0500
   changed_when: false
 
+- name: Copy easy-rsa.tar.gz for offline installation
+  copy:
+    src: "easy-rsa.tar.gz"
+    dest: "/tmp"
+    mode: 0755
+
 # FIXME This only generates a cert for one master...
 - name: Run create cert script on master
   command:
@@ -30,7 +36,7 @@
     creates: "{{ kube_cert_dir }}/server.crt"
   environment:
     MASTER_IP: "{{ kube_cert_ip }}"
-    MASTER_NAME: "{{ inventory_hostname }}"
+    MASTERS: "{{ groups['masters']|join(",") }}"
     DNS_DOMAIN: "{{ dns_domain }}"
     SERVICE_CLUSTER_IP_RANGE: "{{ kube_service_addresses }}"
     CERT_DIR: "{{ kube_cert_dir }}"

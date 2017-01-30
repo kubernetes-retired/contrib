@@ -33,7 +33,7 @@ set -o pipefail
 # CERT_GROUP - who the group owner of the cert files should be
 
 cert_ip="${MASTER_IP:="${1}"}"
-master_name="${MASTER_NAME:="kubernetes"}"
+masters="${MASTERS:="kubernetes"}"
 service_range="${SERVICE_CLUSTER_IP_RANGE:="10.0.0.0/16"}"
 dns_domain="${DNS_DOMAIN:="cluster.local"}"
 cert_dir="${CERT_DIR:-"/srv/kubernetes"}"
@@ -93,8 +93,12 @@ octets=($(echo "${service_range}" | sed -e 's|/.*||' -e 's/\./ /g'))
 ((octets[3]+=1))
 service_ip=$(echo "${octets[*]}" | sed 's/ /./g')
 
+masters=IFS=',' read -r -a array <<< "$masters"
+master_names=$(printf " DNS:%s" "${masters[@]}")
+master_names=${master_names:1}
+
 # Determine appropriete subject alt names
-declare -a san_array=(IP:${cert_ip} IP:${service_ip} DNS:kubernetes DNS:kubernetes.default DNS:kubernetes.default.svc DNS:kubernetes.default.svc.${dns_domain} DNS:${master_name})
+declare -a san_array=(IP:${cert_ip} IP:${service_ip} DNS:kubernetes DNS:kubernetes.default DNS:kubernetes.default.svc DNS:kubernetes.default.svc.${dns_domain} ${master_names})
 
 if [[ -n "${CLUSTER_HOSTNAME}" ]]; then
     san_array+=(DNS:${CLUSTER_HOSTNAME})
