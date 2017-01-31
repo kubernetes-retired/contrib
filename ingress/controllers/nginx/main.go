@@ -30,9 +30,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/healthz"
-	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
 const (
@@ -77,34 +75,46 @@ var (
 
 	profiling = flags.Bool("profiling", true, `Enable profiling via web interface host:port/debug/pprof/`)
 
-	defSSLCertificate = flags.String("default-ssl-certificate", "", `Name of the secret that contains a SSL 
+	defSSLCertificate = flags.String("default-ssl-certificate", "", `Name of the secret that contains a SSL
 		certificate to be used as default for a HTTPS catch-all server`)
 
 	defHealthzURL = flags.String("health-check-path", "/ingress-controller-healthz", `Defines the URL to
 		be used as health check inside in the default server in NGINX.`)
+
+	apiServerHost = flag.String("apiserver-host", "", "The address of the Kubernetes Apiserver "+
+		"to connect to in the format of protocol://address:port, e.g., "+
+		"http://localhost:8080. If not specified, the assumption is that the binary runs inside a"+
+		"Kubernetes cluster and local discovery is attempted.")
+
+	kubeConfigFile = flag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information.")
 )
 
 func main() {
 	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
-	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
 	glog.Infof("Using build: %v - %v", gitRepo, version)
 
-	if *defaultSvc == "" {
-		glog.Fatalf("Please specify --default-backend-service")
+	if *apiServerHost != "" {
+		glog.Infof("Using apiserver-host location: %s", *apiServerHost)
+	}
+	if *kubeConfigFile != "" {
+		glog.Infof("Using kubeconfig file: %s", *kubeConfigFile)
 	}
 
-	kubeClient, err := unversioned.NewInCluster()
+	kubeClient, _, err := CreateApiserverClient(*apiServerHost, *kubeConfigFile)
 	if err != nil {
-		config, err := clientConfig.ClientConfig()
-		if err != nil {
-			glog.Fatalf("error configuring the client: %v", err)
-		}
-		kubeClient, err = unversioned.New(config)
-		if err != nil {
-			glog.Fatalf("failed to create client: %v", err)
-		}
+		glog.Fatalf("Error configuring the client: %v", err)
+	}
+
+	versionInfo, err := kubeClient.ServerVersion()
+	if err != nil {
+		glog.Fatalf("Failed to create client: %v", err)
+	}
+	glog.Infof("Successful initial request to the apiserver, version: %s", versionInfo.String())
+
+	if *defaultSvc == "" {
+		glog.Fatalf("Please specify --default-backend-service")
 	}
 
 	runtimePodInfo, err := getPodDetails(kubeClient)
