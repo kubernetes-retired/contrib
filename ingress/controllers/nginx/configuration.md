@@ -306,6 +306,9 @@ The default mime type list to compress is: `application/atom+xml application/jav
 Responses with the "text/html" type are always compressed if `use-gzip` is enabled
 
 
+**whitelist-source-range:** Sets the default whitelisted IPs for each `server` block. This can be overwritten by an annotation on an Ingress
+
+
 **worker-processes:** Sets the number of [worker processes](http://nginx.org/en/docs/ngx_core_module.html#worker_processes). By default "auto" means number of available CPU cores
 
 
@@ -343,6 +346,7 @@ The next table shows the options, the default value and a description
 |use-gzip|"true"|
 |use-http2|"true"|
 |vts-status-zone-size|10m|
+|whitelist-source-range|permit all|
 |worker-processes|<number of CPUs>|
 
 

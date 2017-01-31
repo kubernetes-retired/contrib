@@ -263,7 +263,7 @@ type Configuration struct {
 
 	// WhitelistSourceRange allows limiting access to certain client addresses
 	// http://nginx.org/en/docs/http/ngx_http_access_module.html
-	WhitelistSourceRange []string `structs:"whitelist-source-range,omitempty"`
+	WhitelistSourceRange []string `structs:"whitelist-source-range,-"`
 
 	// Defines the number of worker processes. By default auto means number of available CPU cores
 	// http://nginx.org/en/docs/ngx_core_module.html#worker_processes
