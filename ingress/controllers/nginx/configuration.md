@@ -301,6 +301,7 @@ The default mime type list to compress is: `application/atom+xml application/jav
 
 **use-http2:** Enables or disables the [HTTP/2](http://nginx.org/en/docs/http/ngx_http_v2_module.html) support in secure connections 
 
+**use-upstream-health-checks:** Enables or disables the use of upstream health checks provided by the [nginx_upstream_check_module](https://github.com/yaoweibin/nginx_upstream_check_module) module. If enabled, NGINX will do health checking based on the `readinessProbe` in the pod definition.
 
 **gzip-types:** Sets the MIME types in addition to "text/html" to compress. The special value "*"" matches any MIME type.
 Responses with the "text/html" type are always compressed if `use-gzip` is enabled

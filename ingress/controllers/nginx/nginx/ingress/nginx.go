@@ -32,11 +32,22 @@ type Configuration struct {
 	UDPUpstreams []*Location
 }
 
+// UpstreamCheck is used to configure nginx_upstream_check_module
+type UpstreamCheck struct {
+	HttpSend       string
+	Port           int
+	IntervalMillis int32
+	Fall           int32
+	Rise           int32
+	TimeoutMillis  int32
+}
+
 // Upstream describes an NGINX upstream
 type Upstream struct {
-	Name     string
-	Backends []UpstreamServer
-	Secure   bool
+	Name          string
+	Backends      []UpstreamServer
+	Secure        bool
+	UpstreamCheck *UpstreamCheck
 }
 
 // UpstreamByNameServers sorts upstreams by name

@@ -242,6 +242,11 @@ type Configuration struct {
 	// Default: 0, ie use platform liveness probe
 	UpstreamFailTimeout int `structs:"upstream-fail-timeout,omitempty"`
 
+	// Enables or disables the use of upstream health checks provided by the
+	// nginx_upstream_check_module module. If enabled, NGINX will do health checking
+	// based on the readinessProbe in the pod definition.
+	UseUpstreamHealthChecks bool `structs:"use-upstream-health-checks"`
+
 	// Enables or disables the use of the PROXY protocol to receive client connection
 	// (real IP address) information passed through proxy servers and load balancers
 	// such as HAproxy and Amazon Elastic Load Balancer (ELB).
