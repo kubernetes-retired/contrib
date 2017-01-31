@@ -77,7 +77,7 @@ You can just setup certain parts instead of doing it all.
 
 By default, the Ansible playbook deploys Kubernetes addons as well. Addons consist of:
 
-* DNS (skydns)
+* DNS (kubedns)
 * cluster monitoring (Grafana, Heapster, InfluxDB)
 * cluster logging (Kibana, ElasticSearch)
 * Kubernetes dashboard
