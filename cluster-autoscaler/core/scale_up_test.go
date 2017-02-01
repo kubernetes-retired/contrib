@@ -78,13 +78,13 @@ func TestScaleUpOK(t *testing.T) {
 	clusterState.UpdateNodes([]*apiv1.Node{n1, n2}, time.Now())
 	context := &AutoscalingContext{
 		AutoscalingOptions: AutoscalingOptions{
-			EstimatorName:    estimator.BinpackingEstimatorName,
+			EstimatorName: estimator.BinpackingEstimatorName,
 		},
-		PredicateChecker: simulator.NewTestPredicateChecker(),
-		CloudProvider:    provider,
-		ClientSet:        fakeClient,
-		Recorder:         kube_util.CreateEventRecorder(fakeClient),
-		ExpanderStrategy: random.NewStrategy(),
+		PredicateChecker:     simulator.NewTestPredicateChecker(),
+		CloudProvider:        provider,
+		ClientSet:            fakeClient,
+		Recorder:             kube_util.CreateEventRecorder(fakeClient),
+		ExpanderStrategy:     random.NewStrategy(),
 		ClusterStateRegistry: clusterState,
 	}
 	p3 := BuildTestPod("p-new", 500, 0)
@@ -139,7 +139,7 @@ func TestScaleUpNodeComingNoScale(t *testing.T) {
 
 	context := &AutoscalingContext{
 		AutoscalingOptions: AutoscalingOptions{
-			EstimatorName:        estimator.BinpackingEstimatorName,
+			EstimatorName: estimator.BinpackingEstimatorName,
 		},
 		PredicateChecker:     simulator.NewTestPredicateChecker(),
 		CloudProvider:        provider,
@@ -201,7 +201,7 @@ func TestScaleUpNodeComingHasScale(t *testing.T) {
 
 	context := &AutoscalingContext{
 		AutoscalingOptions: AutoscalingOptions{
-			EstimatorName:        estimator.BinpackingEstimatorName,
+			EstimatorName: estimator.BinpackingEstimatorName,
 		},
 		PredicateChecker:     simulator.NewTestPredicateChecker(),
 		CloudProvider:        provider,
@@ -256,7 +256,7 @@ func TestScaleUpUnhealthy(t *testing.T) {
 	clusterState.UpdateNodes([]*apiv1.Node{n1, n2}, time.Now())
 	context := &AutoscalingContext{
 		AutoscalingOptions: AutoscalingOptions{
-			EstimatorName:        estimator.BinpackingEstimatorName,
+			EstimatorName: estimator.BinpackingEstimatorName,
 		},
 		PredicateChecker:     simulator.NewTestPredicateChecker(),
 		CloudProvider:        provider,
@@ -302,13 +302,13 @@ func TestScaleUpNoHelp(t *testing.T) {
 	clusterState.UpdateNodes([]*apiv1.Node{n1}, time.Now())
 	context := &AutoscalingContext{
 		AutoscalingOptions: AutoscalingOptions{
-			EstimatorName:    estimator.BinpackingEstimatorName,
+			EstimatorName: estimator.BinpackingEstimatorName,
 		},
-		PredicateChecker: simulator.NewTestPredicateChecker(),
-		CloudProvider:    provider,
-		ClientSet:        fakeClient,
-		Recorder:         kube_util.CreateEventRecorder(fakeClient),
-		ExpanderStrategy: random.NewStrategy(),
+		PredicateChecker:     simulator.NewTestPredicateChecker(),
+		CloudProvider:        provider,
+		ClientSet:            fakeClient,
+		Recorder:             kube_util.CreateEventRecorder(fakeClient),
+		ExpanderStrategy:     random.NewStrategy(),
 		ClusterStateRegistry: clusterState,
 	}
 	p3 := BuildTestPod("p-new", 500, 0)

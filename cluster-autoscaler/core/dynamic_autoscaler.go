@@ -1,3 +1,19 @@
+/*
+Copyright 2016 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package core
 
 import (
@@ -11,21 +27,22 @@ import (
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 
 	"github.com/golang/glog"
+	"k8s.io/contrib/cluster-autoscaler/simulator"
 )
 
 // DynamicAutoscaler is a variant of autoscaler which supports dynamic reconfiguration at runtime
 type DynamicAutoscaler struct {
-	autoscaler Autoscaler
-	autoscalerBuilder    AutoscalerBuilder
-	configFetcher dynamic.ConfigFetcher
+	autoscaler        Autoscaler
+	autoscalerBuilder AutoscalerBuilder
+	configFetcher     dynamic.ConfigFetcher
 }
 
 // NewDynamicAutoscaler builds a DynamicAutoscaler from required parameters
 func NewDynamicAutoscaler(autoscalerBuilder AutoscalerBuilder, configFetcher dynamic.ConfigFetcher) *DynamicAutoscaler {
 	return &DynamicAutoscaler{
-		autoscaler: autoscalerBuilder.Build(),
+		autoscaler:        autoscalerBuilder.Build(),
 		autoscalerBuilder: autoscalerBuilder,
-		configFetcher: configFetcher,
+		configFetcher:     configFetcher,
 	}
 }
 
@@ -69,17 +86,19 @@ type AutoscalerBuilder interface {
 // `dynamic.Config` read on demand from the configmap
 type AutoscalerBuilderImpl struct {
 	autoscalingOptions AutoscalingOptions
-	dynamicConfig *dynamic.Config
-	kubeClient kube_client.Interface
-	kubeEventRecorder kube_record.EventRecorder
+	dynamicConfig      *dynamic.Config
+	kubeClient         kube_client.Interface
+	kubeEventRecorder  kube_record.EventRecorder
+	predicateChecker *simulator.PredicateChecker
 }
 
 // NewAutoscalerBuilder builds an AutoscalerBuilder from required parameters
-func NewAutoscalerBuilder(autoscalingOptions AutoscalingOptions, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) *AutoscalerBuilderImpl {
+func NewAutoscalerBuilder(autoscalingOptions AutoscalingOptions, predicateChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) *AutoscalerBuilderImpl {
 	return &AutoscalerBuilderImpl{
 		autoscalingOptions: autoscalingOptions,
-		kubeClient: kubeClient,
-		kubeEventRecorder: kubeEventRecorder,
+		kubeClient:         kubeClient,
+		kubeEventRecorder:  kubeEventRecorder,
+		predicateChecker: predicateChecker,
 	}
 }
 
@@ -97,5 +116,5 @@ func (b *AutoscalerBuilderImpl) Build() Autoscaler {
 		c := *(b.dynamicConfig)
 		options.NodeGroups = c.NodeGroupSpecStrings()
 	}
-	return NewStaticAutoscaler(options, b.kubeClient, b.kubeEventRecorder)
+	return NewStaticAutoscaler(options, b.predicateChecker, b.kubeClient, b.kubeEventRecorder)
 }

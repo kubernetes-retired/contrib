@@ -1,12 +1,12 @@
 package builder
 
 import (
-	"os"
 	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/aws"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/azure"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/gce"
+	"os"
 )
 
 // CloudProviderBuilder builds a cloud provider from all the necessary parameters including the name of a cloud provider e.g. aws, gce
@@ -75,28 +75,28 @@ func (b CloudProviderBuilder) Build(nodeGroupsFlag []string) cloudprovider.Cloud
 	}
 
 	if b.cloudProviderFlag == "azure" {
-	       var azureManager *azure.AzureManager
-               var azureError error
-               if b.cloudConfig != "" {
-		       glog.Info("Creating Azure Manager using cloud-config file: %v", b.cloudConfig)
-		       config, fileErr := os.Open(b.cloudConfig)
-		       if fileErr != nil {
-			       glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", b.cloudConfig, err)
-		       }
-		       defer config.Close()
-		       azureManager, azureError = azure.CreateAzureManager(config)
-	       } else {
-		       glog.Info("Creating Azure Manager with default configuration.")
-		       azureManager, azureError = azure.CreateAzureManager(nil)
-	       }
-               if azureError != nil {
-		       glog.Fatalf("Failed to create Azure Manager: %v", err)
-	       }
-               cloudProvider, err = azure.BuildAzureCloudProvider(azureManager, nodeGroupsFlag)
-               if err != nil {
-		       glog.Fatalf("Failed to create Azure cloud provider: %v", err)
-	       }
-       }
+		var azureManager *azure.AzureManager
+		var azureError error
+		if b.cloudConfig != "" {
+			glog.Info("Creating Azure Manager using cloud-config file: %v", b.cloudConfig)
+			config, fileErr := os.Open(b.cloudConfig)
+			if fileErr != nil {
+				glog.Fatalf("Couldn't open cloud provider configuration %s: %#v", b.cloudConfig, err)
+			}
+			defer config.Close()
+			azureManager, azureError = azure.CreateAzureManager(config)
+		} else {
+			glog.Info("Creating Azure Manager with default configuration.")
+			azureManager, azureError = azure.CreateAzureManager(nil)
+		}
+		if azureError != nil {
+			glog.Fatalf("Failed to create Azure Manager: %v", err)
+		}
+		cloudProvider, err = azure.BuildAzureCloudProvider(azureManager, nodeGroupsFlag)
+		if err != nil {
+			glog.Fatalf("Failed to create Azure cloud provider: %v", err)
+		}
+	}
 
 	return cloudProvider
 }

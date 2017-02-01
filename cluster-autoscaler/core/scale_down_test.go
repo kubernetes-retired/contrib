@@ -24,8 +24,8 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/test"
 	"k8s.io/contrib/cluster-autoscaler/clusterstate"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
-	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
+	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -74,7 +74,7 @@ func TestFindUnneededNodes(t *testing.T) {
 		AutoscalingOptions: AutoscalingOptions{
 			ScaleDownUtilizationThreshold: 0.35,
 		},
-		PredicateChecker:              simulator.NewTestPredicateChecker(),
+		PredicateChecker: simulator.NewTestPredicateChecker(),
 	}
 	sd := NewScaleDown(&context)
 	sd.UpdateUnneededNodes([]*apiv1.Node{n1, n2, n3, n4}, []*apiv1.Pod{p1, p2, p3, p4}, time.Now())
@@ -201,11 +201,11 @@ func TestScaleDown(t *testing.T) {
 			ScaleDownUnneededTime:         time.Minute,
 			MaxGratefulTerminationSec:     60,
 		},
-		PredicateChecker:              simulator.NewTestPredicateChecker(),
-		CloudProvider:                 provider,
-		ClientSet:                     fakeClient,
-		Recorder:                      kube_util.CreateEventRecorder(fakeClient),
-		ClusterStateRegistry:          clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{}),
+		PredicateChecker:     simulator.NewTestPredicateChecker(),
+		CloudProvider:        provider,
+		ClientSet:            fakeClient,
+		Recorder:             kube_util.CreateEventRecorder(fakeClient),
+		ClusterStateRegistry: clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{}),
 	}
 	scaleDown := NewScaleDown(context)
 	scaleDown.UpdateUnneededNodes([]*apiv1.Node{n1, n2}, []*apiv1.Pod{p1, p2}, time.Now().Add(-5*time.Minute))
@@ -257,11 +257,11 @@ func TestNoScaleDownUnready(t *testing.T) {
 			ScaleDownUnreadyTime:          time.Hour,
 			MaxGratefulTerminationSec:     60,
 		},
-		PredicateChecker:              simulator.NewTestPredicateChecker(),
-		CloudProvider:                 provider,
-		ClientSet:                     fakeClient,
-		Recorder:                      kube_util.CreateEventRecorder(fakeClient),
-		ClusterStateRegistry:          clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{}),
+		PredicateChecker:     simulator.NewTestPredicateChecker(),
+		CloudProvider:        provider,
+		ClientSet:            fakeClient,
+		Recorder:             kube_util.CreateEventRecorder(fakeClient),
+		ClusterStateRegistry: clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{}),
 	}
 
 	// N1 is unready so it requires a bigger unneeded time.
@@ -342,31 +342,31 @@ func TestScaleDownNoMove(t *testing.T) {
 		t.FailNow()
 		return false, nil, nil
 	})
-       provider := testprovider.NewTestCloudProvider(nil, func(nodeGroup string, node string) error {
-               t.FailNow()
-               return nil
-       })
-       provider.AddNodeGroup("ng1", 1, 10, 2)
-       provider.AddNode("ng1", n1)
-       provider.AddNode("ng1", n2)
-       assert.NotNil(t, provider)
+	provider := testprovider.NewTestCloudProvider(nil, func(nodeGroup string, node string) error {
+		t.FailNow()
+		return nil
+	})
+	provider.AddNodeGroup("ng1", 1, 10, 2)
+	provider.AddNode("ng1", n1)
+	provider.AddNode("ng1", n2)
+	assert.NotNil(t, provider)
 
-       context := &AutoscalingContext{
-	       AutoscalingOptions: AutoscalingOptions{
-		       ScaleDownUtilizationThreshold: 0.5,
-		       ScaleDownUnneededTime:         time.Minute,
-		       ScaleDownUnreadyTime:          time.Hour,
-		       MaxGratefulTerminationSec:     60,
-	       },
-               PredicateChecker:              simulator.NewTestPredicateChecker(),
-               CloudProvider:                 provider,
-               ClientSet:                     fakeClient,
-               Recorder:                      kube_util.CreateEventRecorder(fakeClient),
-               ClusterStateRegistry:          clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{}),
-       }
-       scaleDown := NewScaleDown(context)
-       scaleDown.UpdateUnneededNodes([]*apiv1.Node{n1, n2}, []*apiv1.Pod{p1, p2}, time.Now().Add(5*time.Minute))
-       result, err := scaleDown.TryToScaleDown([]*apiv1.Node{n1, n2}, []*apiv1.Pod{p1, p2})
+	context := &AutoscalingContext{
+		AutoscalingOptions: AutoscalingOptions{
+			ScaleDownUtilizationThreshold: 0.5,
+			ScaleDownUnneededTime:         time.Minute,
+			ScaleDownUnreadyTime:          time.Hour,
+			MaxGratefulTerminationSec:     60,
+		},
+		PredicateChecker:     simulator.NewTestPredicateChecker(),
+		CloudProvider:        provider,
+		ClientSet:            fakeClient,
+		Recorder:             kube_util.CreateEventRecorder(fakeClient),
+		ClusterStateRegistry: clusterstate.NewClusterStateRegistry(provider, clusterstate.ClusterStateRegistryConfig{}),
+	}
+	scaleDown := NewScaleDown(context)
+	scaleDown.UpdateUnneededNodes([]*apiv1.Node{n1, n2}, []*apiv1.Pod{p1, p2}, time.Now().Add(5*time.Minute))
+	result, err := scaleDown.TryToScaleDown([]*apiv1.Node{n1, n2}, []*apiv1.Pod{p1, p2})
 	assert.NoError(t, err)
 	assert.Equal(t, ScaleDownNoUnneeded, result)
 }

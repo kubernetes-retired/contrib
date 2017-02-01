@@ -1,3 +1,19 @@
+/*
+Copyright 2016 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package dynamic
 
 import (
@@ -9,11 +25,11 @@ import (
 // NodeGroupSpec represents a specification of a node group to be auto-scaled
 type NodeGroupSpec struct {
 	// The name of the autoscaling target
-	Name    string `json:"name"`
+	Name string `json:"name"`
 	// Min size of the autoscaling target
-	MinSize int    `json:"minSize"`
+	MinSize int `json:"minSize"`
 	// Max size of the autoscaling target
-	MaxSize int    `json:"maxSize"`
+	MaxSize int `json:"maxSize"`
 }
 
 // SpecFromString parses a node group spec represented in the form of `<minSize>:<maxSize>:<name>` and produces a node group spec object

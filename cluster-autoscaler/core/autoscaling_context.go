@@ -1,3 +1,19 @@
+/*
+Copyright 2016 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package core
 
 import (
@@ -8,11 +24,10 @@ import (
 	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 
-	"github.com/golang/glog"
-	"time"
-	"k8s.io/contrib/cluster-autoscaler/expander/factory"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	"k8s.io/contrib/cluster-autoscaler/clusterstate"
+	"k8s.io/contrib/cluster-autoscaler/expander/factory"
+	"time"
 )
 
 // AutoscalingContext contains user-configurable constant and configuration-related objects passed to
@@ -39,23 +54,23 @@ type AutoscalingContext struct {
 // AutoscalingOptions contain various options to customize how autoscaling works
 type AutoscalingOptions struct {
 	// MaxEmptyBulkDelete is a number of empty nodes that can be removed at the same time.
-	MaxEmptyBulkDelete            int
+	MaxEmptyBulkDelete int
 	// ScaleDownUtilizationThreshold sets threshould for nodes to be considered for scale down.
 	// Well-utilized nodes are not touched.
 	ScaleDownUtilizationThreshold float64
 	// ScaleDownUnneededTime sets the duriation CA exepects a node to be unneded/eligible for removal
 	// before scaling down the node.
-	ScaleDownUnneededTime     time.Duration
+	ScaleDownUnneededTime time.Duration
 	// ScaleDownUnreadyTime represents how long an unready node should be unneeded before it is eligible for scale down
 	ScaleDownUnreadyTime time.Duration
 	// MaxNodesTotal sets the maximum number of nodes in the whole cluster
-	MaxNodesTotal             int
+	MaxNodesTotal int
 	// UnregisteredNodeRemovalTime represents how long CA waits before removing nodes that are not registered in Kubernetes")
 	UnregisteredNodeRemovalTime time.Duration
 	// EstimatorName is the estimator used to estimate the number of needed nodes in scale up.
-	EstimatorName             string
+	EstimatorName string
 	// ExpanderName sets the type of node group expander to be used in scale up
-	ExpanderName              string
+	ExpanderName string
 	// MaxGratefulTerminationSec is maximum number of seconds scale down waits for pods to terminante before
 	// removing the node from cloud provider.
 	MaxGratefulTerminationSec int
@@ -66,11 +81,11 @@ type AutoscalingOptions struct {
 	// OkTotalUnreadyCount is the number of allowed unready nodes, irrespective of max-total-unready-percentage
 	OkTotalUnreadyCount int
 	// CloudConfig is the path to the cloud provider configuration file. Empty string for no configuration file.
-	CloudConfig               string
+	CloudConfig string
 	// CloudProviderName sets the type of the cloud provider CA is about to run in. Allowed values: gce, aws
-	CloudProviderName         string
+	CloudProviderName string
 	// NodeGroups is the list of node groups a.k.a autoscaling targets
-	NodeGroups                []string
+	NodeGroups []string
 	// VerifyUnschedulable is used to enable verification to ensure that each pod marked by Scheduler as unschedulable actually can't be scheduled on any node.
 	// This prevents from adding unnecessary nodes in situation when CA and Scheduler have different configuration.
 	VerifyUnschedulablePods bool
@@ -83,11 +98,7 @@ type AutoscalingOptions struct {
 }
 
 // NewAutoscalingContext returns an autoscaling context from all the necessary parameters passed via arguments
-func NewAutoscalingContext(options AutoscalingOptions, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) *AutoscalingContext {
-	predicateChecker, err := simulator.NewPredicateChecker(kubeClient)
-	if err != nil {
-		glog.Fatalf("Failed to create predicate checker: %v", err)
-	}
+func NewAutoscalingContext(options AutoscalingOptions, predicateChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) *AutoscalingContext {
 	cloudProviderBuilder := builder.NewCloudProviderBuilder(options.CloudProviderName, options.CloudConfig)
 	cloudProvider := cloudProviderBuilder.Build(options.NodeGroups)
 	expanderStrategy := factory.ExpanderStrategyFromString(options.ExpanderName)
@@ -98,14 +109,14 @@ func NewAutoscalingContext(options AutoscalingOptions, kubeClient kube_client.In
 	clusterStateRegistry := clusterstate.NewClusterStateRegistry(cloudProvider, clusterStateConfig)
 
 	autoscalingContext := AutoscalingContext{
-		AutoscalingOptions: options,
-		CloudProvider:                 cloudProvider,
+		AutoscalingOptions:   options,
+		CloudProvider:        cloudProvider,
 		CloudProviderBuilder: cloudProviderBuilder,
 		ClusterStateRegistry: clusterStateRegistry,
-		ClientSet:                     kubeClient,
-		Recorder:                      kubeEventRecorder,
-		PredicateChecker:              predicateChecker,
-		ExpanderStrategy:              expanderStrategy,
+		ClientSet:            kubeClient,
+		Recorder:             kubeEventRecorder,
+		PredicateChecker:     predicateChecker,
+		ExpanderStrategy:     expanderStrategy,
 	}
 
 	return &autoscalingContext

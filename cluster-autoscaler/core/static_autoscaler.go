@@ -1,3 +1,19 @@
+/*
+Copyright 2016 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package core
 
 import (
@@ -10,25 +26,26 @@ import (
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 
 	"github.com/golang/glog"
+	"k8s.io/contrib/cluster-autoscaler/simulator"
 )
 
 // StaticAutoscaler is an autoscaler which has all the core functionality of a CA but without the reconfiguration feature
 type StaticAutoscaler struct {
 	// AutoscalingContext consists of validated settings and options for this autoscaler
 	*AutoscalingContext
-	readyNodeLister *kube_util.ReadyNodeLister
-	scheduledPodLister *kube_util.ScheduledPodLister
-	unschedulablePodLister  *kube_util.UnschedulablePodLister
-	allNodeLister *kube_util.AllNodeLister
-	kubeClient kube_client.Interface
-	lastScaleUpTime time.Time
+	readyNodeLister          *kube_util.ReadyNodeLister
+	scheduledPodLister       *kube_util.ScheduledPodLister
+	unschedulablePodLister   *kube_util.UnschedulablePodLister
+	allNodeLister            *kube_util.AllNodeLister
+	kubeClient               kube_client.Interface
+	lastScaleUpTime          time.Time
 	lastScaleDownFailedTrial time.Time
-	scaleDown *ScaleDown
+	scaleDown                *ScaleDown
 }
 
 // NewStaticAutoscaler creates an instance of Autoscaler filled with provided parameters
-func NewStaticAutoscaler(opts AutoscalingOptions, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) *StaticAutoscaler {
-	autoscalingContext := NewAutoscalingContext(opts, kubeClient, kubeEventRecorder)
+func NewStaticAutoscaler(opts AutoscalingOptions, predicaterChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) *StaticAutoscaler {
+	autoscalingContext := NewAutoscalingContext(opts, predicaterChecker, kubeClient, kubeEventRecorder)
 
 	scaleDown := NewScaleDown(autoscalingContext)
 	stopchannel := make(chan struct{})
@@ -38,14 +55,14 @@ func NewStaticAutoscaler(opts AutoscalingOptions, kubeClient kube_client.Interfa
 	allNodeLister := kube_util.NewAllNodeLister(kubeClient, stopchannel)
 
 	return &StaticAutoscaler{
-		AutoscalingContext: autoscalingContext,
-		readyNodeLister: readyNodeLister,
-		unschedulablePodLister: unschedulablePodLister,
-		scheduledPodLister: scheduledPodLister,
-		allNodeLister: allNodeLister,
-		lastScaleUpTime: time.Now(),
+		AutoscalingContext:       autoscalingContext,
+		readyNodeLister:          readyNodeLister,
+		unschedulablePodLister:   unschedulablePodLister,
+		scheduledPodLister:       scheduledPodLister,
+		allNodeLister:            allNodeLister,
+		lastScaleUpTime:          time.Now(),
 		lastScaleDownFailedTrial: time.Now(),
-		scaleDown: scaleDown,
+		scaleDown:                scaleDown,
 	}
 }
 

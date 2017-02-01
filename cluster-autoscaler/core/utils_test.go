@@ -85,8 +85,8 @@ func TestRemoveOldUnregisteredNodes(t *testing.T) {
 		AutoscalingOptions: AutoscalingOptions{
 			UnregisteredNodeRemovalTime: 45 * time.Minute,
 		},
-		CloudProvider:               provider,
-		ClusterStateRegistry:        clusterState,
+		CloudProvider:        provider,
+		ClusterStateRegistry: clusterState,
 	}
 	unregisteredNodes := clusterState.GetUnregisteredNodes()
 	assert.Equal(t, 1, len(unregisteredNodes))
@@ -128,8 +128,8 @@ func TestRemoveFixNodeTargetSize(t *testing.T) {
 		AutoscalingOptions: AutoscalingOptions{
 			UnregisteredNodeRemovalTime: 45 * time.Minute,
 		},
-		CloudProvider:               provider,
-		ClusterStateRegistry:        clusterState,
+		CloudProvider:        provider,
+		ClusterStateRegistry: clusterState,
 	}
 
 	// Nothing should be fixed. The incorrect size state is not old enough.

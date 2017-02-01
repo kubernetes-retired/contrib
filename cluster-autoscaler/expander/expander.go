@@ -22,7 +22,6 @@ import (
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
 
-
 var (
 	// AvailableExpanders is a list of avaialble expander options
 	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName}
@@ -33,7 +32,6 @@ var (
 	// LeastWasteExpanderName selects a node group that leaves the least fraction of CPU and Memory
 	LeastWasteExpanderName = "least-waste"
 )
-
 
 // Option describes an option to expand the cluster.
 type Option struct {

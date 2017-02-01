@@ -58,7 +58,7 @@ func durationToMicro(start time.Time) float64 {
 	return float64(time.Now().Sub(start).Nanoseconds() / 1000)
 }
 
-// UpdateLastDuration records the duration of the step identified by the label
+// UpdateDuration records the duration of the step identified by the label
 func UpdateDuration(label string, start time.Time) {
 	duration.WithLabelValues(label).Observe(durationToMicro(start))
 	lastDuration.WithLabelValues(label).Set(durationToMicro(start))
