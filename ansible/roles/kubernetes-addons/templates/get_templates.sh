@@ -22,7 +22,7 @@ github_url="https://raw.githubusercontent.com/kubernetes/kubernetes/${branch}"
 # get dns templates
 dir="dns"
 mkdir -p $dir
-for filename in skydns-rc.yaml skydns-svc.yaml; do
+for filename in kubedns-controller.yaml kubedns-svc.yaml; do
     filepath="${dir}/${filename}.j2"
     curl -Lfo ${filepath} "${github_url}/cluster/addons/dns/${filename}.in"
     sed -i "s/pillar\['\(.*\)'\]/\1/g" $filepath

@@ -1,7 +1,7 @@
 all: push
 
 # 0.0.0 shouldn't clobber any released builds
-TAG = 0.12
+TAG = 0.13
 PREFIX = gcr.io/google_containers/nginx-slim
 
 container:
