@@ -1,3 +1,6 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+
 This example shows how is possible to create a custom configuration for a particular upstream associated with an Ingress rule.
 
 ```
