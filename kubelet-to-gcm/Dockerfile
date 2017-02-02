@@ -12,15 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM ubuntu:14.04
+FROM scratch
 MAINTAINER Quintin Lee "qlee@google.com"
-
-# Disable prompts from apt.
-ENV DEBIAN_FRONTEND noninteractive
-
-# # Install the Fluentd agent that knows how to send logs to Google Cloud Logging.
-RUN apt-get -q update && \
-    apt-get install -y curl && \
-    apt-get clean
 
 ADD build/monitor monitor
