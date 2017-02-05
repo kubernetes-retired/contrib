@@ -89,7 +89,7 @@ type AutoscalerBuilderImpl struct {
 	dynamicConfig      *dynamic.Config
 	kubeClient         kube_client.Interface
 	kubeEventRecorder  kube_record.EventRecorder
-	predicateChecker *simulator.PredicateChecker
+	predicateChecker   *simulator.PredicateChecker
 }
 
 // NewAutoscalerBuilder builds an AutoscalerBuilder from required parameters
@@ -98,7 +98,7 @@ func NewAutoscalerBuilder(autoscalingOptions AutoscalingOptions, predicateChecke
 		autoscalingOptions: autoscalingOptions,
 		kubeClient:         kubeClient,
 		kubeEventRecorder:  kubeEventRecorder,
-		predicateChecker: predicateChecker,
+		predicateChecker:   predicateChecker,
 	}
 }
 
