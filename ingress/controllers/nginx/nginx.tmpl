@@ -279,9 +279,10 @@ http {
             # https://www.nginx.com/blog/mitigating-the-httpoxy-vulnerability-with-nginx/
             proxy_set_header Proxy                  "";
 
-            proxy_connect_timeout                   {{ $cfg.proxyConnectTimeout }}s;
-            proxy_send_timeout                      {{ $cfg.proxySendTimeout }}s;
-            proxy_read_timeout                      {{ $cfg.proxyReadTimeout }}s;
+            proxy_connect_timeout                   {{ $location.Timeout.connect }}s;
+            proxy_send_timeout                      {{ $location.Timeout.send }}s;
+            proxy_read_timeout                      {{ $location.Timeout.read }}s;
+            proxy_next_upstream_timeout             {{ $location.Timeout.send }}s;
 
             proxy_redirect                          off;
             proxy_buffering                         off;

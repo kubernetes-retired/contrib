@@ -51,6 +51,7 @@ import (
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/ratelimit"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/rewrite"
 	"k8s.io/contrib/ingress/controllers/nginx/nginx/secureupstream"
+	"k8s.io/contrib/ingress/controllers/nginx/nginx/timeout"
 )
 
 const (
@@ -730,6 +731,8 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuratio
 			glog.V(3).Infof("error reading auth request annotation in Ingress %v/%v: %v", ing.GetNamespace(), ing.GetName(), err)
 		}
 
+		to := timeout.ParseAnnotations(ngxCfg, ing)
+
 		for _, rule := range ing.Spec.Rules {
 			host := rule.Host
 			if host == "" {
@@ -787,6 +790,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuratio
 						loc.Upstream = *ups
 						loc.EnableCORS = eCORS
 						loc.ExternalAuthURL = ra
+						loc.Timeout = *to
 
 						addLoc = false
 						continue
@@ -811,6 +815,7 @@ func (lbc *loadBalancerController) getUpstreamServers(ngxCfg config.Configuratio
 						Whitelist:       *wl,
 						EnableCORS:      eCORS,
 						ExternalAuthURL: ra,
+						Timeout:         *to,
 					})
 				}
 			}
