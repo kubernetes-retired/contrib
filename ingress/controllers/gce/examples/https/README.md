@@ -1,3 +1,6 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+
 # Simple TLS example
 
 Create secret
