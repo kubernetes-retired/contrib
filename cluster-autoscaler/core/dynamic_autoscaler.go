@@ -28,6 +28,7 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
+	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 )
 
 // DynamicAutoscaler is a variant of autoscaler which supports dynamic reconfiguration at runtime
@@ -90,15 +91,17 @@ type AutoscalerBuilderImpl struct {
 	kubeClient         kube_client.Interface
 	kubeEventRecorder  kube_record.EventRecorder
 	predicateChecker   *simulator.PredicateChecker
+	listerRegistry     kube_util.ListerRegistry
 }
 
 // NewAutoscalerBuilder builds an AutoscalerBuilder from required parameters
-func NewAutoscalerBuilder(autoscalingOptions AutoscalingOptions, predicateChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) *AutoscalerBuilderImpl {
+func NewAutoscalerBuilder(autoscalingOptions AutoscalingOptions, predicateChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder, listerRegistry kube_util.ListerRegistry) *AutoscalerBuilderImpl {
 	return &AutoscalerBuilderImpl{
 		autoscalingOptions: autoscalingOptions,
 		kubeClient:         kubeClient,
 		kubeEventRecorder:  kubeEventRecorder,
 		predicateChecker:   predicateChecker,
+		listerRegistry:     listerRegistry,
 	}
 }
 
@@ -116,5 +119,5 @@ func (b *AutoscalerBuilderImpl) Build() Autoscaler {
 		c := *(b.dynamicConfig)
 		options.NodeGroups = c.NodeGroupSpecStrings()
 	}
-	return NewStaticAutoscaler(options, b.predicateChecker, b.kubeClient, b.kubeEventRecorder)
+	return NewStaticAutoscaler(options, b.predicateChecker, b.kubeClient, b.kubeEventRecorder, b.listerRegistry)
 }

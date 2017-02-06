@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/contrib/cluster-autoscaler/config/dynamic"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
+	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 )
 
 // AutoscalerOptions is the whole set of options for configuring an autoscaler
@@ -40,14 +41,11 @@ type Autoscaler interface {
 }
 
 // NewAutoscaler creates an autoscaler of an appropriate type according to the parameters
-func NewAutoscaler(opts AutoscalerOptions, predicateChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) Autoscaler {
-	var autoscaler Autoscaler
+func NewAutoscaler(opts AutoscalerOptions, predicateChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder, listerRegistry kube_util.ListerRegistry) Autoscaler {
+	autoscalerBuilder := NewAutoscalerBuilder(opts.AutoscalingOptions, predicateChecker, kubeClient, kubeEventRecorder, listerRegistry)
 	if opts.ConfigMapName != "" {
-		autoscalerBuilder := NewAutoscalerBuilder(opts.AutoscalingOptions, predicateChecker, kubeClient, kubeEventRecorder)
 		configFetcher := dynamic.NewConfigFetcher(opts.ConfigFetcherOptions, kubeClient, kubeEventRecorder)
-		autoscaler = NewDynamicAutoscaler(autoscalerBuilder, configFetcher)
-	} else {
-		autoscaler = NewStaticAutoscaler(opts.AutoscalingOptions, predicateChecker, kubeClient, kubeEventRecorder)
+		return NewDynamicAutoscaler(autoscalerBuilder, configFetcher)
 	}
-	return autoscaler
+	return autoscalerBuilder.Build()
 }

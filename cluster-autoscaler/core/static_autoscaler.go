@@ -33,6 +33,7 @@ import (
 type StaticAutoscaler struct {
 	// AutoscalingContext consists of validated settings and options for this autoscaler
 	*AutoscalingContext
+	kube_util.ListerRegistry
 	readyNodeLister          *kube_util.ReadyNodeLister
 	scheduledPodLister       *kube_util.ScheduledPodLister
 	unschedulablePodLister   *kube_util.UnschedulablePodLister
@@ -44,22 +45,14 @@ type StaticAutoscaler struct {
 }
 
 // NewStaticAutoscaler creates an instance of Autoscaler filled with provided parameters
-func NewStaticAutoscaler(opts AutoscalingOptions, predicaterChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder) *StaticAutoscaler {
-	autoscalingContext := NewAutoscalingContext(opts, predicaterChecker, kubeClient, kubeEventRecorder)
+func NewStaticAutoscaler(opts AutoscalingOptions, predicateChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder, listerRegistry kube_util.ListerRegistry) *StaticAutoscaler {
+	autoscalingContext := NewAutoscalingContext(opts, predicateChecker, kubeClient, kubeEventRecorder)
 
 	scaleDown := NewScaleDown(autoscalingContext)
-	stopchannel := make(chan struct{})
-	unschedulablePodLister := kube_util.NewUnschedulablePodLister(kubeClient, stopchannel)
-	scheduledPodLister := kube_util.NewScheduledPodLister(kubeClient, stopchannel)
-	readyNodeLister := kube_util.NewReadyNodeLister(kubeClient, stopchannel)
-	allNodeLister := kube_util.NewAllNodeLister(kubeClient, stopchannel)
 
 	return &StaticAutoscaler{
 		AutoscalingContext:       autoscalingContext,
-		readyNodeLister:          readyNodeLister,
-		unschedulablePodLister:   unschedulablePodLister,
-		scheduledPodLister:       scheduledPodLister,
-		allNodeLister:            allNodeLister,
+		ListerRegistry:           listerRegistry,
 		lastScaleUpTime:          time.Now(),
 		lastScaleDownFailedTrial: time.Now(),
 		scaleDown:                scaleDown,

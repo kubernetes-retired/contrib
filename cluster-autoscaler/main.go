@@ -153,7 +153,9 @@ func run(_ <-chan struct{}) {
 	if err != nil {
 		glog.Fatalf("Failed to create predicate checker: %v", err)
 	}
-	autoscaler := core.NewAutoscaler(opts, predicateChecker, kubeClient, kubeEventRecorder)
+	stopChannel := make(chan struct{})
+	listerRegistry := kube_util.NewListerRegistryWithDefaultListers(kubeClient, stopChannel)
+	autoscaler := core.NewAutoscaler(opts, predicateChecker, kubeClient, kubeEventRecorder, listerRegistry)
 
 	for {
 		select {

@@ -1,3 +1,19 @@
+/*
+Copyright 2016 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package core
 
 import (
@@ -14,10 +30,9 @@ import (
 	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 
 	"fmt"
-	//"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
-	"k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
+	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	"time"
 )
 
@@ -46,14 +61,15 @@ func TestNewAutoscalerStatic(t *testing.T) {
 		}
 		return true, nil, fmt.Errorf("Wrong node: %v", getAction.GetName())
 	})
-	kubeEventRecorder := kubernetes.CreateEventRecorder(fakeClient)
+	kubeEventRecorder := kube_util.CreateEventRecorder(fakeClient)
 	opts := AutoscalerOptions{
 		ConfigFetcherOptions: dynamic.ConfigFetcherOptions{
 			ConfigMapName: "",
 		},
 	}
 	predicateChecker := simulator.NewTestPredicateChecker()
-	a := NewAutoscaler(opts, predicateChecker, fakeClient, kubeEventRecorder)
+	listerRegistry := kube_util.NewListerRegistry(nil, nil, nil, nil)
+	a := NewAutoscaler(opts, predicateChecker, fakeClient, kubeEventRecorder, listerRegistry)
 	assert.IsType(t, &StaticAutoscaler{}, a)
 }
 
@@ -82,13 +98,14 @@ func TestNewAutoscalerDynamic(t *testing.T) {
 		}
 		return true, nil, fmt.Errorf("Wrong node: %v", getAction.GetName())
 	})
-	kubeEventRecorder := kubernetes.CreateEventRecorder(fakeClient)
+	kubeEventRecorder := kube_util.CreateEventRecorder(fakeClient)
 	opts := AutoscalerOptions{
 		ConfigFetcherOptions: dynamic.ConfigFetcherOptions{
 			ConfigMapName: "testconfigmap",
 		},
 	}
 	predicateChecker := simulator.NewTestPredicateChecker()
-	a := NewAutoscaler(opts, predicateChecker, fakeClient, kubeEventRecorder)
+	listerRegistry := kube_util.NewListerRegistry(nil, nil, nil, nil)
+	a := NewAutoscaler(opts, predicateChecker, fakeClient, kubeEventRecorder, listerRegistry)
 	assert.IsType(t, &DynamicAutoscaler{}, a)
 }
