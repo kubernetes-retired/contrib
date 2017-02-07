@@ -6,7 +6,6 @@ metadata:
   namespace:   ARG_NAMESPACE
 spec:
   nodeName:    ARG_NODENAME
-  hostPID:     true
   containers:
     - name:    debugger
       image:   busybox

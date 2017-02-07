@@ -88,7 +88,7 @@ function cleanup() {
 # If the debugger is not already running...
 if ! ${KUBECTL} get pod ${DEBUGGER_NAME} &>/dev/null; then
   # Start the debug pod
-  cat debugger.yaml | \
+  cat ${BASH_SOURCE[0]%/*}/debugger.yaml | \
     sed "s|ARG_DEBUGGER|${DEBUGGER_NAME}|" | \
     sed "s|ARG_NODENAME|${NODE}|" | \
     sed "s|ARG_NAMESPACE|${NAMESPACE}|" | \
