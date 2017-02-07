@@ -25,7 +25,7 @@ fi
 
 # Customizable parameters
 TMP_SUBDIR="${TMP_SUBDIR:-debug-tools}"
-CONTEXT="${CONTEXT:-}"
+CONTEXT="${KUBECONTEXT:-}"
 DEBUGGER_NAME="${DEBUGGER_NAME:-debugger}"
 ARCH="${ARCH:-amd64}"
 
