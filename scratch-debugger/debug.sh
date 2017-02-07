@@ -27,6 +27,7 @@ fi
 TMP_SUBDIR="${TMP_SUBDIR:-debug-tools}"
 CONTEXT="${CONTEXT:-}"
 DEBUGGER_NAME="${DEBUGGER_NAME:-debugger}"
+ARCH="${ARCH:-amd64}"
 
 # Name & namespace of target pod
 NAME=$1
@@ -85,6 +86,27 @@ function cleanup() {
   fi
 }
 
+case $ARCH in
+  "amd64")
+    IMAGE=busybox
+    ;;
+  "arm")
+    IMAGE=armhf/busybox
+    ;;
+  "arm64")
+    IMAGE=aarch64/busybox
+    ;;
+  "ppc64le")
+    IMAGE=ppc64le/busybox
+    ;;
+  "s390x")
+    IMAGE=s390x/busybox
+    ;;
+  *)
+    echo "Unsupported architecture: $ARCH"
+    exit 1
+esac
+
 # If the debugger is not already running...
 if ! ${KUBECTL} get pod ${DEBUGGER_NAME} &>/dev/null; then
   # Start the debug pod
@@ -92,6 +114,7 @@ if ! ${KUBECTL} get pod ${DEBUGGER_NAME} &>/dev/null; then
     sed "s|ARG_DEBUGGER|${DEBUGGER_NAME}|" | \
     sed "s|ARG_NODENAME|${NODE}|" | \
     sed "s|ARG_NAMESPACE|${NAMESPACE}|" | \
+    sed "s|ARG_IMAGE|${IMAGE}|" | \
     ${KUBECTL} create -f -
   trap cleanup EXIT
 fi

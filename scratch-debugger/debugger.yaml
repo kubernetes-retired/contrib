@@ -8,7 +8,7 @@ spec:
   nodeName:    ARG_NODENAME
   containers:
     - name:    debugger
-      image:   busybox
+      image:   ARG_IMAGE
       securityContext:
         privileged: true
       command:
