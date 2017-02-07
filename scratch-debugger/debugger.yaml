@@ -1,0 +1,32 @@
+# Debugger pod used for installing busybox in the target pod via ./debug.sh
+apiVersion: v1
+kind: Pod
+metadata:
+  name:        ARG_DEBUGGER
+  namespace:   ARG_NAMESPACE
+spec:
+  nodeName:    ARG_NODENAME
+  hostPID:     true
+  containers:
+    - name:    debugger
+      image:   busybox
+      securityContext:
+        privileged: true
+      command:
+        - sleep
+        - "1000000"
+      # Mount the node FS for direct access to docker.
+      volumeMounts:
+        - name: rootfs
+          mountPath: /mnt/rootfs
+          readOnly: true
+        - name: rootfs-run
+          mountPath: /mnt/rootfs/var/run
+          readOnly: true
+  volumes:
+    - name: rootfs
+      hostPath:
+        path: /
+    - name: rootfs-run
+      hostPath:
+        path: /var/run
