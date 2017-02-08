@@ -39,6 +39,8 @@ KUBECTL="kubectl"
 [ -z "$CONTEXT" ] || KUBECTL="$KUBECTL --context=$CONTEXT"
 [ -z "$NAMESPACE" ] || KUBECTL="$KUBECTL --namespace=$NAMESPACE"
 
+NAMESPACE=${NAMESPACE:-default}
+
 TARGET_CNAME=${CONTAINER_NAME}
 if [ -z "$CONTAINER_NAME" ]; then
   CONTAINER_NAME=$(${KUBECTL} get pod $NAME -o jsonpath='{.spec.containers[0].name}')
@@ -107,31 +109,66 @@ case $ARCH in
     exit 1
 esac
 
-# If the debugger is not already running...
-if ! ${KUBECTL} get pod ${DEBUGGER_NAME} &>/dev/null; then
-  # Start the debug pod
-  cat ${BASH_SOURCE[0]%/*}/debugger.yaml | \
-    sed "s|ARG_DEBUGGER|${DEBUGGER_NAME}|" | \
-    sed "s|ARG_NODENAME|${NODE}|" | \
-    sed "s|ARG_NAMESPACE|${NAMESPACE}|" | \
-    sed "s|ARG_IMAGE|${IMAGE}|" | \
-    ${KUBECTL} create -f -
-  trap cleanup EXIT
+if  ${KUBECTL} get pod ${DEBUGGER_NAME} &>/dev/null; then
+  echo 2> "Error: pod ${DEBUGGER_NAME} is already running in namespace ${NAMESPACE}"
+  exit 1
 fi
 
-# Wait for the pod to start
-while [[ $(${KUBECTL} get pod ${DEBUGGER_NAME} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}') != "True" ]]; do
-  echo "waiting for debugger pod to become ready..."
-  sleep 1
-done
-
-# Call docker to copy busybox into the target container, and "install" it.
 DOCKERCMD="/mnt/rootfs/usr/bin/docker -H unix:///run/docker.sock"
-${KUBECTL} exec ${DEBUGGER_NAME} -- sh -c \
-"mkdir -p ${INSTALL_DIR} && \
-${DOCKERCMD} cp /tmp ${CONTAINER_ID}:/ && \
-${DOCKERCMD} cp /bin/busybox ${CONTAINER_ID}:${INSTALL_DIR}/busybox && \
-${DOCKERCMD} exec ${CONTAINER_ID} ${INSTALL_DIR}/busybox --install -s ${INSTALL_DIR}"
+
+${KUBECTL} create -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name:        ${DEBUGGER_NAME}
+  namespace:   ${NAMESPACE}
+spec:
+  nodeName:    ${NODE}
+  restartPolicy: Never
+  containers:
+    - name:    debugger
+      image:   ${IMAGE}
+      securityContext:
+        privileged: true
+      command:
+        - sh
+        - -c
+        - "set -x; mkdir -p ${INSTALL_DIR} && \
+           ${DOCKERCMD} cp /tmp ${CONTAINER_ID}:/ && \
+           ${DOCKERCMD} cp /bin/busybox ${CONTAINER_ID}:${INSTALL_DIR}/busybox && \
+           ${DOCKERCMD} exec ${CONTAINER_ID} ${INSTALL_DIR}/busybox --install -s ${INSTALL_DIR}"
+      # Mount the node FS for direct access to docker.
+      volumeMounts:
+        - name: rootfs
+          mountPath: /mnt/rootfs
+          readOnly: true
+        - name: rootfs-run
+          mountPath: /mnt/rootfs/var/run
+          readOnly: true
+  volumes:
+    - name: rootfs
+      hostPath:
+        path: /
+    - name: rootfs-run
+      hostPath:
+        path: /var/run
+EOF
+trap cleanup EXIT
+
+# Wait for the pod to terminate.
+PHASE=$(${KUBECTL} get pod -a ${DEBUGGER_NAME} -o jsonpath='{.status.phase}')
+while [[ ! $PHASE =~ (Succeeded|Failed) ]]; do
+  echo "waiting for debugger pod to complete (currently $PHASE)..."
+  sleep 1
+  PHASE=$(${KUBECTL} get pod -a ${DEBUGGER_NAME} -o jsonpath='{.status.phase}')
+done
+if [[ $PHASE == "Failed" ]]; then
+  echo 2> "Pod failed:"
+  ${KUBECTL} logs ${DEBUGGER_NAME}
+  exit 1
+fi
+
+cleanup
 
 echo "Installation complete."
 
