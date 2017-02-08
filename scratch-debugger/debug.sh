@@ -52,17 +52,6 @@ RUNTIME=${CONTAINER_ID%://*}
 CONTAINER_ID=${CONTAINER_ID#*://}
 NODE=$(${KUBECTL} get pod $NAME -o jsonpath='{.spec.nodeName}')
 
-cat <<EOF
-Debug Target Container:
-  Pod:          $NAME
-  Namespace:    ${NAMESPACE:-default}
-  Node:         $NODE
-  Container:    $CONTAINER_NAME
-  Container ID: $CONTAINER_ID
-  Runtime:      $RUNTIME
-
-EOF
-
 if [[ $RUNTIME != docker ]]; then
   echo >&2 "Error: $0 only works with a docker runtime. Found: $CONTAINER_ID"
   exit 1
@@ -79,7 +68,17 @@ if $KUBECTL exec ${NAME} -c $CONTAINER_NAME -- ${INSTALL_DIR}/echo &>/dev/null; 
   exit 0
 fi
 
-echo "Installing busybox to $INSTALL_DIR ..."
+cat <<EOF
+Debug Target Container:
+  Pod:          $NAME
+  Namespace:    $NAMESPACE
+  Node:         $NODE
+  Container:    $CONTAINER_NAME
+  Container ID: $CONTAINER_ID
+  Runtime:      $RUNTIME
+
+  "Installing busybox to $INSTALL_DIR ..."
+EOF
 
 # Cleanup the debugger pod.
 function cleanup() {

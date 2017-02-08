@@ -91,14 +91,6 @@ $ kubectl exec -i -t pause -- /tmp/debug-tools/sh -c 'PATH=$PATH:/tmp/debug-tool
 Alternatively, we can just call the `debug.sh` script again:
 ```
 $ scratch-debugger/debug.sh pause
-Debug Target Container:
-  Pod:          pause
-  Namespace:    default
-  Node:         e2e-test-stclair-minion-group-phj6
-  Container:    pause
-  Container ID: 80b134ab6550d34684cdb31e4300ff128f9f43f67fdb3d271372f9417e546737
-  Runtime:      docker
-
 Debug tools already installed. Dumping you into the pod container now.
 / # exit
 ```
