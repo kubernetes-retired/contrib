@@ -1,5 +1,5 @@
 ---
-- name: Read back the api-server certificates from the first master
+- name: Read back the api-server certificates
   slurp:
     src: "{{ item }}"
   register: apiserver_certs
@@ -9,7 +9,7 @@
     - "{{ kube_cert_dir }}/server.crt"
     - "{{ kube_cert_dir }}/server.key"
 
-- name: Write back the api-server certificates to all other masters
+- name: Write back the api-server certificates
   copy:
     dest: "{{ item.item }}"
     content: "{{ item.content | b64decode }}"
@@ -17,4 +17,4 @@
     owner: "kube"
     mode: 0440
   with_items: "{{ apiserver_certs.results }}"
-  when: inventory_hostname != groups['masters'][0]
+  when: inventory_hostname in groups['masters'] and inventory_hostname != groups['masters'][0]

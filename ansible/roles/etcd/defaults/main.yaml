@@ -16,14 +16,19 @@ etcd_peer_url_scheme: http
 etcd_client_cert_auth: false
 etcd_peer_client_cert_auth: false
 
+etcd_cert_group: root
+
 etcd_conf_dir: /etc/etcd
+etcd_certs_dir: "{{ etcd_conf_dir }}/certs"
 etcd_script_dir: /usr/libexec/etcd
-etcd_ca_file: "{{ etcd_conf_dir }}/ca.crt"
-etcd_cert_file: "{{ etcd_conf_dir }}/server.crt"
-etcd_key_file: "{{ etcd_conf_dir }}/server.key"
-etcd_peer_ca_file: "{{ etcd_conf_dir }}/ca.crt"
-etcd_peer_cert_file: "{{ etcd_conf_dir }}/peer.crt"
-etcd_peer_key_file: "{{ etcd_conf_dir }}/peer.key"
+etcd_ca_file: "{{ etcd_certs_dir }}/ca.crt"
+etcd_cert_file: "{{ etcd_certs_dir }}/server.crt"
+etcd_key_file: "{{ etcd_certs_dir }}/server.key"
+etcd_peer_ca_file: "{{ etcd_certs_dir }}/ca.crt"
+etcd_peer_cert_file: "{{ etcd_certs_dir }}/peer.crt"
+etcd_peer_key_file: "{{ etcd_certs_dir }}/peer.key"
+etcd_client_cert_file: "{{ etcd_certs_dir }}/client.crt"
+etcd_client_key_file: "{{ etcd_certs_dir }}/client.key"
 
 etcd_initial_cluster_state: new
 etcd_initial_cluster_token: etcd-k8-cluster
@@ -35,8 +40,7 @@ etcd_initial_cluster_token: etcd-k8-cluster
 # If not specified, fact "ansible_default_ipv4.address" will be applied by every host itself.
 etcd_interface: ""
 
-etcd_machine_address: "{% if etcd_interface != '' %}{{ hostvars[inventory_hostname]['ansible_' + etcd_interface].ipv4.address }}
-{%- else %}{{ hostvars[inventory_hostname].ansible_default_ipv4.address }}{% endif %}"
+etcd_machine_address: "{% if etcd_interface != '' %}{{ hostvars[inventory_hostname]['ansible_' + etcd_interface].ipv4.address }}{%- else %}{{ hostvars[inventory_hostname].ansible_default_ipv4.address }}{% endif %}"
 etcd_initial_advertise_peer_urls: "{{ etcd_peer_url_scheme }}://{{ etcd_machine_address }}:{{ etcd_peer_port }}"
 etcd_listen_peer_urls: "{{ etcd_peer_url_scheme }}://0.0.0.0:{{ etcd_peer_port }}"
 etcd_advertise_client_urls: "{{ etcd_url_scheme }}://{{ etcd_machine_address }}:{{ etcd_client_port }}"
@@ -54,3 +58,5 @@ etcd_download_url_base: "https://github.com/coreos/etcd/releases/download/v{{ et
 etcd_download_url: "{{ etcd_download_url_base }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
 
 etcd_enable: true
+
+etcd_is_proxy: false
