@@ -1,8 +1,15 @@
 {
 	"ImportPath": "k8s.io/contrib/404-server",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v78",
 	"Packages": [
-		"./..."
+		"./.."
 	],
-	"Deps": []
+	"Deps": [
+		{
+			"ImportPath": "k8s.io/contrib",
+			"Comment": "cluster-autoscaler-0.4.0-539-g6a5e60b",
+			"Rev": "6a5e60b0a00ff45d04cbf49d9d98f3558cc590dd"
+		}
+	]
 }
