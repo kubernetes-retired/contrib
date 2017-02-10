@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 )
 
 var port = flag.Int("port", 8080, "Port number to serve default backend 404 page.")
@@ -36,4 +37,10 @@ func main() {
 		fmt.Fprint(w, "ok")
 	})
 	http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+	// TODO: Use .Shutdown from Go 1.8
+	err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not start http server: %s\n", err)
+		os.Exit(1)
+	}
 }
