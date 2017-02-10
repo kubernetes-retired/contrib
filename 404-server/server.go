@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,21 +22,41 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var port = flag.Int("port", 8080, "Port number to serve default backend 404 page.")
 
+func init() {
+	// Register the summary and the histogram with Prometheus's default registry.
+	prometheus.MustRegister(requestCount)
+	prometheus.MustRegister(requestDuration)
+}
+
 func main() {
 	flag.Parse()
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprint(w, "default backend - 404")
+
+		duration := time.Now().Sub(start).Seconds() * 1e3
+
+		proto := strconv.Itoa(r.ProtoMajor)
+		proto = proto + "." + strconv.Itoa(r.ProtoMinor)
+
+		requestCount.WithLabelValues(proto).Inc()
+		requestDuration.WithLabelValues(proto).Observe(duration)
 	})
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 	})
-	http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+	http.Handle("/metrics", promhttp.Handler())
 	// TODO: Use .Shutdown from Go 1.8
 	err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
 	if err != nil {
