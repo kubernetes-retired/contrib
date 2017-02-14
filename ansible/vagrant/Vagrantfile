@@ -240,6 +240,20 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         kube_apiserver_bind_address: master_ip,
       }
     end
+
+    # set additional extra vars for ansible if provided
+    if ENV.has_key?("ANSIBLE_EXTRA_VARS")
+      if provider != :virtualbox
+        ansible.extra_vars = {}
+      end
+      ENV["ANSIBLE_EXTRA_VARS"].split(" ").each do |item|
+        pair = item.split("=")
+        if pair.length != 2
+          abort("ansible var not in key=value form: #{item}")
+        end
+        ansible.extra_vars[ pair[0].to_sym ] = pair[1]
+      end
+    end
   end
 
   def run_ansible_provision(n)
