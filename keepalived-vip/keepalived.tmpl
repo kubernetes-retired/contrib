@@ -8,7 +8,7 @@ global_defs {
 vrrp_instance vips {
   state BACKUP
   interface {{ $iface }}
-  virtual_router_id 50
+  virtual_router_id {{ .routerID }}
   priority {{ .priority }}
   nopreempt
   advert_int 1
@@ -47,5 +47,5 @@ virtual_server {{ $svc.IP }} {{ $svc.Port }} {
     }
   }
 {{ end }}
-}    
+}
 {{ end }}

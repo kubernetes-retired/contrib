@@ -43,7 +43,7 @@ var (
 
 	configMapName = flags.String("services-configmap", "",
 		`Name of the ConfigMap that contains the definition of the services to expose.
-		The key in the map indicates the external IP to use. The value is the name of the 
+		The key in the map indicates the external IP to use. The value is the name of the
 		service with the format namespace/serviceName and the port of the service could be a number or the
 		name of the port.`)
 
@@ -54,6 +54,9 @@ var (
 		// enable connection tracking for LVS connections
 		"net/ipv4/vs/conntrack": 1,
 	}
+
+	routerID = flags.Int("router-id", 50, `The keepalived router ID, which must be different for every
+		keepalived cluster running on the same network.`)
 )
 
 func main() {
@@ -112,7 +115,7 @@ func main() {
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *routerID)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 

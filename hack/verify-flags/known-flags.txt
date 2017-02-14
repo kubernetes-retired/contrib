@@ -113,6 +113,7 @@ required-contexts
 required-retest-contexts
 retest-body
 right-build-number
+router-id
 running-in-cluster
 scale-down-delay
 scale-down-enabled
