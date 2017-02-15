@@ -44,7 +44,7 @@ func LogTitle(title string) {
 	fmt.Println(title)
 }
 
-// LogEVar prints all the environemnt variables
+// LogEVar prints all the environment variables
 func LogEVar(vars map[string]interface{}) {
 	for k, v := range vars {
 		fmt.Printf("%s=%v ", k, v)
