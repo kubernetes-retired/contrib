@@ -20,25 +20,11 @@
 
 all: push
 
-TAG=1.2
+TAG=1.3
 PREFIX?=gcr.io/google_containers/defaultbackend
 ARCH?=amd64
 GOLANG_VERSION=1.6
 TEMP_DIR:=$(shell mktemp -d)
-
-# Set default base image dynamically for each arch
-ifeq ($(ARCH),amd64)
-	BASEIMAGE?=busybox
-endif
-ifeq ($(ARCH),arm)
-	BASEIMAGE?=armel/busybox
-endif
-ifeq ($(ARCH),arm64)
-	BASEIMAGE?=aarch64/busybox
-endif
-ifeq ($(ARCH),ppc64le)
-	BASEIMAGE?=ppc64le/busybox
-endif
 
 server: server.go
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) GOARM=6 go build -a -installsuffix cgo -ldflags '-w' -o server ./server.go
@@ -46,7 +32,7 @@ server: server.go
 container:
 	# Copy the whole directory to a temporary dir and set the base image
 	cp -r ./* $(TEMP_DIR)
-	cd $(TEMP_DIR) && sed -i "s|BASEIMAGE|$(BASEIMAGE)|g" Dockerfile
+	cd $(TEMP_DIR)
 
 	# Compile the binary inside a container for reliable builds
 	docker run --rm -it -v $(TEMP_DIR):/build golang:$(GOLANG_VERSION) /bin/bash -c "make -C /build server ARCH=$(ARCH)"
