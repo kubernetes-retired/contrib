@@ -1,3 +1,6 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+
 # Nginx ingress controller using Proxy Protocol
 
 For using the Proxy Protocol in a load balancing solution, both the load balancer and its backend need to enable Proxy Protocol.

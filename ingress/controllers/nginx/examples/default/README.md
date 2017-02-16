@@ -1,3 +1,5 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
 
 Create the Ingress controller
 ```

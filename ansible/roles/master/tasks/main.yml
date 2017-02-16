@@ -11,6 +11,9 @@
   include: apiserver-configure.yml
   tags: configure
 
+- name: Copy the certificates from the first master to the other masters
+  include: cert-copy.yml
+
 - name: Start apiserver
   include: apiserver-start.yml
 
@@ -84,4 +87,3 @@
   include: kubelet-restart.yml
   when: kubelet_modified == true and kubelet_started.changed == false
   tags: restart
-
