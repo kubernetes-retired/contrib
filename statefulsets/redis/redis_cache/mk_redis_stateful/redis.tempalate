@@ -41,7 +41,7 @@ spec:
         pod.beta.kubernetes.io/init-containers: '[
            {
              "name":"sentinel-micro",
-             "image":"dhilipkumars/redis-sentinel-micro",
+             "image":"dhilipkumars/redis-sentinel-k8s",
 			 "args" : ["-service","{{.Name}}"],
              "env": [
                {
