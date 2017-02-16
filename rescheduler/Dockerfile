@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/google_containers/ubuntu-slim:0.1
+FROM busybox
 
-# github handle: piosz@
-MAINTAINER Piotr Szczesniak "pszczesniak@google.com"
+COPY rescheduler /
 
-ADD rescheduler rescheduler
-
-CMD ./rescheduler
+ENTRYPOINT ["/rescheduler"]
