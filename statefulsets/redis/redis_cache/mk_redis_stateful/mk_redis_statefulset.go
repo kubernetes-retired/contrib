@@ -41,7 +41,7 @@ func processRedisTemplate(n string, r int, dB int) error {
 	RSS := RedisStatefulSet{n, r, dB}
 	err = tmpl.Execute(os.Stdout, RSS)
 	if err != nil {
-		log.Printf("Unable to execute the template RSS=%V", RSS)
+		log.Printf("Unable to execute the template RSS=%v", RSS)
 		return err
 	}
 	return nil

@@ -122,7 +122,7 @@ func TestFindNxtMaster_Valid(t *testing.T) {
 		r.MasterPort = "6313"
 		r.Priority = 100
 		r.SyncBytes = int64(1000 + i)
-		r.EndPoint = fmt.Sprint("127.0.0.1:%d", 6314+i)
+		r.EndPoint = fmt.Sprintf("127.0.0.1:%d", 6314+i)
 		Slaves = append(Slaves, &r)
 		maxSyncbytes = r.SyncBytes //Record max sync bytes clearly the last slave will have max syncbytes
 	}
@@ -167,7 +167,7 @@ func TestFindNxtMaster_WithMaster(t *testing.T) {
 		r.MasterPort = "6313"
 		r.Priority = 100
 		r.SyncBytes = int64(1000 - i)
-		r.EndPoint = fmt.Sprint("127.0.0.1:%d", 6314+i)
+		r.EndPoint = fmt.Sprintf("127.0.0.1:%d", 6314+i)
 		r.MasterHost = "127.0.0.1"
 		r.MasterPort = "6319"
 		r.Role = REDIS_ROLE_SLAVE
@@ -205,7 +205,7 @@ func TestFindNxtMaster_WithMisconfiguredMaster(t *testing.T) {
 		r.MasterPort = "6313"
 		r.Priority = 100
 		r.SyncBytes = int64(1000 - i)
-		r.EndPoint = fmt.Sprint("127.0.0.1:%d", 6314+i)
+		r.EndPoint = fmt.Sprintf("127.0.0.1:%d", 6314+i)
 		r.MasterHost = "127.0.0.1"
 		r.MasterPort = "6319"
 		r.Role = REDIS_ROLE_SLAVE

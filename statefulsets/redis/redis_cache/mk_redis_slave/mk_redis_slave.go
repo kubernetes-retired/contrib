@@ -32,7 +32,7 @@ func main() {
 	MP, err := ioutil.ReadFile("/config/master.txt")
 
 	if err != nil {
-		log.Print("Unable to read master.txti err=%v, must be the master", err)
+		log.Printf("Unable to read master.txti err=%v, must be the master", err)
 	} else {
 
 		hostname, err := os.Hostname()
@@ -68,7 +68,7 @@ func main() {
 		resp := C.Cmd("SLAVEOF", hostport[0], hostport[1]).String()
 
 		if !strings.Contains(resp, "OK") {
-			log.Printf("Unable to set SLAVEOF %v %V command err=%v", hostport[0], hostport[1], resp)
+			log.Printf("Unable to set SLAVEOF %v %v command err=%v", hostport[0], hostport[1], resp)
 			return
 		}
 
