@@ -1,3 +1,6 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+
 This is an example to use a TLS Ingress rule to use SSL in NGINX
 
 # TLS certificate termination

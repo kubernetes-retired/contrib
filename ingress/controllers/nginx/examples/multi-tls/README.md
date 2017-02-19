@@ -1,3 +1,6 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+
 # Multi TLS certificate termination
 
 This examples uses 2 different certificates to terminate SSL for 2 hostnames.
