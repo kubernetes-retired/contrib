@@ -105,7 +105,7 @@ if [[ -n "${CLUSTER_HOSTNAME}" ]]; then
     san_array+=(DNS:${CLUSTER_HOSTNAME})
 fi
 
-sans=$(IFS=, ; echo "${san_array[*]}")
+sans="$(IFS=, ; echo "${san_array[*]}")"
 
 curl -sSL -O https://storage.googleapis.com/kubernetes-release/easy-rsa/easy-rsa.tar.gz
 tar xzf easy-rsa.tar.gz
@@ -122,6 +122,8 @@ if ! (./easyrsa --batch init-pki
     exit 2
 fi
 
+./easyrsa --batch --subject-alt-name="${sans}" build-server-full master nopass
+echo "SANS: $sans"
 ls -ahl pki/*
 
 mkdir -p "$cert_dir"
