@@ -1,0 +1,106 @@
+# A headless service to create DNS records
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  name: {{.Name}} 
+  labels:
+    app: rd-{{.Name}}
+spec:
+  ports:
+  - port: 6379 
+    name: peer 
+  # *.nginx.default.svc.cluster.local
+  clusterIP: None 
+  selector:
+    app: rd-{{.Name}}
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{.Name}}-budget
+spec:
+  selector:
+    matchLabels:
+      app: rd-{{.Name}}
+  minAvailable: {{.DisruptionBudget}}
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet 
+metadata:
+  name: {{.Name}}
+spec:
+  serviceName: "{{.Name}}"
+  replicas: {{.Replica}}
+  template:
+    metadata:
+      labels:
+        app: rd-{{.Name}}
+      annotations:
+        pod.beta.kubernetes.io/init-containers: '[
+           {
+             "name":"sentinel-micro",
+             "image":"dhilipkumars/redis-sentinel-k8s",
+			 "args" : ["-service","{{.Name}}"],
+             "env": [
+               {
+                  "name": "POD_NAMESPACE",
+                  "valueFrom": {
+                     "fieldRef" : {
+                        "apiVersion" : "v1",
+                        "fieldPath" : "metadata.namespace"
+                     }
+                  }
+               }
+
+             ],
+            "volumeMounts": [
+               {
+                  "name": "config",
+                  "mountPath": "/config"
+               }
+            ]
+           }
+        ]'
+    spec:
+      terminationGracePeriodSeconds: 5
+      affinity:  
+           {
+              podAntiAffinity: {
+                 preferredDuringSchedulingIgnoredDuringExecution: [{
+                      weight: 5,
+                      podAffinityTerm: {
+                        labelSelector: {
+                           matchExpressions: [{
+                               "key": "app",
+                               "operator": "In",
+                                "values": ["rd-{{.Name}}"]
+                            }]
+                        },
+                        topologyKey: "kubernetes.io/hostname",
+                        namespaces: ["default"]
+                      }
+                  }]
+               }
+           }
+      containers:
+      - name: redis
+        image: redis:3.0-alpine
+        ports:
+        - containerPort: 6379 
+          name: peer 
+      - name: make-slave 
+        image: dhilipkumars/mk-redis-slave 
+        env: 
+          - name: POD_NAMESPACE
+            valueFrom: 
+              fieldRef: 
+                apiVersion: "v1"
+                fieldPath: metadata.namespace
+        volumeMounts: 
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        emptyDir: {}
