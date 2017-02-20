@@ -122,6 +122,8 @@ if ! (./easyrsa --batch init-pki
     exit 2
 fi
 
+ls -ahl pki/*
+
 mkdir -p "$cert_dir"
 
 cp -p pki/ca.crt "${cert_dir}/ca.crt"
