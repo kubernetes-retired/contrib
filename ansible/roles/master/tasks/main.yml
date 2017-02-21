@@ -87,3 +87,4 @@
   include: kubelet-restart.yml
   when: kubelet_modified == true and kubelet_started.changed == false
   tags: restart
+

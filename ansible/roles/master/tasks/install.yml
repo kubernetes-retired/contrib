@@ -36,3 +36,6 @@
   when: kube_source_type == "distribution-rpm"
   tags:
     - binary-update
+
+- include: etcd-certs.yml
+  when: apiserver_etcd_use_certs

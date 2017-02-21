@@ -1,0 +1,96 @@
+---
+- name: Create etcd certs directory
+  file:
+    state: directory
+    path: "{{ etcd_certs_dir }}"
+    owner: etcd
+    group: root
+    mode: 0740
+
+# This fixes a bug where default vars are not set in the hostvars
+- name: Set cert node ips
+  set_fact:
+    etcd_machine_address: "{{ etcd_machine_address }}"
+
+- name: Create etcd script directory
+  file:
+    path: "{{ etcd_script_dir }}"
+    state: directory
+    owner: root
+    group: root
+  delegate_to: "{{ groups['etcd'][0] }}"
+  run_once: true
+
+- name: Overwrite make-ca-cert.sh from local copy
+  copy:
+    src: make-ca-cert.sh
+    dest: "{{ etcd_script_dir }}"
+    mode: "0500"
+  changed_when: false
+  delegate_to: "{{ groups['etcd'][0] }}"
+
+- name: Run create cert script on first etcd server
+  command:
+    "{{ etcd_script_dir }}/make-ca-cert.sh"
+  args:
+    creates: "{{ etcd_certs_dir }}/server.crt"
+  run_once: true
+  delegate_to: "{{ groups['etcd'][0] }}"
+  environment:
+    NODE_IPS: "{% for host in groups['etcd'] %}{{ hostvars[host]['etcd_machine_address'] }}{% if not loop.last %},{% endif %}{% endfor %}"
+    NODE_DNS: "{{ groups['etcd']|join(',') }}"
+    CERT_DIR: "{{ etcd_certs_dir }}"
+    CERT_GROUP: "{{ etcd_cert_group }}"
+    HTTP_PROXY: "{{ http_proxy|default('') }}"
+    HTTPS_PROXY: "{{ https_proxy|default('') }}"
+
+- name: Slurp etcd certificates
+  slurp:
+    src: "{{ item }}"
+  register: certs
+  run_once: true
+  delegate_to: "{{ groups['etcd'][0] }}"
+  with_items:
+    - "{{ etcd_ca_file }}"
+    - "{{ etcd_cert_file }}"
+    - "{{ etcd_key_file }}"
+    - "{{ etcd_peer_ca_file }}"
+    - "{{ etcd_peer_cert_file }}"
+    - "{{ etcd_peer_key_file }}"
+    - "{{ etcd_client_cert_file }}"
+    - "{{ etcd_client_key_file }}"
+
+- name: Register the CA certificate as a fact so it can be used later
+  set_fact:
+    etcd_ca_cert: "{{ certs.results[0].content|b64decode }}"
+    etcd_server_cert: "{{ certs.results[1].content|b64decode }}"
+    etcd_server_key: "{{ certs.results[2].content|b64decode }}"
+    etcd_peer_ca_cert: "{{ certs.results[3].content|b64decode }}"
+    etcd_peer_cert: "{{ certs.results[4].content|b64decode }}"
+    etcd_peer_key: "{{ certs.results[5].content|b64decode }}"
+    etcd_client_cert: "{{ certs.results[6].content|b64decode }}"
+    etcd_client_key: "{{ certs.results[7].content|b64decode }}"
+
+- name: Write back the etcd certificates to etcd nodes
+  copy:
+    dest: "{{ item.item }}"
+    content: "{{ item.content|b64decode }}"
+  when: inventory_hostname != groups['etcd'][0]
+  with_items:
+    - "{{ certs.results }}"
+
+- name: Verify certificate permissions
+  file:
+    path: "{{ item }}"
+    group: "{{ etcd_cert_group }}"
+    owner: etcd
+    mode: "0440"
+  with_items:
+    - "{{ etcd_ca_file }}"
+    - "{{ etcd_cert_file }}"
+    - "{{ etcd_key_file }}"
+    - "{{ etcd_peer_ca_file }}"
+    - "{{ etcd_peer_cert_file }}"
+    - "{{ etcd_peer_key_file }}"
+    - "{{ etcd_client_cert_file }}"
+    - "{{ etcd_client_key_file }}"
