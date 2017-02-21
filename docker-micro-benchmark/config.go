@@ -66,7 +66,7 @@ var variesIntervalConfig = map[string]interface{}{
 		5 * time.Millisecond,   // 200 inspect/second = 100 pods * 2 containers = 20 pods * 10 containers
 		10 * time.Millisecond,  // 100 inspect/second = 100 pods * 1 containers = 10 pods * 10 containers
 		50 * time.Millisecond,  // 20 inspect/second = 20 pods * 1 containers = 10 pods * 2 containers
-		100 * time.Millisecond, // 10 insepct/second = 10 pods * 1 containers = 5 pods * 2 containers
+		100 * time.Millisecond, // 10 inspect/second = 10 pods * 1 containers = 5 pods * 2 containers
 	},
 	"list period":    longTestPeriod,
 	"inspect period": shortTestPeriod,
