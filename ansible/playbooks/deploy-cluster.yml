@@ -22,6 +22,7 @@
     - nodes
   become: yes
   roles:
+    - { role: etcd-certs, when: flannel_etcd_use_certs|default(false) }
     - { role: flannel, when: networking == 'flannel' }
   tags:
     - network-service-install
@@ -64,4 +65,3 @@
   become: yes
   roles:
     - { role: contiv, contiv_role: netplugin, when: networking == 'contiv' }
-

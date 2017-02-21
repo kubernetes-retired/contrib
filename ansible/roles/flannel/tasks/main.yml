@@ -1,4 +1,8 @@
 ---
+- name: Copy etcd certs to flannel config directory
+  include: etcd-certs.yml
+  when: flannel_etcd_use_certs
+
 - name: Prepare and write Flannel configuration to etcd
   include: config.yml
 

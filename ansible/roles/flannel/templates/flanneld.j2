@@ -1,13 +1,19 @@
 # Flanneld configuration options
 
 # etcd url location.  Point this to the server where etcd runs
-FLANNEL_ETCD="{% for node in groups['etcd'] %}http://{{ node }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
-FLANNEL_ETCD_ENDPOINTS="{% for node in groups['etcd'] %}http://{{ node }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
+FLANNEL_ETCD="{% for node in groups['etcd'] %}{% if etcd_url_scheme is defined %}{{ etcd_url_scheme }}{% else %}http{% endif %}://{{ node }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
+FLANNEL_ETCD_ENDPOINTS="{% for node in groups['etcd'] %}{% if etcd_url_scheme is defined %}{{ etcd_url_scheme }}{% else %}http{% endif %}://{{ node }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
 
 # etcd config key.  This is the configuration key that flannel queries
 # For address range assignment
 FLANNEL_ETCD_KEY="/{{ cluster_name }}/network"
 FLANNEL_ETCD_PREFIX="/{{ cluster_name }}/network"
+
+{% if etcd_url_scheme is defined and etcd_url_scheme == 'https' %}
+FLANNELD_ETCD_CAFILE="{{ flannel_etcd_ca_file }}"
+FLANNELD_ETCD_CERTFILE="{{ flannel_etcd_cert_file }}"
+FLANNELD_ETCD_KEYFILE="{{ flannel_etcd_key_file }}"
+{% endif %}
 
 # Any additional options that you want to pass
 # By default, we just add a good guess for the network interface on Vbox.  Otherwise, Flannel will probably make the right guess.

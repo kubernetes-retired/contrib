@@ -1,4 +1,7 @@
 ---
+- name: Override etcd facts
+  include: override_facts.yml
+
 - name: Install etcd
   include: install.yml
   tags: install
