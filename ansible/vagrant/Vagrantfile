@@ -288,6 +288,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     masters.push(name)
     config.vm.define "#{name}" do |n|
       n.vm.hostname = name
+      if $os_image == :centos7
+        # Fix bug https://github.com/kubernetes/contrib/issues/1573
+        n.vm.provision "shell", inline: "/sbin/ifup eth1"
+      end
       set_provider(n, i )
     end
   end
@@ -299,6 +303,10 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     nodes.push(name)
     config.vm.define "#{name}" do |n|
       n.vm.hostname = name
+      if $os_image == :centos7
+        # Fix bug https://github.com/kubernetes/contrib/issues/1573
+        n.vm.provision "shell", inline: "/sbin/ifup eth1"
+      end
       set_provider(n, i + $num_masters)
       if i == $num_nodes-1
         # GROUP CONFIGURATION
