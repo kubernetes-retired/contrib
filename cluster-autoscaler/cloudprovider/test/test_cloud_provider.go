@@ -211,3 +211,8 @@ func (tng *TestNodeGroup) Nodes() ([]string, error) {
 	}
 	return result, nil
 }
+
+// Protect prevents unexpected termination of nodes. Not implemented for testing.
+func (tng *TestNodeGroup) Protect() error {
+	return nil
+}

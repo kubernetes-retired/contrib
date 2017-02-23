@@ -227,6 +227,11 @@ func (asg *Asg) Nodes() ([]string, error) {
 	return asg.awsManager.GetAsgNodes(asg)
 }
 
+// Protect prevents unexpected termination of nodes. In AWS it enables instance protection on this ASG.
+func (asg *Asg) Protect() error {
+	return asg.awsManager.EnableInstanceProtection(asg)
+}
+
 func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 	tokens := strings.SplitN(value, ":", 3)
 	if len(tokens) != 3 {

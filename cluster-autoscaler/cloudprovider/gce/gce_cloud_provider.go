@@ -230,6 +230,11 @@ func (mig *Mig) Nodes() ([]string, error) {
 	return mig.gceManager.GetMigNodes(mig)
 }
 
+// Protect prevents unexpected termination of nodes. Not implemented in GCE.
+func (mig *Mig) Protect() error {
+	return nil
+}
+
 func buildMig(value string, gceManager *GceManager) (*Mig, error) {
 	tokens := strings.SplitN(value, ":", 3)
 	if len(tokens) != 3 {
