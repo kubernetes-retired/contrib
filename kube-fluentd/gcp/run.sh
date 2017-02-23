@@ -17,15 +17,12 @@
 # For systems without journald
 mkdir -p /var/log/journal
 
-# If you attach host lib directory, this will copy the systemd lib
+# If you attach host lib directory, this will copy the systemd lib.
 # This may be necessary in order for journald to work
 if [ ! -z "`ls /host/lib/libsystemd* 2>/dev/null`" ]
 then
   rm /lib/x86_64-linux-gnu/libsystemd*
   cp -a /host/lib/libsystemd* /lib/x86_64-linux-gnu/
 fi
-
-# Jemalloc is a better malloc implementation
-LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.1
 
 fluentd $@

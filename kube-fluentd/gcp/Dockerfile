@@ -12,14 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This Dockerfile will build an image that is configured
-# to use Fluentd to collect all Docker container log files
-# and then cause them to be ingested using the Google Cloud
-# Logging API. This configuration assumes that the host performning
-# the collection is a VM that has been created with a logging.write
-# scope and that the Logging API has been enabled for the project
-# in the Google Developer Console.
-
 FROM gcr.io/google_containers/ubuntu-slim:0.7
 
 RUN apt-get update \
@@ -35,7 +27,7 @@ RUN apt-get update \
         libjemalloc1 \
     && rm -rf /var/lib/apt/lists/*
 
-# skip installing gem documentation
+# Skip installing gem documentation
 RUN mkdir -p /usr/local/etc \
     && { \
         echo 'install: --no-document'; \
@@ -49,8 +41,8 @@ ENV RUBYGEMS_VERSION 2.6.10
 
 ENV BUNDLER_VERSION 1.14.4
 
-# install things globally, for great justice
-# and don't create ".bundle" in all our apps
+# Install things globally, for great justice
+# And don't create ".bundle" in all our apps
 ENV GEM_HOME /usr/local/bundle
 ENV BUNDLE_PATH="$GEM_HOME" \
     BUNDLE_BIN="$GEM_HOME/bin" \
@@ -63,8 +55,8 @@ RUN mkdir -p "$GEM_HOME" "$BUNDLE_BIN" \
 # Gemfile with dependencies
 COPY Gemfile Gemfile
 
-# some of ruby's build scripts are written in ruby
-#   we purge system ruby later to make sure our final image uses what we just built
+# Some of ruby's build scripts are written in ruby
+# We purge system ruby later to make sure our final image uses what we just built
 RUN set -ex \
     \
     && buildDeps=' \
@@ -96,8 +88,8 @@ RUN set -ex \
     \
     && cd /usr/src/ruby \
     \
-# hack in "ENABLE_PATH_CHECK" disabling to suppress:
-#   warning: Insecure world writable dir
+# Hack in "ENABLE_PATH_CHECK" disabling to suppress:
+# warning: Insecure world writable dir
     && { \
         echo '#define ENABLE_PATH_CHECK 0'; \
         echo; \
@@ -121,10 +113,14 @@ RUN set -ex \
     \
     && apt-get purge -y --auto-remove $buildDeps
 
-# copy the base Fluentd configuration
+# Jemalloc is a malloc implementation, that reduces ruby memory fragmentation,
+# yielding reduced memory consumption and a better performance
+ENV LD_PRELOAD /usr/lib/x86_64-linux-gnu/libjemalloc.so.1
+
+# Copy the base fluentd configuration
 COPY fluent.conf /etc/fluent/fluent.conf
 
-# copy the startup script
+# Copy the startup script
 COPY run.sh /run.sh
 
 CMD /run.sh $FLUENTD_ARGS
