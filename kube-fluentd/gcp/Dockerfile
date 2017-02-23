@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Part of this Dockerfile is taken from the ruby:2.3-slim configuration:
+# https://github.com/docker-library/ruby/blob/17f666371fa5c88c48a38bc53c611f26c7455778/2.3/slim/Dockerfile
+
 FROM gcr.io/google_containers/ubuntu-slim:0.7
 
 RUN apt-get update \
@@ -38,7 +41,6 @@ ENV RUBY_MAJOR 2.3
 ENV RUBY_VERSION 2.3.3
 ENV RUBY_DOWNLOAD_SHA256 1a4fa8c2885734ba37b97ffdb4a19b8fba0e8982606db02d936e65bac07419dc
 ENV RUBYGEMS_VERSION 2.6.10
-
 ENV BUNDLER_VERSION 1.14.4
 
 # Install things globally, for great justice
@@ -88,8 +90,8 @@ RUN set -ex \
     \
     && cd /usr/src/ruby \
     \
-# Hack in "ENABLE_PATH_CHECK" disabling to suppress:
-# warning: Insecure world writable dir
+    # Hack in "ENABLE_PATH_CHECK" disabling to suppress:
+    # warning: Insecure world writable dir
     && { \
         echo '#define ENABLE_PATH_CHECK 0'; \
         echo; \
