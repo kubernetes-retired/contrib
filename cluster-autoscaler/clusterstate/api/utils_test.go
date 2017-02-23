@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -88,4 +89,44 @@ func TestGetStringNodeGroups(t *testing.T) {
 	result := status.GetReadableString()
 	assert.Regexp(t, regexp.MustCompile("(?ms)NodeGroups:.*Name:\\s*ng1"), result)
 	assert.Regexp(t, regexp.MustCompile("(?ms)NodeGroups:.*Name:\\s*ng2"), result)
+}
+
+func TestLogCollectorNoCompaction(t *testing.T) {
+	logCollector := NewLogCollector()
+	now := time.Now()
+	logCollector.Log("Event1", now)
+	logCollector.Log("Event2", now)
+	logCollector.Log("Event3", now)
+	log := logCollector.GetLogs(now)
+	logCollector.Log("Event4", now)
+	assert.Equal(t, len(log), 3)
+	assert.Equal(t, LogItem{Log: "Event1", Timestamp: now}, log[0])
+	assert.Equal(t, LogItem{Log: "Event3", Timestamp: now}, log[2])
+}
+
+func TestLogCollectorSizeCompaction(t *testing.T) {
+	logCollector := NewLogCollector()
+	logCollector.MaxItems = 2
+	now := time.Now()
+	logCollector.Log("Event1", now)
+	logCollector.Log("Event2", now)
+	logCollector.Log("Event3", now)
+	log := logCollector.GetLogs(now)
+	assert.Equal(t, len(log), 2)
+	assert.Equal(t, LogItem{Log: "Event2", Timestamp: now}, log[0])
+	assert.Equal(t, LogItem{Log: "Event3", Timestamp: now}, log[1])
+}
+
+func TestLogCollectorTimeCompaction(t *testing.T) {
+	logCollector := NewLogCollector()
+	logCollector.ItemLifetime = 15 * time.Minute
+	start := time.Now()
+	later := start.Add(10 * time.Minute)
+	end := start.Add(20 * time.Minute)
+	logCollector.Log("Event1", start)
+	logCollector.Log("Event2", start)
+	logCollector.Log("Event3", later)
+	log := logCollector.GetLogs(end)
+	assert.Equal(t, 1, len(log))
+	assert.Equal(t, LogItem{Log: "Event3", Timestamp: later}, log[0])
 }
