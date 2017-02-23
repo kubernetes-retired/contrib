@@ -199,6 +199,19 @@ kube-master | SUCCESS => {
 ...
 ```
 
+Example to launch one playbooks:
+
+```
+$ ansible-playbook ../playbooks/deploy-cluster.yml
+...
+PLAY RECAP *********************************************************************
+kube-master-1              : ok=217  changed=22   unreachable=0    failed=0
+kube-node-1                : ok=117  changed=15   unreachable=0    failed=0
+kube-node-2                : ok=114  changed=15   unreachable=0    failed=0
+kube-node-3                : ok=114  changed=15   unreachable=0    failed=0
+```
+
+
 ### Issues
 File an issue [here](https://github.com/kubernetes/contrib/issues) if the Vagrant Deployer does not work for you or if you find a documentation bug. [Pull Requests](https://github.com/kubernetes/contrib/pulls) are always welcome :-) Please review the [contributing guidelines](https://github.com/kubernetes/kubernetes/blob/master/CONTRIBUTING.md) if you have not contributed in the past and feel free to ask questions on the [kubernetes-users Slack](http://slack.kubernetes.io) channel.
 
