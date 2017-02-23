@@ -35,6 +35,7 @@ type FakeNodeGroup struct {
 
 func (f *FakeNodeGroup) MaxSize() int                       { return 2 }
 func (f *FakeNodeGroup) MinSize() int                       { return 1 }
+func (f *FakeNodeGroup) NodeCost() (float64, error)         { return 0, nil }
 func (f *FakeNodeGroup) TargetSize() (int, error)           { return 2, nil }
 func (f *FakeNodeGroup) IncreaseSize(delta int) error       { return nil }
 func (f *FakeNodeGroup) DecreaseTargetSize(delta int) error { return nil }

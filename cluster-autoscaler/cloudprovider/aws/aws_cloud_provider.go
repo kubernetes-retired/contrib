@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
@@ -47,7 +48,7 @@ func BuildAwsCloudProvider(awsManager *AwsManager, specs []string) (*AwsCloudPro
 }
 
 // addNodeGroup adds node group defined in string spec. Format:
-// minNodes:maxNodes:asgName
+// minNodes:maxNodes:asgName || minNodes:maxNodes:asgName:nodeCost
 func (aws *AwsCloudProvider) addNodeGroup(spec string) error {
 	asg, err := buildAsg(spec, aws.awsManager)
 	if err != nil {
@@ -100,14 +101,26 @@ func AwsRefFromProviderId(id string) (*AwsRef, error) {
 	}, nil
 }
 
-// Asg implements NodeGroup interfrace.
+// Asg implements NodeGroup interface.
 type Asg struct {
 	AwsRef
 
 	awsManager *AwsManager
 
-	minSize int
-	maxSize int
+	launchConfig *Lc
+
+	minSize  int
+	maxSize  int
+	nodeCost *float64
+}
+
+// Lc caches LaunchConfiguration data for an Asg
+type Lc struct {
+	AwsRef
+
+	availabilityZones []*string
+	instanceType      *string
+	spotPrice         *string
 }
 
 // MaxSize returns maximum size of the node group.
@@ -120,8 +133,21 @@ func (asg *Asg) MinSize() int {
 	return asg.minSize
 }
 
+// NodeCost returns cost of each node within the node group.
+func (asg *Asg) NodeCost() (float64, error) {
+	if asg.nodeCost != nil {
+		glog.V(4).Infof("Returning user-defined cost on NodeGroup %s: %+v", asg.Id(), asg.nodeCost)
+		return *asg.nodeCost, nil
+	}
+	cost, err := asg.awsManager.GetAsgSpotInstanceCost(asg)
+	if err != nil {
+		return 0, fmt.Errorf("Error calculating nodeCost: %v", err)
+	}
+	return cost, nil
+}
+
 // TargetSize returns the current TARGET size of the node group. It is possible that the
-// number is different from the number of nodes registered in Kuberentes.
+// number is different from the number of nodes registered in Kubernetes.
 func (asg *Asg) TargetSize() (int, error) {
 	size, err := asg.awsManager.GetAsgSize(asg)
 	return int(size), err
@@ -228,8 +254,8 @@ func (asg *Asg) Nodes() ([]string, error) {
 }
 
 func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
-	tokens := strings.SplitN(value, ":", 3)
-	if len(tokens) != 3 {
+	tokens := strings.Split(value, ":")
+	if len(tokens) < 3 || len(tokens) > 4 {
 		return nil, fmt.Errorf("wrong nodes configuration: %s", value)
 	}
 
@@ -257,7 +283,16 @@ func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 	if tokens[2] == "" {
 		return nil, fmt.Errorf("asg name must not be blank: %s got error: %v", tokens[2])
 	}
-
 	asg.Name = tokens[2]
+
+	if len(tokens) == 4 {
+		if cost, err := strconv.ParseFloat(tokens[len(tokens)-1], 64); err == nil {
+			if cost < 0 {
+				return nil, fmt.Errorf("cost must be a non-negative value")
+			}
+			asg.nodeCost = &cost
+		}
+	}
+
 	return &asg, nil
 }

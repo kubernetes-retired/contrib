@@ -32,6 +32,7 @@ import (
 	"k8s.io/contrib/cluster-autoscaler/clusterstate"
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/expander"
+	"k8s.io/contrib/cluster-autoscaler/expander/leastcost"
 	"k8s.io/contrib/cluster-autoscaler/expander/mostpods"
 	"k8s.io/contrib/cluster-autoscaler/expander/random"
 	"k8s.io/contrib/cluster-autoscaler/expander/waste"
@@ -76,6 +77,8 @@ const (
 	MostPodsExpanderName = "most-pods"
 	// LeastWasteExpanderName selects a node group that leaves the least fraction of CPU and Memory
 	LeastWasteExpanderName = "least-waste"
+	// LeastCostExpanderName selects the node group with the lowest cost per node
+	LeastCostExpanderName = "least-cost"
 )
 
 var (
@@ -113,7 +116,7 @@ var (
 		"Type of resource estimator to be used in scale up. Available values: ["+strings.Join(AvailableEstimators, ",")+"]")
 
 	// AvailableExpanders is a list of avaialble expander options
-	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName}
+	AvailableExpanders = []string{RandomExpanderName, MostPodsExpanderName, LeastWasteExpanderName, LeastCostExpanderName}
 	expanderFlag       = flag.String("expander", RandomExpanderName,
 		"Type of node group expander to be used in scale up. Available values: ["+strings.Join(AvailableExpanders, ",")+"]")
 )
@@ -239,6 +242,8 @@ func run(_ <-chan struct{}) {
 			expanderStrategy = mostpods.NewStrategy()
 		case LeastWasteExpanderName:
 			expanderStrategy = waste.NewStrategy()
+		case LeastCostExpanderName:
+			expanderStrategy = leastcost.NewStrategy()
 		}
 	}
 

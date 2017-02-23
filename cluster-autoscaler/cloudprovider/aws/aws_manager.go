@@ -19,6 +19,7 @@ package aws
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,14 +28,16 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/util/wait"
 	provider_aws "k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
 )
 
 const (
-	operationWaitTimeout  = 5 * time.Second
-	operationPollInterval = 100 * time.Millisecond
+	operationWaitTimeout               = 5 * time.Second
+	operationPollInterval              = 100 * time.Millisecond
+	spotPriceHistoryProductDescription = "Linux/UNIX (Amazon VPC)"
 )
 
 type asgInformation struct {
@@ -46,15 +49,22 @@ type autoScaling interface {
 	DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error)
 	SetDesiredCapacity(input *autoscaling.SetDesiredCapacityInput) (*autoscaling.SetDesiredCapacityOutput, error)
 	TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error)
+	DescribeLaunchConfigurations(input *autoscaling.DescribeLaunchConfigurationsInput) (*autoscaling.DescribeLaunchConfigurationsOutput, error)
 }
 
-// AwsManager is handles aws communication and data caching.
+type ec2Client interface {
+	DescribeSpotPriceHistory(input *ec2.DescribeSpotPriceHistoryInput) (*ec2.DescribeSpotPriceHistoryOutput, error)
+}
+
+// AwsManager handles aws communication and data caching.
 type AwsManager struct {
 	asgs     []*asgInformation
 	asgCache map[AwsRef]*Asg
 
 	service    autoScaling
 	cacheMutex sync.Mutex
+
+	client ec2Client
 }
 
 // CreateAwsManager constructs awsManager object.
@@ -67,11 +77,14 @@ func CreateAwsManager(configReader io.Reader) (*AwsManager, error) {
 		}
 	}
 
-	service := autoscaling.New(session.New())
+	sn := session.New()
+	service := autoscaling.New(sn)
+	client := ec2.New(sn)
 	manager := &AwsManager{
 		asgs:     make([]*asgInformation, 0),
 		service:  service,
 		asgCache: make(map[AwsRef]*Asg),
+		client:   client,
 	}
 
 	go wait.Forever(func() {
@@ -89,6 +102,41 @@ func CreateAwsManager(configReader io.Reader) (*AwsManager, error) {
 func (m *AwsManager) RegisterAsg(asg *Asg) {
 	m.cacheMutex.Lock()
 	defer m.cacheMutex.Unlock()
+
+	params := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: []*string{aws.String(asg.AwsRef.Name)},
+		MaxRecords:            aws.Int64(1),
+	}
+	groups, err := m.service.DescribeAutoScalingGroups(params)
+	if err != nil {
+		glog.Errorf("Failed ASG info request for %s: %v", asg.AwsRef.Name, err)
+		return
+	}
+	if len(groups.AutoScalingGroups) < 1 {
+		glog.Errorf("Unable to get first autoscaling.Group for %s", asg.AwsRef.Name)
+		return
+	}
+	group := *groups.AutoScalingGroups[0]
+
+	lcParams := &autoscaling.DescribeLaunchConfigurationsInput{
+		LaunchConfigurationNames: []*string{group.LaunchConfigurationName},
+	}
+	lcs, err := m.service.DescribeLaunchConfigurations(lcParams)
+	if err != nil {
+		glog.Errorf("Failed LC info request for %s: %v", asg.AwsRef.Name, err)
+		return
+	}
+	if len(lcs.LaunchConfigurations) < 1 {
+		glog.Errorf("Unable to get first lc.LaunchConfiguration for %s", asg.AwsRef.Name)
+		return
+	}
+	lc := *lcs.LaunchConfigurations[0]
+	asg.launchConfig = &Lc{
+		AwsRef{Name: *lc.LaunchConfigurationName},
+		group.AvailabilityZones,
+		lc.InstanceType,
+		lc.SpotPrice,
+	}
 
 	m.asgs = append(m.asgs, &asgInformation{
 		config: asg,
@@ -163,6 +211,43 @@ func (m *AwsManager) DeleteInstances(instances []*AwsRef) error {
 	return nil
 }
 
+// GetAsgSpotInstanceCost gets the cost per instance for the ASG.
+func (m *AwsManager) GetAsgSpotInstanceCost(asgConfig *Asg) (float64, error) {
+	lc := *asgConfig.launchConfig
+	if lc.spotPrice != nil {
+		t := time.Now().UTC()
+
+		describeSpotPriceParams := &ec2.DescribeSpotPriceHistoryInput{
+			InstanceTypes:       []*string{lc.instanceType},
+			StartTime:           aws.Time(t),
+			EndTime:             aws.Time(t),
+			ProductDescriptions: []*string{aws.String(spotPriceHistoryProductDescription)},
+			Filters: []*ec2.Filter{
+				{
+					Name:   aws.String("availability-zone"),
+					Values: lc.availabilityZones,
+				},
+			},
+		}
+
+		ph, err := m.client.DescribeSpotPriceHistory(describeSpotPriceParams)
+
+		if err != nil {
+			return 0, err
+		}
+
+		if len(ph.SpotPriceHistory) < 1 {
+			return 0, fmt.Errorf("Unable to get first ph.SpotPriceHistory for %s", asgConfig.Name)
+		}
+		sp := *ph.SpotPriceHistory[0]
+
+		price, err := strconv.ParseFloat(*sp.SpotPrice, 64)
+		return price, err
+	}
+
+	return 0, fmt.Errorf("Unable to get node cost for autoscaling.Group for %s", asgConfig.Name)
+}
+
 // GetAsgForInstance returns AsgConfig of the given Instance
 func (m *AwsManager) GetAsgForInstance(instance *AwsRef) (*Asg, error) {
 	m.cacheMutex.Lock()
@@ -190,6 +275,19 @@ func (m *AwsManager) regenerateCache() error {
 		if err != nil {
 			return err
 		}
+
+		lc, err := m.getLaunchConfiguration(group.LaunchConfigurationName)
+		if err != nil {
+			return err
+		}
+
+		asg.config.launchConfig = &Lc{
+			AwsRef{Name: *lc.LaunchConfigurationName},
+			group.AvailabilityZones,
+			lc.InstanceType,
+			lc.SpotPrice,
+		}
+
 		for _, instance := range group.Instances {
 			ref := AwsRef{Name: *instance.InstanceId}
 			newCache[ref] = asg.config
@@ -214,6 +312,21 @@ func (m *AwsManager) getAutoscalingGroup(name string) (*autoscaling.Group, error
 		return nil, fmt.Errorf("Unable to get first autoscaling.Group for %s", name)
 	}
 	return groups.AutoScalingGroups[0], nil
+}
+
+func (m *AwsManager) getLaunchConfiguration(name *string) (*autoscaling.LaunchConfiguration, error) {
+	params := &autoscaling.DescribeLaunchConfigurationsInput{
+		LaunchConfigurationNames: []*string{name},
+	}
+	lcs, err := m.service.DescribeLaunchConfigurations(params)
+	if err != nil {
+		glog.V(4).Infof("Failed LC info request for %s: %v", name, err)
+		return nil, err
+	}
+	if len(lcs.LaunchConfigurations) < 1 {
+		return nil, fmt.Errorf("Unable to get first lc.LaunchConfiguration for %s", name)
+	}
+	return lcs.LaunchConfigurations[0], nil
 }
 
 // GetAsgNodes returns Asg nodes.

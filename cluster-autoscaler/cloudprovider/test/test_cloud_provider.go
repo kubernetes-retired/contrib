@@ -96,6 +96,7 @@ func (tcp *TestCloudProvider) AddNodeGroup(id string, min int, max int, size int
 		minSize:       min,
 		maxSize:       max,
 		targetSize:    size,
+		nodeCost:      0,
 	}
 }
 
@@ -114,6 +115,7 @@ type TestNodeGroup struct {
 	maxSize       int
 	minSize       int
 	targetSize    int
+	nodeCost      float64
 }
 
 // MaxSize returns maximum size of the node group.
@@ -130,6 +132,14 @@ func (tng *TestNodeGroup) MinSize() int {
 	defer tng.Unlock()
 
 	return tng.minSize
+}
+
+// NodeCost returns the price per node of the node group.
+func (tng *TestNodeGroup) NodeCost() (float64, error) {
+	tng.Lock()
+	defer tng.Unlock()
+
+	return tng.nodeCost, nil
 }
 
 // TargetSize returns the current target size of the node group. It is possible that the

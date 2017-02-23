@@ -44,6 +44,9 @@ type NodeGroup interface {
 	// MinSize returns minimum size of the node group.
 	MinSize() int
 
+	// NodeCost returns cost of each node within the node group.
+	NodeCost() (float64, error)
+
 	// TargetSize returns the current target size of the node group. It is possible that the
 	// number of nodes in Kubernetes is different at the moment but should be equal
 	// to Size() once everything stabilizes (new nodes finish startup and registration or
