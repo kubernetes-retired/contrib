@@ -27,6 +27,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
+
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/util/wait"
 	provider_aws "k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
@@ -42,10 +44,14 @@ type asgInformation struct {
 	basename string
 }
 
-type autoScaling interface {
+type autoscalingIFace interface {
 	DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error)
 	SetDesiredCapacity(input *autoscaling.SetDesiredCapacityInput) (*autoscaling.SetDesiredCapacityOutput, error)
 	TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error)
+}
+
+type ec2Iface interface {
+	DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
 }
 
 // AwsManager is handles aws communication and data caching.
@@ -53,8 +59,9 @@ type AwsManager struct {
 	asgs     []*asgInformation
 	asgCache map[AwsRef]*Asg
 
-	service    autoScaling
-	cacheMutex sync.Mutex
+	autoscalingService autoscalingIFace
+	ec2Service         ec2Iface
+	cacheMutex         sync.Mutex
 }
 
 // CreateAwsManager constructs awsManager object.
@@ -66,12 +73,14 @@ func CreateAwsManager(configReader io.Reader) (*AwsManager, error) {
 			return nil, err
 		}
 	}
-
-	service := autoscaling.New(session.New())
+	session := session.New()
+	service := autoscaling.New(session)
+	ec2Service := ec2.New(session)
 	manager := &AwsManager{
-		asgs:     make([]*asgInformation, 0),
-		service:  service,
-		asgCache: make(map[AwsRef]*Asg),
+		asgs:               make([]*asgInformation, 0),
+		autoscalingService: service,
+		ec2Service:         ec2Service,
+		asgCache:           make(map[AwsRef]*Asg),
 	}
 
 	go wait.Forever(func() {
@@ -95,13 +104,21 @@ func (m *AwsManager) RegisterAsg(asg *Asg) {
 	})
 }
 
+// ClearAsgs removes all asgs in Aws Manager.
+func (m *AwsManager) ClearAsgs() {
+	m.cacheMutex.Lock()
+	defer m.cacheMutex.Unlock()
+
+	m.asgs = m.asgs[:0]
+}
+
 // GetAsgSize gets ASG size.
 func (m *AwsManager) GetAsgSize(asgConfig *Asg) (int64, error) {
 	params := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: []*string{aws.String(asgConfig.Name)},
 		MaxRecords:            aws.Int64(1),
 	}
-	groups, err := m.service.DescribeAutoScalingGroups(params)
+	groups, err := m.autoscalingService.DescribeAutoScalingGroups(params)
 
 	if err != nil {
 		return -1, err
@@ -122,7 +139,7 @@ func (m *AwsManager) SetAsgSize(asg *Asg, size int64) error {
 		HonorCooldown:        aws.Bool(false),
 	}
 	glog.V(0).Infof("Setting asg %s size to %d", asg.Id(), size)
-	_, err := m.service.SetDesiredCapacity(params)
+	_, err := m.autoscalingService.SetDesiredCapacity(params)
 	if err != nil {
 		return err
 	}
@@ -153,7 +170,7 @@ func (m *AwsManager) DeleteInstances(instances []*AwsRef) error {
 			InstanceId:                     aws.String(instance.Name),
 			ShouldDecrementDesiredCapacity: aws.Bool(true),
 		}
-		resp, err := m.service.TerminateInstanceInAutoScalingGroup(params)
+		resp, err := m.autoscalingService.TerminateInstanceInAutoScalingGroup(params)
 		if err != nil {
 			return err
 		}
@@ -205,7 +222,7 @@ func (m *AwsManager) getAutoscalingGroup(name string) (*autoscaling.Group, error
 		AutoScalingGroupNames: []*string{aws.String(name)},
 		MaxRecords:            aws.Int64(1),
 	}
-	groups, err := m.service.DescribeAutoScalingGroups(params)
+	groups, err := m.autoscalingService.DescribeAutoScalingGroups(params)
 	if err != nil {
 		glog.V(4).Infof("Failed ASG info request for %s: %v", name, err)
 		return nil, err

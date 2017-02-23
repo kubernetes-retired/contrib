@@ -21,29 +21,124 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
+	aws_util "github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+
+	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 )
 
 // AwsCloudProvider implements CloudProvider interface.
 type AwsCloudProvider struct {
 	awsManager *AwsManager
+	asgMutex   sync.Mutex
 	asgs       []*Asg
 }
 
 // BuildAwsCloudProvider builds CloudProvider implementation for AWS.
-func BuildAwsCloudProvider(awsManager *AwsManager, specs []string) (*AwsCloudProvider, error) {
+func BuildAwsCloudProvider(awsManager *AwsManager, specs []string, kubeClient kube_client.Interface, autoDiscoverNodeGroup bool, scanInterval time.Duration) (*AwsCloudProvider, error) {
 	aws := &AwsCloudProvider{
 		awsManager: awsManager,
 		asgs:       make([]*Asg, 0),
 	}
-	for _, spec := range specs {
-		if err := aws.addNodeGroup(spec); err != nil {
-			return nil, err
+	if autoDiscoverNodeGroup {
+		go func() {
+			for {
+				select {
+				case <-time.After(scanInterval):
+					{
+						selector := "master!=true"
+						noMaster := apiv1.ListOptions{LabelSelector: selector}
+						nl, err := kubeClient.Core().Nodes().List(noMaster)
+						if err != nil {
+							glog.Errorf("Failed to list nodes from API server: %v\n", err)
+						}
+
+						var nodesList []*string
+
+						for _, n := range nl.Items {
+							glog.V(4).Infof("Considering node: %s", n.Name)
+							nodesList = append(nodesList, &n.Name)
+						}
+						AutoDiscoverNodeGroup(aws, nodesList)
+					}
+				}
+			}
+		}()
+	} else {
+		for _, spec := range specs {
+			if err := aws.addNodeGroup(spec); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return aws, nil
+}
+
+//AutoDiscoverNodeGroup will auto update the autoscaler group fetching the information directly from the AWS API.
+func AutoDiscoverNodeGroup(aws *AwsCloudProvider, nodesList []*string) error {
+	params := &ec2.DescribeInstancesInput{
+		Filters: []*ec2.Filter{
+			{
+				Name:   aws_util.String("private-dns-name"),
+				Values: nodesList,
+			},
+		},
+	}
+	instances, err := aws.awsManager.ec2Service.DescribeInstances(params)
+	if err != nil {
+		glog.Errorf("Error describing EC2 instances: %v\n", err)
+		return err
+	}
+
+	//make a "uniq" on the names so that we don't consider autoscaling groups twice
+	discoveredASGs := make(map[string]bool, 0)
+	names := make([]*string, 0)
+	for _, r := range instances.Reservations {
+		for _, inst := range r.Instances {
+			for _, tag := range inst.Tags {
+				if *(tag.Key) == "aws:autoscaling:groupName" {
+					if _, ok := discoveredASGs[*(tag.Value)]; !ok {
+						names = append(names, tag.Value)
+					}
+					discoveredASGs[*(tag.Value)] = true
+				}
+			}
+		}
+	}
+
+	request := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: names,
+	}
+	asgGroups, err := aws.awsManager.autoscalingService.DescribeAutoScalingGroups(request)
+	if err != nil {
+		glog.Errorf("Error describing autoscaling groups: %s\n", err)
+		return err
+	}
+
+	aws.asgMutex.Lock()
+	defer aws.asgMutex.Unlock()
+	aws.asgs = aws.asgs[:0]
+	aws.awsManager.ClearAsgs()
+	for _, group := range asgGroups.AutoScalingGroups {
+		glog.V(4).Infof("Adding ASG: %s, with min: %d, max %d\n", *group.AutoScalingGroupName, *group.MinSize, *group.MaxSize)
+		asg := Asg{
+			awsManager: aws.awsManager,
+			AwsRef:     AwsRef{Name: *group.AutoScalingGroupName},
+			maxSize:    int(*group.MaxSize),
+			minSize:    int(*group.MinSize),
+		}
+		aws.asgs = append(aws.asgs, &asg)
+		aws.awsManager.RegisterAsg(&asg)
+	}
+
+	return nil
 }
 
 // addNodeGroup adds node group defined in string spec. Format:
@@ -53,6 +148,8 @@ func (aws *AwsCloudProvider) addNodeGroup(spec string) error {
 	if err != nil {
 		return err
 	}
+	aws.asgMutex.Lock()
+	defer aws.asgMutex.Unlock()
 	aws.asgs = append(aws.asgs, asg)
 	aws.awsManager.RegisterAsg(asg)
 	return nil
@@ -66,6 +163,8 @@ func (aws *AwsCloudProvider) Name() string {
 // NodeGroups returns all node groups configured for this cloud provider.
 func (aws *AwsCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
 	result := make([]cloudprovider.NodeGroup, 0, len(aws.asgs))
+	aws.asgMutex.Lock()
+	defer aws.asgMutex.Unlock()
 	for _, asg := range aws.asgs {
 		result = append(result, asg)
 	}
@@ -255,7 +354,7 @@ func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
 	}
 
 	if tokens[2] == "" {
-		return nil, fmt.Errorf("asg name must not be blank: %s got error: %v", tokens[2])
+		return nil, fmt.Errorf("asg name must not be blank: got error: %v", tokens[2])
 	}
 
 	asg.Name = tokens[2]

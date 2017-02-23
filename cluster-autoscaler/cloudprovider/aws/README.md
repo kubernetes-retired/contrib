@@ -118,17 +118,8 @@ spec:
           env:
             - name: AWS_REGION
               value: us-east-1
-          volumeMounts:
-            - name: ssl-certs
-              mountPath: /etc/ssl/certs/ca-certificates.crt
-              readOnly: true
           imagePullPolicy: "Always"
-      volumes:
-        - name: ssl-certs
-          hostPath:
-            path: "/etc/ssl/certs/ca-certificates.crt"
 ```
-
 Common Notes and Gotchas:
 - The `/etc/ssl/certs/ca-certificates.crt` should exist by default on your ec2 instance.
 - Cluster autoscaler is not zone aware (for now), so if you wish to span multiple availability zones in your autoscaling groups beware that cluster autoscaler will not evenly distribute them. For more information, see https://github.com/kubernetes/contrib/pull/1552#discussion_r75533090.
