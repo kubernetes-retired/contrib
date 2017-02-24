@@ -71,7 +71,7 @@ type ScaleDownRequest struct {
 type ClusterStateRegistryConfig struct {
 	// Maximum percentage of unready nodes in total in, if the number is higher than OkTotalUnreadyCount
 	MaxTotalUnreadyPercentage float64
-	// Number of nodes that can be unready in total. If the number is higer than that then MaxTotalUnreadyPercentage applies.
+	// Number of nodes that can be unready in total. If the number is higher than that then MaxTotalUnreadyPercentage applies.
 	OkTotalUnreadyCount int
 }
 
@@ -109,6 +109,7 @@ type ClusterStateRegistry struct {
 	acceptableRanges        map[string]AcceptableRange
 	incorrectNodeGroupSizes map[string]IncorrectNodeGroupSize
 	unregisteredNodes       map[string]UnregisteredNode
+	candidatesForScaleDown  map[string][]string
 }
 
 // NewClusterStateRegistry creates new ClusterStateRegistry.
@@ -123,6 +124,7 @@ func NewClusterStateRegistry(cloudProvider cloudprovider.CloudProvider, config C
 		acceptableRanges:        make(map[string]AcceptableRange),
 		incorrectNodeGroupSizes: make(map[string]IncorrectNodeGroupSize),
 		unregisteredNodes:       make(map[string]UnregisteredNode),
+		candidatesForScaleDown:  make(map[string][]string),
 	}
 }
 
@@ -419,6 +421,20 @@ func (csr *ClusterStateRegistry) GetUnregisteredNodes() []UnregisteredNode {
 	return result
 }
 
+// UpdateScaleDownCandidates updates scale down candidates
+func (csr *ClusterStateRegistry) UpdateScaleDownCandidates(nodes []*apiv1.Node) {
+	result := make(map[string][]string)
+	for _, node := range nodes {
+		group, err := csr.cloudProvider.NodeGroupForNode(node)
+		if err != nil {
+			glog.Warningf("Failed to get node group for %s: %v", node.Name, err)
+			continue
+		}
+		result[group.Id()] = append(result[group.Id()], node.Name)
+	}
+	csr.candidatesForScaleDown = result
+}
+
 // GetStatus returns ClusterAutoscalerStatus with the current cluster autoscaler status.
 func (csr *ClusterStateRegistry) GetStatus(now time.Time) *api.ClusterAutoscalerStatus {
 	result := &api.ClusterAutoscalerStatus{
@@ -441,12 +457,18 @@ func (csr *ClusterStateRegistry) GetStatus(now time.Time) *api.ClusterAutoscaler
 		nodeGroupStatus.Conditions = append(nodeGroupStatus.Conditions, buildScaleUpStatusNodeGroup(
 			csr.IsNodeGroupScalingUp(nodeGroup.Id()), readiness, acceptable))
 
+		// Scale down.
+		nodeGroupStatus.Conditions = append(nodeGroupStatus.Conditions, buildScaleDownStatusNodeGroup(
+			csr.candidatesForScaleDown[nodeGroup.Id()]))
+
 		result.NodeGroupStatuses = append(result.NodeGroupStatuses, nodeGroupStatus)
 	}
 	result.ClusterwideConditions = append(result.ClusterwideConditions,
 		buildHealthStatusClusterwide(csr.IsClusterHealthy(), csr.totalReadiness))
 	result.ClusterwideConditions = append(result.ClusterwideConditions,
 		buildScaleUpStatusClusterwide(result.NodeGroupStatuses, csr.totalReadiness))
+	result.ClusterwideConditions = append(result.ClusterwideConditions,
+		buildScaleDownStatusClusterwide(csr.candidatesForScaleDown))
 
 	return result
 }
@@ -483,6 +505,19 @@ func buildScaleUpStatusNodeGroup(isScaleUpInProgress bool, readiness Readiness, 
 		condition.Status = api.ClusterAutoscalerInProgress
 	} else {
 		condition.Status = api.ClusterAutoscalerNoActivity
+	}
+	return condition
+}
+
+func buildScaleDownStatusNodeGroup(candidates []string) api.ClusterAutoscalerCondition {
+	condition := api.ClusterAutoscalerCondition{
+		Type:    api.ClusterAutoscalerScaleDown,
+		Message: fmt.Sprintf("candidates=%d", len(candidates)),
+	}
+	if len(candidates) > 0 {
+		condition.Status = api.ClusterAutoscalerCandidatesPresent
+	} else {
+		condition.Status = api.ClusterAutoscalerNoCandidates
 	}
 	return condition
 }
@@ -531,6 +566,23 @@ func buildScaleUpStatusClusterwide(nodeGroupStatuses []api.NodeGroupStatus, read
 	return condition
 }
 
+func buildScaleDownStatusClusterwide(candidates map[string][]string) api.ClusterAutoscalerCondition {
+	totalCandidates := 0
+	for _, val := range candidates {
+		totalCandidates += len(val)
+	}
+	condition := api.ClusterAutoscalerCondition{
+		Type:    api.ClusterAutoscalerScaleDown,
+		Message: fmt.Sprintf("candidates=%d", totalCandidates),
+	}
+	if totalCandidates > 0 {
+		condition.Status = api.ClusterAutoscalerCandidatesPresent
+	} else {
+		condition.Status = api.ClusterAutoscalerNoCandidates
+	}
+	return condition
+}
+
 func isNodeNotStarted(node *apiv1.Node) bool {
 	for _, condition := range node.Status.Conditions {
 		if condition.Type == apiv1.NodeReady &&
@@ -565,7 +617,7 @@ func (csr *ClusterStateRegistry) GetUpcomingNodes() map[string]int {
 		// newNodes is the number of nodes that
 		newNodes := ar.CurrentTarget - (readiness.Ready + readiness.Unready + readiness.LongNotStarted)
 		if newNodes <= 0 {
-			// Negative value is unlikely but theroetically possible.
+			// Negative value is unlikely but theoretically possible.
 			continue
 		}
 		result[id] = newNodes
