@@ -71,6 +71,7 @@ kubelet-port
 label-file
 last-release-pr
 left-build-number
+listen-address
 local-data-dir
 max-empty-bulk-delete
 max-nodes-total
