@@ -2,7 +2,7 @@
 
 While Kubernetes provides the ability to map Services to ports on each node,
 those ports are in a special range set aside for allocations.  This means you
-can not not simply choose to expose a Service on port 80 on your nodes.  You
+can not simply choose to expose a Service on port 80 on your nodes.  You
 also can not choose to expose it on some nodes but not others.  These things
 will be fixed in the future, but until then, here is a stop-gap measure you can
 use.
