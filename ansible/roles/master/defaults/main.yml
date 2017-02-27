@@ -30,3 +30,5 @@ kube_master_binaries:
 kube_master_rpms:
   - kubernetes-client
   - kubernetes-master
+
+etcd_client_port: '2379'
