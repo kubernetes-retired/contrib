@@ -35,3 +35,22 @@ do
 </source>
 EndOfMessage
 done
+
+if [ -z "$FILES_TO_ROTATE" ] || [ -z "$SIZE_LIMIT" ] || [ -z "$ROTATE_TIMES" ]; then
+  eixt 0
+fi
+read -ra files_to_rotate <<<"$FILES_TO_ROTATE"
+read -ra size_limit <<<"$SIZE_LIMIT"
+read -ra rotate_times <<<"$ROTATE_TIMES"
+
+if [ ${#files_to_rotate[@]} -eq ${#size_limit[@]} ] && [ ${#files_to_rotate[@]} -eq ${#rotate_times[@]} ]; then
+  for i in ${!files_to_rotate[*]}
+  do
+    cat >> "/etc/logrotate.conf" << EndOfMessage
+${files_to_rotate[i]} {
+  size ${size_limit[i]}
+  rotate ${rotate_times[i]}
+}
+EndOfMessage
+  done
+fi
