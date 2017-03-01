@@ -19,9 +19,24 @@ if [ -z "$FILES_TO_COLLECT" ]; then
   exit 0
 fi
 
+declare -A names_count
+
+function get_uncollided_name {
+  next_name=$1
+  base_name=$1
+  while [ ${names_count[$next_name]} ];
+  do
+    ((names_count[$base_name]++))
+    next_name=${base_name}_${names_count[$base_name]}
+  done
+  names_count+=([$next_name]=1)
+}
+
 for filepath in $FILES_TO_COLLECT
 do
   filename=$(basename $filepath)
+  get_uncollided_name $filename
+  filename=$next_name
   cat > "/etc/td-agent/files/${filename}" << EndOfMessage
 <source>
   type tail
