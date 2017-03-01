@@ -15,5 +15,5 @@
 
 - name: Restart etcd
   include: restart.yml
-  when: etcd_modified is not defined or (etcd_modified is defined and etcd_started.changed == false)
+  when: etcd_modified is not defined or (etcd_modified is defined and etcd_started.changed == false and etcd_started2.changed == false)
   tags: restart
