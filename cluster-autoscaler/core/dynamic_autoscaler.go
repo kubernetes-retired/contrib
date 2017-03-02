@@ -20,15 +20,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang/glog"
+	kube_record "k8s.io/client-go/tools/record"
 	"k8s.io/contrib/cluster-autoscaler/config/dynamic"
 	"k8s.io/contrib/cluster-autoscaler/metrics"
-
-	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
-	kube_record "k8s.io/kubernetes/pkg/client/record"
-
-	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
+	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 )
 
 // DynamicAutoscaler is a variant of autoscaler which supports dynamic reconfiguration at runtime
@@ -50,6 +48,11 @@ func NewDynamicAutoscaler(autoscalerBuilder AutoscalerBuilder, configFetcher dyn
 // CleanUp does the work required before all the iterations of a dynamic autoscaler run
 func (a *DynamicAutoscaler) CleanUp() {
 	a.autoscaler.CleanUp()
+}
+
+// ExitCleanUp cleans-up after autoscaler, so no mess remains after process termination.
+func (a *DynamicAutoscaler) ExitCleanUp() {
+	a.autoscaler.ExitCleanUp()
 }
 
 // RunOnce represents a single iteration of a dynamic autoscaler inside the CA's control-loop

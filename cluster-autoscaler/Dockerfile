@@ -16,5 +16,6 @@ FROM gcr.io/google_containers/ubuntu-slim:0.1
 MAINTAINER Marcin Wielgus "mwielgus@google.com"
 
 ADD cluster-autoscaler cluster-autoscaler
+ADD run.sh run.sh
 
-CMD ./cluster-autoscaler
+CMD ./run.sh
