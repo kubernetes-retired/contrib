@@ -27,7 +27,8 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util/wait"
 )
@@ -47,6 +48,12 @@ var (
 		service with the format namespace/serviceName and the port of the service could be a number or the
 		name of the port.`)
 
+	proxyMode = flags.Bool("proxy-protocol-mode", false, `If true, it will use keepalived to announce the virtual
+		IP address/es and HAProxy with proxy protocol to forward traffic to the endpoints.
+		Please check http://blog.haproxy.com/haproxy/proxy-protocol
+		Be sure that both endpoints of the connection support proxy protocol.
+		`)
+
 	// sysctl changes required by keepalived
 	sysctlAdjustments = map[string]int{
 		// allows processes to bind() to non-local IP addresses
@@ -57,31 +64,28 @@ var (
 )
 
 func main() {
-	clientConfig := kubectl_util.DefaultClientConfig(flags)
-
 	flags.AddGoFlagSet(flag.CommandLine)
 	flags.Parse(os.Args)
 
-	var err error
-	var kubeClient *unversioned.Client
+	flag.Set("logtostderr", "true")
+
+	clientConfig := kubectl_util.DefaultClientConfig(flags)
 
 	if *configMapName == "" {
 		glog.Fatalf("Please specify --services-configmap")
 	}
 
-	if *cluster {
-		if kubeClient, err = unversioned.NewInCluster(); err != nil {
-			glog.Fatalf("Failed to create client: %v", err)
-		}
-	} else {
-		config, err := clientConfig.ClientConfig()
+	kubeconfig, err := restclient.InClusterConfig()
+	if err != nil {
+		kubeconfig, err = clientConfig.ClientConfig()
 		if err != nil {
-			glog.Fatalf("error connecting to the client: %v", err)
+			glog.Fatalf("error configuring the client: %v", err)
 		}
-		kubeClient, err = unversioned.New(config)
-		if err != nil {
-			glog.Fatalf("error connecting to the client: %v", err)
-		}
+	}
+
+	kubeClient, err := clientset.NewForConfig(kubeconfig)
+	if err != nil {
+		glog.Fatalf("failed to create client: %v", err)
 	}
 
 	namespace, specified, err := clientConfig.Namespace()
@@ -108,11 +112,15 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 
+	if *proxyMode {
+		copyHaproxyCfg()
+	}
+
 	glog.Info("starting LVS configuration")
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *proxyMode)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 

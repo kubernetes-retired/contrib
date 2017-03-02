@@ -437,6 +437,11 @@ func (f *DeltaFIFO) Replace(list []interface{}, resourceVersion string) error {
 	defer f.lock.Unlock()
 	keys := make(sets.String, len(list))
 
+	if !f.populated {
+		f.populated = true
+		f.initialPopulationCount = len(list)
+	}
+
 	for _, item := range list {
 		key, err := f.KeyOf(item)
 		if err != nil {
@@ -462,12 +467,6 @@ func (f *DeltaFIFO) Replace(list []interface{}, resourceVersion string) error {
 				return err
 			}
 		}
-
-		if !f.populated {
-			f.populated = true
-			f.initialPopulationCount = len(list)
-		}
-
 		return nil
 	}
 
@@ -475,7 +474,6 @@ func (f *DeltaFIFO) Replace(list []interface{}, resourceVersion string) error {
 	// TODO(lavalamp): This may be racy-- we aren't properly locked
 	// with knownObjects. Unproven.
 	knownKeys := f.knownObjects.ListKeys()
-	queuedDeletions := 0
 	for _, k := range knownKeys {
 		if keys.Has(k) {
 			continue
@@ -489,17 +487,10 @@ func (f *DeltaFIFO) Replace(list []interface{}, resourceVersion string) error {
 			deletedObj = nil
 			glog.Infof("Key %v does not exist in known objects store, placing DeleteFinalStateUnknown marker without object", k)
 		}
-		queuedDeletions++
 		if err := f.queueActionLocked(Deleted, DeletedFinalStateUnknown{k, deletedObj}); err != nil {
 			return err
 		}
 	}
-
-	if !f.populated {
-		f.populated = true
-		f.initialPopulationCount = len(list) + queuedDeletions
-	}
-
 	return nil
 }
 

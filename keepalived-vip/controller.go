@@ -31,7 +31,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/fields"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	"k8s.io/kubernetes/pkg/util/exec"
@@ -104,7 +104,7 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 // ipvsControllerController watches the kubernetes api and adds/removes
 // services from LVS throgh ipvsadmin.
 type ipvsControllerController struct {
-	client            *unversioned.Client
+	client            *clientset.Clientset
 	epController      *cache.Controller
 	svcController     *cache.Controller
 	svcLister         cache.StoreToServiceLister
@@ -178,7 +178,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 		}
 
 		nsSvc := fmt.Sprintf("%v/%v", ns, svc)
-		svcObj, svcExists, err := ipvsc.svcLister.Indexer.GetByKey(nsSvc)
+		svcObj, svcExists, err := ipvsc.svcLister.Store.GetByKey(nsSvc)
 		if err != nil {
 			glog.Warningf("error getting service %v: %v", nsSvc, err)
 			continue
@@ -200,7 +200,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 			sort.Sort(serviceByIPPort(ep))
 
 			svcs = append(svcs, vip{
-				Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
+				Name:      fmt.Sprintf("%v-%v", s.Namespace, s.Name),
 				IP:        externalIP,
 				Port:      int(servicePort.Port),
 				LVSMethod: lvsm,
@@ -284,7 +284,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string) *ipvsControllerController {
+func newIPVSController(kubeClient *clientset.Clientset, namespace string, useUnicast bool, configMapName string, proxyMode bool) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
@@ -326,13 +326,14 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
 		useUnicast: useUnicast,
 		ipt:        iptInterface,
+		proxyMode:  proxyMode,
 	}
 
 	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)
 
-	err = ipvsc.keepalived.loadTemplate()
+	err = ipvsc.keepalived.loadTemplates()
 	if err != nil {
-		glog.Fatalf("Error loading keepalived template: %v", err)
+		glog.Fatalf("Error loading templates: %v", err)
 	}
 
 	eventHandlers := cache.ResourceEventHandlerFuncs{
@@ -349,9 +350,9 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		},
 	}
 
-	ipvsc.svcLister.Indexer, ipvsc.svcController = cache.NewIndexerInformer(
+	ipvsc.svcLister.Store, ipvsc.svcController = cache.NewIndexerInformer(
 		cache.NewListWatchFromClient(
-			ipvsc.client, "services", namespace, fields.Everything()),
+			ipvsc.client.CoreClient, "services", namespace, fields.Everything()),
 		&api.Service{},
 		resyncPeriod,
 		eventHandlers,
@@ -359,7 +360,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 
 	ipvsc.epLister.Store, ipvsc.epController = cache.NewInformer(
 		cache.NewListWatchFromClient(
-			ipvsc.client, "endpoints", namespace, fields.Everything()),
+			ipvsc.client.CoreClient, "endpoints", namespace, fields.Everything()),
 		&api.Endpoints{}, resyncPeriod, eventHandlers)
 
 	return &ipvsc

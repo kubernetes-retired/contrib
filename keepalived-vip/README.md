@@ -66,7 +66,7 @@ $ kubectl create -f vip-daemonset.yaml
 daemonset "kube-keepalived-vip" created
 $ kubectl get daemonset
 NAME                  CONTAINER(S)          IMAGE(S)                         SELECTOR                        NODE-SELECTOR
-kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.9   name in (kube-keepalived-vip)   type=worker
+kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.10   name in (kube-keepalived-vip)   type=worker
 ```
 
 **Note: the daemonset yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**
@@ -296,6 +296,77 @@ virtual_server 10.4.0.50 80 {
 
 }
 ```
+
+## PROXY Protocol mode
+
+The [PROXY Protocol](http://haproxy.1wt.eu/download/1.6/doc/proxy-protocol.txt) allows the transport connection information such as a client's address across multiple layers of NAT or TCP. Usually this is information is lost, containing information about the last hop.
+There is only one caveat using this protocol: the destination must "understand" the protocol. Without this is not possible to read the traffic.
+To enable this feature the flag `--proxy-protocol-mode=true` is required.
+
+**Using this flag implies that HAProxy will be responsible of handling the load balancing in TCP mode**
+
+[HAProxy](http://haproxy.1wt.eu) is used to in conjunction win Keepalived so send proxy packets.
+
+
+Example:
+
+First create a configmap with the VIP mapping
+```
+echo "apiVersion: v1
+data:
+  10.4.0.50: default/nginx-ingress-lb:PROXY
+  10.4.0.51: default/echoheaders
+kind: ConfigMap
+metadata:
+  name: vip-configmap
+  namespace: default" | kubectl create -f -
+```
+
+Where `default/nginx-ingress-lb` is a [NGINX Ingress controller](https://github.com/kubernetes/contrib/tree/master/ingress/controllers/nginx) with the option `use-proxy-protocol:true`.
+
+The Ingress controller just have one rule using the [echoheaders]() container.
+```
+old-mbp:~ aledbf$ kubectl get ing
+NAME             RULE          BACKEND   ADDRESS         AGE
+default-server   -                       10.4.0.5        1d
+
+                 /             echoheaders-x:80
+```
+
+```
+kubectl create -f vip-daemonser-proxy.xml
+```
+
+Finally test the content of the header `x-forwarded-for` to verify it returns the IP address of the client
+
+```
+$ curl -v http://10.4.0.50
+curl 10.4.0.50
+CLIENT VALUES:
+client_address=10.2.0.186
+command=GET
+real path=/
+query=nil
+request_version=1.1
+request_uri=http://10.4.0.50:8080/
+
+SERVER VALUES:
+server_version=nginx: 1.9.7 - lua: 9019
+
+HEADERS RECEIVED:
+accept=*/*
+connection=close
+host=10.4.0.50
+user-agent=curl/7.43.0
+x-forwarded-for=10.4.0.148
+x-forwarded-host=10.4.0.50
+x-forwarded-port=80
+x-forwarded-proto=http
+x-real-ip=10.4.0.148
+BODY:
+-no body in request-
+```
+
 
 ## Related projects
 

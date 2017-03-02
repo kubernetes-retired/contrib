@@ -99,28 +99,12 @@ func (config *DirectClientConfig) RawConfig() (clientcmdapi.Config, error) {
 
 // ClientConfig implements ClientConfig
 func (config *DirectClientConfig) ClientConfig() (*restclient.Config, error) {
-	// check that getAuthInfo, getContext, and getCluster do not return an error.
-	// Do this before checking if the curent config is usable in the event that an
-	// AuthInfo, Context, or Cluster config with user-defined names are not found.
-	// This provides a user with the immediate cause for error if one is found
-	configAuthInfo, err := config.getAuthInfo()
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = config.getContext()
-	if err != nil {
-		return nil, err
-	}
-
-	configClusterInfo, err := config.getCluster()
-	if err != nil {
-		return nil, err
-	}
-
 	if err := config.ConfirmUsable(); err != nil {
 		return nil, err
 	}
+
+	configAuthInfo := config.getAuthInfo()
+	configClusterInfo := config.getCluster()
 
 	clientConfig := &restclient.Config{}
 	clientConfig.Host = configClusterInfo.Server
@@ -142,8 +126,7 @@ func (config *DirectClientConfig) ClientConfig() (*restclient.Config, error) {
 		//       Our mergo.Merge version is older than this change.
 		var persister restclient.AuthProviderConfigPersister
 		if config.configAccess != nil {
-			authInfoName, _ := config.getAuthInfoName()
-			persister = PersisterForUser(config.configAccess, authInfoName)
+			persister = PersisterForUser(config.configAccess, config.getAuthInfoName())
 		}
 		userAuthPartialConfig, err := getUserIdentificationPartialConfig(configAuthInfo, config.fallbackReader, persister)
 		if err != nil {
@@ -221,10 +204,8 @@ func getUserIdentificationPartialConfig(configAuthInfo clientcmdapi.AuthInfo, fa
 	// if there still isn't enough information to authenticate the user, try prompting
 	if !canIdentifyUser(*mergedConfig) && (fallbackReader != nil) {
 		prompter := NewPromptingAuthLoader(fallbackReader)
-		promptedAuthInfo, err := prompter.Prompt()
-		if err != nil {
-			return nil, err
-		}
+		promptedAuthInfo := prompter.Prompt()
+
 		promptedConfig := makeUserIdentificationConfig(*promptedAuthInfo)
 		previouslyMergedConfig := mergedConfig
 		mergedConfig = &restclient.Config{}
@@ -269,10 +250,7 @@ func (config *DirectClientConfig) Namespace() (string, bool, error) {
 		return "", false, err
 	}
 
-	configContext, err := config.getContext()
-	if err != nil {
-		return "", false, err
-	}
+	configContext := config.getContext()
 
 	if len(configContext.Namespace) == 0 {
 		return api.NamespaceDefault, false, nil
@@ -294,27 +272,8 @@ func (config *DirectClientConfig) ConfigAccess() ConfigAccess {
 // but no errors in the sections requested or referenced.  It does not return early so that it can find as many errors as possible.
 func (config *DirectClientConfig) ConfirmUsable() error {
 	validationErrors := make([]error, 0)
-
-	var contextName string
-	if len(config.contextName) != 0 {
-		contextName = config.contextName
-	} else {
-		contextName = config.config.CurrentContext
-	}
-
-	if len(contextName) > 0 {
-		_, exists := config.config.Contexts[contextName]
-		if !exists {
-			validationErrors = append(validationErrors, &errContextNotFound{contextName})
-		}
-	}
-
-	authInfoName, _ := config.getAuthInfoName()
-	authInfo, _ := config.getAuthInfo()
-	validationErrors = append(validationErrors, validateAuthInfo(authInfoName, authInfo)...)
-	clusterName, _ := config.getClusterName()
-	cluster, _ := config.getCluster()
-	validationErrors = append(validationErrors, validateClusterInfo(clusterName, cluster)...)
+	validationErrors = append(validationErrors, validateAuthInfo(config.getAuthInfoName(), config.getAuthInfo())...)
+	validationErrors = append(validationErrors, validateClusterInfo(config.getClusterName(), config.getCluster())...)
 	// when direct client config is specified, and our only error is that no server is defined, we should
 	// return a standard "no config" error
 	if len(validationErrors) == 1 && validationErrors[0] == ErrEmptyCluster {
@@ -323,84 +282,65 @@ func (config *DirectClientConfig) ConfirmUsable() error {
 	return newErrConfigurationInvalid(validationErrors)
 }
 
-// getContextName returns the default, or user-set context name, and a boolean that indicates
-// whether the default context name has been overwritten by a user-set flag, or left as its default value
-func (config *DirectClientConfig) getContextName() (string, bool) {
+func (config *DirectClientConfig) getContextName() string {
 	if len(config.overrides.CurrentContext) != 0 {
-		return config.overrides.CurrentContext, true
+		return config.overrides.CurrentContext
 	}
 	if len(config.contextName) != 0 {
-		return config.contextName, false
+		return config.contextName
 	}
 
-	return config.config.CurrentContext, false
+	return config.config.CurrentContext
 }
 
-// getAuthInfoName returns a string containing the current authinfo name for the current context,
-// and a boolean indicating  whether the default authInfo name is overwritten by a user-set flag, or
-// left as its default value
-func (config *DirectClientConfig) getAuthInfoName() (string, bool) {
+func (config *DirectClientConfig) getAuthInfoName() string {
 	if len(config.overrides.Context.AuthInfo) != 0 {
-		return config.overrides.Context.AuthInfo, true
+		return config.overrides.Context.AuthInfo
 	}
-	context, _ := config.getContext()
-	return context.AuthInfo, false
+	return config.getContext().AuthInfo
 }
 
-// getClusterName returns a string containing the default, or user-set cluster name, and a boolean
-// indicating whether the default clusterName has been overwritten by a user-set flag, or left as
-// its default value
-func (config *DirectClientConfig) getClusterName() (string, bool) {
+func (config *DirectClientConfig) getClusterName() string {
 	if len(config.overrides.Context.Cluster) != 0 {
-		return config.overrides.Context.Cluster, true
+		return config.overrides.Context.Cluster
 	}
-	context, _ := config.getContext()
-	return context.Cluster, false
+	return config.getContext().Cluster
 }
 
-// getContext returns the clientcmdapi.Context, or an error if a required context is not found.
-func (config *DirectClientConfig) getContext() (clientcmdapi.Context, error) {
+func (config *DirectClientConfig) getContext() clientcmdapi.Context {
 	contexts := config.config.Contexts
-	contextName, required := config.getContextName()
+	contextName := config.getContextName()
 
 	var mergedContext clientcmdapi.Context
 	if configContext, exists := contexts[contextName]; exists {
 		mergo.Merge(&mergedContext, configContext)
-	} else if required {
-		return clientcmdapi.Context{}, fmt.Errorf("context %q does not exist", contextName)
 	}
 	mergo.Merge(&mergedContext, config.overrides.Context)
 
-	return mergedContext, nil
+	return mergedContext
 }
 
-// getAuthInfo returns the clientcmdapi.AuthInfo, or an error if a required auth info is not found.
-func (config *DirectClientConfig) getAuthInfo() (clientcmdapi.AuthInfo, error) {
+func (config *DirectClientConfig) getAuthInfo() clientcmdapi.AuthInfo {
 	authInfos := config.config.AuthInfos
-	authInfoName, required := config.getAuthInfoName()
+	authInfoName := config.getAuthInfoName()
 
 	var mergedAuthInfo clientcmdapi.AuthInfo
 	if configAuthInfo, exists := authInfos[authInfoName]; exists {
 		mergo.Merge(&mergedAuthInfo, configAuthInfo)
-	} else if required {
-		return clientcmdapi.AuthInfo{}, fmt.Errorf("auth info %q does not exist", authInfoName)
 	}
 	mergo.Merge(&mergedAuthInfo, config.overrides.AuthInfo)
 
-	return mergedAuthInfo, nil
+	return mergedAuthInfo
 }
 
-// getCluster returns the clientcmdapi.Cluster, or an error if a required cluster is not found.
-func (config *DirectClientConfig) getCluster() (clientcmdapi.Cluster, error) {
+func (config *DirectClientConfig) getCluster() clientcmdapi.Cluster {
 	clusterInfos := config.config.Clusters
-	clusterInfoName, required := config.getClusterName()
+	clusterInfoName := config.getClusterName()
 
 	var mergedClusterInfo clientcmdapi.Cluster
 	mergo.Merge(&mergedClusterInfo, config.overrides.ClusterDefaults)
 	if configClusterInfo, exists := clusterInfos[clusterInfoName]; exists {
 		mergo.Merge(&mergedClusterInfo, configClusterInfo)
-	} else if required {
-		return clientcmdapi.Cluster{}, fmt.Errorf("cluster %q does not exist", clusterInfoName)
 	}
 	mergo.Merge(&mergedClusterInfo, config.overrides.ClusterInfo)
 	// An override of --insecure-skip-tls-verify=true and no accompanying CA/CA data should clear already-set CA/CA data
@@ -412,7 +352,7 @@ func (config *DirectClientConfig) getCluster() (clientcmdapi.Cluster, error) {
 		mergedClusterInfo.CertificateAuthorityData = nil
 	}
 
-	return mergedClusterInfo, nil
+	return mergedClusterInfo
 }
 
 // inClusterClientConfig makes a config that will work from within a kubernetes cluster container environment.

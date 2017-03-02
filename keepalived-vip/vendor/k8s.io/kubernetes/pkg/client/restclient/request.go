@@ -35,7 +35,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/api/v1"
-	pathvalidation "k8s.io/kubernetes/pkg/api/validation/path"
+	"k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/client/metrics"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
@@ -179,7 +179,7 @@ func (r *Request) Resource(resource string) *Request {
 		r.err = fmt.Errorf("resource already set to %q, cannot change to %q", r.resource, resource)
 		return r
 	}
-	if msgs := pathvalidation.IsValidPathSegmentName(resource); len(msgs) != 0 {
+	if msgs := validation.IsValidPathSegmentName(resource); len(msgs) != 0 {
 		r.err = fmt.Errorf("invalid resource %q: %v", resource, msgs)
 		return r
 	}
@@ -199,7 +199,7 @@ func (r *Request) SubResource(subresources ...string) *Request {
 		return r
 	}
 	for _, s := range subresources {
-		if msgs := pathvalidation.IsValidPathSegmentName(s); len(msgs) != 0 {
+		if msgs := validation.IsValidPathSegmentName(s); len(msgs) != 0 {
 			r.err = fmt.Errorf("invalid subresource %q: %v", s, msgs)
 			return r
 		}
@@ -221,7 +221,7 @@ func (r *Request) Name(resourceName string) *Request {
 		r.err = fmt.Errorf("resource name already set to %q, cannot change to %q", r.resourceName, resourceName)
 		return r
 	}
-	if msgs := pathvalidation.IsValidPathSegmentName(resourceName); len(msgs) != 0 {
+	if msgs := validation.IsValidPathSegmentName(resourceName); len(msgs) != 0 {
 		r.err = fmt.Errorf("invalid resource name %q: %v", resourceName, msgs)
 		return r
 	}
@@ -238,7 +238,7 @@ func (r *Request) Namespace(namespace string) *Request {
 		r.err = fmt.Errorf("namespace already set to %q, cannot change to %q", r.namespace, namespace)
 		return r
 	}
-	if msgs := pathvalidation.IsValidPathSegmentName(namespace); len(msgs) != 0 {
+	if msgs := validation.IsValidPathSegmentName(namespace); len(msgs) != 0 {
 		r.err = fmt.Errorf("invalid namespace %q: %v", namespace, msgs)
 		return r
 	}
@@ -357,9 +357,8 @@ var fieldMappings = versionToResourceToFieldMapping{
 			nodeUnschedulable: nodeUnschedulable,
 		},
 		"pods": clientFieldNameToAPIVersionFieldName{
-			objectNameField: objectNameField,
-			podHost:         podHost,
-			podStatus:       podStatus,
+			podHost:   podHost,
+			podStatus: podStatus,
 		},
 		"secrets": clientFieldNameToAPIVersionFieldName{
 			secretType: secretType,
@@ -745,11 +744,23 @@ func (r *Request) Stream() (io.ReadCloser, error) {
 		// ensure we close the body before returning the error
 		defer resp.Body.Close()
 
-		result := r.transformResponse(resp, req)
-		if result.err != nil {
-			return nil, result.err
+		// we have a decent shot at taking the object returned, parsing it as a status object and returning a more normal error
+		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("%v while accessing %v", resp.Status, url)
 		}
-		return nil, fmt.Errorf("%d while accessing %v: %s", result.statusCode, url, string(result.body))
+
+		// TODO: Check ContentType.
+		if runtimeObject, err := runtime.Decode(r.serializers.Decoder, bodyBytes); err == nil {
+			statusError := errors.FromObject(runtimeObject)
+
+			if _, ok := statusError.(errors.APIStatus); ok {
+				return nil, statusError
+			}
+		}
+
+		bodyText := string(bodyBytes)
+		return nil, fmt.Errorf("%s while accessing %v: %s", resp.Status, url, bodyText)
 	}
 }
 
@@ -890,11 +901,10 @@ func (r *Request) transformResponse(resp *http.Response, req *http.Request) Resu
 	}
 
 	if glog.V(8) {
-		if bytes.IndexFunc(body, func(r rune) bool {
-			return r < 0x0a
-		}) != -1 {
+		switch {
+		case bytes.IndexFunc(body, func(r rune) bool { return r < 0x0a }) != -1:
 			glog.Infof("Response Body:\n%s", hex.Dump(body))
-		} else {
+		default:
 			glog.Infof("Response Body: %s", string(body))
 		}
 	}

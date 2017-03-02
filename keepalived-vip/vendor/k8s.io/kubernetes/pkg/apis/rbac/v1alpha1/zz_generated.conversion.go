@@ -53,8 +53,6 @@ func RegisterConversions(scheme *runtime.Scheme) error {
 		Convert_rbac_RoleBindingList_To_v1alpha1_RoleBindingList,
 		Convert_v1alpha1_RoleList_To_rbac_RoleList,
 		Convert_rbac_RoleList_To_v1alpha1_RoleList,
-		Convert_v1alpha1_RoleRef_To_rbac_RoleRef,
-		Convert_rbac_RoleRef_To_v1alpha1_RoleRef,
 		Convert_v1alpha1_Subject_To_rbac_Subject,
 		Convert_rbac_Subject_To_v1alpha1_Subject,
 	)
@@ -131,7 +129,8 @@ func autoConvert_v1alpha1_ClusterRoleBinding_To_rbac_ClusterRoleBinding(in *Clus
 	} else {
 		out.Subjects = nil
 	}
-	if err := Convert_v1alpha1_RoleRef_To_rbac_RoleRef(&in.RoleRef, &out.RoleRef, s); err != nil {
+	// TODO: Inefficient conversion - can we improve it?
+	if err := s.Convert(&in.RoleRef, &out.RoleRef, 0); err != nil {
 		return err
 	}
 	return nil
@@ -160,7 +159,8 @@ func autoConvert_rbac_ClusterRoleBinding_To_v1alpha1_ClusterRoleBinding(in *rbac
 	} else {
 		out.Subjects = nil
 	}
-	if err := Convert_rbac_RoleRef_To_v1alpha1_RoleRef(&in.RoleRef, &out.RoleRef, s); err != nil {
+	// TODO: Inefficient conversion - can we improve it?
+	if err := s.Convert(&in.RoleRef, &out.RoleRef, 0); err != nil {
 		return err
 	}
 	return nil
@@ -373,7 +373,8 @@ func autoConvert_v1alpha1_RoleBinding_To_rbac_RoleBinding(in *RoleBinding, out *
 	} else {
 		out.Subjects = nil
 	}
-	if err := Convert_v1alpha1_RoleRef_To_rbac_RoleRef(&in.RoleRef, &out.RoleRef, s); err != nil {
+	// TODO: Inefficient conversion - can we improve it?
+	if err := s.Convert(&in.RoleRef, &out.RoleRef, 0); err != nil {
 		return err
 	}
 	return nil
@@ -402,7 +403,8 @@ func autoConvert_rbac_RoleBinding_To_v1alpha1_RoleBinding(in *rbac.RoleBinding, 
 	} else {
 		out.Subjects = nil
 	}
-	if err := Convert_rbac_RoleRef_To_v1alpha1_RoleRef(&in.RoleRef, &out.RoleRef, s); err != nil {
+	// TODO: Inefficient conversion - can we improve it?
+	if err := s.Convert(&in.RoleRef, &out.RoleRef, 0); err != nil {
 		return err
 	}
 	return nil
@@ -510,28 +512,6 @@ func autoConvert_rbac_RoleList_To_v1alpha1_RoleList(in *rbac.RoleList, out *Role
 
 func Convert_rbac_RoleList_To_v1alpha1_RoleList(in *rbac.RoleList, out *RoleList, s conversion.Scope) error {
 	return autoConvert_rbac_RoleList_To_v1alpha1_RoleList(in, out, s)
-}
-
-func autoConvert_v1alpha1_RoleRef_To_rbac_RoleRef(in *RoleRef, out *rbac.RoleRef, s conversion.Scope) error {
-	out.APIGroup = in.APIGroup
-	out.Kind = in.Kind
-	out.Name = in.Name
-	return nil
-}
-
-func Convert_v1alpha1_RoleRef_To_rbac_RoleRef(in *RoleRef, out *rbac.RoleRef, s conversion.Scope) error {
-	return autoConvert_v1alpha1_RoleRef_To_rbac_RoleRef(in, out, s)
-}
-
-func autoConvert_rbac_RoleRef_To_v1alpha1_RoleRef(in *rbac.RoleRef, out *RoleRef, s conversion.Scope) error {
-	out.APIGroup = in.APIGroup
-	out.Kind = in.Kind
-	out.Name = in.Name
-	return nil
-}
-
-func Convert_rbac_RoleRef_To_v1alpha1_RoleRef(in *rbac.RoleRef, out *RoleRef, s conversion.Scope) error {
-	return autoConvert_rbac_RoleRef_To_v1alpha1_RoleRef(in, out, s)
 }
 
 func autoConvert_v1alpha1_Subject_To_rbac_Subject(in *Subject, out *rbac.Subject, s conversion.Scope) error {

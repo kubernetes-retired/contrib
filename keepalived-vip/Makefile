@@ -1,13 +1,13 @@
 all: push
 
 # 0.0 shouldn't clobber any release builds, current "latest" is 0.9
-TAG = 0.9
+TAG = 0.10
 PREFIX = gcr.io/google_containers/kube-keepalived-vip
 BUILD_IMAGE = build-keepalived
 TEMP_GOPATH = ${GOPATH}:${GOPATH}/src/k8s.io/kubernetes/staging
 
 controller: clean
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-w' -o kube-keepalived-vip
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-s -w' -o kube-keepalived-vip
 
 container: controller keepalived
 	docker build --pull -t $(PREFIX):$(TAG) .

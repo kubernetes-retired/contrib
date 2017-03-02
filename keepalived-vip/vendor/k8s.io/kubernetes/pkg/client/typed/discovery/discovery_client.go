@@ -199,46 +199,39 @@ func IsGroupDiscoveryFailedError(err error) bool {
 // serverPreferredResources returns the supported resources with the version preferred by the
 // server. If namespaced is true, only namespaced resources will be returned.
 func (d *DiscoveryClient) serverPreferredResources(namespaced bool) ([]unversioned.GroupVersionResource, error) {
-	// retry in case the groups supported by the server change after ServerGroup() returns.
-	const maxRetries = 2
-	var failedGroups map[unversioned.GroupVersion]error
-	var results []unversioned.GroupVersionResource
-RetrieveGroups:
-	for i := 0; i < maxRetries; i++ {
-		results = []unversioned.GroupVersionResource{}
-		failedGroups = make(map[unversioned.GroupVersion]error)
-		serverGroupList, err := d.ServerGroups()
-		if err != nil {
-			return results, err
-		}
+	results := []unversioned.GroupVersionResource{}
+	serverGroupList, err := d.ServerGroups()
+	if err != nil {
+		return results, err
+	}
 
-		for _, apiGroup := range serverGroupList.Groups {
-			preferredVersion := apiGroup.PreferredVersion
-			groupVersion := unversioned.GroupVersion{Group: apiGroup.Name, Version: preferredVersion.Version}
-			apiResourceList, err := d.ServerResourcesForGroupVersion(preferredVersion.GroupVersion)
-			if err != nil {
-				if i < maxRetries-1 {
-					continue RetrieveGroups
-				}
-				failedGroups[groupVersion] = err
+	var failedGroups map[unversioned.GroupVersion]error
+	for _, apiGroup := range serverGroupList.Groups {
+		preferredVersion := apiGroup.PreferredVersion
+		groupVersion := unversioned.GroupVersion{Group: apiGroup.Name, Version: preferredVersion.Version}
+		apiResourceList, err := d.ServerResourcesForGroupVersion(preferredVersion.GroupVersion)
+		if err != nil {
+			if failedGroups == nil {
+				failedGroups = make(map[unversioned.GroupVersion]error)
+			}
+			failedGroups[groupVersion] = err
+			continue
+		}
+		for _, apiResource := range apiResourceList.APIResources {
+			// ignore the root scoped resources if "namespaced" is true.
+			if namespaced && !apiResource.Namespaced {
 				continue
 			}
-			for _, apiResource := range apiResourceList.APIResources {
-				// ignore the root scoped resources if "namespaced" is true.
-				if namespaced && !apiResource.Namespaced {
-					continue
-				}
-				if strings.Contains(apiResource.Name, "/") {
-					continue
-				}
-				results = append(results, groupVersion.WithResource(apiResource.Name))
+			if strings.Contains(apiResource.Name, "/") {
+				continue
 			}
-		}
-		if len(failedGroups) == 0 {
-			return results, nil
+			results = append(results, groupVersion.WithResource(apiResource.Name))
 		}
 	}
-	return results, &ErrGroupDiscoveryFailed{Groups: failedGroups}
+	if len(failedGroups) > 0 {
+		return results, &ErrGroupDiscoveryFailed{Groups: failedGroups}
+	}
+	return results, nil
 }
 
 // ServerPreferredResources returns the supported resources with the version preferred by the

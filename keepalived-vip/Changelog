@@ -1,4 +1,10 @@
 
+## 0.10
+- Add proxy mode
+- Update keepalived to 1.3.2
+- Update godeps
+- Fix network interface detection issues
+
 ## 0.9
 - Update godeps
 - Update keepalived to 1.2.24

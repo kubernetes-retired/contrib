@@ -82,8 +82,12 @@ func enableVersions(externalVersions []unversioned.GroupVersion) error {
 	if err := registered.RegisterGroup(groupMeta); err != nil {
 		return err
 	}
+	api.RegisterRESTMapper(groupMeta.RESTMapper)
 	return nil
 }
+
+// userResources is a group of resources mostly used by a kubectl user
+var userResources = []string{"rc", "svc", "pods", "pvc"}
 
 func newRESTMapper(externalVersions []unversioned.GroupVersion) meta.RESTMapper {
 	// the list of kinds that are scoped at the root of the api hierarchy
@@ -111,6 +115,8 @@ func newRESTMapper(externalVersions []unversioned.GroupVersion) meta.RESTMapper 
 		"ThirdPartyResourceList")
 
 	mapper := api.NewDefaultRESTMapper(externalVersions, interfacesFor, importPrefix, ignoredKinds, rootScoped)
+	// setup aliases for groups of resources
+	mapper.AddResourceAlias("all", userResources...)
 
 	return mapper
 }

@@ -160,7 +160,8 @@ type RESTMapping struct {
 // to API groups. In other words, kinds and resources should not be assumed to be
 // unique across groups.
 //
-// TODO: split into sub-interfaces
+// TODO(caesarxuchao): Add proper multi-group support so that kinds & resources are
+// scoped to groups. See http://issues.k8s.io/12413 and http://issues.k8s.io/10009.
 type RESTMapper interface {
 	// KindFor takes a partial resource and returns the single match.  Returns an error if there are multiple matches
 	KindFor(resource unversioned.GroupVersionResource) (unversioned.GroupVersionKind, error)

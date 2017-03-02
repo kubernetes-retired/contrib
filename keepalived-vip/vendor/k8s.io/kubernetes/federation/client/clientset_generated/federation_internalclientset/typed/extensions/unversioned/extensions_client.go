@@ -24,8 +24,6 @@ import (
 
 type ExtensionsInterface interface {
 	GetRESTClient() *restclient.RESTClient
-	DaemonSetsGetter
-	DeploymentsGetter
 	IngressesGetter
 	ReplicaSetsGetter
 }
@@ -33,14 +31,6 @@ type ExtensionsInterface interface {
 // ExtensionsClient is used to interact with features provided by the Extensions group.
 type ExtensionsClient struct {
 	*restclient.RESTClient
-}
-
-func (c *ExtensionsClient) DaemonSets(namespace string) DaemonSetInterface {
-	return newDaemonSets(c, namespace)
-}
-
-func (c *ExtensionsClient) Deployments(namespace string) DeploymentInterface {
-	return newDeployments(c, namespace)
 }
 
 func (c *ExtensionsClient) Ingresses(namespace string) IngressInterface {
@@ -89,10 +79,12 @@ func setConfigDefaults(config *restclient.Config) error {
 	if config.UserAgent == "" {
 		config.UserAgent = restclient.DefaultKubernetesUserAgent()
 	}
-	if config.GroupVersion == nil || config.GroupVersion.Group != g.GroupVersion.Group {
-		copyGroupVersion := g.GroupVersion
-		config.GroupVersion = &copyGroupVersion
-	}
+	// TODO: Unconditionally set the config.Version, until we fix the config.
+	//if config.Version == "" {
+	copyGroupVersion := g.GroupVersion
+	config.GroupVersion = &copyGroupVersion
+	//}
+
 	config.NegotiatedSerializer = api.Codecs
 
 	if config.QPS == 0 {

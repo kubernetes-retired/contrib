@@ -35,14 +35,7 @@ var (
 	DefaultAPIRegistrationManager = NewOrDie(os.Getenv("KUBE_API_VERSIONS"))
 )
 
-// APIRegistrationManager provides the concept of what API groups are enabled.
-//
-// TODO: currently, it also provides a "registered" concept. But it's wrong to
-// have both concepts in the same object. Therefore the "announced" package is
-// going to take over the registered concept. After all the install packages
-// are switched to using the announce package instead of this package, then we
-// can combine the registered/enabled concepts in this object. Simplifying this
-// isn't easy right now because there are so many callers of this package.
+// APIRegistrationManager
 type APIRegistrationManager struct {
 	// registeredGroupVersions stores all API group versions for which RegisterGroup is called.
 	registeredVersions map[unversioned.GroupVersion]struct{}
@@ -118,7 +111,6 @@ var (
 	EnableVersions                = DefaultAPIRegistrationManager.EnableVersions
 	RegisterGroup                 = DefaultAPIRegistrationManager.RegisterGroup
 	RegisterVersions              = DefaultAPIRegistrationManager.RegisterVersions
-	InterfacesFor                 = DefaultAPIRegistrationManager.InterfacesFor
 )
 
 // RegisterVersions adds the given group versions to the list of registered group versions.
@@ -181,11 +173,7 @@ func (m *APIRegistrationManager) IsEnabledVersion(v unversioned.GroupVersion) bo
 func (m *APIRegistrationManager) EnabledVersions() []unversioned.GroupVersion {
 	ret := []unversioned.GroupVersion{}
 	for _, groupMeta := range m.groupMetaMap {
-		for _, version := range groupMeta.GroupVersions {
-			if m.IsEnabledVersion(version) {
-				ret = append(ret, version)
-			}
-		}
+		ret = append(ret, groupMeta.GroupVersions...)
 	}
 	return ret
 }
@@ -197,13 +185,7 @@ func (m *APIRegistrationManager) EnabledVersionsForGroup(group string) []unversi
 		return []unversioned.GroupVersion{}
 	}
 
-	ret := []unversioned.GroupVersion{}
-	for _, version := range groupMeta.GroupVersions {
-		if m.IsEnabledVersion(version) {
-			ret = append(ret, version)
-		}
-	}
-	return ret
+	return append([]unversioned.GroupVersion{}, groupMeta.GroupVersions...)
 }
 
 // Group returns the metadata of a group if the group is registered, otherwise
@@ -271,15 +253,6 @@ func (m *APIRegistrationManager) AddThirdPartyAPIGroupVersions(gvs ...unversione
 	m.thirdPartyGroupVersions = append(m.thirdPartyGroupVersions, filteredGVs...)
 
 	return skippedGVs
-}
-
-// InterfacesFor is a union meta.VersionInterfacesFunc func for all registered types
-func (m *APIRegistrationManager) InterfacesFor(version unversioned.GroupVersion) (*meta.VersionInterfaces, error) {
-	groupMeta, err := m.Group(version.Group)
-	if err != nil {
-		return nil, err
-	}
-	return groupMeta.InterfacesFor(version)
 }
 
 // TODO: This is an expedient function, because we don't check if a Group is

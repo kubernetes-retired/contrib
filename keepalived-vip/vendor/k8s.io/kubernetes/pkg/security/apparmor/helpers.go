@@ -49,13 +49,7 @@ func isRequired(pod *api.Pod) bool {
 
 // Returns the name of the profile to use with the container.
 func GetProfileName(pod *api.Pod, containerName string) string {
-	return GetProfileNameFromPodAnnotations(pod.Annotations, containerName)
-}
-
-// GetProfileNameFromPodAnnotations gets the name of the profile to use with container from
-// pod annotations
-func GetProfileNameFromPodAnnotations(annotations map[string]string, containerName string) string {
-	return annotations[ContainerAnnotationKeyPrefix+containerName]
+	return pod.Annotations[ContainerAnnotationKeyPrefix+containerName]
 }
 
 // Sets the name of the profile to use with the container.

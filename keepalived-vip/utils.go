@@ -19,6 +19,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"regexp"
@@ -27,9 +28,10 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+
 	"k8s.io/kubernetes/pkg/api"
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/labels"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/node"
@@ -42,7 +44,8 @@ var (
 	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
 	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
 	vethRegex     = regexp.MustCompile(`^veth.*`)
-	lvsRegex      = regexp.MustCompile(`NAT`)
+	caliRegex     = regexp.MustCompile(`^cali.*`)
+	lvsRegex      = regexp.MustCompile(`NAT|PROXY`)
 )
 
 type nodeInfo struct {
@@ -68,7 +71,7 @@ type podInfo struct {
 }
 
 // getPodDetails  returns runtime information about the pod: name, namespace and IP of the node
-func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
+func getPodDetails(kubeClient *clientset.Clientset) (*podInfo, error) {
 	podName := os.Getenv("POD_NAME")
 	podNs := os.Getenv("POD_NAMESPACE")
 
@@ -86,29 +89,20 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 		return nil, fmt.Errorf("Unable to get POD information")
 	}
 
-	node, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
+	n, err := kubeClient.Nodes().Get(pod.Spec.NodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	var externalIP string
-	for _, address := range node.Status.Addresses {
-		if address.Type == api.NodeExternalIP {
-			if address.Address != "" {
-				externalIP = address.Address
-				break
-			}
-		}
-
-		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
-			externalIP = address.Address
-		}
+	externalIP, err := node.GetNodeHostIP(n)
+	if err != nil {
+		return nil, err
 	}
 
 	return &podInfo{
 		PodName:      podName,
 		PodNamespace: podNs,
-		NodeIP:       externalIP,
+		NodeIP:       externalIP.String(),
 	}, nil
 }
 
@@ -118,15 +112,19 @@ func netInterfaces() []net.Interface {
 	validIfaces := []net.Interface{}
 	ifaces, err := net.Interfaces()
 	if err != nil {
+		glog.Errorf("unexpected error obtaining network interfaces: %v", err)
 		return validIfaces
 	}
 
 	for _, iface := range ifaces {
-		if !vethRegex.MatchString(iface.Name) && stringSlice(invalidIfaces).pos(iface.Name) == -1 {
+		if !vethRegex.MatchString(iface.Name) &&
+			!caliRegex.MatchString(iface.Name) &&
+			stringSlice(invalidIfaces).pos(iface.Name) == -1 {
 			validIfaces = append(validIfaces, iface)
 		}
 	}
 
+	glog.Infof("network interfaces: %+v", validIfaces)
 	return validIfaces
 }
 
@@ -140,6 +138,7 @@ func interfaceByIP(ip string) (string, string, int) {
 		}
 	}
 
+	glog.Warningf("no interface with IP address %v detected in the node", ip)
 	return "", "", 0
 }
 
@@ -165,7 +164,7 @@ func ipByInterface(name string) (string, int, error) {
 		}
 	}
 
-	return "", 32, errors.New("Found no IPv4 addresses.")
+	return "", 32, errors.New("found no IPv4 addresses.")
 }
 
 type stringSlice []string
@@ -183,7 +182,7 @@ func (slice stringSlice) pos(value string) int {
 }
 
 // getClusterNodesIP returns the IP address of each node in the kubernetes cluster
-func getClusterNodesIP(kubeClient *unversioned.Client, nodeSelector string) (clusterNodes []string) {
+func getClusterNodesIP(kubeClient *clientset.Clientset, nodeSelector string) (clusterNodes []string) {
 	listOpts := api.ListOptions{}
 
 	if nodeSelector != "" {
@@ -273,7 +272,7 @@ func parseNsName(input string) (string, string, error) {
 func parseNsSvcLVS(input string) (string, string, string, error) {
 	nsSvcLb := nsSvcLbRegex.FindStringSubmatch(input)
 	if len(nsSvcLb) != 6 {
-		return "", "", "", fmt.Errorf("invalid format (namespace/service name[:NAT|DR]) found in '%v'", input)
+		return "", "", "", fmt.Errorf("invalid format (namespace/service name[:NAT|PROXY]) found in '%v'", input)
 	}
 
 	ns := nsSvcLb[1]
@@ -293,7 +292,7 @@ func parseNsSvcLVS(input string) (string, string, string, error) {
 	}
 
 	if !lvsRegex.MatchString(kind) {
-		return "", "", "", fmt.Errorf("invalid LVS method. Only NAT and DR are supported: %v", kind)
+		return "", "", "", fmt.Errorf("invalid LVS method. Only NAT and PROXY are supported: %v", kind)
 	}
 
 	return ns, svc, kind, nil
@@ -314,7 +313,7 @@ func parseNodeSelector(data map[string]string) string {
 	return nodeSelector(data).String()
 }
 
-func waitForPodRunning(kubeClient *unversioned.Client, ns, podName string, interval, timeout time.Duration) error {
+func waitForPodRunning(kubeClient *clientset.Clientset, ns, podName string, interval, timeout time.Duration) error {
 	condition := func(pod *api.Pod) (bool, error) {
 		if pod.Status.Phase == api.PodRunning {
 			return true, nil
@@ -326,7 +325,7 @@ func waitForPodRunning(kubeClient *unversioned.Client, ns, podName string, inter
 }
 
 // waitForPodCondition waits for a pod in state defined by a condition (func)
-func waitForPodCondition(kubeClient *unversioned.Client, ns, podName string, condition func(pod *api.Pod) (bool, error),
+func waitForPodCondition(kubeClient *clientset.Clientset, ns, podName string, condition func(pod *api.Pod) (bool, error),
 	interval, timeout time.Duration) error {
 	err := wait.PollImmediate(interval, timeout, func() (bool, error) {
 		pod, err := kubeClient.Pods(ns).Get(podName)
@@ -416,5 +415,18 @@ func NewTaskQueue(syncFn func(string) error) *taskQueue {
 		queue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
+	}
+}
+
+// copyHaproxyCfg copies the default haproxy configuration file
+// to the mounted directory (the mount overwrites the default file)
+func copyHaproxyCfg() {
+	data, err := ioutil.ReadFile("/haproxy.cfg")
+	if err != nil {
+		glog.Fatalf("unexpected error reading haproxy.cfg: %v", err)
+	}
+	err = ioutil.WriteFile("/etc/haproxy/haproxy.cfg", data, 0644)
+	if err != nil {
+		glog.Fatalf("unexpected error writing haproxy.cfg: %v", err)
 	}
 }

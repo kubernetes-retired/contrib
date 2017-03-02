@@ -80,16 +80,6 @@ type Subject struct {
 	Namespace string
 }
 
-// RoleRef contains information that points to the role being used
-type RoleRef struct {
-	// APIGroup is the group for the resource being referenced
-	APIGroup string
-	// Kind is the type of resource being referenced
-	Kind string
-	// Name is the name of resource being referenced
-	Name string
-}
-
 // +genclient=true
 
 // Role is a namespaced, logical grouping of PolicyRules that can be referenced as a unit by a RoleBinding.
@@ -116,7 +106,7 @@ type RoleBinding struct {
 
 	// RoleRef can reference a Role in the current namespace or a ClusterRole in the global namespace.
 	// If the RoleRef cannot be resolved, the Authorizer must return an error.
-	RoleRef RoleRef
+	RoleRef api.ObjectReference
 }
 
 // RoleBindingList is a collection of RoleBindings
@@ -167,7 +157,7 @@ type ClusterRoleBinding struct {
 
 	// RoleRef can only reference a ClusterRole in the global namespace.
 	// If the RoleRef cannot be resolved, the Authorizer must return an error.
-	RoleRef RoleRef
+	RoleRef api.ObjectReference
 }
 
 // ClusterRoleBindingList is a collection of ClusterRoleBindings

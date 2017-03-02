@@ -34,8 +34,6 @@ type JSONPath struct {
 	beginRange int
 	inRange    int
 	endRange   int
-
-	allowMissingKeys bool
 }
 
 func New(name string) *JSONPath {
@@ -45,13 +43,6 @@ func New(name string) *JSONPath {
 		inRange:    0,
 		endRange:   0,
 	}
-}
-
-// AllowMissingKeys allows a caller to specify whether they want an error if a field or map key
-// cannot be located, or simply an empty result. The receiver is returned for chaining.
-func (j *JSONPath) AllowMissingKeys(allow bool) *JSONPath {
-	j.allowMissingKeys = allow
-	return j
 }
 
 // Parse parse the given template, return error
@@ -314,7 +305,7 @@ func (j *JSONPath) findFieldInValue(value *reflect.Value, node *FieldNode) (refl
 	return value.FieldByName(node.Value), nil
 }
 
-// evalField evaluates field of struct or key of map.
+// evalField evaluates filed of struct or key of map.
 func (j *JSONPath) evalField(input []reflect.Value, node *FieldNode) ([]reflect.Value, error) {
 	results := []reflect.Value{}
 	// If there's no input, there's no output
@@ -347,9 +338,6 @@ func (j *JSONPath) evalField(input []reflect.Value, node *FieldNode) ([]reflect.
 		}
 	}
 	if len(results) == 0 {
-		if j.allowMissingKeys {
-			return results, nil
-		}
 		return results, fmt.Errorf("%s is not found", node.Value)
 	}
 	return results, nil
