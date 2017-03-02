@@ -1,3 +1,6 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+
 # Simple HTTP health check example
 
 The GCE Ingress controller adopts the readiness probe from the matching endpoints, provided the readiness probe doesn't require HTTPS or special headers.

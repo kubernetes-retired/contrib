@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ package cache
 import (
 	"fmt"
 
-	"k8s.io/kubernetes/pkg/api/meta"
-	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // Indexer is a storage interface that lets you list objects using multiple indexing functions
@@ -54,6 +54,9 @@ func IndexFuncToKeyFuncAdapter(indexFunc IndexFunc) KeyFunc {
 		}
 		if len(indexKeys) > 1 {
 			return "", fmt.Errorf("too many keys: %v", indexKeys)
+		}
+		if len(indexKeys) == 0 {
+			return "", fmt.Errorf("unexpected empty indexKeys")
 		}
 		return indexKeys[0], nil
 	}

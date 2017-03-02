@@ -25,7 +25,7 @@
     https_proxy: "{{ https_proxy|default('') }}"
     no_proxy: "{{ no_proxy|default('') }}"
   with_items:
-    - "{{ kube_binaries }}"
+    - "{{ kube_binaries | default([]) }}"
 
 - name: Create symlinks
   file:
@@ -33,4 +33,4 @@
     dest: "{{ bin_dir }}/{{ item }}"
     state: link
   with_items:
-    - "{{ kube_binaries }}"
+    - "{{ kube_binaries | default([]) }}"

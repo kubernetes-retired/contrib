@@ -11,7 +11,7 @@ NAME = proxy-to-service
 all: container
 
 container:
-	docker build -t $(PREFIX)/$(NAME):$(TAG) .
+	docker build --pull -t $(PREFIX)/$(NAME):$(TAG) .
 
 push:
 	gcloud docker push $(PREFIX)/$(NAME):$(TAG)

@@ -13,7 +13,7 @@
         state: latest
   when: not is_atomic and flannel_source_type != "github-release"
 
-- set_fact: 
+- set_fact:
     flannel_use_upstart: false
 
 - set_fact:
@@ -40,3 +40,6 @@
   template: src=flanneld.j2 dest={{ flannel_config_dir }}/flanneld
   notify:
     - restart flannel
+
+- include: etcd-certs.yml
+  when: flannel_etcd_use_certs

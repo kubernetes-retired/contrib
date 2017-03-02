@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/flowcontrol"
-	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 // Set of resp. Codes that we backoff for.
@@ -52,11 +52,13 @@ type NoBackoff struct {
 func (n *NoBackoff) UpdateBackoff(actualUrl *url.URL, err error, responseCode int) {
 	// do nothing.
 }
+
 func (n *NoBackoff) CalculateBackoff(actualUrl *url.URL) time.Duration {
 	return 0 * time.Second
 }
+
 func (n *NoBackoff) Sleep(d time.Duration) {
-	return
+	time.Sleep(d)
 }
 
 // Disable makes the backoff trivial, i.e., sets it to zero.  This might be used

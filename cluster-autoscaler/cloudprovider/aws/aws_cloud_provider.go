@@ -19,11 +19,11 @@ package aws
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider"
-	kube_api "k8s.io/kubernetes/pkg/api"
+	"k8s.io/contrib/cluster-autoscaler/config/dynamic"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
 
 // AwsCloudProvider implements CloudProvider interface.
@@ -73,7 +73,7 @@ func (aws *AwsCloudProvider) NodeGroups() []cloudprovider.NodeGroup {
 }
 
 // NodeGroupForNode returns the node group for the given node.
-func (aws *AwsCloudProvider) NodeGroupForNode(node *kube_api.Node) (cloudprovider.NodeGroup, error) {
+func (aws *AwsCloudProvider) NodeGroupForNode(node *apiv1.Node) (cloudprovider.NodeGroup, error) {
 	ref, err := AwsRefFromProviderId(node.Spec.ProviderID)
 	if err != nil {
 		return nil, err
@@ -142,8 +142,32 @@ func (asg *Asg) IncreaseSize(delta int) error {
 	return asg.awsManager.SetAsgSize(asg, size+int64(delta))
 }
 
+// DecreaseTargetSize decreases the target size of the node group. This function
+// doesn't permit to delete any existing node and can be used only to reduce the
+// request for new nodes that have not been yet fulfilled. Delta should be negative.
+// It is assumed that cloud provider will not delete the existing nodes if the size
+// when there is an option to just decrease the target.
+func (asg *Asg) DecreaseTargetSize(delta int) error {
+	if delta >= 0 {
+		return fmt.Errorf("size decrease size must be negative")
+	}
+	size, err := asg.awsManager.GetAsgSize(asg)
+	if err != nil {
+		return err
+	}
+	nodes, err := asg.awsManager.GetAsgNodes(asg)
+	if err != nil {
+		return err
+	}
+	if int(size)+delta < len(nodes) {
+		return fmt.Errorf("attempt to delete existing nodes targetSize:%d delta:%d existingNodes: %d",
+			size, delta, len(nodes))
+	}
+	return asg.awsManager.SetAsgSize(asg, size+int64(delta))
+}
+
 // Belongs returns true if the given node belongs to the NodeGroup.
-func (asg *Asg) Belongs(node *kube_api.Node) (bool, error) {
+func (asg *Asg) Belongs(node *apiv1.Node) (bool, error) {
 	ref, err := AwsRefFromProviderId(node.Spec.ProviderID)
 	if err != nil {
 		return false, err
@@ -162,7 +186,7 @@ func (asg *Asg) Belongs(node *kube_api.Node) (bool, error) {
 }
 
 // DeleteNodes deletes the nodes from the group.
-func (asg *Asg) DeleteNodes(nodes []*kube_api.Node) error {
+func (asg *Asg) DeleteNodes(nodes []*apiv1.Node) error {
 	size, err := asg.awsManager.GetAsgSize(asg)
 	if err != nil {
 		return err
@@ -198,37 +222,26 @@ func (asg *Asg) Debug() string {
 	return fmt.Sprintf("%s (%d:%d)", asg.Id(), asg.MinSize(), asg.MaxSize())
 }
 
+// Nodes returns a list of all nodes that belong to this node group.
+func (asg *Asg) Nodes() ([]string, error) {
+	return asg.awsManager.GetAsgNodes(asg)
+}
+
 func buildAsg(value string, awsManager *AwsManager) (*Asg, error) {
-	tokens := strings.SplitN(value, ":", 3)
-	if len(tokens) != 3 {
-		return nil, fmt.Errorf("wrong nodes configuration: %s", value)
+	spec, err := dynamic.SpecFromString(value)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse node group spec: %v", err)
 	}
 
 	asg := Asg{
 		awsManager: awsManager,
-	}
-	if size, err := strconv.Atoi(tokens[0]); err == nil {
-		if size <= 0 {
-			return nil, fmt.Errorf("min size must be >= 1")
-		}
-		asg.minSize = size
-	} else {
-		return nil, fmt.Errorf("failed to set min size: %s, expected integer", tokens[0])
+		minSize:    spec.MinSize,
+		maxSize:    spec.MaxSize,
+		AwsRef: AwsRef{
+			Name: spec.Name,
+		},
 	}
 
-	if size, err := strconv.Atoi(tokens[1]); err == nil {
-		if size < asg.minSize {
-			return nil, fmt.Errorf("max size must be greater or equal to min size")
-		}
-		asg.maxSize = size
-	} else {
-		return nil, fmt.Errorf("failed to set max size: %s, expected integer", tokens[1])
-	}
-
-	if tokens[2] == "" {
-		return nil, fmt.Errorf("asg name must not be blank: %s got error: %v", tokens[2])
-	}
-
-	asg.Name = tokens[2]
 	return &asg, nil
 }

@@ -32,8 +32,7 @@ import (
 )
 
 const (
-	svcLocalSuffix = "svc.cluster.local"
-	pollPeriod     = 1 * time.Second
+	pollPeriod = 1 * time.Second
 )
 
 var (
@@ -41,6 +40,7 @@ var (
 	onStart   = flag.String("on-start", "", "Script to run on start, must accept a new line separated list of peers via stdin.")
 	svc       = flag.String("service", "", "Governing service responsible for the DNS records of the domain this pod is in.")
 	namespace = flag.String("ns", "", "The namespace this pod is running in. If unspecified, the POD_NAMESPACE env var is used.")
+	domain    = flag.String("domain", "cluster.local", "The Cluster Domain which is used by the Cluster.")
 )
 
 func lookup(svcName string) (sets.String, error) {
@@ -83,6 +83,7 @@ func main() {
 		log.Fatalf("Failed to get hostname: %s", err)
 	}
 
+	svcLocalSuffix := strings.Join([]string{"svc", *domain}, ".")
 	myName := strings.Join([]string{hostname, *svc, ns, svcLocalSuffix}, ".")
 	script := *onStart
 	if script == "" {

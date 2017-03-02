@@ -26,7 +26,7 @@
         line="{{ hostvars[item]['ansible_' + public_iface].ipv4.address }} {{item}}"
         state=present
       when: hostvars[item]['ansible_' + public_iface].ipv4.address is defined
-      with_items: groups['all']
+      with_items: "{{groups['all']}}"
 
     - name: "Remove hostname from localhost line"
       replace:
@@ -34,4 +34,4 @@
         regexp="{{ item }} localhost?"
         replace="localhost"
       when: hostvars[item]['ansible_' + public_iface].ipv4.address is defined
-      with_items: groups['all']
+      with_items: "{{groups['all']}}"

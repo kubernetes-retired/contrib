@@ -4,7 +4,7 @@ What these give you
 These 'config' files default to launch a single master/node on the same system talking to each
 other via 127.0.0.1.
 
-They require that etcd be available at 127.0.0.1:4001.
+They require that etcd be available at 127.0.0.1:2379.
 
 Daemons may have multiple config files.  An example is that the scheduler will pull in 'config', 'apiserver', and 'scheduler'.  In that order.  Each file may overwrite the values of the previous file.  The 'config' file is sourced by all daemons.  The kube-apiserver config file is sourced by those daemons which must know how to reach the kube-apiserver.  Each daemon has its own config file for configuration specific to that daemon.
 

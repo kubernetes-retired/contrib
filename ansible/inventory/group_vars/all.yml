@@ -11,6 +11,14 @@ source_type: packageManager
 # myservice.default.svc.cluster.local
 cluster_name: cluster.local
 
+# Set if you want to access kubernetes cluster via load balancer. The installer
+# assumes that a load balancer has been preconfigured or resolves to 
+# kubenetes master
+#master_cluster_hostname: kubernetes-cluster.example.com
+
+# Port number for the load balanced master hostname.
+#master_cluster_port: 443
+
 # Account name of remote user. Ansible will use this user account to ssh into
 # the managed machines. The user must be able to use sudo without asking
 # for password unless ansible_sudo_pass is set
@@ -83,10 +91,13 @@ cluster_logging: true
 cluster_monitoring: true
 
 # Turn to false to disable the kube-ui addon for this cluster
-kube-ui: false
+kube_ui: false
 
 # Turn to false to disable the kube-dash addon for this cluster
-kube-dash: false
+kube_dash: false
+
+# Turn to false to disable the node_problem_detector addon for this cluster
+node_problem_detector: false
 
 # Turn this varable to 'false' to disable whole DNS configuration.
 dns_setup: true
@@ -99,3 +110,15 @@ dns_replicas: 1
 
 # See kube documentation for apiserver runtime config options.  Example below enables HPA, deployments features.
 # apiserver_extra_args: "--runtime-config=extensions/v1beta1/deployments=true"
+
+# To enable etcd auto cert generation set the following *_scheme vars to "https"
+etcd_url_scheme: "https"
+etcd_peer_url_scheme: "https"
+# For etcd client and peer cert authentication set these to true
+etcd_client_cert_auth: true
+etcd_peer_client_cert_auth: true
+
+etcd_client_port: '2379'
+# when the scheme vars above are set to "https" you need to set these to true!
+flannel_etcd_use_certs: true
+apiserver_etcd_use_certs: true

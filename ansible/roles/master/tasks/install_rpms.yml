@@ -11,7 +11,7 @@
 - name: Install kubernetes distribution rpms
   yum: name={{ kube_rpm_url_base }}/{{ item }}-{{ kube_rpm_url_sufix }}
   with_items:
-    - "{{ kube_rpms }}"
+    - "{{ kube_rpms | default([]) }}"
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
     https_proxy: "{{ https_proxy|default('') }}"

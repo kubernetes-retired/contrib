@@ -1,0 +1,24 @@
+---
+- name: Make sure etcd certificate vars are set
+  fail:
+    msg: "etcd certificates weren't slurped. Aborting ..."
+  when: etcd_ca_cert is not defined or etcd_client_cert is not defined or etcd_client_key is not defined
+
+- name: Make sure Kubernetes apiserver etcd certs dir exists
+  file:
+   state: directory
+   path: "{{ kube_etcd_certs_dir }}"
+   mode: "o-rwx"
+   owner: kube
+   group: "{{ kube_cert_group }}"
+
+- name: Copy etcd certificates to master servers
+  copy:
+    content: "{{ item[1] }}"
+    dest: "{{ item[0] }}"
+    group: "{{ kube_cert_group }}"
+    owner: kube
+    mode: "0440"
+  with_together:
+    - [ "{{ apiserver_etcd_ca_file }}", "{{ apiserver_etcd_cert_file }}", "{{ apiserver_etcd_key_file }}" ]
+    - [ "{{ etcd_ca_cert }}", "{{ etcd_client_cert }}", "{{ etcd_client_key }}" ]

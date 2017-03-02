@@ -39,7 +39,7 @@ hooks:
     ./deploy/ensure-kubectl.sh ${KUBEURL}
     set +x
     echo ${DOCKER_REGISTRY}/${CONTAINER1}
-    sudo docker build -t ${DOCKER_REGISTRY}/${CONTAINER1} .
+    sudo docker build --pull -t ${DOCKER_REGISTRY}/${CONTAINER1} .
   pre: npm install
   
 nodejs:

@@ -14,3 +14,7 @@ kube_node_binaries:
 kube_node_rpms:
   - kubernetes-client
   - kubernetes-node
+
+# kubelet_options:
+#  - "--host-network-sources=*"
+#  - "--pod-infra-container-image=gcr.io/google_containers/pause:2.0"

@@ -1,5 +1,8 @@
-assignees:
+approvers:
 - alekssaul
 - brendandburns
 - roberthbailey
-
+reviewers:
+- alekssaul
+- brendandburns
+- roberthbailey

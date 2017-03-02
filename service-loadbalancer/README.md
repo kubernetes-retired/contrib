@@ -273,7 +273,7 @@ $ curl http://104.197.63.17/kube-ui
 
 #### Cross-cluster loadbalancing
 
-First setup your 2 clusters, and a kubeconfig secret as described in the [sharing clusters example] (../../examples/sharing-clusters/README.md). We will create a loadbalancer in our first cluster (US) and have it publish the services from the second cluster (EU). This is the entire modified loadbalancer manifest:
+First setup your 2 clusters, and a kubeconfig secret as described in the [sharing clusters example] (https://github.com/kubernetes/kubernetes/blob/master/examples/sharing-clusters/README.md). We will create a loadbalancer in our first cluster (US) and have it publish the services from the second cluster (EU). This is the entire modified loadbalancer manifest:
 
 ```yaml
 apiVersion: v1
@@ -361,7 +361,7 @@ Europe
 
 #### Advanced features
 
-* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L155).
+* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L188).
 * __Name based virtual hosting__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L148).
 * __Configurable algorithms__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L153).
 

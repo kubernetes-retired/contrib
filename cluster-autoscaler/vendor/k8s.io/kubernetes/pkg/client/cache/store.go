@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/kubernetes/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/meta"
 )
 
 // Store is a generic object storage interface. Reflector knows how to watch a server
@@ -99,7 +99,7 @@ func SplitMetaNamespaceKey(key string) (namespace, name string, err error) {
 		// name only, no namespace
 		return "", parts[0], nil
 	case 2:
-		// name and namespace
+		// namespace and name
 		return parts[0], parts[1], nil
 	}
 
