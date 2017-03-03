@@ -31,4 +31,8 @@ kube_master_rpms:
   - kubernetes-client
   - kubernetes-master
 
+kube_apiserver_options: []
+kube_controller_manager_options: []
+kube_scheduler_options: []
+
 etcd_client_port: '2379'
