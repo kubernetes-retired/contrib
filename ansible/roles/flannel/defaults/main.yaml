@@ -23,3 +23,5 @@ flannel_etcd_certs_dir: "/etc/flanneld/certs"
 flannel_etcd_ca_file: "{{ flannel_etcd_certs_dir }}/ca.crt"
 flannel_etcd_cert_file: "{{ flannel_etcd_certs_dir }}/client.crt"
 flannel_etcd_key_file: "{{ flannel_etcd_certs_dir }}/client.key"
+
+#flannel_options: --etcd-prefix=/coreos.com/network
