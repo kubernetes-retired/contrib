@@ -55,8 +55,10 @@ var (
 		"net/ipv4/vs/conntrack": 1,
 	}
 
-	routerID = flags.Int("router-id", 50, `The keepalived router ID, which must be different for every
-		keepalived cluster running on the same network.`)
+	vrid = flags.Int("vrid", 50,
+		`The keepalived VRID (Virtual Router Identifier, between 0 and 255 as per
+			RFC-5798), which must be different for every Virtual Router (ie. every
+			keepalived sets) running on the same network.`)
 )
 
 func main() {
@@ -115,7 +117,7 @@ func main() {
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *routerID)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 

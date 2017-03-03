@@ -49,7 +49,7 @@ type keepalived struct {
 	tmpl       *template.Template
 	cmd        *exec.Cmd
 	ipt        iptables.Interface
-	routerID   int
+	vrid       int
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -73,7 +73,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["nodes"] = k.neighbors
 	conf["priority"] = k.priority
 	conf["useUnicast"] = k.useUnicast
-	conf["routerID"] = k.routerID
+	conf["vrid"] = k.vrid
 
 	if glog.V(2) {
 		b, _ := json.Marshal(conf)
