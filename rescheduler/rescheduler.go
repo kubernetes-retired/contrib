@@ -19,11 +19,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
 	ca_simulator "k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_utils "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
+	"k8s.io/contrib/rescheduler/metrics"
 	kube_api "k8s.io/kubernetes/pkg/api"
 	kube_record "k8s.io/kubernetes/pkg/client/record"
 	kube_restclient "k8s.io/kubernetes/pkg/client/restclient"
@@ -34,6 +36,7 @@ import (
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
+	"github.com/prometheus/client_golang/prometheus"
 	flag "github.com/spf13/pflag"
 )
 
@@ -67,14 +70,22 @@ var (
 	podScheduledTimeout = flags.Duration("pod-scheduled-timeout", 10*time.Minute,
 		`How long should rescheduler wait for critical pod to be scheduled
 		 after evicting pods to make a spot for it.`)
+
+	listenAddress = flag.String("listen-address", "localhost:9235",
+		`Address to listen on for serving prometheus metrics`)
 )
 
 func main() {
 	glog.Infof("Running Rescheduler")
-
 	flags.Parse(os.Args)
 
-	// TODO(piosz): figure our a better way of verifying cluster stabilization here.
+	go func() {
+		http.Handle("/metrics", prometheus.Handler())
+		err := http.ListenAndServe(*listenAddress, nil)
+		glog.Fatalf("Failed to start metrics: %v", err)
+	}()
+
+	// TODO(piosz): figure out a better way of verifying cluster stabilization here.
 	time.Sleep(*initialDelay)
 
 	kubeClient, err := createKubeClient(flags, *inCluster)
@@ -112,6 +123,11 @@ func main() {
 				if len(criticalPods) > 0 {
 					for _, pod := range criticalPods {
 						glog.Infof("Critical pod %s is unschedulable. Trying to find a spot for it.", podId(pod))
+						k8sApp := "unknown"
+						if l, found := pod.ObjectMeta.Labels["k8s-app"]; found {
+							k8sApp = l
+						}
+						metrics.UnschedulableCriticalPodsCount.WithLabelValues(k8sApp).Inc()
 						nodes, err := nodeLister.List()
 						if err != nil {
 							glog.Errorf("Failed to list nodes: %v", err)
@@ -263,6 +279,7 @@ func prepareNodeForPod(client *kube_client.Client, recorder kube_record.EventRec
 			if delErr != nil {
 				return fmt.Errorf("Failed to delete pod %s: %v", podId(p), delErr)
 			}
+			metrics.DeletedPodsCount.Inc()
 		} else {
 			newPods := append(nodeInfo.Pods(), p)
 			nodeInfo = schedulercache.NewNodeInfo(newPods...)

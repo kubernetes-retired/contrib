@@ -111,6 +111,7 @@ func createAutoscalerOptions() core.AutoscalerOptions {
 		MaxGratefulTerminationSec:     *maxGratefulTerminationFlag,
 		MaxNodeProvisionTime:          *maxNodeProvisionTime,
 		MaxNodesTotal:                 *maxNodesTotal,
+		NodeGroups:                    nodeGroupsFlag,
 		UnregisteredNodeRemovalTime:   *unregisteredNodeRemovalTime,
 		ScaleDownDelay:                *scaleDownDelay,
 		ScaleDownEnabled:              *scaleDownEnabled,
@@ -231,6 +232,13 @@ func main() {
 		}
 
 		kubeClient := createKubeClient()
+
+		// Validate that the client is ok.
+		_, err = kubeClient.Core().Nodes().List(metav1.ListOptions{})
+		if err != nil {
+			glog.Fatalf("Failed to get nodes from apiserver: %v", err)
+		}
+
 		kube_leaderelection.RunOrDie(kube_leaderelection.LeaderElectionConfig{
 			Lock: &resourcelock.EndpointsLock{
 				EndpointsMeta: metav1.ObjectMeta{
