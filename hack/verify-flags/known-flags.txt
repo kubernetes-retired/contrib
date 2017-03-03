@@ -160,3 +160,4 @@ vrrp-password
 watch-namespace
 weak-stable-jobs
 whitelist-override-label
+write-status-configmap

@@ -17,16 +17,29 @@ limitations under the License.
 package core
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/contrib/cluster-autoscaler/metrics"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kube_record "k8s.io/client-go/tools/record"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
-	kube_record "k8s.io/kubernetes/pkg/client/record"
 
 	"github.com/golang/glog"
 	"k8s.io/contrib/cluster-autoscaler/simulator"
+)
+
+const (
+	// StatusConfigMapNamespace is the namespace where ConfigMap with status is stored.
+	StatusConfigMapNamespace = "kube-system"
+	// StatusConfigMapName is the name of ConfigMap with status.
+	StatusConfigMapName = "cluster-autoscaler-status"
+	// ConfigMapLastUpdatedKey is the name of annotation informing about status ConfigMap last update.
+	ConfigMapLastUpdatedKey = "cluster-autoscaler.kubernetes.io/last-updated"
 )
 
 // StaticAutoscaler is an autoscaler which has all the core functionality of a CA but without the reconfiguration feature
@@ -34,18 +47,14 @@ type StaticAutoscaler struct {
 	// AutoscalingContext consists of validated settings and options for this autoscaler
 	*AutoscalingContext
 	kube_util.ListerRegistry
-	readyNodeLister          *kube_util.ReadyNodeLister
-	scheduledPodLister       *kube_util.ScheduledPodLister
-	unschedulablePodLister   *kube_util.UnschedulablePodLister
-	allNodeLister            *kube_util.AllNodeLister
-	kubeClient               kube_client.Interface
 	lastScaleUpTime          time.Time
 	lastScaleDownFailedTrial time.Time
 	scaleDown                *ScaleDown
 }
 
 // NewStaticAutoscaler creates an instance of Autoscaler filled with provided parameters
-func NewStaticAutoscaler(opts AutoscalingOptions, predicateChecker *simulator.PredicateChecker, kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder, listerRegistry kube_util.ListerRegistry) *StaticAutoscaler {
+func NewStaticAutoscaler(opts AutoscalingOptions, predicateChecker *simulator.PredicateChecker,
+	kubeClient kube_client.Interface, kubeEventRecorder kube_record.EventRecorder, listerRegistry kube_util.ListerRegistry) *StaticAutoscaler {
 	autoscalingContext := NewAutoscalingContext(opts, predicateChecker, kubeClient, kubeEventRecorder)
 
 	scaleDown := NewScaleDown(autoscalingContext)
@@ -62,17 +71,17 @@ func NewStaticAutoscaler(opts AutoscalingOptions, predicateChecker *simulator.Pr
 // CleanUp cleans up ToBeDeleted taints added by the previously run and then failed CA
 func (a *StaticAutoscaler) CleanUp() {
 	// CA can die at any time. Removing taints that might have been left from the previous run.
-	if readyNodes, err := a.readyNodeLister.List(); err != nil {
-		cleanToBeDeleted(readyNodes, a.kubeClient, a.Recorder)
+	if readyNodes, err := a.ReadyNodeLister().List(); err != nil {
+		cleanToBeDeleted(readyNodes, a.AutoscalingContext.ClientSet, a.Recorder)
 	}
 }
 
 // RunOnce iterates over node groups and scales them up/down if necessary
 func (a *StaticAutoscaler) RunOnce(currentTime time.Time) {
-	readyNodeLister := a.readyNodeLister
-	allNodeLister := a.allNodeLister
-	unschedulablePodLister := a.unschedulablePodLister
-	scheduledPodLister := a.scheduledPodLister
+	readyNodeLister := a.ReadyNodeLister()
+	allNodeLister := a.AllNodeLister()
+	unschedulablePodLister := a.UnschedulablePodLister()
+	scheduledPodLister := a.ScheduledPodLister()
 	scaleDown := a.scaleDown
 	autoscalingContext := a.AutoscalingContext
 
@@ -250,5 +259,58 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) {
 				}
 			}
 		}
+	}
+	a.writeStatusConfigMap()
+}
+
+// ExitCleanUp removes status configmap.
+func (a *StaticAutoscaler) ExitCleanUp() {
+	if !a.AutoscalingContext.WriteStatusConfigMap {
+		return
+	}
+	maps := a.AutoscalingContext.ClientSet.CoreV1().ConfigMaps(StatusConfigMapNamespace)
+	err := maps.Delete(StatusConfigMapName, &metav1.DeleteOptions{})
+	if err != nil {
+		// Nothing else we could do at this point
+		glog.Error("Failed to delete status configmap")
+	}
+}
+
+func (a *StaticAutoscaler) writeStatusConfigMap() {
+	if !a.AutoscalingContext.WriteStatusConfigMap {
+		return
+	}
+	statusUpdateTime := time.Now()
+	status := a.ClusterStateRegistry.GetStatus(statusUpdateTime)
+	statusMsg := fmt.Sprintf("Cluster-autoscaler status at %v:\n%v", statusUpdateTime, status.GetReadableString())
+	var configMap *apiv1.ConfigMap
+	var getStatusError, writeStatusError error
+	maps := a.AutoscalingContext.ClientSet.CoreV1().ConfigMaps(StatusConfigMapNamespace)
+	configMap, getStatusError = maps.Get(StatusConfigMapName, metav1.GetOptions{})
+	if getStatusError == nil {
+		configMap.Data["status"] = statusMsg
+		configMap.ObjectMeta.Annotations[ConfigMapLastUpdatedKey] = fmt.Sprintf("%v", statusUpdateTime)
+		configMap, writeStatusError = maps.Update(configMap)
+	} else if errors.IsNotFound(getStatusError) {
+		configMap := &apiv1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: StatusConfigMapNamespace,
+				Name:      StatusConfigMapName,
+				Annotations: map[string]string{
+					ConfigMapLastUpdatedKey: fmt.Sprintf("%v", statusUpdateTime),
+				},
+			},
+			Data: map[string]string{
+				"status": statusMsg,
+			},
+		}
+		configMap, writeStatusError = maps.Create(configMap)
+	} else {
+		glog.Error("Failed to retrieve status configmap for update")
+	}
+	if writeStatusError != nil {
+		glog.Error("Failed to write status configmap")
+	} else {
+		glog.V(8).Infof("Succesfully wrote status configmap with body \"%v\"", statusMsg)
 	}
 }

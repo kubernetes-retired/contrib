@@ -117,6 +117,8 @@ etcd_peer_url_scheme: "https"
 # For etcd client and peer cert authentication set these to true
 etcd_client_cert_auth: true
 etcd_peer_client_cert_auth: true
+
+etcd_client_port: '2379'
 # when the scheme vars above are set to "https" you need to set these to true!
 flannel_etcd_use_certs: true
 apiserver_etcd_use_certs: true

@@ -21,26 +21,28 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kube_flag "k8s.io/apiserver/pkg/util/flag"
 	"k8s.io/contrib/cluster-autoscaler/config"
 	"k8s.io/contrib/cluster-autoscaler/config/dynamic"
 	"k8s.io/contrib/cluster-autoscaler/core"
+	"k8s.io/contrib/cluster-autoscaler/estimator"
 	"k8s.io/contrib/cluster-autoscaler/expander"
+	"k8s.io/contrib/cluster-autoscaler/metrics"
+	"k8s.io/contrib/cluster-autoscaler/simulator"
 	kube_util "k8s.io/contrib/cluster-autoscaler/utils/kubernetes"
 	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	kube_leaderelection "k8s.io/kubernetes/pkg/client/leaderelection"
 	"k8s.io/kubernetes/pkg/client/leaderelection/resourcelock"
-	kube_flag "k8s.io/kubernetes/pkg/util/flag"
 
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/pflag"
-	"k8s.io/contrib/cluster-autoscaler/estimator"
-	"k8s.io/contrib/cluster-autoscaler/metrics"
-	"k8s.io/contrib/cluster-autoscaler/simulator"
 )
 
 // MultiStringFlag is a flag for passing multiple parameters using same flag
@@ -93,6 +95,8 @@ var (
 
 	expanderFlag = flag.String("expander", expander.RandomExpanderName,
 		"Type of node group expander to be used in scale up. Available values: ["+strings.Join(expander.AvailableExpanders, ",")+"]")
+
+	writeStatusConfigMapFlag = flag.Bool("write-status-configmap", true, "Should CA write status information to a configmap")
 )
 
 func createAutoscalerOptions() core.AutoscalerOptions {
@@ -115,6 +119,7 @@ func createAutoscalerOptions() core.AutoscalerOptions {
 		ScaleDownUnreadyTime:          *scaleDownUnreadyTime,
 		ScaleDownUtilizationThreshold: *scaleDownUtilizationThreshold,
 		VerifyUnschedulablePods:       *verifyUnschedulablePods,
+		WriteStatusConfigMap:          *writeStatusConfigMapFlag,
 	}
 
 	configFetcherOpts := dynamic.ConfigFetcherOptions{
@@ -142,6 +147,21 @@ func createKubeClient() kube_client.Interface {
 	return kube_client.NewForConfigOrDie(kubeConfig)
 }
 
+func registerSignalHandlers(autoscaler core.Autoscaler) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGQUIT)
+	glog.Info("Registered cleanup signal handler")
+
+	go func() {
+		<-sigs
+		glog.Info("Receieved signal, attempting cleanup")
+		autoscaler.ExitCleanUp()
+		glog.Info("Cleaned up, exiting...")
+		glog.Flush()
+		os.Exit(0)
+	}()
+}
+
 // In order to meet interface criteria for LeaderElectionConfig we need to
 // take stop channel as an argument. However, since we are committing a suicide
 // after loosing mastership we can safely ignore it.
@@ -158,6 +178,7 @@ func run(_ <-chan struct{}) {
 	autoscaler := core.NewAutoscaler(opts, predicateChecker, kubeClient, kubeEventRecorder, listerRegistry)
 
 	autoscaler.CleanUp()
+	registerSignalHandlers(autoscaler)
 
 	for {
 		select {
@@ -210,6 +231,13 @@ func main() {
 		}
 
 		kubeClient := createKubeClient()
+
+		// Validate that the client is ok.
+		_, err = kubeClient.Core().Nodes().List(metav1.ListOptions{})
+		if err != nil {
+			glog.Fatalf("Failed to get nodes from apiserver: %v", err)
+		}
+
 		kube_leaderelection.RunOrDie(kube_leaderelection.LeaderElectionConfig{
 			Lock: &resourcelock.EndpointsLock{
 				EndpointsMeta: metav1.ObjectMeta{
