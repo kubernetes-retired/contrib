@@ -97,7 +97,7 @@ function create_config() {
     echo "minSessionTimeout=$ZK_MIN_SESSION_TIMEOUT" >> $ZK_CONFIG_FILE
     echo "maxSessionTimeout=$ZK_MAX_SESSION_TIMEOUT" >> $ZK_CONFIG_FILE
     echo "autopurge.snapRetainCount=$ZK_SNAP_RETAIN_COUNT" >> $ZK_CONFIG_FILE
-    echo "autopurge.purgeInteval=$ZK_PURGE_INTERVAL" >> $ZK_CONFIG_FILE
+    echo "autopurge.purgeInterval=$ZK_PURGE_INTERVAL" >> $ZK_CONFIG_FILE
     
     if [ $ZK_REPLICAS -gt 1 ]; then 
     	print_servers >> $ZK_CONFIG_FILE
