@@ -148,6 +148,7 @@ var (
 // and kubernetes handles loadbalancing across the service endpoints).
 type service struct {
 	Name string
+	Namespace string
 	Ep   []string
 
 	// Kubernetes endpoint port. The application must serve a 200 page on this port.
@@ -438,6 +439,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 			}
 			newSvc := service{
 				Name:        getServiceNameForLBRule(&s, servicePort.Port),
+				Namespace:   s.Namespace,
 				Ep:          ep,
 				BackendPort: getTargetPort(&servicePort),
 			}
