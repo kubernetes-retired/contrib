@@ -32,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kube_record "k8s.io/client-go/tools/record"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	policyv1 "k8s.io/kubernetes/pkg/apis/policy/v1beta1"
 	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
@@ -97,7 +98,8 @@ func (sd *ScaleDown) GetCandidatesForScaleDown() []*apiv1.Node {
 func (sd *ScaleDown) UpdateUnneededNodes(
 	nodes []*apiv1.Node,
 	pods []*apiv1.Pod,
-	timestamp time.Time) error {
+	timestamp time.Time,
+	pdbs []*policyv1.PodDisruptionBudget) error {
 
 	currentlyUnneededNodes := make([]*apiv1.Node, 0)
 	nodeNameToNodeInfo := schedulercache.CreateNodeNameToInfoMap(pods, nodes)
@@ -128,7 +130,7 @@ func (sd *ScaleDown) UpdateUnneededNodes(
 	// Phase2 - check which nodes can be probably removed using fast drain.
 	nodesToRemove, newHints, err := simulator.FindNodesToRemove(currentlyUnneededNodes, nodes, pods,
 		nil, sd.context.PredicateChecker,
-		len(currentlyUnneededNodes), true, sd.podLocationHints, sd.usageTracker, timestamp)
+		len(currentlyUnneededNodes), true, sd.podLocationHints, sd.usageTracker, timestamp, pdbs)
 	if err != nil {
 		glog.Errorf("Error while simulating node drains: %v", err)
 
@@ -161,7 +163,7 @@ func (sd *ScaleDown) UpdateUnneededNodes(
 
 // TryToScaleDown tries to scale down the cluster. It returns ScaleDownResult indicating if any node was
 // removed and error if such occured.
-func (sd *ScaleDown) TryToScaleDown(nodes []*apiv1.Node, pods []*apiv1.Pod) (ScaleDownResult, error) {
+func (sd *ScaleDown) TryToScaleDown(nodes []*apiv1.Node, pods []*apiv1.Pod, pdbs []*policyv1.PodDisruptionBudget) (ScaleDownResult, error) {
 
 	now := time.Now()
 	candidates := make([]*apiv1.Node, 0)
@@ -219,6 +221,7 @@ func (sd *ScaleDown) TryToScaleDown(nodes []*apiv1.Node, pods []*apiv1.Pod) (Sca
 		confirmation := make(chan error, len(emptyNodes))
 		for _, node := range emptyNodes {
 			glog.V(0).Infof("Scale-down: removing empty node %s", node.Name)
+			sd.context.LogRecorder.Eventf(apiv1.EventTypeNormal, "ScaleDownEmpty", "Scale-down: removing empty node %s", node.Name)
 			simulator.RemoveNodeFromTracker(sd.usageTracker, node.Name, sd.unneededNodes)
 			go func(nodeToDelete *apiv1.Node) {
 				confirmation <- deleteNodeFromCloudProvider(nodeToDelete, sd.context.CloudProvider,
@@ -254,7 +257,7 @@ func (sd *ScaleDown) TryToScaleDown(nodes []*apiv1.Node, pods []*apiv1.Pod) (Sca
 	// We look for only 1 node so new hints may be incomplete.
 	nodesToRemove, _, err := simulator.FindNodesToRemove(candidates, nodes, pods, sd.context.ClientSet,
 		sd.context.PredicateChecker, 1, false,
-		sd.podLocationHints, sd.usageTracker, time.Now())
+		sd.podLocationHints, sd.usageTracker, time.Now(), pdbs)
 
 	if err != nil {
 		return ScaleDownError, fmt.Errorf("Find node to remove failed: %v", err)
@@ -271,6 +274,8 @@ func (sd *ScaleDown) TryToScaleDown(nodes []*apiv1.Node, pods []*apiv1.Pod) (Sca
 	}
 	glog.V(0).Infof("Scale-down: removing node %s, utilization: %v, pods to reschedule: %s", toRemove.Node.Name, utilization,
 		strings.Join(podNames, ","))
+	sd.context.LogRecorder.Eventf(apiv1.EventTypeNormal, "ScaleDown", "Scale-down: removing node %s, utilization: %v, pods to reschedule: %s",
+		toRemove.Node.Name, utilization, strings.Join(podNames, ","))
 
 	// Nothing super-bad should happen if the node is removed from tracker prematurely.
 	simulator.RemoveNodeFromTracker(sd.usageTracker, toRemove.Node.Name, sd.unneededNodes)
