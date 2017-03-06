@@ -147,9 +147,9 @@ var (
 // clusterIP of the service itself (in which case the list has a single entry,
 // and kubernetes handles loadbalancing across the service endpoints).
 type service struct {
-	Name string
+	Name      string
 	Namespace string
-	Ep   []string
+	Ep        []string
 
 	// Kubernetes endpoint port. The application must serve a 200 page on this port.
 	BackendPort int
