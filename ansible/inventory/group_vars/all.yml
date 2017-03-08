@@ -16,6 +16,9 @@ cluster_name: cluster.local
 # kubenetes master
 #master_cluster_hostname: kubernetes-cluster.example.com
 
+# External fqdn used for the cluster (certificat only)
+#master_cluster_public_hostname: public-kubernetes
+
 # Port number for the load balanced master hostname.
 #master_cluster_port: 443
 
