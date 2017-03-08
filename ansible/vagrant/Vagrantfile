@@ -233,7 +233,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       # and actual connectivity with the host and other VMs is done
       # using eth1 interface.
       ansible.extra_vars = {
-        flannel_opts: "--iface=eth1",
+        flannel_options: "--iface=eth1",
         etcd_interface: "eth1",
         netplugin_interface: "eth1",
         netmaster_interface: "eth1",

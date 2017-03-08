@@ -12,7 +12,7 @@ source_type: packageManager
 cluster_name: cluster.local
 
 # Set if you want to access kubernetes cluster via load balancer. The installer
-# assumes that a load balancer has been preconfigured or resolves to 
+# assumes that a load balancer has been preconfigured or resolves to
 # kubenetes master
 #master_cluster_hostname: kubernetes-cluster.example.com
 
@@ -112,7 +112,8 @@ dns_replicas: 1
 # with caution.
 
 # See kube documentation for apiserver runtime config options.  Example below enables HPA, deployments features.
-# apiserver_extra_args: "--runtime-config=extensions/v1beta1/deployments=true"
+#kube_apiserver_options:
+#  - --runtime-config=extensions/v1beta1/deployments=true
 
 # To enable etcd auto cert generation set the following *_scheme vars to "https"
 etcd_url_scheme: "https"
