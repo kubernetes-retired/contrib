@@ -134,6 +134,7 @@ fi
 mkdir -p "$cert_dir"
 
 cp -p pki/ca.crt "${cert_dir}/ca.crt"
+cp -p pki/private/ca.key "${cert_dir}/ca.key"
 cp -p pki/issued/master.crt "${cert_dir}/server.crt"
 cp -p pki/private/master.key "${cert_dir}/server.key"
 cp -p pki/issued/kubecfg.crt "${cert_dir}/kubecfg.crt"
