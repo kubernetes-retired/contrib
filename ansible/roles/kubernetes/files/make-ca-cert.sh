@@ -27,6 +27,7 @@ set -o pipefail
 # MASTERS - DNS name for the masters
 # DNS_DOMAIN - which will be passed to minions in --cluster-domain
 # SERVICE_CLUSTER_IP_RANGE - where all service IPs are allocated
+# KUBE_CERT_KEEP_CA - to keep ca.key file or not, "true"|"false"
 
 # Also the following will be respected
 # CERT_DIR - where to place the finished certs
@@ -38,6 +39,7 @@ service_range="${SERVICE_CLUSTER_IP_RANGE:="10.0.0.0/16"}"
 dns_domain="${DNS_DOMAIN:="cluster.local"}"
 cert_dir="${CERT_DIR:-"/srv/kubernetes"}"
 cert_group="${CERT_GROUP:="kube-cert"}"
+keep_ca_priv_key="${KUBE_CERT_KEEP_CA:="false"}"
 
 # The following certificate pairs are created:
 #
@@ -146,3 +148,9 @@ for cert in "${CERTS[@]}"; do
   chgrp "${cert_group}" "${cert_dir}/${cert}"
   chmod 660 "${cert_dir}/${cert}"
 done
+
+if [[ "${keep_ca_priv_key}" == "true" ]]; then
+  cp -p pki/private/ca.key "${cert_dir}/ca.key"
+  chgrp "${cert_group}" "${cert_dir}/ca.key"
+  chmod 660 "${cert_dir}/ca.key"
+fi
