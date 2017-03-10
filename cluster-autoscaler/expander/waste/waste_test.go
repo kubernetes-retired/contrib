@@ -18,10 +18,13 @@ package waste
 
 import (
 	"testing"
+	"time"
+
+	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/contrib/cluster-autoscaler/expander"
-	"k8s.io/kubernetes/pkg/api/resource"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
@@ -30,14 +33,15 @@ type FakeNodeGroup struct {
 	id string
 }
 
-func (f *FakeNodeGroup) MaxSize() int                    { return 2 }
-func (f *FakeNodeGroup) MinSize() int                    { return 1 }
-func (f *FakeNodeGroup) TargetSize() (int, error)        { return 2, nil }
-func (f *FakeNodeGroup) IncreaseSize(delta int) error    { return nil }
-func (f *FakeNodeGroup) DeleteNodes([]*apiv1.Node) error { return nil }
-func (f *FakeNodeGroup) Id() string                      { return f.id }
-func (f *FakeNodeGroup) Debug() string                   { return f.id }
-func (f *FakeNodeGroup) Nodes() ([]string, error)        { return []string{}, nil }
+func (f *FakeNodeGroup) MaxSize() int                       { return 2 }
+func (f *FakeNodeGroup) MinSize() int                       { return 1 }
+func (f *FakeNodeGroup) TargetSize() (int, error)           { return 2, nil }
+func (f *FakeNodeGroup) IncreaseSize(delta int) error       { return nil }
+func (f *FakeNodeGroup) DecreaseTargetSize(delta int) error { return nil }
+func (f *FakeNodeGroup) DeleteNodes([]*apiv1.Node) error    { return nil }
+func (f *FakeNodeGroup) Id() string                         { return f.id }
+func (f *FakeNodeGroup) Debug() string                      { return f.id }
+func (f *FakeNodeGroup) Nodes() ([]string, error)           { return []string{}, nil }
 
 func makeNodeInfo(cpu int64, memory int64, pods int64) *schedulercache.NodeInfo {
 	node := &apiv1.Node{
@@ -50,6 +54,7 @@ func makeNodeInfo(cpu int64, memory int64, pods int64) *schedulercache.NodeInfo 
 		},
 	}
 	node.Status.Allocatable = node.Status.Capacity
+	SetNodeReadyState(node, true, time.Time{})
 
 	nodeInfo := schedulercache.NewNodeInfo()
 	nodeInfo.SetNode(node)

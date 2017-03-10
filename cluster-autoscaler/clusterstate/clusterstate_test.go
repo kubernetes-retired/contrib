@@ -20,10 +20,11 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/contrib/cluster-autoscaler/cloudprovider/test"
+	"k8s.io/contrib/cluster-autoscaler/clusterstate/api"
 	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	metav1 "k8s.io/kubernetes/pkg/apis/meta/v1"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -56,7 +57,28 @@ func TestOKWithScaleUp(t *testing.T) {
 	})
 	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng2_1}, now)
 	assert.NoError(t, err)
-	assert.True(t, clusterstate.IsClusterHealthy(now))
+	assert.True(t, clusterstate.IsClusterHealthy())
+
+	status := clusterstate.GetStatus(now)
+	assert.Equal(t, api.ClusterAutoscalerInProgress,
+		api.GetConditionByType(api.ClusterAutoscalerScaleUp, status.ClusterwideConditions).Status)
+	assert.Equal(t, 2, len(status.NodeGroupStatuses))
+	ng1Checked := false
+	ng2Checked := true
+	for _, nodeStatus := range status.NodeGroupStatuses {
+		if nodeStatus.ProviderID == "ng1" {
+			assert.Equal(t, api.ClusterAutoscalerInProgress,
+				api.GetConditionByType(api.ClusterAutoscalerScaleUp, nodeStatus.Conditions).Status)
+			ng1Checked = true
+		}
+		if nodeStatus.ProviderID == "ng2" {
+			assert.Equal(t, api.ClusterAutoscalerNoActivity,
+				api.GetConditionByType(api.ClusterAutoscalerScaleUp, nodeStatus.Conditions).Status)
+			ng2Checked = true
+		}
+	}
+	assert.True(t, ng1Checked)
+	assert.True(t, ng2Checked)
 }
 
 func TestOKOneUnreadyNode(t *testing.T) {
@@ -80,8 +102,86 @@ func TestOKOneUnreadyNode(t *testing.T) {
 	})
 	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng2_1}, now)
 	assert.NoError(t, err)
-	assert.True(t, clusterstate.IsClusterHealthy(now))
+	assert.True(t, clusterstate.IsClusterHealthy())
 	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+
+	status := clusterstate.GetStatus(now)
+	assert.Equal(t, api.ClusterAutoscalerHealthy,
+		api.GetConditionByType(api.ClusterAutoscalerHealth, status.ClusterwideConditions).Status)
+	assert.Equal(t, api.ClusterAutoscalerNoActivity,
+		api.GetConditionByType(api.ClusterAutoscalerScaleUp, status.ClusterwideConditions).Status)
+
+	assert.Equal(t, 2, len(status.NodeGroupStatuses))
+	ng1Checked := false
+	for _, nodeStatus := range status.NodeGroupStatuses {
+		if nodeStatus.ProviderID == "ng1" {
+			assert.Equal(t, api.ClusterAutoscalerHealthy,
+				api.GetConditionByType(api.ClusterAutoscalerHealth, nodeStatus.Conditions).Status)
+			ng1Checked = true
+		}
+	}
+	assert.True(t, ng1Checked)
+}
+
+func TestOKOneUnreadyNodeWithScaleDownCandidate(t *testing.T) {
+	now := time.Now()
+
+	ng1_1 := BuildTestNode("ng1-1", 1000, 1000)
+	SetNodeReadyState(ng1_1, true, now.Add(-time.Minute))
+	ng2_1 := BuildTestNode("ng2-1", 1000, 1000)
+	SetNodeReadyState(ng2_1, false, now.Add(-time.Minute))
+
+	provider := testprovider.NewTestCloudProvider(nil, nil)
+	provider.AddNodeGroup("ng1", 1, 10, 1)
+	provider.AddNodeGroup("ng2", 1, 10, 1)
+	provider.AddNode("ng1", ng1_1)
+	provider.AddNode("ng2", ng2_1)
+	assert.NotNil(t, provider)
+
+	clusterstate := NewClusterStateRegistry(provider, ClusterStateRegistryConfig{
+		MaxTotalUnreadyPercentage: 10,
+		OkTotalUnreadyCount:       1,
+	})
+	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng2_1}, now)
+	clusterstate.UpdateScaleDownCandidates([]*apiv1.Node{ng1_1}, now)
+
+	assert.NoError(t, err)
+	assert.True(t, clusterstate.IsClusterHealthy())
+	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
+
+	status := clusterstate.GetStatus(now)
+	assert.Equal(t, api.ClusterAutoscalerHealthy,
+		api.GetConditionByType(api.ClusterAutoscalerHealth, status.ClusterwideConditions).Status)
+	assert.Equal(t, api.ClusterAutoscalerNoActivity,
+		api.GetConditionByType(api.ClusterAutoscalerScaleUp, status.ClusterwideConditions).Status)
+	assert.Equal(t, api.ClusterAutoscalerCandidatesPresent,
+		api.GetConditionByType(api.ClusterAutoscalerScaleDown, status.ClusterwideConditions).Status)
+
+	assert.Equal(t, 2, len(status.NodeGroupStatuses))
+	ng1Checked := false
+	ng2Checked := false
+	for _, nodeStatus := range status.NodeGroupStatuses {
+		if nodeStatus.ProviderID == "ng1" {
+			assert.Equal(t, api.ClusterAutoscalerHealthy,
+				api.GetConditionByType(api.ClusterAutoscalerHealth, nodeStatus.Conditions).Status)
+
+			assert.Equal(t, api.ClusterAutoscalerCandidatesPresent,
+				api.GetConditionByType(api.ClusterAutoscalerScaleDown, nodeStatus.Conditions).Status)
+
+			ng1Checked = true
+		}
+		if nodeStatus.ProviderID == "ng2" {
+			assert.Equal(t, api.ClusterAutoscalerHealthy,
+				api.GetConditionByType(api.ClusterAutoscalerHealth, nodeStatus.Conditions).Status)
+
+			assert.Equal(t, api.ClusterAutoscalerNoCandidates,
+				api.GetConditionByType(api.ClusterAutoscalerScaleDown, nodeStatus.Conditions).Status)
+
+			ng2Checked = true
+		}
+	}
+	assert.True(t, ng1Checked)
+	assert.True(t, ng2Checked)
 }
 
 func TestMissingNodes(t *testing.T) {
@@ -105,8 +205,22 @@ func TestMissingNodes(t *testing.T) {
 	})
 	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng2_1}, now)
 	assert.NoError(t, err)
-	assert.True(t, clusterstate.IsClusterHealthy(now))
+	assert.True(t, clusterstate.IsClusterHealthy())
 	assert.False(t, clusterstate.IsNodeGroupHealthy("ng1"))
+
+	status := clusterstate.GetStatus(now)
+	assert.Equal(t, api.ClusterAutoscalerHealthy,
+		api.GetConditionByType(api.ClusterAutoscalerHealth, status.ClusterwideConditions).Status)
+	assert.Equal(t, 2, len(status.NodeGroupStatuses))
+	ng1Checked := false
+	for _, nodeStatus := range status.NodeGroupStatuses {
+		if nodeStatus.ProviderID == "ng1" {
+			assert.Equal(t, api.ClusterAutoscalerUnhealthy,
+				api.GetConditionByType(api.ClusterAutoscalerHealth, nodeStatus.Conditions).Status)
+			ng1Checked = true
+		}
+	}
+	assert.True(t, ng1Checked)
 }
 
 func TestToManyUnready(t *testing.T) {
@@ -130,7 +244,7 @@ func TestToManyUnready(t *testing.T) {
 	})
 	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng2_1}, now)
 	assert.NoError(t, err)
-	assert.False(t, clusterstate.IsClusterHealthy(now))
+	assert.False(t, clusterstate.IsClusterHealthy())
 	assert.True(t, clusterstate.IsNodeGroupHealthy("ng1"))
 }
 
@@ -157,7 +271,7 @@ func TestExpiredScaleUp(t *testing.T) {
 	})
 	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1}, now)
 	assert.NoError(t, err)
-	assert.True(t, clusterstate.IsClusterHealthy(now))
+	assert.True(t, clusterstate.IsClusterHealthy())
 	assert.False(t, clusterstate.IsNodeGroupHealthy("ng1"))
 }
 
@@ -260,4 +374,134 @@ func TestIncorrectSize(t *testing.T) {
 	assert.Equal(t, 5, incorrect.ExpectedSize)
 	assert.Equal(t, 2, incorrect.CurrentSize)
 	assert.Equal(t, now.Add(-3*time.Minute), incorrect.FirstObserved)
+}
+
+func TestUnregisteredNodes(t *testing.T) {
+	ng1_1 := BuildTestNode("ng1-1", 1000, 1000)
+	ng1_1.Spec.ProviderID = "ng1-1"
+	ng1_2 := BuildTestNode("ng1-2", 1000, 1000)
+	ng1_2.Spec.ProviderID = "ng1-2"
+	provider := testprovider.NewTestCloudProvider(nil, nil)
+	provider.AddNodeGroup("ng1", 1, 10, 1)
+	provider.AddNode("ng1", ng1_1)
+	provider.AddNode("ng1", ng1_2)
+
+	clusterstate := NewClusterStateRegistry(provider, ClusterStateRegistryConfig{
+		MaxTotalUnreadyPercentage: 10,
+		OkTotalUnreadyCount:       1,
+	})
+	err := clusterstate.UpdateNodes([]*apiv1.Node{ng1_1}, time.Now().Add(-time.Minute))
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(clusterstate.GetUnregisteredNodes()))
+	assert.Equal(t, "ng1-2", clusterstate.GetUnregisteredNodes()[0].Node.Name)
+
+	err = clusterstate.UpdateNodes([]*apiv1.Node{ng1_1, ng1_2}, time.Now().Add(-time.Minute))
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(clusterstate.GetUnregisteredNodes()))
+}
+
+func TestUpdateLastTransitionTimes(t *testing.T) {
+	now := metav1.Time{Time: time.Now()}
+	later := metav1.Time{Time: now.Time.Add(10 * time.Second)}
+	oldStatus := &api.ClusterAutoscalerStatus{
+		ClusterwideConditions: make([]api.ClusterAutoscalerCondition, 0),
+		NodeGroupStatuses:     make([]api.NodeGroupStatus, 0),
+	}
+	oldStatus.ClusterwideConditions = append(
+		oldStatus.ClusterwideConditions,
+		api.ClusterAutoscalerCondition{
+			Type:               api.ClusterAutoscalerHealth,
+			Status:             api.ClusterAutoscalerHealthy,
+			LastProbeTime:      now,
+			LastTransitionTime: now,
+		})
+	oldStatus.ClusterwideConditions = append(
+		oldStatus.ClusterwideConditions,
+		api.ClusterAutoscalerCondition{
+			Type:               api.ClusterAutoscalerScaleUp,
+			Status:             api.ClusterAutoscalerInProgress,
+			LastProbeTime:      now,
+			LastTransitionTime: now,
+		})
+	oldStatus.NodeGroupStatuses = append(
+		oldStatus.NodeGroupStatuses,
+		api.NodeGroupStatus{
+			ProviderID: "ng1",
+			Conditions: oldStatus.ClusterwideConditions,
+		})
+
+	newStatus := &api.ClusterAutoscalerStatus{
+		ClusterwideConditions: make([]api.ClusterAutoscalerCondition, 0),
+		NodeGroupStatuses:     make([]api.NodeGroupStatus, 0),
+	}
+	newStatus.ClusterwideConditions = append(
+		newStatus.ClusterwideConditions,
+		api.ClusterAutoscalerCondition{
+			Type:          api.ClusterAutoscalerHealth,
+			Status:        api.ClusterAutoscalerHealthy,
+			LastProbeTime: later,
+		})
+	newStatus.ClusterwideConditions = append(
+		newStatus.ClusterwideConditions,
+		api.ClusterAutoscalerCondition{
+			Type:          api.ClusterAutoscalerScaleUp,
+			Status:        api.ClusterAutoscalerNotNeeded,
+			LastProbeTime: later,
+		})
+	newStatus.ClusterwideConditions = append(
+		newStatus.ClusterwideConditions,
+		api.ClusterAutoscalerCondition{
+			Type:          api.ClusterAutoscalerScaleDown,
+			Status:        api.ClusterAutoscalerNoCandidates,
+			LastProbeTime: later,
+		})
+	newStatus.NodeGroupStatuses = append(
+		newStatus.NodeGroupStatuses,
+		api.NodeGroupStatus{
+			ProviderID: "ng2",
+			Conditions: newStatus.ClusterwideConditions,
+		})
+	newStatus.NodeGroupStatuses = append(
+		newStatus.NodeGroupStatuses,
+		api.NodeGroupStatus{
+			ProviderID: "ng1",
+			Conditions: newStatus.ClusterwideConditions,
+		})
+	updateLastTransition(oldStatus, newStatus)
+
+	for _, cwCondition := range newStatus.ClusterwideConditions {
+		switch cwCondition.Type {
+		case api.ClusterAutoscalerHealth:
+			// Status has not changed
+			assert.Equal(t, now, cwCondition.LastTransitionTime)
+		case api.ClusterAutoscalerScaleUp:
+			// Status has changed
+			assert.Equal(t, later, cwCondition.LastTransitionTime)
+		case api.ClusterAutoscalerScaleDown:
+			// No old status information
+			assert.Equal(t, later, cwCondition.LastTransitionTime)
+		}
+	}
+
+	expectedNgTimestamps := make(map[string](map[api.ClusterAutoscalerConditionType]metav1.Time), 0)
+	// Same as clusterwide
+	expectedNgTimestamps["ng1"] = map[api.ClusterAutoscalerConditionType]metav1.Time{
+		api.ClusterAutoscalerHealth:    now,
+		api.ClusterAutoscalerScaleUp:   later,
+		api.ClusterAutoscalerScaleDown: later,
+	}
+	// New node group - everything should have latest timestamp as last transition time
+	expectedNgTimestamps["ng2"] = map[api.ClusterAutoscalerConditionType]metav1.Time{
+		api.ClusterAutoscalerHealth:    later,
+		api.ClusterAutoscalerScaleUp:   later,
+		api.ClusterAutoscalerScaleDown: later,
+	}
+
+	for _, ng := range newStatus.NodeGroupStatuses {
+		expectations := expectedNgTimestamps[ng.ProviderID]
+		for _, ngCondition := range ng.Conditions {
+			assert.Equal(t, expectations[ngCondition.Type], ngCondition.LastTransitionTime)
+		}
+	}
 }

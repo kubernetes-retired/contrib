@@ -1,0 +1,20 @@
+---
+- name: Read back the api-server certificates
+  slurp:
+    src: "{{ item }}"
+  register: apiserver_certs
+  run_once: true
+  delegate_to: "{{ groups['masters'][0] }}"
+  with_items:
+    - "{{ kube_cert_dir }}/server.crt"
+    - "{{ kube_cert_dir }}/server.key"
+
+- name: Write back the api-server certificates
+  copy:
+    dest: "{{ item.item }}"
+    content: "{{ item.content | b64decode }}"
+    group: "{{ kube_cert_group }}"
+    owner: "kube"
+    mode: 0440
+  with_items: "{{ apiserver_certs.results }}"
+  when: inventory_hostname in groups['masters'] and inventory_hostname != groups['masters'][0]

@@ -28,8 +28,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/util/wait"
 	provider_aws "k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
-	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 const (
@@ -121,6 +121,7 @@ func (m *AwsManager) SetAsgSize(asg *Asg, size int64) error {
 		DesiredCapacity:      aws.Int64(size),
 		HonorCooldown:        aws.Bool(false),
 	}
+	glog.V(0).Infof("Setting asg %s size to %d", asg.Id(), size)
 	_, err := m.service.SetDesiredCapacity(params)
 	if err != nil {
 		return err
@@ -223,7 +224,8 @@ func (m *AwsManager) GetAsgNodes(asg *Asg) ([]string, error) {
 		return []string{}, err
 	}
 	for _, instance := range group.Instances {
-		result = append(result, *instance.InstanceId)
+		result = append(result,
+			fmt.Sprintf("aws:///%s/%s", *instance.AvailabilityZone, *instance.InstanceId))
 	}
 	return result, nil
 }

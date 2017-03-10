@@ -54,12 +54,12 @@ spec:
         scheduler.alpha.kubernetes.io/affinity: >
             {
               "podAntiAffinity": {
-                "requiredDuringSchedulingRequiredDuringExecution": [{
+                "requiredDuringSchedulingIgnoredDuringExecution": [{
                   "labelSelector": {
                     "matchExpressions": [{
                       "key": "app",
                       "operator": "In",
-                      "values": ["zk-headless"]
+                      "values": ["zk"]
                     }]
                   },
                   "topologyKey": "kubernetes.io/hostname"

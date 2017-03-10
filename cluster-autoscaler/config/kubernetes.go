@@ -22,10 +22,10 @@ import (
 	"net/url"
 	"strconv"
 
-	kube_rest "k8s.io/kubernetes/pkg/client/restclient"
-	kube_client_cmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
-	kube_client_cmd_api "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
-	"k8s.io/kubernetes/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	kube_rest "k8s.io/client-go/rest"
+	kube_client_cmd "k8s.io/client-go/tools/clientcmd"
+	kube_client_cmd_api "k8s.io/client-go/tools/clientcmd/api"
 )
 
 // This code was borrowed from Heapster to push the work forward and contains some functionality

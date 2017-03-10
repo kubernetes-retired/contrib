@@ -17,12 +17,13 @@ limitations under the License.
 package deletetaint
 
 import (
-	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
+	kube_client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 
 	"github.com/golang/glog"
 )
@@ -35,7 +36,7 @@ const (
 // MarkToBeDeleted sets a taint that makes the node unschedulable.
 func MarkToBeDeleted(node *apiv1.Node, client kube_client.Interface) error {
 	// Get the newest version of the node.
-	freshNode, err := client.Core().Nodes().Get(node.Name)
+	freshNode, err := client.Core().Nodes().Get(node.Name, metav1.GetOptions{})
 	if err != nil || freshNode == nil {
 		return fmt.Errorf("failed to get node %v: %v", node.Name, err)
 	}
@@ -54,42 +55,23 @@ func MarkToBeDeleted(node *apiv1.Node, client kube_client.Interface) error {
 }
 
 func addToBeDeletedTaint(node *apiv1.Node) (bool, error) {
-	taints, err := apiv1.GetTaintsFromNodeAnnotations(node.Annotations)
-	if err != nil {
-		glog.Warningf("Error while getting Taints for node %v: %v", node.Name, err)
-		return false, err
-	}
-	for _, taint := range taints {
+	for _, taint := range node.Spec.Taints {
 		if taint.Key == ToBeDeletedTaint {
 			glog.Infof("ToBeDeletedTaint already present on on node %v", taint, node.Name)
 			return false, nil
 		}
 	}
-	taints = append(taints, apiv1.Taint{
+	node.Spec.Taints = append(node.Spec.Taints, apiv1.Taint{
 		Key:    ToBeDeletedTaint,
-		Value:  time.Now().String(),
+		Value:  fmt.Sprint(time.Now().Unix()),
 		Effect: apiv1.TaintEffectNoSchedule,
 	})
-	taintsJson, err := json.Marshal(taints)
-	if err != nil {
-		glog.Warningf("Error while adding taints on node %v: %v", node.Name, err)
-		return false, err
-	}
-	if node.Annotations == nil {
-		node.Annotations = make(map[string]string)
-	}
-	node.Annotations[apiv1.TaintsAnnotationKey] = string(taintsJson)
 	return true, nil
 }
 
 // HasToBeDeletedTaint returns true if ToBeDeleted taint is applied on the node.
 func HasToBeDeletedTaint(node *apiv1.Node) bool {
-	taints, err := apiv1.GetTaintsFromNodeAnnotations(node.Annotations)
-	if err != nil {
-		glog.Warningf("Node %v has incorrect taint annotation: %v", err)
-		return false
-	}
-	for _, taint := range taints {
+	for _, taint := range node.Spec.Taints {
 		if taint.Key == ToBeDeletedTaint {
 			return true
 		}
@@ -97,16 +79,29 @@ func HasToBeDeletedTaint(node *apiv1.Node) bool {
 	return false
 }
 
+// GetToBeDeletedTime returns the date when the node was marked by CA as for delete.
+func GetToBeDeletedTime(node *apiv1.Node) (*time.Time, error) {
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == ToBeDeletedTaint {
+			resultTimestamp, err := strconv.ParseInt(taint.Value, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			result := time.Unix(resultTimestamp, 0)
+			return &result, nil
+		}
+	}
+	return nil, nil
+}
+
 // CleanToBeDeleted cleans ToBeDeleted taint.
 func CleanToBeDeleted(node *apiv1.Node, client kube_client.Interface) (bool, error) {
-	taints, err := apiv1.GetTaintsFromNodeAnnotations(node.Annotations)
-	if err != nil {
-		glog.Warningf("Error while getting Taints for node %v: %v", node.Name, err)
-		return false, err
+	freshNode, err := client.Core().Nodes().Get(node.Name, metav1.GetOptions{})
+	if err != nil || freshNode == nil {
+		return false, fmt.Errorf("failed to get node %v: %v", node.Name, err)
 	}
-
 	newTaints := make([]apiv1.Taint, 0)
-	for _, taint := range taints {
+	for _, taint := range freshNode.Spec.Taints {
 		if taint.Key == ToBeDeletedTaint {
 			glog.V(1).Infof("Releasing taint %+v on node %v", taint, node.Name)
 		} else {
@@ -114,17 +109,9 @@ func CleanToBeDeleted(node *apiv1.Node, client kube_client.Interface) (bool, err
 		}
 	}
 
-	if len(newTaints) != len(taints) {
-		taintsJson, err := json.Marshal(newTaints)
-		if err != nil {
-			glog.Warningf("Error while releasing taints on node %v: %v", node.Name, err)
-			return false, err
-		}
-		if node.Annotations == nil {
-			node.Annotations = make(map[string]string)
-		}
-		node.Annotations[apiv1.TaintsAnnotationKey] = string(taintsJson)
-		_, err = client.Core().Nodes().Update(node)
+	if len(newTaints) != len(freshNode.Spec.Taints) {
+		freshNode.Spec.Taints = newTaints
+		_, err := client.Core().Nodes().Update(freshNode)
 		if err != nil {
 			glog.Warningf("Error while releasing taints on node %v: %v", node.Name, err)
 			return false, err

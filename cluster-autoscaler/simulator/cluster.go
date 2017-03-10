@@ -23,9 +23,10 @@ import (
 	"math/rand"
 	"time"
 
-	"k8s.io/kubernetes/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/api/resource"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	client "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
+	policyv1 "k8s.io/kubernetes/pkg/apis/policy/v1beta1"
+	client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"github.com/golang/glog"
@@ -55,7 +56,9 @@ type NodeToBeRemoved struct {
 func FindNodesToRemove(candidates []*apiv1.Node, allNodes []*apiv1.Node, pods []*apiv1.Pod,
 	client client.Interface, predicateChecker *PredicateChecker, maxCount int,
 	fastCheck bool, oldHints map[string]string, usageTracker *UsageTracker,
-	timestamp time.Time) (nodesToRemove []NodeToBeRemoved, podReschedulingHints map[string]string, finalError error) {
+	timestamp time.Time,
+	podDisruptionBudgets []*policyv1.PodDisruptionBudget,
+) (nodesToRemove []NodeToBeRemoved, podReschedulingHints map[string]string, finalError error) {
 
 	nodeNameToNodeInfo := schedulercache.CreateNodeNameToInfoMap(pods, allNodes)
 	result := make([]NodeToBeRemoved, 0)
@@ -75,9 +78,11 @@ candidateloop:
 
 		if nodeInfo, found := nodeNameToNodeInfo[node.Name]; found {
 			if fastCheck {
-				podsToRemove, err = FastGetPodsToMove(nodeInfo, *skipNodesWithSystemPods, *skipNodesWithLocalStorage)
+				podsToRemove, err = FastGetPodsToMove(nodeInfo, *skipNodesWithSystemPods, *skipNodesWithLocalStorage,
+					podDisruptionBudgets)
 			} else {
-				podsToRemove, err = DetailedGetPodsForMove(nodeInfo, *skipNodesWithSystemPods, *skipNodesWithLocalStorage, client, int32(*minReplicaCount))
+				podsToRemove, err = DetailedGetPodsForMove(nodeInfo, *skipNodesWithSystemPods, *skipNodesWithLocalStorage, client, int32(*minReplicaCount),
+					podDisruptionBudgets)
 			}
 			if err != nil {
 				glog.V(2).Infof("%s: node %s cannot be removed: %v", evaluationType, node.Name, err)
@@ -113,7 +118,7 @@ func FindEmptyNodesToRemove(candidates []*apiv1.Node, pods []*apiv1.Pod) []*apiv
 	for _, node := range candidates {
 		if nodeInfo, found := nodeNameToNodeInfo[node.Name]; found {
 			// Should block on all pods.
-			podsToRemove, err := FastGetPodsToMove(nodeInfo, true, true)
+			podsToRemove, err := FastGetPodsToMove(nodeInfo, true, true, nil)
 			if err == nil && len(podsToRemove) == 0 {
 				result = append(result, node)
 			}

@@ -5,7 +5,7 @@ TAG = 1.3
 PREFIX = gcr.io/google_containers/echoserver-redirect
 
 container:
-	docker build -t $(PREFIX):$(TAG) .
+	docker build --pull -t $(PREFIX):$(TAG) .
 
 push: container
 	gcloud docker push $(PREFIX):$(TAG)

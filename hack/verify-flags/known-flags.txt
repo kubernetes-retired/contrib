@@ -71,6 +71,7 @@ kubelet-port
 label-file
 last-release-pr
 left-build-number
+listen-address
 local-data-dir
 max-empty-bulk-delete
 max-nodes-total
@@ -145,6 +146,7 @@ triager-url
 ttl-secs
 udp-services-configmap
 unit-status-context
+unregistered-node-removal-time
 url-list
 use-cluster-credentials
 use-ip
@@ -158,3 +160,4 @@ vrrp-password
 watch-namespace
 weak-stable-jobs
 whitelist-override-label
+write-status-configmap

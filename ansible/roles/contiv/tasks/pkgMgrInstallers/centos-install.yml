@@ -6,8 +6,8 @@
 
 - name: PkgMgr CentOS | Get openstack kilo rpm
   get_url:
-    url: https://repos.fedorapeople.org/repos/openstack/openstack-kilo/rdo-release-kilo-1.noarch.rpm
-    dest: /tmp/rdo-release-kilo-1.noarch.rpm
+    url: https://repos.fedorapeople.org/repos/openstack/openstack-kilo/rdo-release-kilo-2.noarch.rpm
+    dest: /tmp/rdo-release-kilo-2.noarch.rpm
     validate_certs: False
   environment:
     http_proxy: "{{ http_proxy|default('') }}"
@@ -17,7 +17,7 @@
        - ovs_install
 
 - name: PkgMgr CentOS | Install openstack kilo rpm
-  yum: name=/tmp/rdo-release-kilo-1.noarch.rpm state=present
+  yum: name=/tmp/rdo-release-kilo-2.noarch.rpm state=present
   tags:
        - ovs_install
 

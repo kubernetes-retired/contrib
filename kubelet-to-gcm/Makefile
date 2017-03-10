@@ -24,9 +24,8 @@
 
 OUT_DIR = build
 PACKAGE = k8s.io/contrib/kubelet-to-gcm
-#PREFIX = gcr.io/google_containers
-PREFIX = gcr.io/gke-test-us-central1-b-0
-TAG = 1.2.1
+PREFIX = gcr.io/google_containers
+TAG = 1.2.2
 
 # Rules for building the real image for deployment to gcr.io
 
@@ -45,7 +44,7 @@ clean:
 	rm -rf build
 
 build: go
-	docker build -t ${PREFIX}/kubelet-to-gcm:$(TAG) .
+	docker build --pull -t ${PREFIX}/kubelet-to-gcm:$(TAG) .
 
 docker: build
 
