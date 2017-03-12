@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/kubernetes/contrib.svg)](https://travis-ci.org/kubernetes/contrib)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes/contrib)](https://goreportcard.com/report/github.com/kubernetes/contrib)
+[![APACHEv2 License](https://img.shields.io/badge/license-APACHEv2-blue.svg)](https://github.com/kubernetes/contrib/blob/master/LICENSE)
 
 This is a place for various components in the Kubernetes ecosystem
 that aren't part of the Kubernetes core.
