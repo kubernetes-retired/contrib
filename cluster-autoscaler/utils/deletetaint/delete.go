@@ -18,6 +18,7 @@ package deletetaint
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -62,7 +63,7 @@ func addToBeDeletedTaint(node *apiv1.Node) (bool, error) {
 	}
 	node.Spec.Taints = append(node.Spec.Taints, apiv1.Taint{
 		Key:    ToBeDeletedTaint,
-		Value:  time.Now().String(),
+		Value:  fmt.Sprint(time.Now().Unix()),
 		Effect: apiv1.TaintEffectNoSchedule,
 	})
 	return true, nil
@@ -78,10 +79,29 @@ func HasToBeDeletedTaint(node *apiv1.Node) bool {
 	return false
 }
 
+// GetToBeDeletedTime returns the date when the node was marked by CA as for delete.
+func GetToBeDeletedTime(node *apiv1.Node) (*time.Time, error) {
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == ToBeDeletedTaint {
+			resultTimestamp, err := strconv.ParseInt(taint.Value, 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			result := time.Unix(resultTimestamp, 0)
+			return &result, nil
+		}
+	}
+	return nil, nil
+}
+
 // CleanToBeDeleted cleans ToBeDeleted taint.
 func CleanToBeDeleted(node *apiv1.Node, client kube_client.Interface) (bool, error) {
+	freshNode, err := client.Core().Nodes().Get(node.Name, metav1.GetOptions{})
+	if err != nil || freshNode == nil {
+		return false, fmt.Errorf("failed to get node %v: %v", node.Name, err)
+	}
 	newTaints := make([]apiv1.Taint, 0)
-	for _, taint := range node.Spec.Taints {
+	for _, taint := range freshNode.Spec.Taints {
 		if taint.Key == ToBeDeletedTaint {
 			glog.V(1).Infof("Releasing taint %+v on node %v", taint, node.Name)
 		} else {
@@ -89,9 +109,9 @@ func CleanToBeDeleted(node *apiv1.Node, client kube_client.Interface) (bool, err
 		}
 	}
 
-	if len(newTaints) != len(node.Spec.Taints) {
-		node.Spec.Taints = newTaints
-		_, err := client.Core().Nodes().Update(node)
+	if len(newTaints) != len(freshNode.Spec.Taints) {
+		freshNode.Spec.Taints = newTaints
+		_, err := client.Core().Nodes().Update(freshNode)
 		if err != nil {
 			glog.Warningf("Error while releasing taints on node %v: %v", node.Name, err)
 			return false, err

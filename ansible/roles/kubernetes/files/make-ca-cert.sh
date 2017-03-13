@@ -110,6 +110,10 @@ if [[ -n "${CLUSTER_HOSTNAME}" ]]; then
     san_array+=(DNS:${CLUSTER_HOSTNAME})
 fi
 
+if [[ -n "${CLUSTER_PUBLIC_HOSTNAME}" ]]; then
+    san_array+=(DNS:${CLUSTER_PUBLIC_HOSTNAME})
+fi
+
 sans="$(IFS=, ; echo "${san_array[*]}")"
 
 curl -sSL -O https://storage.googleapis.com/kubernetes-release/easy-rsa/easy-rsa.tar.gz

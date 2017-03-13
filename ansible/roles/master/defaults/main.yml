@@ -31,4 +31,28 @@ kube_master_rpms:
   - kubernetes-client
   - kubernetes-master
 
+kube_apiserver_options: []
+kube_controller_manager_options: []
+kube_scheduler_options: []
+
 etcd_client_port: '2379'
+
+kube_apiserver_options:
+  - "--tls-cert-file={{ kube_cert_dir }}/server.crt"
+  - "--tls-private-key-file={{ kube_cert_dir }}/server.key"
+  - "--client-ca-file={{ kube_cert_dir }}/ca.crt"
+  - "--token-auth-file={{ kube_token_dir }}/known_tokens.csv"
+  - "--service-account-key-file={{ kube_cert_dir }}/server.crt"
+  - "--bind-address={{ kube_apiserver_bind_address }}"
+
+kube_controller_manager_options:
+  - "--kubeconfig={{ kube_config_dir }}/controller-manager.kubeconfig"
+  - "--service-account-private-key-file={{ kube_cert_dir }}/server.key"
+  - "--root-ca-file={{ kube_cert_dir }}/ca.crt"
+
+kube_scheduler_options:
+  - "--kubeconfig={{ kube_config_dir }}/scheduler.kubeconfig"
+
+kube_apiserver_additional_options: []
+kube_controller_manager_additional_options: []
+kube_scheduler_additional_options: []
