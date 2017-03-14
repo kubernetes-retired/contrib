@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,15 @@ package simulator
 
 import (
 	"fmt"
+	"time"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/controller"
-	"k8s.io/kubernetes/pkg/kubelet/types"
-	"k8s.io/kubernetes/pkg/runtime"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/contrib/cluster-autoscaler/utils/drain"
+	api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	policyv1 "k8s.io/kubernetes/pkg/apis/policy/v1beta1"
+	client "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 )
 
@@ -31,86 +35,70 @@ import (
 // Based on kubectl drain code. It makes an assumption that RC, DS, Jobs and RS were deleted
 // along with their pods (no abandoned pods with dangling created-by annotation). Usefull for fast
 // checks.
-func FastGetPodsToMove(nodeInfo *schedulercache.NodeInfo, force bool,
-	skipNodesWithSystemPods bool, skipNodesWithLocalStorage bool) ([]*api.Pod, error) {
-	pods := make([]*api.Pod, 0)
-	unreplicatedPodNames := []string{}
-	for _, pod := range nodeInfo.Pods() {
-		if IsMirrorPod(pod) {
-			continue
-		}
+func FastGetPodsToMove(nodeInfo *schedulercache.NodeInfo, skipNodesWithSystemPods bool, skipNodesWithLocalStorage bool,
+	pdbs []*policyv1.PodDisruptionBudget) ([]*apiv1.Pod, error) {
+	pods, err := drain.GetPodsForDeletionOnNodeDrain(
+		nodeInfo.Pods(),
+		api.Codecs.UniversalDecoder(),
+		false,
+		skipNodesWithSystemPods,
+		skipNodesWithLocalStorage,
+		false,
+		nil,
+		0,
+		time.Now())
 
-		replicated := false
-		daemonsetPod := false
-
-		creatorKind, err := CreatorRefKind(pod)
-		if err != nil {
-			return []*api.Pod{}, err
-		}
-		if creatorKind == "ReplicationController" {
-			replicated = true
-		} else if creatorKind == "DaemonSet" {
-			daemonsetPod = true
-		} else if creatorKind == "Job" {
-			replicated = true
-		} else if creatorKind == "ReplicaSet" {
-			replicated = true
-		}
-
-		if !daemonsetPod && pod.Namespace == "kube-system" && skipNodesWithSystemPods {
-			return []*api.Pod{}, fmt.Errorf("non-deamons set, non-mirrored, kube-system pod present: %s", pod.Name)
-		}
-
-		if !daemonsetPod && hasLocalStorage(pod) && skipNodesWithLocalStorage {
-			return []*api.Pod{}, fmt.Errorf("pod with local storage present: %s", pod.Name)
-		}
-
-		switch {
-		case daemonsetPod:
-			break
-		case !replicated:
-			unreplicatedPodNames = append(unreplicatedPodNames, pod.Name)
-			if force {
-				pods = append(pods, pod)
-			}
-		default:
-			pods = append(pods, pod)
-		}
+	if err != nil {
+		return pods, err
 	}
-	if !force && len(unreplicatedPodNames) > 0 {
-		return []*api.Pod{}, fmt.Errorf("unreplicated pods present")
+	if err := checkPdbs(pods, pdbs); err != nil {
+		return []*apiv1.Pod{}, err
 	}
+
 	return pods, nil
 }
 
-// CreatorRefKind returns the kind of the creator of the pod.
-func CreatorRefKind(pod *api.Pod) (string, error) {
-	creatorRef, found := pod.ObjectMeta.Annotations[controller.CreatedByAnnotation]
-	if !found {
-		return "", nil
+// DetailedGetPodsForMove returns a list of pods that should be moved elsewhere if the node
+// is drained. Raises error if there is an unreplicated pod and force option was not specified.
+// Based on kubectl drain code. It checks whether RC, DS, Jobs and RS that created these pods
+// still exist.
+func DetailedGetPodsForMove(nodeInfo *schedulercache.NodeInfo, skipNodesWithSystemPods bool,
+	skipNodesWithLocalStorage bool, client client.Interface, minReplicaCount int32,
+	pdbs []*policyv1.PodDisruptionBudget) ([]*apiv1.Pod, error) {
+	pods, err := drain.GetPodsForDeletionOnNodeDrain(
+		nodeInfo.Pods(),
+		api.Codecs.UniversalDecoder(),
+		false,
+		skipNodesWithSystemPods,
+		skipNodesWithLocalStorage,
+		true,
+		client,
+		minReplicaCount,
+		time.Now())
+	if err != nil {
+		return pods, err
 	}
-	var sr api.SerializedReference
-	if err := runtime.DecodeInto(api.Codecs.UniversalDecoder(), []byte(creatorRef), &sr); err != nil {
-		return "", err
+	if err := checkPdbs(pods, pdbs); err != nil {
+		return []*apiv1.Pod{}, err
 	}
-	return sr.Reference.Kind, nil
+
+	return pods, nil
 }
 
-// IsMirrorPod checks whether the pod is a mirror pod.
-func IsMirrorPod(pod *api.Pod) bool {
-	_, found := pod.ObjectMeta.Annotations[types.ConfigMirrorAnnotationKey]
-	return found
-}
-
-func hasLocalStorage(pod *api.Pod) bool {
-	for _, volume := range pod.Spec.Volumes {
-		if isLocalVolume(&volume) {
-			return true
+func checkPdbs(pods []*apiv1.Pod, pdbs []*policyv1.PodDisruptionBudget) error {
+	// TODO: make it more efficient.
+	for _, pdb := range pdbs {
+		selector, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
+		if err != nil {
+			return err
+		}
+		for _, pod := range pods {
+			if selector.Matches(labels.Set(pod.Labels)) {
+				if pdb.Status.PodDisruptionsAllowed < 1 {
+					return fmt.Errorf("no enough pod disruption budget to move %s/%s", pod.Namespace, pod.Name)
+				}
+			}
 		}
 	}
-	return false
-}
-
-func isLocalVolume(volume *api.Volume) bool {
-	return volume.HostPath != nil || volume.EmptyDir != nil
+	return nil
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,7 @@ limitations under the License.
 
 package pod
 
-import (
-	"fmt"
-
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/util/intstr"
-)
+import "k8s.io/kubernetes/pkg/api"
 
 const (
 	// TODO: to be de!eted after v1.3 is released. PodSpec has a dedicated Hostname field.
@@ -30,32 +25,102 @@ const (
 
 	// TODO: to be de!eted after v1.3 is released. PodSpec has a dedicated Subdomain field.
 	// The annotation value is a string specifying the subdomain e.g. "my-web-service"
-	// If specified, on the the pod itself, "<hostname>.my-web-service.<namespace>.svc.<cluster domain>" would resolve to
+	// If specified, on the pod itself, "<hostname>.my-web-service.<namespace>.svc.<cluster domain>" would resolve to
 	// the pod's IP.
 	// If there is a headless service named "my-web-service" in the same namespace as the pod, then,
 	// <hostname>.my-web-service.<namespace>.svc.<cluster domain>" would be resolved by the cluster DNS Server.
 	PodSubdomainAnnotation = "pod.beta.kubernetes.io/subdomain"
 )
 
-// FindPort locates the container port for the given pod and portName.  If the
-// targetPort is a number, use that.  If the targetPort is a string, look that
-// string up in all named ports in all containers in the target pod.  If no
-// match is found, fail.
-func FindPort(pod *api.Pod, svcPort *api.ServicePort) (int, error) {
-	portName := svcPort.TargetPort
-	switch portName.Type {
-	case intstr.String:
-		name := portName.StrVal
-		for _, container := range pod.Spec.Containers {
-			for _, port := range container.Ports {
-				if port.Name == name && port.Protocol == svcPort.Protocol {
-					return int(port.ContainerPort), nil
+// VisitPodSecretNames invokes the visitor function with the name of every secret
+// referenced by the pod spec. If visitor returns false, visiting is short-circuited.
+// Transitive references (e.g. pod -> pvc -> pv -> secret) are not visited.
+// Returns true if visiting completed, false if visiting was short-circuited.
+func VisitPodSecretNames(pod *api.Pod, visitor func(string) bool) bool {
+	for _, reference := range pod.Spec.ImagePullSecrets {
+		if !visitor(reference.Name) {
+			return false
+		}
+	}
+	for i := range pod.Spec.InitContainers {
+		if !visitContainerSecretNames(&pod.Spec.InitContainers[i], visitor) {
+			return false
+		}
+	}
+	for i := range pod.Spec.Containers {
+		if !visitContainerSecretNames(&pod.Spec.Containers[i], visitor) {
+			return false
+		}
+	}
+	var source *api.VolumeSource
+	for i := range pod.Spec.Volumes {
+		source = &pod.Spec.Volumes[i].VolumeSource
+		switch {
+		// case source.AWSElasticBlockStore:
+		// case source.AzureDisk:
+		case source.AzureFile != nil:
+			if len(source.AzureFile.SecretName) > 0 && !visitor(source.Secret.SecretName) {
+				return false
+			}
+		case source.CephFS != nil:
+			if source.CephFS.SecretRef != nil && !visitor(source.CephFS.SecretRef.Name) {
+				return false
+			}
+		// case source.Cinder:
+		// case source.ConfigMap:
+		// case source.DownwardAPI:
+		// case source.EmptyDir:
+		// case source.FC:
+		case source.FlexVolume != nil:
+			if source.FlexVolume.SecretRef != nil && !visitor(source.FlexVolume.SecretRef.Name) {
+				return false
+			}
+		// case source.Flocker:
+		// case source.GCEPersistentDisk:
+		// case source.GitRepo:
+		// case source.Glusterfs:
+		// case source.HostPath:
+		// case source.ISCSI:
+		// case source.NFS:
+		// case source.PersistentVolumeClaim:
+		// case source.PhotonPersistentDisk:
+		case source.Projected != nil:
+			for j := range source.Projected.Sources {
+				if source.Projected.Sources[j].Secret != nil {
+					if !visitor(source.Projected.Sources[j].Secret.Name) {
+						return false
+					}
 				}
 			}
+		// case source.Quobyte:
+		case source.RBD != nil:
+			if source.RBD.SecretRef != nil && !visitor(source.RBD.SecretRef.Name) {
+				return false
+			}
+		case source.Secret != nil:
+			if !visitor(source.Secret.SecretName) {
+				return false
+			}
 		}
-	case intstr.Int:
-		return portName.IntValue(), nil
+		// case source.VsphereVolume:
 	}
+	return true
+}
 
-	return 0, fmt.Errorf("no suitable port for manifest: %s", pod.UID)
+func visitContainerSecretNames(container *api.Container, visitor func(string) bool) bool {
+	for _, env := range container.EnvFrom {
+		if env.SecretRef != nil {
+			if !visitor(env.SecretRef.Name) {
+				return false
+			}
+		}
+	}
+	for _, envVar := range container.Env {
+		if envVar.ValueFrom != nil && envVar.ValueFrom.SecretKeyRef != nil {
+			if !visitor(envVar.ValueFrom.SecretKeyRef.Name) {
+				return false
+			}
+		}
+	}
+	return true
 }
