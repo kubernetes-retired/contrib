@@ -107,6 +107,14 @@ dns_setup: true
 # How many replicas in the Replication Controller
 dns_replicas: 1
 
+# Certificate authority private key should not be kept on server
+# but you probably want to keep it to generate user certificates. Set
+# that value to "true" to keep ca.key file on {{ kube_cert_dir}}.
+# It's recommanded to remove the private key from the server. So if you set
+# kube_cert_keep_ca to true, please copy the ca.key file somewhere that
+# is secured, and remove it from server.
+kube_cert_keep_ca: false
+
 # There are other variable in roles/kubernetes/defaults/main.yml but changing
 # them comes with a much higher risk to your cluster. So proceed over there
 # with caution.
