@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,22 +17,16 @@ limitations under the License.
 package kubectl
 
 import (
-	"encoding/json"
-
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/kubernetes/pkg/api/annotations"
-	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
-	"k8s.io/kubernetes/pkg/runtime"
 )
-
-type debugError interface {
-	DebugError() (msg string, args []interface{})
-}
 
 // GetOriginalConfiguration retrieves the original configuration of the object
 // from the annotation, or nil if no annotation was found.
-func GetOriginalConfiguration(info *resource.Info) ([]byte, error) {
-	annots, err := info.Mapping.MetadataAccessor.Annotations(info.Object)
+func GetOriginalConfiguration(mapping *meta.RESTMapping, obj runtime.Object) ([]byte, error) {
+	annots, err := mapping.MetadataAccessor.Annotations(obj)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +69,7 @@ func SetOriginalConfiguration(info *resource.Info, original []byte) error {
 }
 
 // GetModifiedConfiguration retrieves the modified configuration of the object.
-// If annotate is true, it embeds the result as an anotation in the modified
+// If annotate is true, it embeds the result as an annotation in the modified
 // configuration. If an object was read from the command input, it will use that
 // version of the object. Otherwise, it will use the version from the server.
 func GetModifiedConfiguration(info *resource.Info, annotate bool, codec runtime.Encoder) ([]byte, error) {
@@ -100,7 +94,7 @@ func GetModifiedConfiguration(info *resource.Info, annotate bool, codec runtime.
 		accessor.SetAnnotations(annots)
 		// TODO: this needs to be abstracted - there should be no assumption that versioned object
 		// can be marshalled to JSON.
-		modified, err = json.Marshal(info.VersionedObject)
+		modified, err = runtime.Encode(codec, info.VersionedObject)
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +104,7 @@ func GetModifiedConfiguration(info *resource.Info, annotate bool, codec runtime.
 			accessor.SetAnnotations(annots)
 			// TODO: this needs to be abstracted - there should be no assumption that versioned object
 			// can be marshalled to JSON.
-			modified, err = json.Marshal(info.VersionedObject)
+			modified, err = runtime.Encode(codec, info.VersionedObject)
 			if err != nil {
 				return nil, err
 			}
@@ -168,7 +162,7 @@ func GetModifiedConfiguration(info *resource.Info, annotate bool, codec runtime.
 // UpdateApplyAnnotation calls CreateApplyAnnotation if the last applied
 // configuration annotation is already present. Otherwise, it does nothing.
 func UpdateApplyAnnotation(info *resource.Info, codec runtime.Encoder) error {
-	if original, err := GetOriginalConfiguration(info); err != nil || len(original) <= 0 {
+	if original, err := GetOriginalConfiguration(info.Mapping, info.Object); err != nil || len(original) <= 0 {
 		return err
 	}
 	return CreateApplyAnnotation(info, codec)

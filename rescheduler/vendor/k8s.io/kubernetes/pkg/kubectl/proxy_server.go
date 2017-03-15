@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,14 +28,14 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"k8s.io/kubernetes/pkg/client/restclient"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/pkg/util"
 )
 
 const (
 	DefaultHostAcceptRE   = "^localhost$,^127\\.0\\.0\\.1$,^\\[::1\\]$"
-	DefaultPathAcceptRE   = "^/.*"
-	DefaultPathRejectRE   = "^/api/.*/exec,^/api/.*/run,^/api/.*/attach"
+	DefaultPathAcceptRE   = "^.*"
+	DefaultPathRejectRE   = "^/api/.*/pods/.*/exec,^/api/.*/pods/.*/attach"
 	DefaultMethodRejectRE = "POST,PUT,PATCH"
 )
 
@@ -63,7 +63,7 @@ type FilterServer struct {
 	delegate http.Handler
 }
 
-// Splits a comma separated list of regexps into a array of Regexp objects.
+// Splits a comma separated list of regexps into an array of Regexp objects.
 func MakeRegexpArray(str string) ([]*regexp.Regexp, error) {
 	parts := strings.Split(str, ",")
 	result := make([]*regexp.Regexp, len(parts))
@@ -97,18 +97,14 @@ func matchesRegexp(str string, regexps []*regexp.Regexp) bool {
 
 func (f *FilterServer) accept(method, path, host string) bool {
 	if matchesRegexp(path, f.RejectPaths) {
-		glog.V(3).Infof("Filter rejecting %v %v %v", method, path, host)
 		return false
 	}
 	if matchesRegexp(method, f.RejectMethods) {
-		glog.V(3).Infof("Filter rejecting %v %v %v", method, path, host)
 		return false
 	}
 	if matchesRegexp(path, f.AcceptPaths) && matchesRegexp(host, f.AcceptHosts) {
-		glog.V(3).Infof("Filter accepting %v %v %v", method, path, host)
 		return true
 	}
-	glog.V(3).Infof("Filter rejecting %v %v %v", method, path, host)
 	return false
 }
 
@@ -131,9 +127,11 @@ func extractHost(header string) (host string) {
 func (f *FilterServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	host := extractHost(req.Host)
 	if f.accept(req.Method, req.URL.Path, host) {
+		glog.V(3).Infof("Filter accepting %v %v %v", req.Method, req.URL.Path, host)
 		f.delegate.ServeHTTP(rw, req)
 		return
 	}
+	glog.V(3).Infof("Filter rejecting %v %v %v", req.Method, req.URL.Path, host)
 	rw.WriteHeader(http.StatusForbidden)
 	rw.Write([]byte("<h3>Unauthorized</h3>"))
 }

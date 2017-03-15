@@ -1,7 +1,4 @@
-assignees:
-  - bgrant0607
-  - brendandburns
-  - deads2k
-  - janetkuo
-  - jlowdermilk
-  - smarterclayton
+approvers:
+- sig-cli-maintainers
+reviewers:
+- sig-cli
