@@ -1,6 +1,7 @@
 admin-port
 alias-file
 allowed-shame-domains
+api-override
 api-token
 balance-algorithm
 batch-url
