@@ -44,6 +44,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.provider "libvirt"
   config.vm.provider "aws"
   config.vm.provider "openstack"
+  config.vm.provider "opennebula"
 
   # By default, Vagrant itself assumes that sudo requires no
   # password, therefore it does not need a tty. Some OS images
@@ -103,6 +104,13 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     when :centos7
       config.vm.box = "dummy"
       config.vm.box_url = "https://github.com/mitchellh/vagrant-aws/raw/master/dummy.box"
+    end
+  end
+
+  def set_opennebula_box(config)
+    case $os_image
+    when :centos7
+      config.vm.box = "dummy"
     end
   end
 
@@ -173,6 +181,21 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     aws.region = "YOUR REGION"
   end
 
+  def set_opennebula(opennebula, config, n)
+    set_opennebula_box(config)
+
+    config.ssh.username = "YOUR IMAGE UNAME"
+    config.ssh.private_key_path = "PATH TO YOUR KEY"
+
+    opennebula.endpoint = "RPC2 ENDPOINT"
+    opennebula.username = "USERNAME TO ACCESS RPC"
+    opennebula.password = "PASSWORD"
+    opennebula.template_id = TEMPLATE_ID
+    opennebula.title = n.vm.hostname
+    opennebula.cpu = 2
+    opennebula.vcpu = 2
+  end
+
   def set_provider(n, vm_idx)
     n.vm.provider :openstack do |os, override|
       set_openstack(os, override, n)
@@ -185,6 +208,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     end
      n.vm.provider :aws do |aws, override|
       set_aws(aws, override, n)
+    end
+    n.vm.provider :opennebula do |opennebula, override|
+      set_opennebula(opennebula, override, n)
     end
   end
 
@@ -275,6 +301,11 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     n.vm.provider :aws do |aws, override|
       override.vm.provision :ansible do |ansible|
         yield ansible, :aws
+      end
+    end
+    n.vm.provider :opennebula do |opennebula, override|
+      override.vm.provision :ansible do |ansible|
+        yield ansible, :opennebula
       end
     end
   end
