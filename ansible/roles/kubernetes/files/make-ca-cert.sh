@@ -145,6 +145,7 @@ cp -p pki/private/kubelet.key "${cert_dir}/kubelet.key"
 
 CERTS=("ca.crt" "server.key" "server.crt" "kubelet.key" "kubelet.crt" "kubecfg.key" "kubecfg.crt")
 if [[ "${keep_ca_priv_key}" == "true" ]]; then
+    cp -p pki/private/ca.key "${cert_dir}/ca.key"
     CERTS+=("ca.key")
 fi
 for cert in "${CERTS[@]}"; do
