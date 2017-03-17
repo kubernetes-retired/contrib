@@ -2,12 +2,20 @@ package swagger
 
 import (
 	"net/http"
+	"reflect"
 
 	"github.com/emicklei/go-restful"
 )
 
 // PostBuildDeclarationMapFunc can be used to modify the api declaration map.
 type PostBuildDeclarationMapFunc func(apiDeclarationMap *ApiDeclarationList)
+
+// MapSchemaFormatFunc can be used to modify typeName at definition time.
+type MapSchemaFormatFunc func(typeName string) string
+
+// MapModelTypeNameFunc can be used to return the desired typeName for a given
+// type. It will return false if the default name should be used.
+type MapModelTypeNameFunc func(t reflect.Type) (string, bool)
 
 type Config struct {
 	// url where the services are available, e.g. http://localhost:8080
@@ -31,4 +39,8 @@ type Config struct {
 	PostBuildHandler PostBuildDeclarationMapFunc
 	// Swagger global info struct
 	Info Info
+	// [optional] If set, model builder should call this handler to get addition typename-to-swagger-format-field conversion.
+	SchemaFormatHandler MapSchemaFormatFunc
+	// [optional] If set, model builder should call this handler to retrieve the name for a given type.
+	ModelTypeNameHandler MapModelTypeNameFunc
 }

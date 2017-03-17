@@ -31,10 +31,6 @@ kube_master_rpms:
   - kubernetes-client
   - kubernetes-master
 
-kube_apiserver_options: []
-kube_controller_manager_options: []
-kube_scheduler_options: []
-
 etcd_client_port: '2379'
 
 kube_apiserver_options:
@@ -44,6 +40,7 @@ kube_apiserver_options:
   - "--token-auth-file={{ kube_token_dir }}/known_tokens.csv"
   - "--service-account-key-file={{ kube_cert_dir }}/server.crt"
   - "--bind-address={{ kube_apiserver_bind_address }}"
+  - "--apiserver-count={{ groups['masters']|length }}"
 
 kube_controller_manager_options:
   - "--kubeconfig={{ kube_config_dir }}/controller-manager.kubeconfig"
