@@ -360,9 +360,8 @@ func deleteNode(context *AutoscalingContext, node *apiv1.Node, pods []*apiv1.Pod
 }
 
 func evictPod(podToEvict *apiv1.Pod, client kube_client.Interface, recorder kube_record.EventRecorder,
-	maxGracefulTerminationSec int, retryUntil time.Time, waitBetweenRetries time.Duration) error {
+	retryUntil time.Time, waitBetweenRetries time.Duration) error {
 	recorder.Eventf(podToEvict, apiv1.EventTypeNormal, "ScaleDown", "deleting pod for node scale down")
-	maxGraceful64 := int64(maxGracefulTerminationSec)
 	var lastError error
 	for first := true; first || time.Now().Before(retryUntil); time.Sleep(waitBetweenRetries) {
 		first = false
@@ -408,7 +407,7 @@ func drainNode(node *apiv1.Node, pods []*apiv1.Pod, client kube_client.Interface
 	confirmations := make(chan error, toEvict)
 	for _, pod := range pods {
 		go func(podToEvict *apiv1.Pod) {
-			confirmations <- evictPod(podToEvict, client, recorder, maxGracefulTerminationSec, retryUntil, waitBetweenRetries)
+			confirmations <- evictPod(podToEvict, client, recorder, retryUntil, waitBetweenRetries)
 		}(pod)
 	}
 
