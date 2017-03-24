@@ -1,8 +1,8 @@
 ---
 - name: CentOS | Install kubernetes master
   yum:
-    pkg=kubernetes-master
-    state=latest
+    pkg: kubernetes-master
+    state: latest
   notify:
     - restart daemons
   environment:
@@ -12,8 +12,8 @@
 
 - name: CentOS | Install kubernetes node
   yum:
-    pkg=kubernetes-node
-    state=latest
+    pkg: kubernetes-node
+    state: latest
   notify:
     - restart daemons
   environment:

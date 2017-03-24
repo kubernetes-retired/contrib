@@ -11,9 +11,10 @@
 
 #- name: Get create ca cert script from Kubernetes
 #  get_url:
-#    url=https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/saltbase/salt/generate-cert/make-ca-cert.sh
-#    dest={{ kube_script_dir }}/make-ca-cert.sh mode=0500
-#    force=yes
+#    url: https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/saltbase/salt/generate-cert/make-ca-cert.sh
+#    dest: "{{ kube_script_dir }}/make-ca-cert.sh"
+#    mode: 0500
+#    force: yes
 
 - name: HACK | overwrite make-ca-cert.sh from local copy
   copy:
@@ -42,10 +43,10 @@
 
 - name: Verify certificate permissions
   file:
-    path={{ item }}
-    group={{ kube_cert_group }}
-    owner=kube
-    mode=0440
+    path: "{{ item }}"
+    group: "{{ kube_cert_group }}"
+    owner: kube
+    mode: 0440
   with_items:
     - "{{ kube_cert_dir }}/ca.crt"
     - "{{ kube_cert_dir }}/server.crt"

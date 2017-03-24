@@ -45,4 +45,7 @@
     creates: "{{ artifact_tar }}"
 
 - name: Fetch tarball
-  fetch: src="{{ artifact_tar }}" dest="/tmp/.ansible/artifacts/" flat=yes
+  fetch:
+    src: "{{ artifact_tar }}"
+    dest: "/tmp/.ansible/artifacts/"
+    flat: yes

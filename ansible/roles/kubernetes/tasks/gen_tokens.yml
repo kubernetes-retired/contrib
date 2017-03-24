@@ -1,9 +1,9 @@
 ---
 - name: Copy the token gen script
   copy:
-    src=kube-gen-token.sh
-    dest={{ kube_script_dir }}
-    mode=u+x
+    src: kube-gen-token.sh
+    dest: "{{ kube_script_dir }}"
+    mode: u+x
   run_once: true
 
 - name: Generate tokens for master components

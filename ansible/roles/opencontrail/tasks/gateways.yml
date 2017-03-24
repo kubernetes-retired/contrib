@@ -1,9 +1,13 @@
 ---
 - name: VRouter log directory
-  file: path="/var/log/contrail" state=directory
+  file:
+    path: "/var/log/contrail"
+    state: directory
 
 - name: VRouter agent configuration
-  template: src=contrail-vrouter-agent.conf.gateway.j2 dest=/etc/contrail/contrail-vrouter-agent.conf
+  template:
+    src: contrail-vrouter-agent.conf.gateway.j2
+    dest: /etc/contrail/contrail-vrouter-agent.conf
   notify:
     - restart contrail-vrouter-agent
 
@@ -16,7 +20,9 @@
   when: ansible_distribution == "Ubuntu"
 
 - name: Create vrouter agent service
-  copy: src=contrail-vrouter-agent.service dest=/etc/systemd/system
+  copy:
+    src: contrail-vrouter-agent.service
+    dest: /etc/systemd/system
   notify:
     - reload systemd
   when: not (ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15)
@@ -25,5 +31,7 @@
   command: docker pull opencontrail/vrouter-agent:2.20
 
 - name: Start vrouter agent
-  service: name=contrail-vrouter-agent enabled=yes state=started
-
+  service:
+    name: contrail-vrouter-agent
+    enabled: yes
+    state: started

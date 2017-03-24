@@ -1,6 +1,8 @@
 ---
 - name: Assures addons dir exists
-  file: path={{ kube_addons_dir }} state=directory
+  file:
+    path: "{{ kube_addons_dir }}"
+    state: directory
 
 - include: generic-install.yml
   when: not is_atomic and not is_coreos
@@ -12,8 +14,8 @@
 
 - name: Make sure the system services namespace exists
   copy:
-    src=common/namespace.yaml
-    dest="{{ kube_config_dir }}/addons/namespace.yaml"
+    src: common/namespace.yaml
+    dest: "{{ kube_config_dir }}/addons/namespace.yaml"
 
 - include: dns.yml
   when: dns_setup
@@ -35,23 +37,25 @@
 
 - name: Get kube-addons script from Kubernetes
   copy:
-    src=common/kube-addons.sh
-    dest={{ kube_script_dir }}/kube-addons.sh mode=0755
+    src: common/kube-addons.sh
+    dest: "{{ kube_script_dir }}/kube-addons.sh"
+    mode: 0755
   notify:
     - restart kube-addons
 
 - name: Get kube-addon-update script from Kubernetes
   copy:
-    src=common/kube-addon-update.sh
-    dest={{ kube_script_dir }}/kube-addon-update.sh mode=0755
+    src: common/kube-addon-update.sh
+    dest: "{{ kube_script_dir }}/kube-addon-update.sh"
+    mode: 0755
   notify:
     - restart kube-addons
 
 
 - name: Get Python image Dockerfile
   copy:
-    src=common/python-image/
-    dest={{ kube_script_dir }}/python-image
+    src: common/python-image/
+    dest: "{{ kube_script_dir }}/python-image"
   when: is_coreos or (ansible_distribution == "Fedora" and is_atomic)
   register: kube_addons_python_image_dockerfile
 
@@ -74,14 +78,21 @@
     - restart kube-addons
 
 - name: Install kube-addons service
-  template: src=kube-addons.service.j2 dest=/etc/systemd/system/kube-addons.service
+  template:
+    src: kube-addons.service.j2
+    dest: /etc/systemd/system/kube-addons.service
   notify:
     - reload and restart kube-addons
   when: not (ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15)
 
 - name: Install kube-addons upstart configuration
-  template: src=kube-addons.upstart.j2 dest=/etc/init/kube-addons.conf
+  template:
+    src: kube-addons.upstart.j2
+    dest: /etc/init/kube-addons.conf
   when: ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15
 
 - name: Enable and start kube addons
-  service: name=kube-addons enabled=yes state=started
+  service:
+    name: kube-addons
+    enabled: yes
+    state: started

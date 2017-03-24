@@ -1,5 +1,7 @@
 - name: Download Bins | Create directory for current Contiv release
-  file: path={{ contiv_current_release_directory }} state=directory
+  file:
+    path: "{{ contiv_current_release_directory }}"
+    state: directory
 
 - name: Download Bins | Download Contiv tar file
   get_url:

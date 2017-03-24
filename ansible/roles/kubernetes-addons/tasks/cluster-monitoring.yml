@@ -1,6 +1,8 @@
 ---
 - name: MONITORING | Assures {{ kube_config_dir }}/addons/cluster-monitoring dir exists
-  file: path={{ kube_addons_dir }}/cluster-monitoring state=directory
+  file:
+    path: "{{ kube_addons_dir }}/cluster-monitoring"
+    state: directory
 
 - name: MONITORING | Install heapster template
   template:

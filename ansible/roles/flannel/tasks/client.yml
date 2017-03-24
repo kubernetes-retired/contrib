@@ -34,10 +34,14 @@
   when: flannel_use_upstart
 
 - name: Create config file directory
-  file: path={{ flannel_config_dir }} state=directory
+  file:
+    path: "{{ flannel_config_dir }}"
+    state: directory
 
 - name: Install Flannel config file
-  template: src=flanneld.j2 dest={{ flannel_config_dir }}/flanneld
+  template:
+    src: flanneld.j2
+    dest: "{{ flannel_config_dir }}/flanneld"
   notify:
     - restart flannel
 

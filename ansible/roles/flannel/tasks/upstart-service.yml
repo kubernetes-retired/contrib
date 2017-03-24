@@ -7,4 +7,6 @@
       - flannel_source_type == "github-release"
 
 - name: Create Upstart Script
-  template: src=flanneld.upstart dest=/etc/init/flanneld.conf
+  template:
+    src: flanneld.upstart
+    dest: /etc/init/flanneld.conf

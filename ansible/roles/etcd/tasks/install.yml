@@ -24,24 +24,26 @@
 
 - name: Create system etcd user
   user:
-    name=etcd
-    comment="Etcd user"
-    shell=/sbin/nologin
-    state=present
-    system=yes
-    groups=etcd
+    name: etcd
+    comment: "Etcd user"
+    shell: /sbin/nologin
+    state: present
+    system: yes
+    groups: etcd
   when: etcd_source_type == "github-release"
 
 - name: Ensure /var/lib/etcd exists
   file:
-    path=/var/lib/etcd
-    recurse=yes
-    state=directory
-    owner=etcd
+    path: /var/lib/etcd
+    recurse: yes
+    state: directory
+    owner: etcd
   when: etcd_source_type == "github-release"
 
 - name: Write etcd systemd unit file
-  copy: src=etcd.service dest=/etc/systemd/system
+  copy:
+    src: etcd.service
+    dest: /etc/systemd/system
   notify:
     - reload systemd
   when: etcd_source_type == "github-release"
@@ -68,7 +70,9 @@
   when: etcd_source_type == "github-release"
 
 - name: Create upstart script
-  copy: src=etcd.upstart dest=/etc/init/etcd.conf
+  copy:
+    src: etcd.upstart
+    dest: /etc/init/etcd.conf
   when: ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 16
 
 - name: Copy certificates if specified

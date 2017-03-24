@@ -1,19 +1,31 @@
 ---
 - name: Open firewalld port for the kubelet
-  firewalld: port=10250/tcp permanent=false state=enabled
+  firewalld:
+    port: 10250/tcp
+    permanent: false
+    state: enabled
   ignore_errors: yes
 
 - name: Save firewalld port for the kubelet
-  firewalld: port=10250/tcp permanent=true state=enabled
+  firewalld:
+    port: 10250/tcp
+    permanent: true
+    state: enabled
   ignore_errors: yes
 
 - name: Open firewalld port for the cadvisor
-  firewalld: port=4194/tcp permanent=false state=enabled
+  firewalld:
+    port: 4194/tcp
+    permanent: false
+    state: enabled
   ignore_errors: yes
   when: open_cadvisor_port
 
 - name: Save firewalld port for the cadvisor
-  firewalld: port=4194/tcp permanent=true state=enabled
+  firewalld:
+    port: 4194/tcp
+    permanent: true
+    state: enabled
   ignore_errors: yes
   when: open_cadvisor_port
 
