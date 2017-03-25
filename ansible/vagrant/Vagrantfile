@@ -194,6 +194,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     opennebula.title = n.vm.hostname
     opennebula.cpu = 2
     opennebula.vcpu = 2
+    opennebula.memory = 4096
   end
 
   def set_provider(n, vm_idx)
