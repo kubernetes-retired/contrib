@@ -88,6 +88,7 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) {
 	}
 	if len(readyNodes) == 0 {
 		glog.Errorf("No ready nodes in the cluster")
+		scaleDown.CleanUpUnneededNodes()
 		return
 	}
 
@@ -98,6 +99,7 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) {
 	}
 	if len(allNodes) == 0 {
 		glog.Errorf("No nodes in the cluster")
+		scaleDown.CleanUpUnneededNodes()
 		return
 	}
 
@@ -111,6 +113,7 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) {
 	}()
 	if !a.ClusterStateRegistry.IsClusterHealthy() {
 		glog.Warningf("Cluster is not ready for autoscaling: %v", err)
+		scaleDown.CleanUpUnneededNodes()
 		return
 	}
 
@@ -184,12 +187,16 @@ func (a *StaticAutoscaler) RunOnce(currentTime time.Time) {
 	// in the describe situation.
 	schedulablePodsPresent := false
 	if a.VerifyUnschedulablePods {
+
+		glog.V(4).Infof("Filtering out schedulables")
 		newUnschedulablePodsToHelp := FilterOutSchedulable(unschedulablePodsToHelp, readyNodes, allScheduled,
 			a.PredicateChecker)
 
 		if len(newUnschedulablePodsToHelp) != len(unschedulablePodsToHelp) {
 			glog.V(2).Info("Schedulable pods present")
 			schedulablePodsPresent = true
+		} else {
+			glog.V(4).Info("No schedulable pods")
 		}
 		unschedulablePodsToHelp = newUnschedulablePodsToHelp
 	}
