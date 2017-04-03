@@ -38,7 +38,7 @@ Right now it is possible to run Cluster Autoscaler on:
 Scale up creates a watch on the api server looking for all pods. Every 10 seconds (configurable)
 it checks for any unschedulable pods. A pod is unschedulable when the Kubernetes scheduler is unable
 to find a node that can accomodate the pod. For example a pod can request more CPU that is 
-available on any of the cluster nodes. Unschedulable pods are reconginzed by their PodCondition. 
+available on any of the cluster nodes. Unschedulable pods are recognized by their PodCondition. 
 Whenever a kubernetes scheduler fails to find a place to run a pod it sets "schedulable" 
 PodCondition to false and reason to "unschedulable".  If there are any items on the unschedulable 
 lists Cluster Autoscaler tries to find a new place to run them. 
