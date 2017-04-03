@@ -27,3 +27,5 @@ kubelet_additional_options: []
 #  - "--pod-infra-container-image=gcr.io/google_containers/pause:2.0"
 
 kube_proxy_additional_options: []
+
+disable_swap: true
