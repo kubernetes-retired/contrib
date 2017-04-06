@@ -122,6 +122,7 @@ rules:
   - nodes
   - endpoints
   - services
+  - configmaps
   verbs: ["get", "list", "watch"]' | kubectl create -f -
 ```
 
