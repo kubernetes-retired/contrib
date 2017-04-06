@@ -6,11 +6,11 @@ AKA "how to set up virtual IP addresses in kubernetes using [IPVS - The Linux Vi
 
 ## Overview
 
-kubernetes v1.6 offers 3 ways to expose a deployment:
+kubernetes v1.6 offers 3 ways to expose a service:
 
-1. **LoadBalancer**: [Available only on cloud providers](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/) such as GCE and AWS
-1. **Service**: The [NodePort directive](https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport) allocates a port on every worker node, which proxy the traffic to the respective Pod.
-1. **Ingress**: The [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) (a beta feature) is a dedicated loadbalancer (eg. nginx, HAProxy, traefik, vulcand) that redirects incoming HTTP/HTTPS traffic to the respective endpoints
+1. **L4 LoadBalancer**: [Available only on cloud providers](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/) such as GCE and AWS
+1. **Service via NodePort**: The [NodePort directive](https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport) allocates a port on every worker node, which proxy the traffic to the respective Pod.
+1. **L7 Ingress**: The [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) is a dedicated loadbalancer (eg. nginx, HAProxy, traefik, vulcand) that redirects incoming HTTP/HTTPS traffic to the respective endpoints
 
 If this works, why do we need _keepalived_?
 
@@ -98,6 +98,15 @@ If you enabled [RBAC](https://kubernetes.io/docs/admin/authorization/) in your c
 Create a service account so that _keepalived_ can authenticate with `kube-apiserver`.
 ```
 kubectl create sa kube-keepalived-vip
+```
+
+Configure the DaemonSet in `vip-daemonset.yaml` to use the ServiceAccount. Add the `serviceAccount` to the file as shown:
+```
+    spec:
+      hostNetwork: true
+      serviceAccount: kube-keepalived-vip
+      containers:
+        - image: gcr.io/google_containers/kube-keepalived-vip:0.9
 ```
 
 Configure its ClusterRole. _keepalived_ needs to read the pods, nodes, endpoints and services.
