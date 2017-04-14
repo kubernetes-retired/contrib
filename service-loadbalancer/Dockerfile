@@ -18,7 +18,7 @@ FROM gcr.io/google_containers/haproxy:0.3
 
 MAINTAINER Prashanth B <beeps@google.com>
 
-#REMOVE when the image no more call itself: at least this removes opesssl vulnerability
+#REMOVE when the image no more call itself: at least this removes openssl vulnerability
 RUN apk upgrade openssl
 
 RUN mkdir -p /etc/haproxy/errors /var/state/haproxy
