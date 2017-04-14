@@ -79,7 +79,7 @@ max-empty-bulk-delete
 max-nodes-total
 max-pr-number
 max-sync-failures
-max-grateful-termination-sec
+max-graceful-termination-sec
 max-node-provision-time
 max-total-unready-percentage
 metrics-resolution
