@@ -24,6 +24,7 @@ import (
 
 	"gopkg.in/gcfg.v1"
 
+	"errors"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
@@ -35,6 +36,7 @@ import (
 const (
 	operationWaitTimeout  = 5 * time.Second
 	operationPollInterval = 100 * time.Millisecond
+	maxRecords            = 100
 )
 
 type asgInformation struct {
@@ -44,6 +46,7 @@ type asgInformation struct {
 
 type autoScaling interface {
 	DescribeAutoScalingGroups(input *autoscaling.DescribeAutoScalingGroupsInput) (*autoscaling.DescribeAutoScalingGroupsOutput, error)
+	DescribeTags(input *autoscaling.DescribeTagsInput) (*autoscaling.DescribeTagsOutput, error)
 	SetDesiredCapacity(input *autoscaling.SetDesiredCapacityInput) (*autoscaling.SetDesiredCapacityOutput, error)
 	TerminateInstanceInAutoScalingGroup(input *autoscaling.TerminateInstanceInAutoScalingGroupInput) (*autoscaling.TerminateInstanceInAutoScalingGroupOutput, error)
 }
@@ -214,6 +217,87 @@ func (m *AwsManager) getAutoscalingGroup(name string) (*autoscaling.Group, error
 		return nil, fmt.Errorf("Unable to get first autoscaling.Group for %s", name)
 	}
 	return groups.AutoScalingGroups[0], nil
+}
+
+func (m *AwsManager) getAutoscalingGroupsByNames(names []string) ([]*autoscaling.Group, error) {
+	nameRefs := []*string{}
+	for _, n := range names {
+		nameRefs = append(nameRefs, &n)
+	}
+	params := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: nameRefs,
+		MaxRecords:            aws.Int64(maxRecords),
+	}
+	description, err := m.service.DescribeAutoScalingGroups(params)
+	if err != nil {
+		glog.V(4).Infof("Failed to describe ASGs : %v", err)
+		return nil, err
+	}
+	if len(description.AutoScalingGroups) < 1 {
+		return nil, errors.New("No ASGs found")
+	}
+
+	asgs := description.AutoScalingGroups
+	for description.NextToken != nil {
+		description, err = m.service.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
+			NextToken:  description.NextToken,
+			MaxRecords: aws.Int64(maxRecords),
+		})
+		if err != nil {
+			glog.V(4).Infof("Failed to describe ASGs : %v", err)
+			return nil, err
+		}
+		asgs = append(asgs, description.AutoScalingGroups...)
+	}
+
+	return asgs, nil
+}
+
+func (m *AwsManager) getAutoscalingGroupsByTag(key string) ([]*autoscaling.Group, error) {
+	tags := []*autoscaling.TagDescription{}
+
+	description, err := m.service.DescribeTags(&autoscaling.DescribeTagsInput{
+		Filters: []*autoscaling.Filter{
+			{
+				Name:   aws.String("key"),
+				Values: []*string{aws.String(key)},
+			},
+		},
+		MaxRecords: aws.Int64(maxRecords),
+	})
+	if err != nil {
+		glog.V(4).Infof("Failed to describe ASG tags for key %s : %v", key, err)
+		return nil, err
+	}
+	if len(description.Tags) < 1 {
+		return nil, fmt.Errorf("Unable to find ASGs for tag key %s", key)
+	}
+	tags = append(tags, description.Tags...)
+
+	for description.NextToken != nil {
+		description, err = m.service.DescribeTags(&autoscaling.DescribeTagsInput{
+			NextToken:  description.NextToken,
+			MaxRecords: aws.Int64(maxRecords),
+		})
+		if err != nil {
+			glog.V(4).Infof("Failed to describe ASG tags for key %s: %v", key, err)
+			return nil, err
+		}
+		tags = append(tags, description.Tags...)
+	}
+
+	asgNames := []string{}
+	for _, t := range tags {
+		asgName := t.ResourceId
+		asgNames = append(asgNames, *asgName)
+	}
+
+	asgs, err := m.getAutoscalingGroupsByNames(asgNames)
+	if err != nil {
+		return nil, err
+	}
+
+	return asgs, nil
 }
 
 // GetAsgNodes returns Asg nodes.

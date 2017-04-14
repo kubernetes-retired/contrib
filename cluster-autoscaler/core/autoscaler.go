@@ -50,5 +50,8 @@ func NewAutoscaler(opts AutoscalerOptions, predicateChecker *simulator.Predicate
 		configFetcher := dynamic.NewConfigFetcher(opts.ConfigFetcherOptions, kubeClient, kubeEventRecorder)
 		return NewDynamicAutoscaler(autoscalerBuilder, configFetcher)
 	}
+	if opts.NodeGroupAutoDiscovery != "" {
+		return NewPollingAutoscaler(autoscalerBuilder)
+	}
 	return autoscalerBuilder.Build()
 }
