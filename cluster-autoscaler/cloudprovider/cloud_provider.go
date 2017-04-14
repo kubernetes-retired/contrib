@@ -35,6 +35,14 @@ type CloudProvider interface {
 	NodeGroupForNode(*apiv1.Node) (NodeGroup, error)
 }
 
+// NodeGroupDiscoveryOptions contains various options to configure how a cloud provider discovers node groups
+type NodeGroupDiscoveryOptions struct {
+	// NodeGroupSpecs is specified to statically discover node groups listed in it
+	NodeGroupSpecs []string
+	// NodeGroupAutoDiscoverySpec is specified for automatically discovering node groups according to the specs
+	NodeGroupAutoDiscoverySpec string
+}
+
 // NodeGroup contains configuration info and functions to control a set
 // of nodes that have the same capacity and set of labels.
 type NodeGroup interface {
