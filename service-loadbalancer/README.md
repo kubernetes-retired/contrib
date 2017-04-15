@@ -15,6 +15,35 @@ This module will not help with the latter
 
 ## Overview
 
+The image below roughly describes the service-loadbalancer alternative (compared with using NodePorts).
+
+```
+                          +----------------------+                     
+                          | haproxy load balancer|                     
+                          +---------+------------+                     
+                                    |                                  
+                +-------------------+---------------+                  
+                |                                   |                  
+   +------------+----------------+     +-----------+--------------------+
+   |kubelet role=loadbalancer (1)|     |kubelet role=loadbalancer (2)   |
+   +----+------------------------+     +--------------------------------+
+        |                                                       |
+        |                                                       |
+        | --tcpServices=postgresql:3333                         | --tcpServices=postgresql:3333  
+        |                                                       |    
+        |               +-----------------------------+         |    
+        |               |   service for postgresql    |         |    
+        |               +-----------------------------|         |    
+        |                 | targetPort=2222,port=3333 |         |    
+        |           +------+-----------+    +----------------+  |    
+        |           |                  |    |                |  |    
+        +---------->| k1mysql          |    | k2mysql        | <-  
+                    | container        |    | container      |
+                    | Port=2222        |    | Port=2222      |          
+                    +------------------+    +----------------+          
+Direct load balanced connections to containers, without need for NodePort on every kubelet.
+```
+
 ### Ingress
 
 There are 2 ways to expose a service to ingress traffic in the current kubernetes service model:
