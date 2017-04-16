@@ -88,6 +88,7 @@ min-replica-count
 netrc-dir
 network-config
 nginx-configmap
+node-group-auto-discovery
 nonblocking-jenkins-jobs
 number-of-old-test-results
 ok-total-unready-count
