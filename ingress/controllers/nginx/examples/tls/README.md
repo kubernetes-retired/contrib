@@ -1,7 +1,7 @@
 **The Ingress controller examples have moved to the
 [kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
 
-This is an example to use a TLS Ingress rule to use SSL in NGINX
+This is an example to use a TLS Ingress rule to use SSL in NGINX.
 
 # TLS certificate termination
 
@@ -83,3 +83,6 @@ x-real-ip=10.2.48.1
 BODY:
 -no body in request-
 ```
+
+# Ingress host and certificate common name must match
+While it's implied in the instructions above, keep in mind that the ingress host must match the common name on the certificate that was used. Otherwise the controller won't import the certificate and associate it with the 
