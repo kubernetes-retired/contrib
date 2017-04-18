@@ -40,7 +40,7 @@ const (
 
 	// MaxStatusSettingDelayAfterCreation is the maximum time for node to set its initial status after the
 	// node is registered.
-	MaxStatusSettingDelayAfterCreation = time.Minute
+	MaxStatusSettingDelayAfterCreation = 2 * time.Minute
 )
 
 // ScaleUpRequest contains information about the requested node group scale up.
@@ -261,7 +261,8 @@ func (csr *ClusterStateRegistry) IsNodeGroupScalingUp(nodeGroupName string) bool
 		return false
 	}
 
-	if acceptable.CurrentTarget <= readiness.Registered {
+	provisioned := readiness.Registered - readiness.NotStarted - readiness.LongNotStarted
+	if acceptable.CurrentTarget <= provisioned {
 		return false
 	}
 	// Let's check if there is an active scale up request
@@ -468,7 +469,7 @@ func (csr *ClusterStateRegistry) GetStatus(now time.Time) *api.ClusterAutoscaler
 
 		// Health.
 		nodeGroupStatus.Conditions = append(nodeGroupStatus.Conditions, buildHealthStatusNodeGroup(
-			csr.IsNodeGroupHealthy(nodeGroup.Id()), readiness, acceptable))
+			csr.IsNodeGroupHealthy(nodeGroup.Id()), readiness, acceptable, nodeGroup.MinSize(), nodeGroup.MaxSize()))
 
 		// Scale up.
 		nodeGroupStatus.Conditions = append(nodeGroupStatus.Conditions, buildScaleUpStatusNodeGroup(
@@ -492,18 +493,18 @@ func (csr *ClusterStateRegistry) GetStatus(now time.Time) *api.ClusterAutoscaler
 	return result
 }
 
-func buildHealthStatusNodeGroup(isReady bool, readiness Readiness, acceptable AcceptableRange) api.ClusterAutoscalerCondition {
+func buildHealthStatusNodeGroup(isReady bool, readiness Readiness, acceptable AcceptableRange, minSize, maxSize int) api.ClusterAutoscalerCondition {
 	condition := api.ClusterAutoscalerCondition{
 		Type: api.ClusterAutoscalerHealth,
-		Message: fmt.Sprintf("ready=%d unready=%d notStarted=%d longNotStarted=%d registered=%d cloudProviderTarget=%d (min=%d, max=%d)",
+		Message: fmt.Sprintf("ready=%d unready=%d notStarted=%d longNotStarted=%d registered=%d cloudProviderTarget=%d (minSize=%d, maxSize=%d)",
 			readiness.Ready,
 			readiness.Unready,
 			readiness.NotStarted,
 			readiness.LongNotStarted,
 			readiness.Registered,
 			acceptable.CurrentTarget,
-			acceptable.MinNodes,
-			acceptable.MaxNodes),
+			minSize,
+			maxSize),
 		LastProbeTime: metav1.Time{Time: readiness.Time},
 	}
 	if isReady {
@@ -612,6 +613,16 @@ func isNodeNotStarted(node *apiv1.Node) bool {
 	for _, condition := range node.Status.Conditions {
 		if condition.Type == apiv1.NodeReady &&
 			condition.Status == apiv1.ConditionFalse &&
+			condition.LastTransitionTime.Time.Sub(node.CreationTimestamp.Time) < MaxStatusSettingDelayAfterCreation {
+			return true
+		}
+		if condition.Type == apiv1.NodeOutOfDisk &&
+			condition.Status == apiv1.ConditionTrue &&
+			condition.LastTransitionTime.Time.Sub(node.CreationTimestamp.Time) < MaxStatusSettingDelayAfterCreation {
+			return true
+		}
+		if condition.Type == apiv1.NodeNetworkUnavailable &&
+			condition.Status == apiv1.ConditionTrue &&
 			condition.LastTransitionTime.Time.Sub(node.CreationTimestamp.Time) < MaxStatusSettingDelayAfterCreation {
 			return true
 		}

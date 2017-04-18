@@ -4,8 +4,11 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes/contrib)](https://goreportcard.com/report/github.com/kubernetes/contrib)
 [![APACHEv2 License](https://img.shields.io/badge/license-APACHEv2-blue.svg)](https://github.com/kubernetes/contrib/blob/master/LICENSE)
 
-This is a place for various components in the Kubernetes ecosystem
-that aren't part of the Kubernetes core.
+**Do not add new projects to this repository.** We eventually want to
+move all code in this repository to more appropriate repositories (see 
+[#762](https://github.com/kubernetes/contrib/issues/762)). Create a new
+repository in `kubernetes-incubator` instead 
+([process](https://github.com/kubernetes/community/blob/master/incubator.md)).
 
 ## Getting the Code
 
