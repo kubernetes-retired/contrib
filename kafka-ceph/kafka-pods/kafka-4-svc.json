@@ -1,0 +1,26 @@
+{
+  "spec": {
+    "selector": {
+      "component": "kafka",
+      "role": "kafka-4"
+    },
+    "type": "NodePort",
+    "ports": [
+      {
+        "nodePort": 32744,
+        "targetPort": 9092,
+        "port": 9092,
+	"protocol": "TCP",
+        "name": "kafka"
+      }
+    ]
+  },
+  "metadata": {
+    "labels": {
+      "name": "kafka-4"
+    },
+    "name": "kafka-4"
+  },
+  "apiVersion": "v1",
+  "kind": "Service"
+}
