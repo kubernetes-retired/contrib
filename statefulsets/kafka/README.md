@@ -1,16 +1,16 @@
-#Kubernetes Kafka K8SKafka
+# Kubernetes Kafka K8SKafka
 This project contains a Docker image meant to facilitate the deployment of 
 [Apache Kafka](https://kafka.apache.org/) on 
 [Kubernetes](http://kubernetes.io/) using 
 [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). 
 
-##Limitations
+## Limitations
 1. Persistent Volumes must be used. emptyDirs will likely result in a loss of 
 data.
 1. Storage media I/O isolation is not generally possible at this time. Consider 
 using Pod Anti-Affinity rules to place noisy neighbors on separate Nodes.
 
-##Docker Image
+## Docker Image
 The docker image contained in this repository is comprised of a base 
 Ubuntu 16.04 image using the latest release of the OpenJDK JRE based on the 1.8 
 JVM (JDK 8u111), the latest stable release of Kafka (10.2.0) using Scala 2.11. 
@@ -28,7 +28,7 @@ configuration is installed into /opt/kafka/config and all executables are in
 is not feasible to symbolically link them into the /user/bin directory. As such,
 the /opt/kafka/bin directory is added to the PATH environment variable.
 
-##ZooKeeper
+## ZooKeeper
 Kafka requires an installation of Apache Zookeeper for broker configuration 
 storage and coordination. A example of how to deploy a ZooKeeper ensemble on 
 Kubernetes can be found 
@@ -46,7 +46,7 @@ for the ZooKeeper PVs. As the PVs are backed by network attached storage, there
 is little to be gained from isolating the write ahead log from the snapshots 
 directory.
 
-##Headless Service
+## Headless Service
 The Kafka Stateful Set requires a Headless Service to control the network domain 
 for the Kafka brokers. The yaml below creates a Headless Service that allows 
 brokers to be discovered and exposes the 9093 port for client connections.
@@ -67,7 +67,7 @@ spec:
     app: kafka
  ```
 
-##StatefulSet
+## StatefulSet
 The Kafka StatefulSet deploys a configurable number of replicas on the 
 Kubernetes cluster. The StatefulSet serviceName must match the Headless Service
 and specify the desired number of brokers.
@@ -83,7 +83,7 @@ spec:
   ...
  ```
 
- ##Configuration
+ ## Configuration
  This section details the configuration of the Kafka cluster.
  
  ### Broker Configuration
@@ -233,7 +233,7 @@ throughput. If you find that you have contention you should consider using
 Pod Anti-Affinity rules to ensure that noisy neighbors are not collocated on the 
 same Node.
 
-###Pod Affinity
+### Pod Affinity
 The Kafka Pod in the StatefulSet's `PodTemplateSpec` contains a Pod Anti-Affinity
 and a Pod Anti-Affinity rule.
 
