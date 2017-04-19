@@ -6,38 +6,81 @@ AKA "how to set up virtual IP addresses in kubernetes using [IPVS - The Linux Vi
 
 ## Overview
 
-There are 2 ways to expose a service in the current kubernetes service model:
+kubernetes v1.6 offers 3 ways to expose a service:
 
-- Create a cloud load balancer.
-- Allocate a port (the same port) on every node in your cluster and proxy traffic through that port to the endpoints.
+1. **L4 LoadBalancer**: [Available only on cloud providers](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/) such as GCE and AWS
+1. **Service via NodePort**: The [NodePort directive](https://kubernetes.io/docs/concepts/services-networking/service/#type-nodeport) allocates a port on every worker node, which proxy the traffic to the respective Pod.
+1. **L7 Ingress**: The [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) is a dedicated loadbalancer (eg. nginx, HAProxy, traefik, vulcand) that redirects incoming HTTP/HTTPS traffic to the respective endpoints
 
-This just works. What's the issue then? 
+If this works, why do we need _keepalived_?
 
-The issue is that it does not provide High Availability because beforehand is required to know the IP addresss of the node where is running and in case of a failure the pod can be be moved to a different node. Here is where ipvs could help. 
-The idea is to define an IP address per service to expose it outside the Kubernetes cluster and use vrrp to announce this "mapping" in the local network.
-With 2 or more instance of the pod running in the cluster is possible to provide high availabity using a single IP address.
+```
+                                                  ___________________
+                                                 |                   |
+                                           |-----| Host IP: 10.4.0.3 |
+                                           |     |___________________|
+                                           |
+                                           |      ___________________
+                                           |     |                   |
+Public ----(example.com = 10.4.0.3/4/5)----|-----| Host IP: 10.4.0.4 |
+                                           |     |___________________|
+                                           |
+                                           |      ___________________
+                                           |     |                   |
+                                           |-----| Host IP: 10.4.0.5 |
+                                                 |___________________|
+```
 
-##### What is the difference between this and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx-alpha](https://github.com/kubernetes/contrib/tree/master/Ingress/controllers/nginx-alpha) to expose one or more services?
+Let's assume that Ingress-es are run on the 3 kubernetes worker nodes above `10.4.0.x`, which are exposed to the public to load-balance incoming traffic. DNS Round Robin (RR) is applied to `example.com` to rotate between the 3 nodes. If `10.4.0.3` goes down, one-third of the traffic to `example.com` is still directed to the downed node (due to DNS RR). The sysadmin has to step in and delist the faulty node from `example.com`. Since there will be intermittent downtime until the sysadmin intervenes, this isn't true High Availability (HA).
 
-This should be considered a complement, not a replacement for HAProxy or nginx. The goal using keepalived is to provide high availability and to bring certainty about how an exposed service can be reached (beforehand we know the ip address independently of the node where is running). For instance keepalived can use used to expose the service-loadbalancer or nginx ingress controller in the LAN using one IP address.
+Here is where IPVS can help. 
 
+The idea is to expose a Virtual IP (VIP) address per service, outside of the kubernetes cluster. _keepalived_ then uses VRRP to sync this "mapping" in the local network. With 2 or more instance of the pod running in the cluster is possible to provide HA using a single VIP address.
+
+##### What is the difference between _keepalived_ and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx-alpha](https://github.com/kubernetes/contrib/tree/master/Ingress/controllers/nginx-alpha)?
+
+_keepalived_ should be considered a complement to, and not a replacement for HAProxy or nginx. The goal is to provide robust HA, such that no downtime is experienced if one or more nodes go offline. To be exact, _keepalived_ ensures that the VIP, which exposes a service-loadbalancer or an Ingress, is always owned by a live node. The DNS record will simply point to this single VIP (ie. sans RR) and the failover will be handled entirely by _keepalived_.
+
+```
+                                               ___________________
+                                              |                   |
+                                              | VIP: 10.4.0.50    |
+                                        |-----| Host IP: 10.4.0.3 |
+                                        |     | Role: Master      |
+                                        |     |___________________|
+                                        |
+                                        |      ___________________
+                                        |     |                   |
+                                        |     | VIP: Unassigned   |
+Public ----(example.com = 10.4.0.50)----|-----| Host IP: 10.4.0.3 |
+                                        |     | Role: Slave       |
+                                        |     |___________________|
+                                        |
+                                        |      ___________________
+                                        |     |                   |
+                                        |     | VIP: Unassigned   |
+                                        |-----| Host IP: 10.4.0.3 |
+                                              | Role: Slave       |
+                                              |___________________|
+```
+
+In the above diagram, one node assumes the role of a Master (negotiated via VRRP), and assumes the VIP. `example.com` points only to the shared VIP `10.4.0.50`, instead of the 3 nodes. If `10.4.0.3` is taken offline, the surviving hosts elect a new master to assume the VIP. This model of HA ensures that the VIP can be reached at all times.
 
 ## Requirements
 
-[Daemonsets](https://github.com/kubernetes/kubernetes/blob/master/docs/design/daemon.md) enabled is the only requirement. Check this [guide](https://github.com/kubernetes/kubernetes/blob/master/docs/api.md#enabling-resources-in-the-extensions-group) with the required flags in kube-apiserver.
+The only requirement is for [DaemonSets](https://github.com/kubernetes/kubernetes/blob/master/docs/design/daemon.md) to be enabled is the only requirement. Check this [guide](https://github.com/kubernetes/kubernetes/blob/master/docs/api.md#enabling-resources-in-the-extensions-group) to include the `kube-apiserver` flags for this to work.
 
 
 ## Configuration
 
-To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`. Optionally is possible to specify forwarding method using `:` after the service name. The valid options are `NAT` and `DR`. For instance `external IP -> namespace/serviceName:DR`.
-By default if the method is not specified it will use NAT.
+To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`. Optionally it is possible to specify forwarding method using `:` after the service name. The valid options are `NAT` and `DR`. For instance `external IP -> namespace/serviceName:DR`. By default, if the method is not specified it will use NAT.
 
-This IP must be routable inside the LAN and must be available. 
-By default the IP address of the pods are used to route the traffic. This means that is one pod dies or a new one is created by a scale event the keepalived configuration file will be updated and reloaded.
+This IP must be routable within the LAN and must be available. By default the IP address of the pods is used to route the traffic. This means that is one pod dies or a new one is created by a scale event the keepalived configuration file will be updated and reloaded.
 
 ## Example
 
-First we create a new replication controller and service
+### Launch the sample app "echoheaders"
+First, we create a new ReplicationController and a Service for a sample app.
 ```
 $ kubectl create -f examples/echoheaders.yaml
 replicationcontroller "echoheaders" created
@@ -49,6 +92,57 @@ See http://releases.k8s.io/HEAD/docs/user-guide/services-firewalls.md for more d
 service "echoheaders" created
 ```
 
+### (Optional) Install the RBAC policies
+If you enabled [RBAC](https://kubernetes.io/docs/admin/authorization/) in your cluster (ie. `kube-apiserver` runs with the `--authorization-mode=RBAC` flag), please follow this section so that _keepalived_ can properly query the cluster's API endpoints.
+
+Create a service account so that _keepalived_ can authenticate with `kube-apiserver`.
+```
+kubectl create sa kube-keepalived-vip
+```
+
+Configure the DaemonSet in `vip-daemonset.yaml` to use the ServiceAccount. Add the `serviceAccount` to the file as shown:
+```
+    spec:
+      hostNetwork: true
+      serviceAccount: kube-keepalived-vip
+      containers:
+        - image: gcr.io/google_containers/kube-keepalived-vip:0.9
+```
+
+Configure its ClusterRole. _keepalived_ needs to read the pods, nodes, endpoints and services.
+```
+echo 'apiVersion: rbac.authorization.k8s.io/v1alpha1
+kind: ClusterRole
+metadata:
+  name: kube-keepalived-vip
+rules:
+- apiGroups: [""]
+  resources:
+  - pods
+  - nodes
+  - endpoints
+  - services
+  - configmaps
+  verbs: ["get", "list", "watch"]' | kubectl create -f -
+```
+
+Configure its ClusterRoleBinding. This binds the above ClusterRole to the `kube-keepalived-vip` ServiceAccount.
+```
+apiVersion: rbac.authorization.k8s.io/v1alpha1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-keepalived-vip
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-keepalived-vip
+subjects:
+- kind: ServiceAccount
+  name: kube-keepalived-vip
+  namespace: default
+```
+
+### Load the _keepalived_ DaemonSet
 Next add the required annotation to expose the service using a local IP
 
 ```
@@ -69,9 +163,12 @@ NAME                  CONTAINER(S)          IMAGE(S)                         SEL
 kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.9   name in (kube-keepalived-vip)   type=worker
 ```
 
-**Note: the daemonset yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**
+**Note: the DaemonSet yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**
 
+### Debug the deployment
 To verify if everything is working we should check if a `kube-keepalived-vip` pod is in each node of the cluster
+
+Check the labels of the nodes.
 ```
 $ kubectl get nodes
 NAME       LABELS                                        STATUS    AGE
@@ -80,6 +177,7 @@ NAME       LABELS                                        STATUS    AGE
 10.4.0.5   kubernetes.io/hostname=10.4.0.5,type=worker   Ready     1d
 ```
 
+Check that there's a pod running on each node
 ```
 $ kubectl get pods
 NAME                        READY     STATUS    RESTARTS   AGE
@@ -89,6 +187,7 @@ kube-keepalived-vip-g3nku   1/1       Running   0          52s
 kube-keepalived-vip-gd18l   1/1       Running   0          54s
 ```
 
+_keepalived_'s logs should look like this if no error was encountered.
 ```
 $ kubectl logs kube-keepalived-vip-a90bt
 I0410 14:24:45.860119       1 keepalived.go:161] cleaning ipvs configuration
@@ -123,6 +222,7 @@ VRRP_Instance(vips) Entering MASTER STATE
 VRRP_Instance(vips) using locally configured advertisement interval (1000 milli-sec)
 ```
 
+_keepalived_'s configuration is empty at the start. It should automatically be updated to reflect the current setup.
 ```
 $ kubectl exec kube-keepalived-vip-a90bt cat /etc/keepalived/keepalived.conf
 
@@ -172,7 +272,7 @@ virtual_server 10.4.0.50 80 {
 
 ```
 
-
+Test that the app can be reached via the VIP `10.4.0.50`.
 ```
 $ curl -v 10.4.0.50
 * Rebuilt URL to: 10.4.0.50/
@@ -209,15 +309,15 @@ User-Agent=curl/7.43.0
 
 ```
 
-Scaling the replication controller should update and reload keepalived
+Scaling the replication controller should automatically update and reload keepalived.
 
 ```
 $ kubectl scale --replicas=5 replicationcontroller echoheaders
 replicationcontroller "echoheaders" scaled
 ```
 
-
-````
+The latest config should reflect something similar to this after scaling up the app.
+```
 $ kubectl exec kube-keepalived-vip-a90bt cat /etc/keepalived/keepalived.conf
 
 global_defs {

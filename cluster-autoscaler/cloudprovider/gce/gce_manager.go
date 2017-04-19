@@ -29,8 +29,8 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	gce "google.golang.org/api/compute/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	provider_gce "k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
-	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 const (
@@ -114,6 +114,7 @@ func (m *GceManager) GetMigSize(mig *Mig) (int64, error) {
 
 // SetMigSize sets MIG size.
 func (m *GceManager) SetMigSize(mig *Mig, size int64) error {
+	glog.V(0).Infof("Setting mig size %s to %d", mig.Id(), size)
 	op, err := m.service.InstanceGroupManagers.Resize(mig.Project, mig.Zone, mig.Name, size).Do()
 	if err != nil {
 		return err
@@ -239,11 +240,11 @@ func (m *GceManager) GetMigNodes(mig *Mig) ([]string, error) {
 	}
 	result := make([]string, 0)
 	for _, instance := range instances.ManagedInstances {
-		_, _, name, err := ParseInstanceUrl(instance.Instance)
+		project, zone, name, err := ParseInstanceUrl(instance.Instance)
 		if err != nil {
 			return []string{}, err
 		}
-		result = append(result, name)
+		result = append(result, fmt.Sprintf("gce://%s/%s/%s", project, zone, name))
 	}
 	return result, nil
 }

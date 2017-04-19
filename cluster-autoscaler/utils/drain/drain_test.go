@@ -19,7 +19,11 @@ package drain
 import (
 	"fmt"
 	"testing"
+	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	core "k8s.io/client-go/testing"
 	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 	api "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
@@ -27,16 +31,14 @@ import (
 	appsv1beta1 "k8s.io/kubernetes/pkg/apis/apps/v1beta1"
 	batchv1 "k8s.io/kubernetes/pkg/apis/batch/v1"
 	extensions "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5/fake"
-	"k8s.io/kubernetes/pkg/client/testing/core"
-	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
 )
 
 func TestDrain(t *testing.T) {
 	replicas := int32(5)
 
 	rc := apiv1.ReplicationController{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rc",
 			Namespace: "default",
 			SelfLink:  testapi.Default.SelfLink("replicationcontrollers", "rc"),
@@ -47,7 +49,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	rcPod := &apiv1.Pod{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
 			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&rc)},
@@ -58,7 +60,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	ds := extensions.DaemonSet{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "ds",
 			Namespace: "default",
 			SelfLink:  "/apiv1s/extensions/v1beta1/namespaces/default/daemonsets/ds",
@@ -66,7 +68,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	dsPod := &apiv1.Pod{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
 			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&ds)},
@@ -77,7 +79,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	job := batchv1.Job{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "job",
 			Namespace: "default",
 			SelfLink:  "/apiv1s/extensions/v1beta1/namespaces/default/jobs/job",
@@ -85,7 +87,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	jobPod := &apiv1.Pod{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
 			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&job)},
@@ -93,7 +95,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	statefulset := appsv1beta1.StatefulSet{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "ss",
 			Namespace: "default",
 			SelfLink:  "/apiv1s/extensions/v1beta1/namespaces/default/statefulsets/ss",
@@ -101,7 +103,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	ssPod := &apiv1.Pod{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
 			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&statefulset)},
@@ -109,7 +111,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	rs := extensions.ReplicaSet{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rs",
 			Namespace: "default",
 			SelfLink:  testapi.Default.SelfLink("replicasets", "rs"),
@@ -120,7 +122,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	rsPod := &apiv1.Pod{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:        "bar",
 			Namespace:   "default",
 			Annotations: map[string]string{apiv1.CreatedByAnnotation: RefJSON(&rs)},
@@ -130,8 +132,20 @@ func TestDrain(t *testing.T) {
 		},
 	}
 
+	rsPodDeleted := &apiv1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "bar",
+			Namespace:         "default",
+			Annotations:       map[string]string{apiv1.CreatedByAnnotation: RefJSON(&rs)},
+			DeletionTimestamp: &metav1.Time{Time: time.Now().Add(-time.Hour)},
+		},
+		Spec: apiv1.PodSpec{
+			NodeName: "node",
+		},
+	}
+
 	nakedPod := &apiv1.Pod{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bar",
 			Namespace: "default",
 		},
@@ -141,7 +155,7 @@ func TestDrain(t *testing.T) {
 	}
 
 	emptydirPod := &apiv1.Pod{
-		ObjectMeta: apiv1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bar",
 			Namespace: "default",
 		},
@@ -199,6 +213,13 @@ func TestDrain(t *testing.T) {
 			expectPods:  []*apiv1.Pod{rsPod},
 		},
 		{
+			description: "RS-managed pod that is being deleted",
+			pods:        []*apiv1.Pod{rsPodDeleted},
+			replicaSets: []extensions.ReplicaSet{rs},
+			expectFatal: false,
+			expectPods:  []*apiv1.Pod{},
+		},
+		{
 			description: "naked pod",
 			pods:        []*apiv1.Pod{nakedPod},
 			expectFatal: true,
@@ -215,7 +236,7 @@ func TestDrain(t *testing.T) {
 	for _, test := range tests {
 
 		fakeClient := &fake.Clientset{}
-		register := func(resource string, obj runtime.Object, meta apiv1.ObjectMeta) {
+		register := func(resource string, obj runtime.Object, meta metav1.ObjectMeta) {
 			fakeClient.Fake.AddReactor("get", resource, func(action core.Action) (bool, runtime.Object, error) {
 				getAction := action.(core.GetAction)
 				if getAction.GetName() == meta.GetName() && getAction.GetNamespace() == meta.GetNamespace() {
@@ -235,7 +256,7 @@ func TestDrain(t *testing.T) {
 			register("replicasets", &test.replicaSets[0], test.replicaSets[0].ObjectMeta)
 		}
 		pods, err := GetPodsForDeletionOnNodeDrain(test.pods, api.Codecs.UniversalDecoder(),
-			false, true, true, true, fakeClient, 0)
+			false, true, true, true, fakeClient, 0, time.Now())
 
 		if test.expectFatal {
 			if err == nil {

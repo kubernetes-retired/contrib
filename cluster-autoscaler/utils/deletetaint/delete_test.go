@@ -22,11 +22,11 @@ import (
 
 	. "k8s.io/contrib/cluster-autoscaler/utils/test"
 
-	"k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	core "k8s.io/client-go/testing"
 	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5/fake"
-	"k8s.io/kubernetes/pkg/client/testing/core"
-	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -38,6 +38,19 @@ func TestMarkNodes(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, node.Name, getStringFromChan(updatedNodes))
 	assert.True(t, HasToBeDeletedTaint(node))
+}
+
+func TestCheckNodes(t *testing.T) {
+	node := BuildTestNode("node", 1000, 1000)
+	fakeClient, updatedNodes := buildFakeClientAndUpdateChannel(node)
+	err := MarkToBeDeleted(node, fakeClient)
+	assert.NoError(t, err)
+	assert.Equal(t, node.Name, getStringFromChan(updatedNodes))
+	assert.True(t, HasToBeDeletedTaint(node))
+
+	val, err := GetToBeDeletedTime(node)
+	assert.NoError(t, err)
+	assert.True(t, time.Now().Sub(*val) < 10*time.Second)
 }
 
 func TestCleanNodes(t *testing.T) {

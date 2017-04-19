@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ import (
 	"path"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/validation"
-	"k8s.io/kubernetes/pkg/runtime"
 )
 
 // SecretGeneratorV1 supports stable generation of an opaque secret
@@ -196,9 +196,10 @@ func addKeyFromFileToSecret(secret *api.Secret, keyName, filePath string) error 
 }
 
 func addKeyFromLiteralToSecret(secret *api.Secret, keyName string, data []byte) error {
-	if !validation.IsSecretKey(keyName) {
-		return fmt.Errorf("%v is not a valid key name for a secret", keyName)
+	if errs := validation.IsConfigMapKey(keyName); len(errs) != 0 {
+		return fmt.Errorf("%q is not a valid key name for a Secret: %s", keyName, strings.Join(errs, ";"))
 	}
+
 	if _, entryExists := secret.Data[keyName]; entryExists {
 		return fmt.Errorf("cannot add key %s, another key by that name already exists: %v.", keyName, secret.Data)
 	}

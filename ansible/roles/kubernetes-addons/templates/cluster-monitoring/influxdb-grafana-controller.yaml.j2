@@ -1,26 +1,27 @@
+# This file should be kept in sync with cluster/gce/coreos/kube-manifests/addons/cluster-monitoring/influxdb/influxdb-grafana-controller.yaml
 apiVersion: v1
 kind: ReplicationController
 metadata:
   name: monitoring-influxdb-grafana-v3
   namespace: kube-system
-  labels: 
+  labels:
     k8s-app: influxGrafana
     version: v3
     kubernetes.io/cluster-service: "true"
-spec: 
+spec:
   replicas: 1
-  selector: 
+  selector:
     k8s-app: influxGrafana
     version: v3
-  template: 
-    metadata: 
-      labels: 
+  template:
+    metadata:
+      labels:
         k8s-app: influxGrafana
         version: v3
         kubernetes.io/cluster-service: "true"
-    spec: 
-      containers: 
-        - image: gcr.io/google_containers/heapster_influxdb:v0.5
+    spec:
+      containers:
+        - image: gcr.io/google_containers/heapster_influxdb:v0.7
           name: influxdb
           resources:
             # keep request = limit to keep this container in guaranteed class
@@ -30,13 +31,13 @@ spec:
             requests:
               cpu: 100m
               memory: 500Mi
-          ports: 
+          ports:
             - containerPort: 8083
             - containerPort: 8086
           volumeMounts:
           - name: influxdb-persistent-storage
             mountPath: /data
-        - image: gcr.io/google_containers/heapster_grafana:v2.6.0-2
+        - image: gcr.io/google_containers/heapster_grafana:v3.1.1
           name: grafana
           env:
           resources:
