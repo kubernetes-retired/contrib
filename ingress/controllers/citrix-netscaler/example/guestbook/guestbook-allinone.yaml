@@ -1,0 +1,129 @@
+# Create the redis-master replication controller
+################################################
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: redis-master
+  labels:
+    name: redis-master
+spec:
+  replicas: 1
+  selector:
+    name: redis-master
+  template:
+    metadata:
+      labels:
+        name: redis-master
+    spec:
+      containers:
+      - name: master
+        image: redis:3.0
+        ports:
+        - containerPort: 6379
+---
+# Create the redis-master service
+#################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-master
+  labels:
+    name: redis-master
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    name: redis-master
+---
+# Create the redis-slave replication controller
+###############################################
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: redis-slave
+  labels:
+    name: redis-slave
+spec:
+  replicas: 2
+  selector:
+    name: redis-slave
+  template:
+    metadata:
+      labels:
+        name: redis-slave
+    spec:
+      containers:
+      - name: worker
+        image: gcr.io/google_samples/gb-redisslave:v1
+        env:
+        - name: GET_HOSTS_FROM
+          value: env
+        ports:
+        - containerPort: 6379
+---
+# Create the redis-slave service
+################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-slave
+  labels:
+    name: redis-slave
+spec:
+  ports:
+  - port: 6379
+  selector:
+    name: redis-slave
+---
+# Create the frontend replication controller
+############################################
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: frontend
+  labels:
+    name: frontend
+spec:
+  replicas: 3
+  selector:
+    name: frontend
+  template:
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: frontend
+  labels:
+    name: frontend
+spec:
+  replicas: 3
+  selector:
+    name: frontend
+  template:
+    metadata:
+      labels:
+        name: frontend
+    spec:
+      containers:
+      - name: php-redis
+        image: docker.io/adhamija/gb-frontend:v1
+        env:
+        - name: GET_HOSTS_FROM
+          value: env
+        ports:
+        - containerPort: 80
+---
+# Create the frontend service
+#############################
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  labels:
+    name: frontend
+spec:
+  ports:
+    - port: 80
+  selector:
+    name: frontend
+
