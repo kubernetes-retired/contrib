@@ -43,6 +43,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
+	stringset "golang.org/x/text/internal/stringset"
 )
 
 const (
@@ -140,6 +141,8 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
                 default balance algorithm.`)
+
+	seenEndPoints = stringset.Set()
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -308,6 +311,7 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 	conf := make(map[string]interface{})
 	conf["startSyslog"] = strconv.FormatBool(cfg.startSyslog)
 	conf["services"] = services
+	conf["ip_set"] = seenEndPoints
 
 	var sslConfig string
 	if cfg.sslCert != "" {
@@ -391,6 +395,7 @@ func (lbc *loadBalancerController) getEndpoints(
 			}
 			for _, epAddress := range ss.Addresses {
 				endpoints = append(endpoints, fmt.Sprintf("%v:%v", epAddress.IP, targetPort))
+				seenEndPoints.Add(fmt.Sprintf("%v:%v", epAddress.IP, targetPort))
 			}
 		}
 	}
