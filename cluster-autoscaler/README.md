@@ -41,9 +41,9 @@ CA Version 0.3:
 # Deployment
 
 Cluster Autoscaler runs on the Kubernetes master node (at least in the default setup on GCE and GKE). 
-It is possible to run customized Cluster Autoscaler inside of the cluster but then extra care needs
-to be taken to ensure that Cluster Autoscaler is up and running. User can put it into kube-system
-namespace (Cluster Autoscaler doesn't scale down node with non-manifest based kube-system pods running
+It is possible to run a customized Cluster Autoscaler inside of the cluster but then extra care needs
+to be taken to ensure that Cluster Autoscaler is up and running. Users can put it into kube-system
+namespace (Cluster Autoscaler doesn't scale down nodes with non-manifest based kube-system pods running
 on them) and mark with `scheduler.alpha.kubernetes.io/critical-pod` annotation (so that the rescheduler, 
 if enabled, will kill other pods to make space for it to run). 
 
