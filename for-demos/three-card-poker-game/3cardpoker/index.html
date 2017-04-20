@@ -1,0 +1,44 @@
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+     <meta http-equiv="Pragma" content="no-cache"/>
+     <meta http-equiv="Expires" content="0"/>
+
+<html ng-app="poker">
+  <head>
+    <title>3 Card Poker</title>
+    <link rel="stylesheet" href="bootstrap.min.css">
+    <script src="angular.min.js"></script>
+    <script src="controllers.js"></script>
+    <script src="ui-bootstrap-tpls.js"></script>
+  </head>
+
+
+  <body ng-controller="PokerCtrl">
+    <div style="width: 50%; margin-left: 20px" >
+      <h2>3 Card Poker</h2>
+    <form>
+    <fieldset>
+    <br><br>
+    <div class="container" > 
+      <div class="row">
+         <div class="col-xs-2">
+          <img ng-src="{{card1}}" alt="Description" class="img-rounded" width="150" height="250"/>
+         </div>
+
+          <div class="col-xs-2">
+            <img ng-src="{{card2}}" alt="Description" class="img-rounded" width="150" height="250"/>
+          </div>
+
+          <div class="col-xs-2">
+            <img ng-src="{{card3}}" alt="Description" class="img-rounded" width="150" height="250"/>
+          </div>
+      </div>
+    </div>
+    
+    </fieldset>
+    </form>
+
+  
+
+    </div>
+  </body>
+</html>

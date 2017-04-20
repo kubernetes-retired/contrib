@@ -1,0 +1,87 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta http-equiv="Cache-Control" content="no-store" />
+		<title>Dashboard</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<!-- Latest compiled and minified CSS -->
+		<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+		<link rel="stylesheet" type="text/css" href="css/style.css">
+	</head>
+
+	<body ng-app="ngPods" ng-controller="podsController">
+	<div class="container-fluid" style="height:100%">
+		<nav class="navbar navbar-inverse">
+			<div class="container-fluid">
+				<div class="navbar-header">
+					<a href="" class="navbar-brand"><strong>Microservice Architecture</strong></a>
+				</div>
+			</div>
+		</nav>
+			<div class="row fill1" >
+				<div class="col-xs-12">
+					<h5>Presentation Services : {{presentationPods.length}}</h5>
+				</div>
+				<div class="col-xs-12" align="center">
+						<img ng-style="{'width':100/presentationPods.length +'%'}"  ng-src="{{pod.status.phase == 'Running' && './images/3card.png' || './images/offline.png'}}" ng-repeat ="pod in presentationPods" >
+				</div>
+			</div>
+
+			<div class="row fill2">
+				<div class="col-xs-12">
+					<h5>Composite Services : {{compositePods.length}}</h5>
+				</div>
+				<div class="col-xs-12 composite-form" align="center">
+					<img ng-style="{'width':100/compositePods.length +'%'}" ng-src="{{pod.status.phase == 'Running' && './images/gopher-c.png' || './images/offline.png'}}"  ng-repeat ="pod in compositePods">
+				</div>
+			</div>
+			<div class="row fill3">
+				<div class="col-xs-12">
+					<h5>Atomic Services :  {{atomicAPods.length + atomicBPods.length }} </h5>
+				</div>
+				<div class="col-xs-12 atomic-form" align="center">
+						<div class="col-xs-6">
+							<img ng-style="{'width':100/atomicAPods.length +'%'}" ng-src="{{pod.status.phase == 'Running' && './images/gopher-a.png' || './images/offline.png'}}"  ng-repeat ="pod in atomicAPods">
+						</div>
+
+						<div class="col-xs-6">
+						<img ng-style="{'width':100/atomicBPods.length +'%'}" ng-src="{{pod.status.phase == 'Running' && './images/gopher-b.png' || './images/offline.png'}}" ng-repeat ="pod in atomicBPods ">
+						</div>
+				</div>
+
+			</div>
+
+			<div class="row fill4">
+				<div class="col-xs-12">
+					<h5>Database/Cache : {{dbPods.length + dbPods.length}}</h5>
+				</div>
+
+				<div class="col-sm-12 db-form" align="center">
+						<div class="col-xs-6">
+							<img ng-style="{'width':100/dbPods.length +'%'}" ng-src="{{pod.status.phase == 'Running' && './images/redis.png' || './images/offline.png'}}" ng-repeat ="pod in dbPods ">
+						</div>
+						<div class="col-xs-6">
+							<img ng-style="{'width':100/dbPods.length +'%'}"  ng-src="{{pod.status.phase == 'Running' && './images/redis.png' || './images/offline.png'}}" ng-repeat ="pod in dbPods ">
+						</div>
+				</div>
+
+
+			</div>
+
+
+		</div>
+
+		<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.2/angular.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/1.2.5/ui-bootstrap.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-bootstrap/1.2.5/ui-bootstrap-tpls.min.js"></script>
+		<script src="scripts/app.js"></script>
+		<script src="scripts/podsController.js"></script>
+		
+		<script src="scripts/podsFactory.js"></script>
+		
+		<script src="scripts/podFilter.js"></script>
+
+	</body>
+</html>

@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  generation: 1
+  labels:
+    k8s-app: kube-dns
+    kubernetes.io/cluster-service: "true"
+  name: kube-dns
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    k8s-app: kube-dns
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        k8s-app: kube-dns
+        kubernetes.io/cluster-service: "true"
+    spec:
+      containers:
+      - args:
+        - --domain=cluster.local
+        - --dns-port=10053
+        - --kube_master_url=http://172.16.164.159:8080
+        image: suyogbarve/kube-dns:latest
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /healthz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: kubedns
+        ports:
+        - containerPort: 10053
+          name: dns-local
+          protocol: UDP
+        - containerPort: 10053
+          name: dns-tcp-local
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readiness
+            port: 8081
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 100m
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        terminationMessagePath: /dev/termination-log
+      - args:
+        - --cache-size=1000
+        - --no-resolv
+        - --server=127.0.0.1#10053
+        image: suyogbarve/dnsmasq:latest
+        imagePullPolicy: Always
+        name: dnsmasq
+        ports:
+        - containerPort: 53
+          name: dns
+          protocol: UDP
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+      - args:
+        - -cmd=nslookup kubernetes.default.svc.cluster.local 127.0.0.1 >/dev/null
+          && nslookup kubernetes.default.svc.cluster.local 127.0.0.1:10053 >/dev/null
+        - -port=8080
+        - -quiet
+        image: suyogbarve/exechealthz:latest
+        imagePullPolicy: Always
+        name: healthz
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 10m
+            memory: 20Mi
+          requests:
+            cpu: 10m
+            memory: 20Mi
+        terminationMessagePath: /dev/termination-log
+      dnsPolicy: Default
+      restartPolicy: Always
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+status:
+  fullyLabeledReplicas: 1
+  observedGeneration: 1
+  replicas: 1

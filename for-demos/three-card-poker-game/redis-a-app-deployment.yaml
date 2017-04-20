@@ -1,0 +1,21 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: redis-a-app
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: redis-a-app
+    spec:
+      containers:
+      - env:
+        - name: REDIS_SERVICE
+          value: REDIS_SERVICE_HOST
+        image: suyogbarve/redis-a-app
+        imagePullPolicy: Always
+        name: redis-a-app
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

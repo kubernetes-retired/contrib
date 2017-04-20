@@ -1,0 +1,22 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: demo-client-app
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: demo-client-app
+    spec:
+      containers:
+      - image: suyogbarve/demo-client-app
+        env:
+        - name: MASTER_SERVICE
+          value: 172.17.4.101
+        imagePullPolicy: Always
+        name: demo-client-app
+        terminationMessagePath: /dev/termination-log
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

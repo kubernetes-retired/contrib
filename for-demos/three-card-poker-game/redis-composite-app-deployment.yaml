@@ -1,0 +1,23 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: redis-composite-app
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: redis-composite-app
+    spec:
+      containers:
+      - env:
+        - name: REDIS_A_APP_SERVICE
+          value: REDIS_A_APP_SERVICE_HOST
+        - name: REDIS_B_APP_SERVICE
+          value: REDIS_B_APP_SERVICE_HOST
+        image: suyogbarve/redis-composite-app
+        imagePullPolicy: Always
+        name: redis-composite-app
+        terminationMessagePath: /dev/termination-log
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
