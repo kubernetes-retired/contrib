@@ -2,8 +2,11 @@
 
 [![Build Status](https://travis-ci.org/kubernetes/contrib.svg)](https://travis-ci.org/kubernetes/contrib)
 
-This is a place for various components in the Kubernetes ecosystem
-that aren't part of the Kubernetes core.
+**Do not add new projects to this repository.** We eventually want to
+move all code in this repository to more appropriate repositories (see 
+[#762](https://github.com/kubernetes/contrib/issues/762)). Create a new
+repository in `kubernetes-incubator` instead 
+([process](https://github.com/kubernetes/community/blob/master/incubator.md)).
 
 ## Getting the Code
 

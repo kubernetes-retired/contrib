@@ -117,7 +117,7 @@ kube_cert_keep_ca: false
 # with caution.
 
 # See kube documentation for apiserver runtime config options.  Example below enables HPA, deployments features.
-#kube_apiserver_options:
+#kube_apiserver_additional_options:
 #  - --runtime-config=extensions/v1beta1/deployments=true
 
 # To enable etcd auto cert generation set the following *_scheme vars to "https"

@@ -2,6 +2,7 @@
 - name: Disable swap
   include: swapoff.yml
   tags: configure
+  when: disable_swap
 
 # Install the kube node components
 # E.g. applying package manager, downloading binaries from github, etc.
