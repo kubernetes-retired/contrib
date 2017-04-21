@@ -13,5 +13,5 @@
 
 - include: secrets.yml
   tags:
-    secrets
-  tags: configure
+    - secrets
+    - configure

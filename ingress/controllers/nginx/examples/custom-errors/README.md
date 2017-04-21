@@ -1,3 +1,5 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
 
 This example shows how is possible to use a custom backend to render custom error pages. The code of this example is located here [nginx-debug-server](https://github.com/aledbf/contrib/tree/nginx-debug-server)
 

@@ -1,6 +1,7 @@
 admin-port
 alias-file
 allowed-shame-domains
+api-override
 api-token
 balance-algorithm
 batch-url
@@ -13,6 +14,7 @@ cla-status-context
 cloud-config
 cloud-provider
 cluster-uid
+component
 config-file-path
 configuration-name
 current-release-pr
@@ -71,6 +73,7 @@ kubelet-port
 label-file
 last-release-pr
 left-build-number
+listen-address
 local-data-dir
 max-empty-bulk-delete
 max-nodes-total
@@ -79,6 +82,7 @@ max-sync-failures
 max-grateful-termination-sec
 max-node-provision-time
 max-total-unready-percentage
+metrics-resolution
 min-pr-number
 min-replica-count
 netrc-dir
@@ -131,11 +135,14 @@ skip-nodes-with-system-pods
 source-file
 ssl-ca-cert
 ssl-cert
+stackdriver-prefix
 start-from
 state-machine-enabled
 stats-port
 sync-period
 system-namespace
+target-host
+target-port
 tcp-services
 tcp-services-configmap
 test-owners-csv
@@ -155,8 +162,11 @@ use-reviewers
 use-unicast
 user-whitelist
 verify-unschedulable-pods
+vrid
 vrrp-password
 watch-namespace
 watch-all-namespaces
 weak-stable-jobs
+whitelisted-metrics
 whitelist-override-label
+write-status-configmap

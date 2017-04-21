@@ -1,0 +1,10 @@
+---
+- name: Update {{ etcd_script_dir }} if this is atomic
+  set_fact:
+    etcd_script_dir: "/usr/local/libexec/etcd"
+  when: is_atomic and etcd_script_dir == "/usr/libexec/etcd"
+
+- name: Update facts if this is CoreOS or Ubuntu 14.04
+  set_fact:
+    etcd_script_dir: "/opt/bin/etcd"
+  when: is_coreos or ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15

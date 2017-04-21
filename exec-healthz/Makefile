@@ -30,7 +30,7 @@ ARCH ?= amd64
 
 SRC_DIRS := cmd pkg # directories which hold app source (not vendored)
 
-ALL_ARCH := amd64 arm arm64 ppc64le
+ALL_ARCH := amd64 arm arm64 ppc64le s390x
 
 # Set default base image dynamically for each arch
 ifeq ($(ARCH),amd64)
@@ -44,6 +44,9 @@ ifeq ($(ARCH),arm64)
 endif
 ifeq ($(ARCH),ppc64le)
     BASEIMAGE?=ppc64le/busybox
+endif
+ifeq ($(ARCH),s390x)
+    BASEIMAGE?=s390x/busybox
 endif
 
 IMAGE := $(REGISTRY)/$(BIN)-$(ARCH)

@@ -1,3 +1,5 @@
+**The Ingress controller examples have moved to the
+[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
 
 This example shows how to add authentication in a Ingress rule using a secret that contains a file generated with `htpasswd`.
 

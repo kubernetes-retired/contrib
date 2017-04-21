@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package aws
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
-	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 func stringSetToPointers(in sets.String) []*string {
@@ -43,9 +43,8 @@ func stringSetFromPointers(in []*string) sets.String {
 	return out
 }
 
+// orZero returns the value, or 0 if the pointer is nil
+// Deprecated: prefer aws.Int64Value
 func orZero(v *int64) int64 {
-	if v == nil {
-		return 0
-	}
-	return *v
+	return aws.Int64Value(v)
 }
