@@ -44,7 +44,7 @@ apiVersion: v1
 data:
   proxy-connect-timeout: "10"
   proxy-read-timeout: "120"
-  proxy-send-imeout: "120"
+  proxy-send-timeout: "120"
 kind: ConfigMap
 metadata:
   name: nginx-load-balancer-conf
