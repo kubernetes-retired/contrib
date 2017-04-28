@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -229,13 +229,15 @@ func getTaintsFromNodeAnnotations(annotations map[string]string) ([]apiv1.Taint,
 
 func releaseAllTaintsDeprecated(client kube_client.Interface, nodeLister *kube_utils.ReadyNodeLister) {
 	glog.Infof("Removing all annotation taints because they are no longer supported.")
-
 	nodes, err := nodeLister.List()
 	if err != nil {
 		glog.Warningf("Cannot release taints - error while listing nodes: %v", err)
 		return
 	}
+	releaseTaintsOnNodesDeprecated(client, nodes)
+}
 
+func releaseTaintsOnNodesDeprecated(client kube_client.Interface, nodes []*apiv1.Node) {
 	for _, node := range nodes {
 		taints, err := getTaintsFromNodeAnnotations(node.Annotations)
 		if err != nil {
@@ -276,7 +278,10 @@ func releaseAllTaints(client kube_client.Interface, nodeLister *kube_utils.Ready
 		glog.Warningf("Cannot release taints - error while listing nodes: %v", err)
 		return
 	}
+	releaseTaintsOnNodes(client, nodes, podsBeingProcessed)
+}
 
+func releaseTaintsOnNodes(client kube_client.Interface, nodes []*apiv1.Node, podsBeingProcessed *podSet) {
 	for _, node := range nodes {
 		newTaints := make([]apiv1.Taint, 0)
 		for _, taint := range node.Spec.Taints {
@@ -289,7 +294,7 @@ func releaseAllTaints(client kube_client.Interface, nodeLister *kube_utils.Ready
 
 		if len(newTaints) != len(node.Spec.Taints) {
 			node.Spec.Taints = newTaints
-			_, err = client.CoreV1().Nodes().Update(node)
+			_, err := client.CoreV1().Nodes().Update(node)
 			if err != nil {
 				glog.Warningf("Error while releasing taints on node %v: %v", node.Name, err)
 			} else {
