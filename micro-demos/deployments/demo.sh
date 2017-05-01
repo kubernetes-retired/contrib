@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ run "kubectl --namespace=demos apply -f $(relative deployment.yaml)"
 # run "kubectl --namespace=demos describe deployment deployment-demo"
 
 tmux new -d -s my-session \
-    "sleep 10; $(dirname $BASH_SOURCE)/split1_control.sh" \; \
+    "$(dirname $BASH_SOURCE)/split1_control.sh" \; \
     split-window -v -p 66 "$(dirname ${BASH_SOURCE})/split1_hit_svc.sh" \; \
     split-window -v "$(dirname ${BASH_SOURCE})/split1_watch.sh v1" \; \
     split-window -h -d "$(dirname ${BASH_SOURCE})/split1_watch.sh v2" \; \

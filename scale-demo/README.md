@@ -1,9 +1,9 @@
 # Kubernetes One Million Requests Per Second Demo
 
 ## Prerequisites
-### Kubernetes 1.1.x
-This demo requires a Kubernetes 1.1.x cluster, it uses iptables proxy support that was released
-in Kubernetes 1.1.
+### Kubernetes version 1.1 or newer
+This demo requires a Kubernetes cluster at version 1.1 or newer as it uses iptables proxy support that was
+released in Kubernetes 1.1.
 
 You can see what version you are running by running:
 
@@ -29,9 +29,10 @@ git clone https://github.com/kubernetes/contrib
 cd contrib/scale-demo
 ```
 
-### Activate IPTables proxying
+### Activate IPTables proxying (1.1.x only)
 
-Finally, activate IPTables based proxying:
+Finally, if you are using a 1.1.x cluster, you will need to activate IPTables based proxying
+(IPTable proxying is on by default in 1.2.x):
 ```shell
 for node in $(kubectl get nodes -o name | cut -f2 -d/); do
     # switch to iptables mode

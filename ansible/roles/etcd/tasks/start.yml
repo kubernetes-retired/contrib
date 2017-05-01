@@ -1,0 +1,2 @@
+---
+- include: "{% if not is_coreos %}etcd-start{% else %}etcd2-start{% endif %}.yml"

@@ -1,12 +1,12 @@
 all: push
 
 # 0.0.0 shouldn't clobber any released builds
-TAG = 0.3
+TAG = 0.5
 PREFIX = gcr.io/google_containers/haproxy
 HAPROXY_IMAGE = haproxy
 
 container:
-	docker build -t $(PREFIX):$(TAG) .
+	docker build --pull -t $(PREFIX):$(TAG) .
 
 push: container
 	gcloud docker push $(PREFIX):$(TAG)

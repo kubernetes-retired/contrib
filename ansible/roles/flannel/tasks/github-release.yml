@@ -1,8 +1,4 @@
 ---
-- name: Set Flannel Version fact
-  set_fact:
-    flannel_version: 0.5.5
-
 - stat: path={{ flannel_releases_dir }}/flannel-{{ flannel_version }}
   register: st
 

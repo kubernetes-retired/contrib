@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"syscall"
 	"text/template"
 
@@ -50,6 +49,7 @@ type keepalived struct {
 	tmpl       *template.Template
 	cmd        *exec.Cmd
 	ipt        iptables.Interface
+	vrid       int
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -73,6 +73,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["nodes"] = k.neighbors
 	conf["priority"] = k.priority
 	conf["useUnicast"] = k.useUnicast
+	conf["vrid"] = k.vrid
 
 	if glog.V(2) {
 		b, _ := json.Marshal(conf)
@@ -115,23 +116,6 @@ func (k *keepalived) Start() {
 
 	k.started = true
 
-	// in case the pod is terminated we need to check that the vips are removed
-	c := make(chan os.Signal, 2)
-	signal.Notify(c, syscall.SIGTERM)
-	go func() {
-		for range c {
-			glog.Warning("TERM signal received. removing vips")
-			for _, vip := range k.vips {
-				k.removeVIP(vip)
-			}
-
-			err := k.ipt.FlushChain(iptables.TableFilter, iptables.Chain(iptablesChain))
-			if err != nil {
-				glog.V(2).Infof("unexpected error flushing iptables chain %v: %v", err, iptablesChain)
-			}
-		}
-	}()
-
 	if err := k.cmd.Start(); err != nil {
 		glog.Errorf("keepalived error: %v", err)
 	}
@@ -155,6 +139,23 @@ func (k *keepalived) Reload() error {
 	}
 
 	return nil
+}
+
+// Stop stop keepalived process
+func (k *keepalived) Stop() {
+	for _, vip := range k.vips {
+		k.removeVIP(vip)
+	}
+
+	err := k.ipt.FlushChain(iptables.TableFilter, iptables.Chain(iptablesChain))
+	if err != nil {
+		glog.V(2).Infof("unexpected error flushing iptables chain %v: %v", err, iptablesChain)
+	}
+
+	err = syscall.Kill(k.cmd.Process.Pid, syscall.SIGTERM)
+	if err != nil {
+		glog.Errorf("error stopping keepalived: %v", err)
+	}
 }
 
 func resetIPVS() error {
@@ -183,18 +184,4 @@ func (k *keepalived) loadTemplate() error {
 	}
 	k.tmpl = tmpl
 	return nil
-}
-
-func (k *keepalived) setupSignalHandlers() {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		switch <-sigChan {
-		case syscall.SIGINT:
-		case syscall.SIGTERM:
-			for _, vip := range k.vips {
-				k.removeVIP(vip)
-			}
-		}
-	}()
 }

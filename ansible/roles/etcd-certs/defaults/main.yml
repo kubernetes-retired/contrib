@@ -1,0 +1,12 @@
+---
+etcd_conf_dir: /etc/etcd
+etcd_certs_dir: "{{ etcd_conf_dir }}/certs"
+etcd_script_dir: /usr/libexec/etcd
+etcd_ca_file: "{{ etcd_certs_dir }}/ca.crt"
+etcd_cert_file: "{{ etcd_certs_dir }}/server.crt"
+etcd_key_file: "{{ etcd_certs_dir }}/server.key"
+etcd_peer_ca_file: "{{ etcd_certs_dir }}/ca.crt"
+etcd_peer_cert_file: "{{ etcd_certs_dir }}/peer.crt"
+etcd_peer_key_file: "{{ etcd_certs_dir }}/peer.key"
+etcd_client_cert_file: "{{ etcd_certs_dir }}/client.crt"
+etcd_client_key_file: "{{ etcd_certs_dir }}/client.key"

@@ -4,7 +4,7 @@
     - nodes
     - etcd
 
-  sudo: yes
+  become: yes
 
   tasks:
     - name: Detecting Operating System
@@ -114,7 +114,7 @@
     - name: Remove remaining files
       file: path={{ item }} state=absent
       with_items:
-        - "~{{ ansible_ssh_user }}/.kube"
+        - "{{ ansible_env.HOME }}/.kube"
         - /root/.kube
         - "{{ bin_dir }}/kube-apiserver"
         - "{{ bin_dir }}/kube-controller-manager"
@@ -138,7 +138,14 @@
         - /etc/systemd/system/kube-scheduler.service
         - /etc/systemd/system/flanneld.service
         - /etc/systemd/system/flanneld.service.wants
-        - /etc/systemd/system/multi-user.target.wants
+        - /etc/systemd/system/multi-user.target.wants/etcd.service
+        - /etc/systemd/system/multi-user.target.wants/flanneld.service
+        - /etc/systemd/system/multi-user.target.wants/kubelet.service
+        - /etc/systemd/system/multi-user.target.wants/kube-proxy.service
+        - /etc/systemd/system/multi-user.target.wants/kube-apiserver.service
+        - /etc/systemd/system/multi-user.target.wants/kube-scheduler.service
+        - /etc/systemd/system/multi-user.target.wants/kube-controller-manager.service
+        - /etc/systemd/system/multi-user.target.wants/kube-addons.service
         - /etc/systemd/system/delay-master-services.target
         - /etc/systemd/system/delay-node-services.target
         - /etc/sysconfig/flanneld
@@ -154,16 +161,16 @@
       command: systemctl daemon-reload
 
 - hosts: nodes
-  sudo: yes
+  become: yes
   tasks:
     - name: restart docker
       service: name=docker state=restarted
 
-- hosts: 
+- hosts:
     - masters
     - nodes
-    - etcd 
-  sudo: yes
+    - etcd
+  become: yes
   tasks:
     - name: CoreOS | unbootstrap python
       raw: rm -r {{ item }}

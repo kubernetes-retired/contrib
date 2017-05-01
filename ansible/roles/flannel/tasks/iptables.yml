@@ -12,7 +12,11 @@
            -j ACCEPT -m comment --comment "vxlan"
 
 - name: Allow flanneld subnet traffic with iptables
-  command: /sbin/iptables -I FORWARD 1 -i flannel.1 -o docker0
+  command: /sbin/iptables -I FORWARD 1 -i flannel.1
+           -j ACCEPT -m comment --comment "flannel subnet"
+
+- name: Allow DNAT'ed packets through to flanneld
+  command: /sbin/iptables -I FORWARD 1 -o flannel.1
            -j ACCEPT -m comment --comment "flannel subnet"
 
 - name: Save iptables rules

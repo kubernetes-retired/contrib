@@ -11,7 +11,7 @@ Annotations - Every API object can be annotated with arbitrary key/value pairs t
 Given these primitives, the code to use master election is relatively straightforward, and you can find it here. Let’s run it ourselves. 
 
 ```console
-$ kubectl run leader-elector --image=gcr.io/google_containers/leader-elector:0.4 --replicas=3 -- --election=example
+$ kubectl run leader-elector --image=gcr.io/google_containers/leader-elector:0.5 --replicas=3 -- --election=example
 ```
 
 This creates a leader election set with 3 replicas:
@@ -53,7 +53,7 @@ The leader-election container provides a simple webserver that can serve on any 
 $ kubectl delete rc leader-elector
 
 # create the new group, note the --http=localhost:4040 flag
-$ kubectl run leader-elector --image=gcr.io/google_containers/leader-elector:0.4 --replicas=3 -- --election=example --http=0.0.0.0:4040
+$ kubectl run leader-elector --image=gcr.io/google_containers/leader-elector:0.5 --replicas=3 -- --election=example --http=0.0.0.0:4040
 
 # create a proxy to your Kubernetes api server
 $ kubectl proxy
@@ -74,36 +74,53 @@ The leader-election container can serve as a sidecar that you can use from your 
 For example, here is a simple Node.js application that connects to the leader election sidecar and prints out whether or not it is currently the master. The leader election sidecar sets its identifier to `hostname` by default. 
 
 ```javascript
-var http = require('http');
+const http = require('http');
 // This will hold info about the current master
-var master = {};
-
-// The web handler for our nodejs application
-var handleRequest = function(request, response) {
-    response.writeHead(200);
-    response.end("Master is " + master.name);
-};
+let master = {};
 
 // A callback that is used for our outgoing client requests to the sidecar
-var cb = function(response) {
-    var data = '';
-    response.on('data', function(piece) { data = data + piece; });
-    response.on('end', function() { master = JSON.parse(data); });
+const cb = (response) => {
+  let data = '';
+  response.on('data', (piece) => {
+    data = data + piece;
+  });
+  response.on('end', () => {
+    master = JSON.parse(data);
+  });
 };
 
 // Make an async request to the sidecar at http://localhost:4040
-var updateMaster = function() {
-    var req = http.get({host: 'localhost', path: '/', port: 4040}, cb);
-    req.on('error', function(e) { console.log('problem with request: ' + e.message); });
-    req.end();
+const updateMaster = function updateMaster() {
+  const req = http.get({
+    host: 'localhost',
+    path: '/',
+    port: 4040,
+  }, cb);
+
+  req.on('error', (e) => {
+    console.log(`problem with request: ${e.message}`);
+  });
+  req.end();
 };
 
-// Set up regular updates
 updateMaster();
+
+// Set up regular updates
 setInterval(updateMaster, 5000);
 
 // set up the web server
-var www = http.createServer(handleRequest);
+const www = http.createServer((request, response) => {
+  response.writeHead(200);
+  response.end(`Master is ${master.name}`);
+});
+
 www.listen(8080);
-Of course, you can use this sidecar from any language that you choose that supports HTTP and JSON.
 ```
+
+Test the client is running:
+```
+$ kubectl exec elector-sidecar -c nodejs -- wget -qO- http://localhost:8080
+Master is elector-sidecar
+```
+
+Of course, you can use this sidecar from any language that you choose that supports HTTP and JSON.

@@ -5,7 +5,7 @@
 #
 
 # The address on the local server to listen to.
-KUBE_API_ADDRESS="--insecure-bind-address=127.0.0.1"
+KUBE_API_ADDRESS="--insecure-bind-address={{ kube_apiserver_insecure_bind_address }}"
 
 # The port on the local server to listen on.
 KUBE_API_PORT="--secure-port={{ kube_master_api_port }}"
@@ -17,10 +17,10 @@ KUBE_API_PORT="--secure-port={{ kube_master_api_port }}"
 KUBE_SERVICE_ADDRESSES="--service-cluster-ip-range={{ kube_service_addresses }}"
 
 # Location of the etcd cluster
-KUBE_ETCD_SERVERS="--etcd-servers={% for node in groups['etcd'] %}http://{{ node }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
+KUBE_ETCD_SERVERS="--etcd-servers={% for node in groups['etcd'] %}{% if etcd_url_scheme is defined %}{{ etcd_url_scheme }}{% else %}http{% endif %}://{{ node }}:{{ etcd_client_port }}{% if not loop.last %},{% endif %}{% endfor %}{% if etcd_url_scheme is defined and etcd_url_scheme == 'https' %} --etcd-cafile={{ apiserver_etcd_ca_file }} --etcd-certfile={{ apiserver_etcd_cert_file }} --etcd-keyfile={{ apiserver_etcd_key_file }}{% endif %}"
 
 # default admission control policies
 KUBE_ADMISSION_CONTROL="--admission-control={{ admission_controllers }}"
 
 # Add your own!
-KUBE_API_ARGS="{{ apiserver_extra_args | default('') }} --tls-cert-file={{ kube_cert_dir }}/server.crt --tls-private-key-file={{ kube_cert_dir }}/server.key --client-ca-file={{ kube_cert_dir }}/ca.crt --token-auth-file={{ kube_token_dir }}/known_tokens.csv --service-account-key-file={{ kube_cert_dir }}/server.crt --bind-address={{ kube_apiserver_bind_address }}"
+KUBE_API_ARGS="{{ kube_apiserver_options|join(' ') }} {{ kube_apiserver_additional_options|join(' ') }}"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,20 +24,22 @@ set -o pipefail
 
 # Caller should set in the ev:
 # MASTER_IP - this may be an ip or things like "_use_gce_external_ip_"
-# MASTER_NAME - DNS name for the master
+# MASTERS - DNS name for the masters
 # DNS_DOMAIN - which will be passed to minions in --cluster-domain
 # SERVICE_CLUSTER_IP_RANGE - where all service IPs are allocated
+# KUBE_CERT_KEEP_CA - to keep ca.key file or not, "true"|"false"
 
 # Also the following will be respected
 # CERT_DIR - where to place the finished certs
 # CERT_GROUP - who the group owner of the cert files should be
 
 cert_ip="${MASTER_IP:="${1}"}"
-master_name="${MASTER_NAME:="kubernetes"}"
+masters="${MASTERS:="kubernetes"}"
 service_range="${SERVICE_CLUSTER_IP_RANGE:="10.0.0.0/16"}"
 dns_domain="${DNS_DOMAIN:="cluster.local"}"
 cert_dir="${CERT_DIR:-"/srv/kubernetes"}"
 cert_group="${CERT_GROUP:="kube-cert"}"
+keep_ca_priv_key="${KUBE_CERT_KEEP_CA:="false"}"
 
 # The following certificate pairs are created:
 #
@@ -94,7 +96,27 @@ octets=($(echo "${service_range}" | sed -e 's|/.*||' -e 's/\./ /g'))
 service_ip=$(echo "${octets[*]}" | sed 's/ /./g')
 
 # Determine appropriete subject alt names
-sans="IP:${cert_ip},IP:${service_ip},DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.${dns_domain},DNS:${master_name}"
+declare -a san_array=(IP:${service_ip} DNS:kubernetes DNS:kubernetes.default DNS:kubernetes.default.svc DNS:kubernetes.default.svc.${dns_domain})
+
+IFS=',' read -ra cert_ip <<< "$cert_ip"
+for ip in "${cert_ip[@]}"; do
+    san_array+=(IP:${ip})
+done
+
+IFS=',' read -ra masters <<< "$masters"
+for master in "${masters[@]}"; do
+    san_array+=(DNS:${master})
+done
+
+if [[ -n "${CLUSTER_HOSTNAME}" ]]; then
+    san_array+=(DNS:${CLUSTER_HOSTNAME})
+fi
+
+if [[ -n "${CLUSTER_PUBLIC_HOSTNAME}" ]]; then
+    san_array+=(DNS:${CLUSTER_PUBLIC_HOSTNAME})
+fi
+
+sans="$(IFS=, ; echo "${san_array[*]}")"
 
 curl -sSL -O https://storage.googleapis.com/kubernetes-release/easy-rsa/easy-rsa.tar.gz
 tar xzf easy-rsa.tar.gz
@@ -104,7 +126,7 @@ cd easy-rsa-master/easyrsa3
 if ! (./easyrsa --batch init-pki
       # Since the length of CN is limited to 64 bytes, here we cut too long ${cert_ip}
       ./easyrsa --batch "--req-cn=$(echo ${cert_ip} | cut -b 1-$(expr 64 - $(echo @$(date +%s) | wc -c)))@$(date +%s)" build-ca nopass
-      ./easyrsa --batch --subject-alt-name="${sans}" build-server-full "${master_name}" nopass
+      ./easyrsa --batch --subject-alt-name="${sans}" build-server-full master nopass
       ./easyrsa --batch build-client-full kubelet nopass
       ./easyrsa --batch build-client-full kubecfg nopass) >/dev/null 2>&1; then
     echo "=== Failed to generate certificates: Aborting ===" 1>&2
@@ -114,14 +136,18 @@ fi
 mkdir -p "$cert_dir"
 
 cp -p pki/ca.crt "${cert_dir}/ca.crt"
-cp -p "pki/issued/${master_name}.crt" "${cert_dir}/server.crt"
-cp -p "pki/private/${master_name}.key" "${cert_dir}/server.key"
+cp -p pki/issued/master.crt "${cert_dir}/server.crt"
+cp -p pki/private/master.key "${cert_dir}/server.key"
 cp -p pki/issued/kubecfg.crt "${cert_dir}/kubecfg.crt"
 cp -p pki/private/kubecfg.key "${cert_dir}/kubecfg.key"
 cp -p pki/issued/kubelet.crt "${cert_dir}/kubelet.crt"
 cp -p pki/private/kubelet.key "${cert_dir}/kubelet.key"
 
 CERTS=("ca.crt" "server.key" "server.crt" "kubelet.key" "kubelet.crt" "kubecfg.key" "kubecfg.crt")
+if [[ "${keep_ca_priv_key}" == "true" ]]; then
+    cp -p pki/private/ca.key "${cert_dir}/ca.key"
+    CERTS+=("ca.key")
+fi
 for cert in "${CERTS[@]}"; do
   chgrp "${cert_group}" "${cert_dir}/${cert}"
   chmod 660 "${cert_dir}/${cert}"

@@ -15,7 +15,7 @@ test:
 	godep go test .
 
 build: $(BIN)
-	docker build -t $(REPO):$(TAG) .
+	docker build --pull -t $(REPO):$(TAG) .
 
 push:
 	docker push $(REPO):$(TAG)

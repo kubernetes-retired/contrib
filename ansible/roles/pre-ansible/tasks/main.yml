@@ -31,6 +31,7 @@
   register: s
   changed_when: false
   failed_when: false
+  always_run: yes
 
 - name: Set the is_atomic fact
   set_fact:
@@ -39,3 +40,7 @@
 
 - include: fedora-dnf.yml
   when: os_version.stdout|int >= 22 and 'Fedora' in distro.stdout and is_atomic is not defined
+
+- name: install python 2 on Ubuntu
+  raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+  when: "'Ubuntu' in distro.stdout"

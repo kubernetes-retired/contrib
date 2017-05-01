@@ -1,7 +1,7 @@
 ---
 - name: RPM | Determine if firewalld installed
   command: "rpm -q firewalld"
-  register: s
+  register: firewalld_check
   changed_when: false
   failed_when: false
   always_run: yes
@@ -9,11 +9,11 @@
 - name: Set the has_firewalld fact
   set_fact:
     has_firewalld: true
-  when: s.rc == 0
+  when: firewalld_check.rc == 0
 
 - name: Determine if iptables-services installed
   command: "rpm -q iptables-services"
-  register: s
+  register: iptables_check
   changed_when: false
   failed_when: false
   always_run: yes
@@ -21,4 +21,4 @@
 - name: Set the has_iptables fact
   set_fact:
     has_iptables: true
-  when: s.rc == 0
+  when: iptables_check.rc == 0

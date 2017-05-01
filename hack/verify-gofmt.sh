@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 
 GO_VERSION=($(go version))
 
-if [[ -z $(echo "${GO_VERSION[2]}" | grep -E 'go1.2|go1.3|go1.4|go1.5|go1.6') ]]; then
+if [[ -z $(echo "${GO_VERSION[2]}" | grep -E 'go1.2|go1.3|go1.4|go1.5|go1.6|go1.7') ]]; then
   echo "Unknown go version '${GO_VERSION}', skipping gofmt."
   exit 1
 fi
@@ -38,8 +38,10 @@ find_files() {
         -o -wholename './_output' \
         -o -wholename './release' \
         -o -wholename './target' \
+        -o -wholename './.git' \
         -o -wholename '*/third_party/*' \
         -o -wholename '*/Godeps/*' \
+        -o -wholename '*/vendor/*' \
       \) -prune \
     \) -name '*.go'
 }

@@ -13,14 +13,24 @@
   # we have to manually invoke firewall-cmd
 - name: Open flanneld subnet traffic
   command: /bin/firewall-cmd --direct --add-rule ipv4 filter FORWARD 1
-           -i flannel.1 -o docker0 -j ACCEPT
-           -m comment --comment "flannel subnet"
+           -i flannel.1 -j ACCEPT -m comment --comment "flannel subnet"
   # in case this is also a node where firewalld turned off
   ignore_errors: yes
 
 - name: Save flanneld subnet traffic
   command: /bin/firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1
-           -i flannel.1 -o docker0 -j ACCEPT
-           -m comment --comment "flannel subnet"
+           -i flannel.1 -j ACCEPT -m comment --comment "flannel subnet"
+  # in case this is also a node where firewalld turned off
+  ignore_errors: yes
+
+- name: Open flanneld to DNAT'ed traffic
+  command: /bin/firewall-cmd --direct --add-rule ipv4 filter FORWARD 1
+           -o flannel.1 -j ACCEPT -m comment --comment "flannel subnet"
+  # in case this is also a node where firewalld turned off
+  ignore_errors: yes
+
+- name: Save flanneld to DNAT'ed traffic
+  command: /bin/firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1
+           -o flannel.1 -j ACCEPT -m comment --comment "flannel subnet"
   # in case this is also a node where firewalld turned off
   ignore_errors: yes

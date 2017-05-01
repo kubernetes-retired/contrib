@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2015 The Kubernetes Authors All rights reserved.
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,6 +63,8 @@ def get_all_files(rootdir):
             files.remove('exceptions.txt')
         if 'known-flags.txt' in files:
             files.remove('known-flags.txt')
+        if 'vendor' in dirs:
+            dirs.remove('vendor')
 
         for name in files:
             if name.endswith(".svg"):
@@ -77,7 +79,7 @@ def get_all_files(rootdir):
 
 def normalize_files(rootdir, files):
     newfiles = []
-    a = ['Godeps', 'third_party', 'exceptions.txt', 'known-flags.txt']
+    a = ['Godeps', 'vendor', 'third_party', 'exceptions.txt', 'known-flags.txt']
     for f in files:
         if any(x in f for x in a):
             continue

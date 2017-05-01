@@ -1,0 +1,136 @@
+# This value determines how kubernetes binaries, config files, and service
+# files are loaded onto the target machines.  The following are the only
+# valid options:
+#
+# localBuild - requires make release to have been run to build local binaries
+# packageManager - will install packages from your distribution using yum/dnf/apt
+source_type: packageManager
+
+# will be used as the Internal dns domain name if DNS is enabled. Services
+# will be discoverable under <service-name>.<namespace>.svc.<domainname>, e.g.
+# myservice.default.svc.cluster.local
+cluster_name: cluster.local
+
+# Set if you want to access kubernetes cluster via load balancer. The installer
+# assumes that a load balancer has been preconfigured or resolves to
+# kubenetes master
+#master_cluster_hostname: kubernetes-cluster.example.com
+
+# External fqdn used for the cluster (certificat only)
+#master_cluster_public_hostname: public-kubernetes
+
+# Port number for the load balanced master hostname.
+#master_cluster_port: 443
+
+# Account name of remote user. Ansible will use this user account to ssh into
+# the managed machines. The user must be able to use sudo without asking
+# for password unless ansible_sudo_pass is set
+#ansible_ssh_user: root
+
+# password for the ansible_ssh_user. If this is unset you will need to set up
+# ssh keys so a password is not needed.
+#ansible_ssh_pass: password
+
+# If a password is needed to sudo to root that password must be set here
+#ansible_sudo_pass: password
+
+# A list of insecure registrys you might need to define
+insecure_registrys:
+#  - "gcr.io"
+
+# Required for CoreOS. CoreOS does not include a Python interpreter. The
+# pre-ansible role installs a python interpreter to /opt/bin/. For more
+# information see https://coreos.com/blog/managing-coreos-with-ansible.html
+#ansible_python_interpreter: "PATH=/opt/bin:$PATH python"
+
+# If you need a proxy for the docker daemon define these here
+#http_proxy: "http://proxy.example.com:3128"
+#https_proxy: "http://proxy.example.com:3128"
+#no_proxy: "127.0.0.1,localhost,docker-registry.somecorporation.com"
+
+# Kubernetes internal network for services.
+# Kubernetes services will get fake IP addresses from this range.
+# This range must not conflict with anything in your infrastructure. These
+# addresses do not need to be routable and must just be an unused block of space.
+kube_service_addresses: 10.254.0.0/16
+
+# Network implementation (flannel|opencontrail|contiv)
+networking: flannel
+
+# External network
+# opencontrail_public_subnet: 10.1.4.0/24
+
+# Underlay network
+# opencontrail_private_subnet: 192.168.1.0/24
+
+# Data interface
+# opencontrail_interface: eth1
+
+# Flannel internal network (optional). When flannel is used, it will assign IP
+# addresses from this range to individual pods.
+# This network must be unused in your network infrastructure!
+flannel_subnet: 172.16.0.0
+
+# Flannel internal network total size (optional). This is the prefix of the
+# entire flannel overlay network.  So the entirety of 172.16.0.0/12 must be
+# unused in your environment.
+flannel_prefix: 12
+
+# Flannel internal network (optional). This is the size allocation that flannel
+# will give to each node on your network.  With these defaults you should have
+# room for 4096 nodes with 254 pods per node.
+flannel_host_prefix: 24
+
+# Create a default Contiv network for providing connectivity among pods
+# networking: contiv must be set to use Contiv networking
+#contiv_default_network: true
+#contiv_default_subnet: 172.16.0.0/16
+#contiv_default_gw: 172.16.0.1
+
+# Set to false to disable logging with elasticsearch
+cluster_logging: true
+
+# Turn to false to disable cluster monitoring with heapster and influxdb
+cluster_monitoring: true
+
+# Turn to false to disable the kube-ui addon for this cluster
+kube_ui: false
+
+# Turn to false to disable the kube-dash addon for this cluster
+kube_dash: false
+
+# Turn to false to disable the node_problem_detector addon for this cluster
+node_problem_detector: false
+
+# Turn this varable to 'false' to disable whole DNS configuration.
+dns_setup: true
+# How many replicas in the Replication Controller
+dns_replicas: 1
+
+# Certificate authority private key should not be kept on server
+# but you probably want to keep it to generate user certificates. Set
+# that value to "true" to keep ca.key file on {{ kube_cert_dir}}.
+# It's recommanded to remove the private key from the server. So if you set
+# kube_cert_keep_ca to true, please copy the ca.key file somewhere that
+# is secured, and remove it from server.
+kube_cert_keep_ca: false
+
+# There are other variable in roles/kubernetes/defaults/main.yml but changing
+# them comes with a much higher risk to your cluster. So proceed over there
+# with caution.
+
+# See kube documentation for apiserver runtime config options.  Example below enables HPA, deployments features.
+#kube_apiserver_additional_options:
+#  - --runtime-config=extensions/v1beta1/deployments=true
+
+# To enable etcd auto cert generation set the following *_scheme vars to "https"
+etcd_url_scheme: "https"
+etcd_peer_url_scheme: "https"
+# For etcd client and peer cert authentication set these to true
+etcd_client_cert_auth: true
+etcd_peer_client_cert_auth: true
+
+etcd_client_port: '2379'
+# when the scheme vars above are set to "https" you need to set these to true!
+flannel_etcd_use_certs: true
+apiserver_etcd_use_certs: true

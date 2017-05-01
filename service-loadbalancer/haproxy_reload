@@ -23,6 +23,12 @@
 # -s soft reload, wait for pids to finish handling requests
 # -f send pids a resume signal if reload of new config fails
 
+exec 200<$0
+# Block till we can acquire an exclusive file lock:
+flock 200
+
 socat /tmp/haproxy - <<< "show servers state" > /var/state/haproxy/global
 
 haproxy -f /etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid -D -sf $(cat /var/run/haproxy.pid)
+
+flock -u 200

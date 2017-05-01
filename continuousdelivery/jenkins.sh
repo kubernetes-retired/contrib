@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ export CONTAINER1=$(tr [A-Z] [a-z] <<< ${JOB_NAME:0:8})/$(tr [A-Z] [a-z] <<< ${G
 docker login -u ${dockeruser} -p ${dockerpass} -e jenkins@domain.com ${DOCKER_REGISTRY}
 
 # build the container from the Dockerfile in the project
-docker build -t ${DOCKER_REGISTRY}/${CONTAINER1} .
+docker build --pull -t ${DOCKER_REGISTRY}/${CONTAINER1} .
 
 #tag the container
 docker tag -f ${DOCKER_REGISTRY}/${CONTAINER1}:latest ${DOCKER_REGISTRY}/${CONTAINER1}:build${BUILD}

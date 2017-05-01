@@ -8,18 +8,23 @@ spec:
       labels:
         name: nginx-ingress-lb
     spec:
-      terminationGracePeriodSeconds: 60      
+      terminationGracePeriodSeconds: 60
       containers:
-      - image: gcr.io/google_containers/nginx-ingress-controller:0.5
+      - image: gcr.io/google_containers/nginx-ingress-controller:0.8.3
         name: nginx-ingress-lb
         imagePullPolicy: Always
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 10254
+            scheme: HTTP
         livenessProbe:
           httpGet:
             path: /healthz
-            port: 10249
+            port: 10254
             scheme: HTTP
-          initialDelaySeconds: 30
-          timeoutSeconds: 5
+          initialDelaySeconds: 10
+          timeoutSeconds: 1
         # use downward API
         env:
           - name: POD_NAME
@@ -34,7 +39,7 @@ spec:
         - containerPort: 80
           hostPort: 80
         - containerPort: 443
-          hostPort: 4444
+          hostPort: 443
         args:
         - /nginx-ingress-controller
-        - --default-backend-service=default/default-http-backend
+        - --default-backend-service=$(POD_NAMESPACE)/default-http-backend

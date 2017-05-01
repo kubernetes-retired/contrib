@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,14 +37,23 @@ doBenchmark() {
   $DOCKER_MICRO_BENCHMARK $1 > $RDIR/result_benchmark.dat &
   BENCHMARK_PID=$!
   $STAT_TOOL -p $BENCHMARK_PID 1 > $RDIR/cpu_benchmark.dat &
-  DOCKER_PID=`ps -ef | awk '$8=="/usr/bin/docker" {print $2}'`
+  DOCKER_PID=`pidof dockerd`
+  if [ $? -ne 0 ]; then
+    # Be compatible with old version.
+    DOCKER_PID=`pidof docker`
+  fi
   $STAT_TOOL -p $DOCKER_PID 1 > $RDIR/cpu_docker_daemon.dat &
   DOCKER_PIDSTAT=$!
+  # For old version without containerd, there is no data for containerd,
+  # and the corresponding data won't be plotted.
+  CONTAINERD_PID=`pidof docker-containerd`
+  $STAT_TOOL -p $CONTAINERD_PID 1 > $RDIR/cpu_containerd_daemon.dat &
+  CONTAINERD_PIDSTAT=$!
   wait $BENCHMARK_PID
-  kill $SAR_PID
+  kill $CONTAINERD_PIDSTAT
   kill $DOCKER_PIDSTAT
   kill $SAR_PID
-  doParse $2 
+  doParse $2
 }
 
 # $1 benchmark name
@@ -81,7 +90,7 @@ while [ "$1" != "" ]; do
   case $1 in
     -o )
       echo "Benchmark container operations"
-      doBenchmark $1 container_op 
+      doBenchmark $1 container_op
       shift
       ;;
     -c )
@@ -96,7 +105,7 @@ while [ "$1" != "" ]; do
       ;;
     -i )
       echo "Benchmark with different intervals"
-      doBenchmark $1 varies_intervals 
+      doBenchmark $1 varies_intervals
       shift
       ;;
     -r )

@@ -10,3 +10,5 @@ os_security_groups:
   - "default"
  #- some_other_group
 os_floating_ip_pool: "os1_public"
+os_ssh_pub_key_path: "~/.ssh/id_rsa"
+os_instance_username: "fedora"

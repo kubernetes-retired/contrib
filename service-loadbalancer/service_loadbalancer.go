@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -705,7 +705,10 @@ func main() {
 		if err != nil {
 			glog.Fatalf("error connecting to the client: %v", err)
 		}
-		kubeClient, err = unversioned.New(config)
+		if kubeClient, err = unversioned.New(config); err != nil {
+			glog.Fatalf("Failed to create client: %v", err)
+		}
+
 	}
 	namespace, specified, err := clientConfig.Namespace()
 	if err != nil {

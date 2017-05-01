@@ -13,7 +13,7 @@
 
 - name: Copy node service files
   copy:
-    src: ../init/systemd/{{ item }}
+    src: ../../init/systemd/{{ item }}
     dest: /etc/systemd/system/
     mode: 0644
   with_items:
@@ -23,7 +23,7 @@
 
 - name: Copy node upstart files
   copy:
-    src: ../init/upstart/{{ item }}
+    src: ../../init/upstart/{{ item }}
     dest: /etc/init
     mode: 0644
   with_items:

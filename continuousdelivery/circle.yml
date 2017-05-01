@@ -40,7 +40,7 @@ dependencies:
     - docker login -u ${dockeruser} -p ${dockerpass} -e user@domain.com ${DOCKER_REGISTRY}
     # install any missing required binaries/config
     - chmod +x ./deploy/ensure-kubectl.sh && ./deploy/ensure-kubectl.sh ${KUBEURL}
-    - docker build -t ${DOCKER_REGISTRY}/${CONTAINER1} .
+    - docker build --pull -t ${DOCKER_REGISTRY}/${CONTAINER1} .
     - docker tag -f ${DOCKER_REGISTRY}/${CONTAINER1}:latest ${DOCKER_REGISTRY}/${CONTAINER1}:build${BUILD}
 
 test:

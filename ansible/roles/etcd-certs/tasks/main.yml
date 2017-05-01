@@ -1,0 +1,36 @@
+---
+- name: Slurp etcd CA certificate
+  slurp:
+    src: "{{ etcd_ca_file }}"
+  register: etcd_ca_slurp
+  run_once: true
+  delegate_to: "{{ groups['etcd'][0] }}"
+
+- name: Register CA certificate as a fact
+  set_fact:
+    etcd_ca_cert: "{{ etcd_ca_slurp.content|b64decode }}"
+  when: etcd_ca_cert is not defined
+
+- name: Slurp etcd client certificate
+  slurp:
+    src: "{{ etcd_client_cert_file }}"
+  register: etcd_cli_cert_slurp
+  run_once: true
+  delegate_to: "{{ groups['etcd'][0] }}"
+
+- name: Register client certificate as a fact
+  set_fact:
+    etcd_client_cert: "{{ etcd_cli_cert_slurp.content|b64decode }}"
+  when: etcd_client_cert is not defined
+
+- name: Slurp etcd client key
+  slurp:
+    src: "{{ etcd_client_key_file }}"
+  register: etcd_cli_key_slurp
+  run_once: true
+  delegate_to: "{{ groups['etcd'][0] }}"
+
+- name: Register etcd client key as a fact
+  set_fact:
+    etcd_client_key: "{{ etcd_cli_key_slurp.content|b64decode }}"
+  when: etcd_client_key is not defined

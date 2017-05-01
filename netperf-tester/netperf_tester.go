@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -156,7 +156,7 @@ func removeServices() {
 }
 
 func removeService(serviceName string) {
-	args := []string{"delete", "rc/" + serviceName}
+	args := []string{"delete", "deployments/" + serviceName}
 	err := runCommandInShell(kubectl, args)
 	if err != nil {
 		logger.Printf("Error running command: %v", err)
