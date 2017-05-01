@@ -1,0 +1,13 @@
+*.pem
+.DS_Store
+cloud-config
+variables.json
+*.csr
+master1-master.json
+terraform.tfstate*
+assets/
+staging-variables.sh
+/staging.tf
+__pycache__
+account.json
+certificates.tar.gz
