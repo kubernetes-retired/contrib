@@ -1,0 +1,15 @@
+FROM gcr.io/google_containers/nginx
+MAINTAINER Quintin Lee <qlee@google.com>
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+  iptables \
+  sudo
+
+# Give nginx its config file.
+COPY nginx.conf /etc/nginx/nginx.conf
+# Place our wrapper script into the image.
+COPY start-proxy.sh /
+RUN chmod +x /start-proxy.sh
+
+CMD ["/start-proxy.sh"]
