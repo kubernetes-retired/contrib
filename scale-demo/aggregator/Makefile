@@ -15,7 +15,7 @@ local_dryrun: container
 	docker run --rm -p 8090:8080 gcr.io/google_containers/aggregator:$(TAG)
 
 push: container
-	gcloud docker push gcr.io/google_containers/aggregator:$(TAG)
+	gcloud docker -- push gcr.io/google_containers/aggregator:$(TAG)
 
 clean:
 	rm -f aggregator 

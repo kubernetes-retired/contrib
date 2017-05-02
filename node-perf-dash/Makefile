@@ -12,7 +12,7 @@ container: node-perf-dash
 	docker build --pull -t $(REPO)/node-perf-dash:$(TAG) .
 
 push: container
-	gcloud docker push $(REPO)/node-perf-dash:$(TAG)
+	gcloud docker -- push $(REPO)/node-perf-dash:$(TAG)
 
 clean:
 	rm -f node-perf-dash
