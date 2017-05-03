@@ -1,9 +1,11 @@
-FROM gcr.io/google_containers/nginx
-MAINTAINER Quintin Lee <qlee@google.com>
+FROM gcr.io/google-containers/debian-base-amd64:0.1
+LABEL maintainer "qlee@google.com"
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
+  apt-utils && apt-get install -y \
   iptables \
+  nginx \
   sudo
 
 # Give nginx its config file.
