@@ -15,7 +15,8 @@
 .PHONY:	build push
 
 # TAG is the version to build and push to.
-PREFIX = gcr.io/google_containers
+#PREFIX = gcr.io/google_containers
+PREFIX = gcr.io/qlee-dev
 TAG = 1.0
 
 build:

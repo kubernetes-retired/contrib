@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/dash
 
 # Copyright 2017 The Kubernetes Authors.
 #
@@ -15,15 +15,15 @@
 # limitations under the License.
 
 _term() {
-  /usr/bin/sudo iptables -D -t filter -I KUBE-METADATA-SERVER -j ACCEPT
-  /usr/bin/sudo iptables -D -t nat -I PREROUTING -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 127.0.0.1:2020
+  iptables -D -t filter -I KUBE-METADATA-SERVER -j ACCEPT
+  iptables -D -t nat -I PREROUTING -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 127.0.0.1:2020
   kill -TERM "$child" 2>/dev/null
   exit
 }
 
 # Forward traffic to nginx.
-/usr/bin/sudo iptables -t nat -I PREROUTING -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 127.0.0.1:2020
-/usr/bin/sudo iptables -t filter -I KUBE-METADATA-SERVER -j ACCEPT
+iptables -t nat -I PREROUTING -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 127.0.0.1:2020
+iptables -t filter -I KUBE-METADATA-SERVER -j ACCEPT
 
 # Clean up the iptables rule if we're exiting gracefully.
 trap _term SIGTERM
