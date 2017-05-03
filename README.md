@@ -1,6 +1,8 @@
 # Kubernetes Contrib
 
 [![Build Status](https://travis-ci.org/kubernetes/contrib.svg)](https://travis-ci.org/kubernetes/contrib)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes/contrib)](https://goreportcard.com/report/github.com/kubernetes/contrib)
+[![APACHEv2 License](https://img.shields.io/badge/license-APACHEv2-blue.svg)](https://github.com/kubernetes/contrib/blob/master/LICENSE)
 
 **Do not add new projects to this repository.** We eventually want to
 move all code in this repository to more appropriate repositories (see 
