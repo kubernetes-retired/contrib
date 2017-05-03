@@ -12,6 +12,5 @@ RUN apt-get update && apt-get install -y \
 COPY nginx.conf /etc/nginx/nginx.conf
 # Place our wrapper script into the image.
 COPY start-proxy.sh /
-RUN chmod +x /start-proxy.sh
 
-CMD ["/start-proxy.sh"]
+ENTRYPOINT ["/start-proxy.sh"]
