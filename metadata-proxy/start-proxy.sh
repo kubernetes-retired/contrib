@@ -26,7 +26,7 @@ iptables -t nat -I PREROUTING -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-
 iptables -t filter -I KUBE-METADATA-SERVER -j ACCEPT
 
 # Clean up the iptables rule if we're exiting gracefully.
-trap _term SIGTERM
+trap _term TERM
 
 # Run nginx in the foreground.
 nginx -g 'daemon off;'
