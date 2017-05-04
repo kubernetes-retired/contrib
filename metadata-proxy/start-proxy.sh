@@ -30,5 +30,3 @@ trap _term TERM
 
 # Run nginx in the foreground.
 nginx -g 'daemon off;'
-child=$!
-wait $child
