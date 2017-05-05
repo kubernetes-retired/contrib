@@ -7,6 +7,7 @@ This project contains a Docker image meant to facilitate the deployment of
 in ZooKeeper 3.4.9 (The current stable release).
 2. Observers are currently not supported. Contributions are welcome.
 3. Persistent Volumes must be used. emptyDirs will likely result in a loss of data.
+
 ##Docker Image
 The docker image contained in this repository is comprised of a base Ubuntu 16.04 image using the latest
 release of the OpenJDK JRE based on the 1.8 JVM (JDK 8u111) and the latest stable release of 

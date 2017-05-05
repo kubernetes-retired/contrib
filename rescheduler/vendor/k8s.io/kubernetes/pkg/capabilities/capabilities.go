@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ func Initialize(c Capabilities) {
 	})
 }
 
-// Setup the capability set.  It wraps Initialize for improving usibility.
+// Setup the capability set.  It wraps Initialize for improving usability.
 func Setup(allowPrivileged bool, privilegedSources PrivilegedSources, perConnectionBytesPerSec int64) {
 	Initialize(Capabilities{
 		AllowPrivileged:                        allowPrivileged,
@@ -68,7 +68,7 @@ func Setup(allowPrivileged bool, privilegedSources PrivilegedSources, perConnect
 	})
 }
 
-// SetCapabilitiesForTests.  Convenience method for testing.  This should only be called from tests.
+// SetForTests sets capabilities for tests.  Convenience method for testing.  This should only be called from tests.
 func SetForTests(c Capabilities) {
 	lock.Lock()
 	defer lock.Unlock()

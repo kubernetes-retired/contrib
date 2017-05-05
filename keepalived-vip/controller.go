@@ -284,7 +284,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string) *ipvsControllerController {
+func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string, vrid int) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
@@ -311,6 +311,10 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		glog.Fatalf("Error getting local IP from nodes in the cluster: %v", err)
 	}
 
+	if vrid < 0 || vrid > 255 {
+		glog.Fatalf("Error using VRID %d, only values between 0 and 255 are allowed.", vrid)
+	}
+
 	neighbors := getNodeNeighbors(nodeInfo, clusterNodes)
 
 	execer := exec.New()
@@ -326,6 +330,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
 		useUnicast: useUnicast,
 		ipt:        iptInterface,
+		vrid:       vrid,
 	}
 
 	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)

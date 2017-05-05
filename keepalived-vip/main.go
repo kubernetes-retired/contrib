@@ -38,12 +38,14 @@ var (
 	cluster = flags.Bool("use-kubernetes-cluster-service", true, `If true, use the built in kubernetes
         cluster for creating the client`)
 
+	watchAllNamespaces = flags.Bool("watch-all-namespaces", false, `If true, watch for services in all the namespaces`)
+
 	useUnicast = flags.Bool("use-unicast", false, `use unicast instead of multicast for communication
 		with other keepalived instances`)
 
 	configMapName = flags.String("services-configmap", "",
 		`Name of the ConfigMap that contains the definition of the services to expose.
-		The key in the map indicates the external IP to use. The value is the name of the 
+		The key in the map indicates the external IP to use. The value is the name of the
 		service with the format namespace/serviceName and the port of the service could be a number or the
 		name of the port.`)
 
@@ -54,6 +56,11 @@ var (
 		// enable connection tracking for LVS connections
 		"net/ipv4/vs/conntrack": 1,
 	}
+
+	vrid = flags.Int("vrid", 50,
+		`The keepalived VRID (Virtual Router Identifier, between 0 and 255 as per
+			RFC-5798), which must be different for every Virtual Router (ie. every
+			keepalived sets) running on the same network.`)
 )
 
 func main() {
@@ -89,8 +96,11 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 
-	if !specified {
+	if !specified || *watchAllNamespaces {
 		namespace = api.NamespaceAll
+		glog.Info("watching all namespaces")
+	} else {
+		glog.Infof("watching namespace: '%v'", namespace)
 	}
 
 	err = loadIPVModule()
@@ -112,7 +122,7 @@ func main() {
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 

@@ -105,19 +105,19 @@ Vagrant up should complete with a successful Ansible playbook run:
 ....
 
 PLAY RECAP *********************************************************************
-kube-master                : ok=266  changed=78   unreachable=0    failed=0
+kube-master-1              : ok=266  changed=78   unreachable=0    failed=0
 kube-node-1                : ok=129  changed=39   unreachable=0    failed=0
 kube-node-2                : ok=128  changed=39   unreachable=0    failed=0
 ```
 
 Login to the Kubernetes master:
 ```
-vagrant ssh kube-master
+vagrant ssh kube-master-1
 ```
 
 Verify the Kuberenetes cluster is up:
 ```
-[vagrant@kube-master ~]$ kubectl cluster-info
+[vagrant@kube-master-1 ~]$ kubectl cluster-info
 Kubernetes master is running at http://localhost:8080
 Elasticsearch is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/elasticsearch-logging
 Heapster is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/heapster
@@ -126,7 +126,7 @@ KubeDNS is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/
 Grafana is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/monitoring-grafana
 InfluxDB is running at http://localhost:8080/api/v1/proxy/namespaces/kube-system/services/monitoring-influxdb
 
-[vagrant@kube-master ~]$ kubectl get nodes
+[vagrant@kube-master-1 ~]$ kubectl get nodes
 NAME          LABELS                               STATUS    AGE
 kube-node-1   kubernetes.io/hostname=kube-node-1   Ready     34m
 kube-node-2   kubernetes.io/hostname=kube-node-2   Ready     34m
@@ -189,8 +189,8 @@ After provisioning a cluster vith Vagrant you can run ansible in this directory 
 For example:
 
 ```
-$ ansible -m setup kube-master
-kube-master | SUCCESS => {
+$ ansible -m setup kube-master-1
+kube-master-1 | SUCCESS => {
     "ansible_facts": {
         "ansible_all_ipv4_addresses": [
             "172.28.128.21",

@@ -349,7 +349,7 @@ function match-objects() {
     new_files=""
 
     addon_nsnames_on_server=$(get-addon-nsnames-from-server "${obj_type}")
-    # if the api server is unavailable then abandon the update for this cycle 
+    # if the api server is unavailable then abandon the update for this cycle
     if [[ $? -ne 0 ]]; then
         log ERR "unable to query ${obj_type} - exiting"
         exit 1
@@ -476,6 +476,7 @@ function update-addons() {
     # be careful, reconcile-objects uses global variables
     reconcile-objects ${addon_path} ReplicationController "-" &
     reconcile-objects ${addon_path} Deployment "-" &
+    reconcile-objects ${addon_path} DaemonSet "-" &
 
     # We don't expect names to be versioned for the following kinds, so
     # we match the entire name, ignoring version suffix.

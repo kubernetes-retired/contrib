@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"sync"
 
-	kube_api "k8s.io/kubernetes/pkg/api"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 )
 
-func podId(pod *kube_api.Pod) string {
+func podId(pod *apiv1.Pod) string {
 	return fmt.Sprintf("%s_%s", pod.Namespace, pod.Name)
 }
 
@@ -42,21 +42,21 @@ func NewPodSet() *podSet {
 }
 
 // Add the pod to the set.
-func (s *podSet) Add(pod *kube_api.Pod) {
+func (s *podSet) Add(pod *apiv1.Pod) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.set[podId(pod)] = struct{}{}
 }
 
 // Remove the pod from set.
-func (s *podSet) Remove(pod *kube_api.Pod) {
+func (s *podSet) Remove(pod *apiv1.Pod) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	delete(s.set, podId(pod))
 }
 
 // Has checks whether the pod is in the set.
-func (s *podSet) Has(pod *kube_api.Pod) bool {
+func (s *podSet) Has(pod *apiv1.Pod) bool {
 	return s.HasId(podId(pod))
 }
 

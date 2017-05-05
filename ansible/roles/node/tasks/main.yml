@@ -1,4 +1,9 @@
 ---
+- name: Disable swap
+  include: swapoff.yml
+  tags: configure
+  when: disable_swap
+
 # Install the kube node components
 # E.g. applying package manager, downloading binaries from github, etc.
 - name: Install kube node
@@ -14,10 +19,6 @@
 - name: Configure kubelet
   include: kubelet-configure.yml
   tags: configure
-
-- name: Install fluentd logging layer
-  include: fluentd-install.yml
-  tags: install
 
 - name: Start kubelet
   include: kubelet-start.yml
