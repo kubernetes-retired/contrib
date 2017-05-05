@@ -114,7 +114,6 @@ func addServices() {
 
 func addService(serviceName, image string, port int, node string) {
 
-
 	var args []string
 
 	if node != "" {
