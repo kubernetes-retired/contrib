@@ -71,6 +71,11 @@ func main() {
 	}
 	glog.V(4).Infof("Successfully created Stackdriver client")
 
+	var whitelistedList []string
+	if *whitelisted != "" {
+		whitelistedList = strings.Split(*whitelisted, ",")
+	}
+
 	for range time.Tick(*resolution) {
 		glog.V(4).Infof("Scraping metrics")
 		metrics, err := translator.GetPrometheusMetrics(*host, *port)
@@ -78,8 +83,6 @@ func main() {
 			glog.Warningf("Error while getting Prometheus metrics %v", err)
 			continue
 		}
-
-		whitelistedList := strings.Split(*whitelisted, ",")
 
 		ts := translator.TranslatePrometheusToStackdriver(gceConf, *component, metrics, whitelistedList)
 		translator.SendToStackdriver(stackdriverService, gceConf, ts)
