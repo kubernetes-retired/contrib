@@ -17,7 +17,6 @@
 _term() {
   iptables -D -t filter -I KUBE-METADATA-SERVER -j ACCEPT
   iptables -D -t nat -I PREROUTING -p tcp -d 169.254.169.254 --dport 80 -j DNAT --to-destination 127.0.0.1:988
-  kill -TERM "$child" 2>/dev/null
   exit
 }
 
