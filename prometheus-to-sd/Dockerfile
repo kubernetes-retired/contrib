@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM scratch
+FROM alpine:3.5
+
+RUN apk --no-cache add ca-certificates && update-ca-certificates
 
 #   nobody:nobody
 USER 65534:65534
