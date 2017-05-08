@@ -27,7 +27,8 @@ export KUBECONTEXTPROD=aws_kubernetes2
 # update this to the directory where your yaml\json files are for kubernetes relative to your project root directory
 export KUBEDEPLOYMENTDIR=./kubeyaml
 export BUILD=${BUILD_NUMBER}
-
+# the namespace to which the service should be deployed
+export KUBENAMESPACE=default
 # used for interpod and interservice communication
 # Must be lowercase and <= 24 characters
 # defaulted to job-branch for jenkins
@@ -56,7 +57,7 @@ docker push ${DOCKER_REGISTRY}/${CONTAINER1}:build${BUILD}
 docker push ${DOCKER_REGISTRY}/${CONTAINER1}:latest
 
 #deploy to QA
-chmod +x ./deploy/deploy-service.sh && ./deploy/deploy-service.sh ${KUBECONTEXTQA} ${KUBEDEPLOYMENTDIR}
+chmod +x ./deploy/deploy-service.sh && ./deploy/deploy-service.sh ${KUBECONTEXTQA} ${KUBEDEPLOYMENTDIR} ${KUBENAMESPACE}
 
 #put integration tests here
 echo "put integration tests here"
@@ -65,7 +66,7 @@ echo "put integration tests here"
 #rm ~/.kube/kubectl
 
 #deploy to production cluster
-./deploy/deploy-service.sh ${KUBECONTEXTPROD} ${KUBEDEPLOYMENTDIR}
+./deploy/deploy-service.sh ${KUBECONTEXTPROD} ${KUBEDEPLOYMENTDIR} ${KUBENAMESPACE}
 
 #put deployment verification tests here
 echo "put deployment verification tests here"

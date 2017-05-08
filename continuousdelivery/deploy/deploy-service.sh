@@ -21,7 +21,8 @@
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 CONTEXT="$1"
 DEPLOYDIR="$2"
-ROLLING=$(echo "${3:0:7}" | tr '[:upper:]' '[:lower:]')
+NAMESPACE="$3"
+ROLLING=$(echo "${4:0:7}" | tr '[:upper:]' '[:lower:]')
 
 #make sure we have the kubectl comand
 chmod +x $DIR/ensure-kubectl.sh
@@ -37,8 +38,6 @@ export kubepass=`(~/.kube/kubectl config view -o json --raw --minify  | jq .user
 export kubeuser=`(~/.kube/kubectl config view -o json --raw --minify  | jq .users[0].user.username | tr -d '\"')`
 
 export kubeurl=`(~/.kube/kubectl config view -o json --raw --minify  | jq .clusters[0].cluster.server | tr -d '\"')`
-
-export kubenamespace=`(~/.kube/kubectl config view -o json --raw --minify  | jq .contexts[0].context.namespace | tr -d '\"')`
 
 export kubeip=`(echo $kubeurl | sed 's~http[s]*://~~g')`
 
@@ -73,7 +72,7 @@ fi
 #set -x
 
 #print some useful data for folks to check on their service later
-echo "Deploying service to ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}"
+echo "Deploying service to ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${NAMESPACE}/services/${SERVICENAME}"
 echo "Monitor your service at ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/kube-system/services/kibana-logging/?#/discover?_a=(columns:!(log),filters:!(),index:'logstash-*',interval:auto,query:(query_string:(analyze_wildcard:!t,query:'tag:%22kubernetes.${SERVICENAME}*%22')),sort:!('@timestamp',asc))"
 
 if [ "${ROLLING}" = "rolling" ]; then
@@ -84,10 +83,10 @@ if [ "${ROLLING}" = "rolling" ]; then
 else
 
   # delete service (throws and error to ignore if service does not exist already)
-  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; echo ""; ~/.kube/kubectl delete --namespace=${kubenamespace} -f kubetemp.yaml || true; done
+  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; cat kubetemp.yaml; echo ""; ~/.kube/kubectl delete --namespace=${NAMESPACE} -f kubetemp.yaml || true; done
 
   # create service (does nothing if the service already exists)
-  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; ~/.kube/kubectl create --namespace=${kubenamespace} -f kubetemp.yaml --validate=false || true; done
+  for f in ${DEPLOYDIR}/*.yaml; do envsubst < $f > kubetemp.yaml; ~/.kube/kubectl create --namespace=${NAMESPACE} -f kubetemp.yaml --validate=false || true; done
 fi
 
 # wait for services to start
@@ -97,7 +96,7 @@ COUNTER=0
 while [  $COUNTER -lt 30 ]; do
   let COUNTER=COUNTER+1
   echo Service Check: $COUNTER
-  STATUSCODE=$(curl -k --silent --output /dev/stdnull --write-out "%{http_code}" $certcmd  ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${kubenamespace}/services/${SERVICENAME}/)
+  STATUSCODE=$(curl -k --silent --output /dev/stdnull --write-out "%{http_code}" $certcmd  ${https}://${kubeuser}:${kubepass}@${kubeip}/api/v1/proxy/namespaces/${NAMESPACE}/services/${SERVICENAME}/)
   echo HTTP Status: $STATUSCODE
   if [ "$STATUSCODE" -eq "200" ]; then
     break
