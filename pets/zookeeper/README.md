@@ -6,7 +6,7 @@ This example runs zookeeper through a petset.
 
 Create the petset in this directory
 ```
-$ kubetl create -f zookeeper.yaml
+$ kubectl create -f zookeeper.yaml
 ```
 
 Once you have all 3 nodes in Running, you can run the "test.sh" script in this directory.
