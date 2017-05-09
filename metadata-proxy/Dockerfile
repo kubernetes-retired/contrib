@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2017 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-all: push
+FROM gcr.io/google-containers/debian-base-amd64:0.1
+LABEL maintainer "qlee@google.com"
 
-TAG = 0.2
-PREFIX = gcr.io/google_containers/redis-install
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y \
+  apt-utils && clean-install iptables nginx
 
-container:
-	docker build --pull -t $(PREFIX):$(TAG) .
+# Give nginx its config file.
+COPY nginx.conf /etc/nginx/nginx.conf
+# Place our wrapper script into the image.
+COPY start-proxy.sh /
 
-push: container
-	gcloud docker -- push $(PREFIX):$(TAG)
-
-clean:
-	docker rmi $(PREFIX):$(TAG)
+ENTRYPOINT ["/start-proxy.sh"]

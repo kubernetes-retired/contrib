@@ -10,7 +10,7 @@ container: loader
 	docker build --pull -t gcr.io/google_containers/loader:$(TAG) .
 
 push: container
-	gcloud docker push gcr.io/google_containers/loader:$(TAG)
+	gcloud docker -- push gcr.io/google_containers/loader:$(TAG)
 
 clean:
 	rm -f loader

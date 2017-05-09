@@ -37,13 +37,13 @@ container:
 	docker build --pull -t $(PREFIX)-$(ARCH):$(TAG) .
 
 push: container
-	gcloud docker push $(PREFIX)-$(ARCH):$(TAG)
+	gcloud docker -- push $(PREFIX)-$(ARCH):$(TAG)
 
 push-legacy: container
 ifeq ($(ARCH),amd64)
 	# Backward compatibility. TODO: deprecate this image tag
 	docker tag -f $(PREFIX)-$(ARCH):$(TAG) $(PREFIX):$(TAG)
-	gcloud docker push $(PREFIX):$(TAG)
+	gcloud docker -- push $(PREFIX):$(TAG)
 endif
 
 clean:

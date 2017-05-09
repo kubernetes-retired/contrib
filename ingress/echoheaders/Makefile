@@ -8,4 +8,4 @@ container:
 	docker build --pull -t $(PREFIX):$(TAG) .
 
 push: container
-	gcloud docker push $(PREFIX):$(TAG)
+	gcloud docker -- push $(PREFIX):$(TAG)

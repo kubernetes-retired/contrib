@@ -12,7 +12,7 @@ container: perfdash
 	docker build --pull -t gcr.io/$(PROJ)/perfdash:$(TAG) .
 
 push: container
-	gcloud docker push gcr.io/$(PROJ)/perfdash:$(TAG)
+	gcloud docker -- push gcr.io/$(PROJ)/perfdash:$(TAG)
 
 clean:
 	rm -f perfdash
