@@ -49,4 +49,4 @@ build: go
 docker: build
 
 push: docker
-	gcloud docker push ${PREFIX}/kubelet-to-gcm:$(TAG)
+	gcloud docker -- push ${PREFIX}/kubelet-to-gcm:$(TAG)

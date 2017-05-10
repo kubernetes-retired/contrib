@@ -16,8 +16,8 @@ container: server
 	docker build --pull -t $(NODEJS_PREFIX):$(NODEJS_TAG) client/nodejs
 
 push: container
-	gcloud docker push $(PREFIX):$(TAG)
-	gcloud docker push $(NODEJS_PREFIX):$(NODEJS_TAG)
+	gcloud docker -- push $(PREFIX):$(TAG)
+	gcloud docker -- push $(NODEJS_PREFIX):$(NODEJS_TAG)
 
 clean:
 	rm -f server
