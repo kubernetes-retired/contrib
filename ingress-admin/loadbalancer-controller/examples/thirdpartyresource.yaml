@@ -1,0 +1,17 @@
+apiVersion: extensions/v1beta1
+kind: ThirdPartyResourceList
+items:
+  - apiVersion: extensions/v1beta1
+    kind: ThirdPartyResource
+    metadata:
+      name: loadbalancerclaim.k8s.io
+    description: "Allow user to claim a loadbalancer instance"
+    versions:
+    - name: v1
+  - apiVersion: extensions/v1beta1
+    kind: ThirdPartyResource
+    metadata:
+      name: loadbalancer.k8s.io
+    description: "Allow user to CURD a loadbalancer instance"
+    versions:
+    - name: v1

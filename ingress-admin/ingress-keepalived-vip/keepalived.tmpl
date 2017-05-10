@@ -1,0 +1,32 @@
+{{ $iface := .iface }}
+
+global_defs {
+  vrrp_version 3
+}
+
+vrrp_instance vips {
+  state BACKUP
+  interface {{ $iface }}
+  virtual_router_id 50
+  priority {{ .priority }}
+  nopreempt
+  advert_int 1
+
+  track_interface {
+    {{ $iface }}
+  }
+
+  authentication {
+   auth_type PASS
+   auth_pass whatever
+  }
+
+  unicast_src_ip {{ .selfIP }}
+  unicast_peer { {{ range .neighbors }}
+    {{ . }}{{ end }}
+  }
+
+  virtual_ipaddress {
+    {{ .vip }}
+  }
+}

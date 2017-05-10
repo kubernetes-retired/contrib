@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  namespace: "kube-system"
+  name: "loadbalancer-controller"
+  labels:
+    run: "loadbalancer-controller"
+spec:
+  replicas: 1
+  selector:
+    run: "loadbalancer-controller"
+  template:
+   metadata:
+    labels:
+      run: "loadbalancer-controller"
+   spec:
+    containers:
+      - image: "index.caicloud.io/caicloud/loadbalancer-controller:v0.0.1"
+        imagePullPolicy: "Always"
+        name: "loadbalancer-claim-controller"
+        resources:
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
