@@ -35,7 +35,10 @@ const (
 // TranslatePrometheusToStackdriver translates metrics in Prometheus format to Stackdriver format.
 func TranslatePrometheusToStackdriver(config *config.GceConfig, component string, metrics map[string]*dto.MetricFamily, whitelisted []string) []*v3.TimeSeries {
 	// For cumulative metrics we need to know process start time.
-	var startTime time.Time
+	// If the process start time is not specified, assuming it's
+	// the unix 1 second, because Stackdriver can't handle
+	// unix zero or unix negative number.
+	startTime := time.Unix(1, 0)
 	if family, found := metrics[processStartTimeMetric]; found && family.GetType() == dto.MetricType_GAUGE && len(family.GetMetric()) == 1 {
 		startSec := family.Metric[0].Gauge.Value
 		startTime = time.Unix(int64(*startSec), 0)
