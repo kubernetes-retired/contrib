@@ -33,11 +33,11 @@ Public ----(example.com = 10.4.0.3/4/5)----|-----| Host IP: 10.4.0.4 |
 
 Let's assume that Ingress-es are run on the 3 kubernetes worker nodes above `10.4.0.x`, which are exposed to the public to load-balance incoming traffic. DNS Round Robin (RR) is applied to `example.com` to rotate between the 3 nodes. If `10.4.0.3` goes down, one-third of the traffic to `example.com` is still directed to the downed node (due to DNS RR). The sysadmin has to step in and delist the faulty node from `example.com`. Since there will be intermittent downtime until the sysadmin intervenes, this isn't true High Availability (HA).
 
-Here is where IPVS can help. 
+Here is where IPVS can help.
 
 The idea is to expose a Virtual IP (VIP) address per service, outside of the kubernetes cluster. _keepalived_ then uses VRRP to sync this "mapping" in the local network. With 2 or more instance of the pod running in the cluster is possible to provide HA using a single VIP address.
 
-##### What is the difference between _keepalived_ and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx-alpha](https://github.com/kubernetes/contrib/tree/master/Ingress/controllers/nginx-alpha)?
+##### What is the difference between _keepalived_ and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx](https://github.com/kubernetes/ingress/tree/master/controllers/nginx)?
 
 _keepalived_ should be considered a complement to, and not a replacement for HAProxy or nginx. The goal is to provide robust HA, such that no downtime is experienced if one or more nodes go offline. To be exact, _keepalived_ ensures that the VIP, which exposes a service-loadbalancer or an Ingress, is always owned by a live node. The DNS record will simply point to this single VIP (ie. sans RR) and the failover will be handled entirely by _keepalived_.
 
