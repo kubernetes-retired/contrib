@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM alpine:3.5
+FROM gcr.io/google-containers/debian-base-amd64:0.1
 
-RUN apk --no-cache add ca-certificates && update-ca-certificates
+RUN clean-install ca-certificates
 
 #   nobody:nobody
 USER 65534:65534
