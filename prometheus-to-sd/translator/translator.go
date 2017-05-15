@@ -18,6 +18,7 @@ package translator
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/golang/glog"
@@ -77,41 +78,42 @@ func filterWhitelisted(allMetrics map[string]*dto.MetricFamily, whitelisted []st
 func translateFamily(config *config.GceConfig, component string, family *dto.MetricFamily, start, end time.Time) ([]*v3.TimeSeries, error) {
 	glog.V(4).Infof("Translating metric family %v", family.GetName())
 	var ts []*v3.TimeSeries
-	if family.GetType() != dto.MetricType_COUNTER && family.GetType() != dto.MetricType_GAUGE {
+	if family.GetType() != dto.MetricType_COUNTER && family.GetType() != dto.MetricType_GAUGE && family.GetType() != dto.MetricType_HISTOGRAM {
 		return ts, fmt.Errorf("Metric type %v of family %s not supported", family.GetType(), family.GetName())
 	}
 	for _, metric := range family.GetMetric() {
 		t := translateOne(config, component, family.GetName(), family.GetType(), metric, start, end)
 		ts = append(ts, t)
-		glog.V(4).Infof("%+v\nMetric: %+v, Interval: %+v, Value: %+v", *t, *(t.Metric), t.Points[0].Interval, *(t.Points[0].Value.Int64Value))
+		glog.V(4).Infof("%+v\nMetric: %+v, Interval: %+v", *t, *(t.Metric), t.Points[0].Interval)
 	}
 	return ts, nil
 }
 
+// assumes that mType is Counter, Gauge or Histogram
 func translateOne(config *config.GceConfig, component string, name string, mType dto.MetricType, metric *dto.Metric, start, end time.Time) *v3.TimeSeries {
 	fullName := fmt.Sprintf("%s/%s/%s", config.MetricsPrefix, component, name)
 
-	var metricKind string
-	var metricValue int64
+	metricKind := "GAUGE"
 	interval := &v3.TimeInterval{
 		EndTime: end.UTC().Format(time.RFC3339),
 	}
-	if mType == dto.MetricType_COUNTER {
+	if mType == dto.MetricType_COUNTER || mType == dto.MetricType_HISTOGRAM {
 		metricKind = "CUMULATIVE"
-		metricValue = int64(metric.GetCounter().GetValue())
 		interval.StartTime = start.UTC().Format(time.RFC3339)
-	} else {
-		metricKind = "GAUGE"
-		metricValue = int64(metric.GetGauge().GetValue())
+	}
+
+	valueType := "INT64"
+	if mType == dto.MetricType_HISTOGRAM {
+		valueType = "DISTRIBUTION"
 	}
 
 	point := &v3.Point{
 		Interval: interval,
 		Value: &v3.TypedValue{
-			Int64Value:      &metricValue,
-			ForceSendFields: []string{"Int64Value"},
+			ForceSendFields: []string{},
 		},
 	}
+	setValue(mType, metric, point)
 
 	return &v3.TimeSeries{
 		Metric: &v3.Metric{
@@ -123,8 +125,66 @@ func translateOne(config *config.GceConfig, component string, name string, mType
 			Type:   "gke_container",
 		},
 		MetricKind: metricKind,
-		ValueType:  "INT64",
+		ValueType:  valueType,
 		Points:     []*v3.Point{point},
+	}
+}
+
+func setValue(mType dto.MetricType, metric *dto.Metric, point *v3.Point) {
+	if mType == dto.MetricType_GAUGE {
+		val := int64(metric.GetGauge().GetValue())
+		point.Value.Int64Value = &val
+		point.ForceSendFields = append(point.ForceSendFields, "Int64Value")
+	} else if mType == dto.MetricType_HISTOGRAM {
+		point.Value.DistributionValue = getHistogramValue(metric.GetHistogram())
+		point.ForceSendFields = append(point.ForceSendFields, "DistributionValue")
+	} else {
+		val := int64(metric.GetCounter().GetValue())
+		point.Value.Int64Value = &val
+		point.ForceSendFields = append(point.ForceSendFields, "Int64Value")
+	}
+}
+
+func getHistogramValue(h *dto.Histogram) *v3.Distribution {
+	count := int64(h.GetSampleCount())
+	mean := float64(0)
+	dev := float64(0)
+	buckets := []float64{}
+	values := []int64{}
+
+	if count > 0 {
+		mean = h.GetSampleSum() / float64(count)
+	}
+
+	prevVal := uint64(0)
+	lower := float64(0)
+	for _, b := range h.Bucket {
+		upper := b.GetUpperBound()
+		if !math.IsInf(b.GetUpperBound(), 1) {
+			buckets = append(buckets, b.GetUpperBound())
+		} else {
+			upper = lower
+		}
+		val := b.GetCumulativeCount() - prevVal
+		x := (lower + upper) / float64(2)
+		dev += float64(val) * (x - mean) * (x - mean)
+
+		values = append(values, int64(b.GetCumulativeCount()-prevVal))
+
+		lower = b.GetUpperBound()
+		prevVal = b.GetCumulativeCount()
+	}
+
+	return &v3.Distribution{
+		Count: count,
+		Mean:  mean,
+		SumOfSquaredDeviation: dev,
+		BucketOptions: &v3.BucketOptions{
+			ExplicitBuckets: &v3.Explicit{
+				Bounds: buckets,
+			},
+		},
+		BucketCounts: values,
 	}
 }
 

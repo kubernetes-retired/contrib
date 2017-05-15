@@ -17,6 +17,7 @@ limitations under the License.
 package translator
 
 import (
+	"math"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
@@ -25,6 +26,7 @@ import (
 )
 
 func TestTranslatePrometheusToStackdriver(t *testing.T) {
+	epsilon := float64(0.001)
 	config := &config.GceConfig{
 		Project:       "test-proj",
 		Zone:          "us-central1-f",
@@ -35,7 +37,9 @@ func TestTranslatePrometheusToStackdriver(t *testing.T) {
 
 	metricTypeGauge := dto.MetricType_GAUGE
 	metricTypeCounter := dto.MetricType_COUNTER
+	metricTypeHistogram := dto.MetricType_HISTOGRAM
 	testMetricName := "test_name"
+	testMetricHistogram := "test_histogram"
 	unrelatedMetric := "unrelated_metric"
 
 	metrics := map[string]*dto.MetricFamily{
@@ -81,13 +85,44 @@ func TestTranslatePrometheusToStackdriver(t *testing.T) {
 				},
 			},
 		},
+		testMetricHistogram: {
+			Name: &testMetricHistogram,
+			Type: &metricTypeHistogram,
+			Metric: []*dto.Metric{
+				{
+					Histogram: &dto.Histogram{
+						SampleCount: intPtr(5),
+						SampleSum:   floatPtr(13),
+						Bucket: []*dto.Bucket{
+							{
+								CumulativeCount: intPtr(1),
+								UpperBound:      floatPtr(1),
+							},
+							{
+								CumulativeCount: intPtr(4),
+								UpperBound:      floatPtr(3),
+							},
+							{
+								CumulativeCount: intPtr(4),
+								UpperBound:      floatPtr(5),
+							},
+							{
+								CumulativeCount: intPtr(5),
+								UpperBound:      floatPtr(math.Inf(1)),
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
-	ts := TranslatePrometheusToStackdriver(config, "testcomponent", metrics, []string{testMetricName})
+	ts := TranslatePrometheusToStackdriver(config, "testcomponent", metrics, []string{testMetricName, testMetricHistogram})
 
-	assert.Equal(t, 2, len(ts))
+	assert.Equal(t, 3, len(ts))
 
-	for _, metric := range ts {
+	for i := 0; i <= 1; i++ {
+		metric := ts[i]
 		assert.Equal(t, "container.googleapis.com/master/testcomponent/test_name", metric.Metric.Type)
 		assert.Equal(t, "INT64", metric.ValueType)
 		assert.Equal(t, "CUMULATIVE", metric.MetricKind)
@@ -106,9 +141,43 @@ func TestTranslatePrometheusToStackdriver(t *testing.T) {
 			t.Errorf("Wrong label labelName value %s", labels["labelName"])
 		}
 	}
+
+	// Histogram
+	metric := ts[2]
+	assert.Equal(t, "container.googleapis.com/master/testcomponent/test_histogram", metric.Metric.Type)
+	assert.Equal(t, "DISTRIBUTION", metric.ValueType)
+	assert.Equal(t, "CUMULATIVE", metric.MetricKind)
+	assert.Equal(t, 1, len(metric.Points))
+
+	p := metric.Points[0]
+	assert.Equal(t, "2009-02-13T23:31:30Z", p.Interval.StartTime)
+
+	dist := p.Value.DistributionValue
+	assert.NotNil(t, dist)
+	assert.Equal(t, int64(5), dist.Count)
+	assert.InEpsilon(t, 2.6, dist.Mean, epsilon)
+	assert.InEpsilon(t, 11.25, dist.SumOfSquaredDeviation, epsilon)
+
+	bounds := dist.BucketOptions.ExplicitBuckets.Bounds
+	assert.Equal(t, 3, len(bounds))
+	assert.InEpsilon(t, 1, bounds[0], epsilon)
+	assert.InEpsilon(t, 3, bounds[1], epsilon)
+	assert.InEpsilon(t, 5, bounds[2], epsilon)
+
+	counts := dist.BucketCounts
+	assert.Equal(t, 4, len(counts))
+	assert.Equal(t, int64(1), counts[0])
+	assert.Equal(t, int64(3), counts[1])
+	assert.Equal(t, int64(0), counts[2])
+	assert.Equal(t, int64(1), counts[3])
 }
 
 func floatPtr(val float64) *float64 {
+	ptr := val
+	return &ptr
+}
+
+func intPtr(val uint64) *uint64 {
 	ptr := val
 	return &ptr
 }
