@@ -149,7 +149,7 @@ func getHistogramValue(h *dto.Histogram) *v3.Distribution {
 	count := int64(h.GetSampleCount())
 	mean := float64(0)
 	dev := float64(0)
-	buckets := []float64{}
+	bounds := []float64{}
 	values := []int64{}
 
 	if count > 0 {
@@ -161,7 +161,7 @@ func getHistogramValue(h *dto.Histogram) *v3.Distribution {
 	for _, b := range h.Bucket {
 		upper := b.GetUpperBound()
 		if !math.IsInf(b.GetUpperBound(), 1) {
-			buckets = append(buckets, b.GetUpperBound())
+			bounds = append(bounds, b.GetUpperBound())
 		} else {
 			upper = lower
 		}
@@ -181,7 +181,7 @@ func getHistogramValue(h *dto.Histogram) *v3.Distribution {
 		SumOfSquaredDeviation: dev,
 		BucketOptions: &v3.BucketOptions{
 			ExplicitBuckets: &v3.Explicit{
-				Bounds: buckets,
+				Bounds: bounds,
 			},
 		},
 		BucketCounts: values,
