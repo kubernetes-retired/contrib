@@ -14,4 +14,4 @@ KUBELET_HOSTNAME="--hostname-override={{ inventory_hostname }}"
 KUBELET_API_SERVER="--api-servers=http://localhost:{{ kube_master_insecure_port }}"
 
 # Add your own!
-KUBELET_ARGS="--register-node=false --config={{ kube_manifest_dir }}"
+KUBELET_ARGS="--register-node=false --pod-manifest-path={{ kube_manifest_dir }}"

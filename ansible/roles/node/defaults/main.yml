@@ -17,7 +17,7 @@ kube_node_rpms:
 
 kubelet_options:
   - "--kubeconfig={{ kube_config_dir }}/kubelet.kubeconfig"
-  - "--config={{ kube_manifest_dir }}"
+  - "--pod-manifest-path={{ kube_manifest_dir }}"
 
 kube_proxy_options:
   - "--kubeconfig={{ kube_config_dir }}/proxy.kubeconfig"
