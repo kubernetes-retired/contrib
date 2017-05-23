@@ -1,4 +1,6 @@
-# Copyright 2015 The Kubernetes Authors. All rights reserved.
+#!/bin/sh
+
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,11 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/google_containers/ubuntu-slim:0.10
-
-COPY build.sh /build.sh
-
-ENV VERSION 1.3.5
-ENV SHA256 29450182dc136508b8f7acb10d4821381c436ba3003ee58cd3f352e18c618559
-
-RUN /build.sh
+CODE=$(curl --write-out %{http_code} --silent --output /dev/null http://127.0.0.1:1936)
+if [ $CODE -eq 200 ]; then
+  exit 0
+else
+  exit 1
+fi
