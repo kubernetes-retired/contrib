@@ -47,7 +47,7 @@ var (
 	podName       = flag.String("pod", os.Getenv("MY_POD_NAME"), "The name of the pod to watch. This defaults to the nanny's own pod.")
 	containerName = flag.String("container", "pod-nanny", "The name of the container to watch. This defaults to the nanny itself.")
 	// Flags to control runtime behavior.
-	pollPeriod = time.Millisecond * time.Duration(*flag.Int("poll-period", 10000, "The time, in milliseconds, to poll the dependent container."))
+	pollPeriodMillis = flag.Int("poll-period", 10000, "The time, in milliseconds, to poll the dependent container.")
 	estimator  = flag.String("estimator", "linear", "The estimator to use. Currently supported: linear, exponential")
 )
 
@@ -65,6 +65,8 @@ func main() {
 		log.Fatalf("Threshold must be between 0 and 100 inclusively, was %d.", threshold)
 	}
 
+	pollPeriod := time.Millisecond * time.Duration(*pollPeriodMillis)
+	log.Infof("Poll period: %+v", pollPeriod)
 	log.Infof("Watching namespace: %s, pod: %s, container: %s.", *podNamespace, *podName, *containerName)
 	log.Infof("cpu: %s, extra_cpu: %s, memory: %s, extra_memory: %s, storage: %s, extra_storage: %s", *baseCPU, *cpuPerNode, *baseMemory, *memoryPerNode, *baseStorage, *storagePerNode)
 
