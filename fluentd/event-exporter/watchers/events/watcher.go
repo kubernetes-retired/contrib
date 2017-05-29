@@ -44,6 +44,10 @@ type OnListFunc func(*api_v1.EventList)
 // EventWatcherConfig represents the configuration for the watcher that
 // only watches the events resource.
 type EventWatcherConfig struct {
+	// Note, that this action will be executed on each List request, of which
+	// there can be many, e.g. because of network problems. Note also, that
+	// items in the List response WILL NOT trigger OnAdd method in handler,
+	// instead Store contents will be completely replaced.
 	OnList       OnListFunc
 	ResyncPeriod time.Duration
 	Handler      EventHandler

@@ -29,7 +29,11 @@ var (
 )
 
 // Sink interface represents a generic sink that is responsible for handling
-// actions upon the event objects and filter the initial events list.
+// actions upon the event objects and filter the initial events list. Note,
+// that OnAdd method from the EventHandler interface will only receive
+// objects that were added during watching phase, not before. If sink wishes
+// to process the latter additions, it should implement additional logic in
+// the OnList method.
 type Sink interface {
 	events.EventHandler
 
