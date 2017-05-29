@@ -110,6 +110,7 @@ func (s *sdSink) FilterList(events []api_v1.Event) []api_v1.Event {
 }
 
 func (s *sdSink) Run(stopCh <-chan struct{}) {
+	glog.Info("Starting Stackdriver sink")
 	for {
 		select {
 		case entry := <-s.logEntryChannel:

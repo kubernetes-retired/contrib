@@ -29,11 +29,14 @@ type StoppableFunc func(<-chan struct{})
 func RunConcurrentlyUntil(stopCh <-chan struct{}, funcs ...StoppableFunc) {
 	var wg sync.WaitGroup
 	stopChs := make([]chan struct{}, len(funcs))
-	for i, f := range funcs {
+	for i := range funcs {
 		stopChs[i] = make(chan struct{})
 		wg.Add(1)
+
+		c := stopChs[i]
+		f := funcs[i]
 		go func() {
-			f(stopChs[i])
+			f(c)
 			wg.Done()
 		}()
 	}
