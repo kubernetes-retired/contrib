@@ -37,7 +37,7 @@ const (
 	eventStorageTTL = 2 * time.Hour
 )
 
-// FilterListFunc represent an action on the initial list of object received
+// OnListFunc represent an action on the initial list of object received
 // from the Kubernetes API server before starting watching for the updates.
 type OnListFunc func(*api_v1.EventList)
 
