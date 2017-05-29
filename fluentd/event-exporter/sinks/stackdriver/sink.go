@@ -101,12 +101,11 @@ func (s *sdSink) OnDelete(*api_v1.Event) {
 	// Nothing to do here
 }
 
-func (s *sdSink) FilterList(events []api_v1.Event) []api_v1.Event {
-	if len(events) > 0 {
+func (s *sdSink) OnList(list *api_v1.EventList) {
+	if len(list.Items) > 0 {
 		glog.V(2).Infof("List request returned non-empty response")
 		s.logEntryChannel <- s.logEntryFactory.FromMessage("Some events may have been lost")
 	}
-	return []api_v1.Event{}
 }
 
 func (s *sdSink) Run(stopCh <-chan struct{}) {

@@ -39,14 +39,14 @@ const (
 
 // FilterListFunc represent an action on the initial list of object received
 // from the Kubernetes API server before starting watching for the updates.
-type FilterListFunc func([]api_v1.Event) []api_v1.Event
+type OnListFunc func(*api_v1.EventList)
 
 // EventWatcherConfig represents the configuration for the watcher that
 // only watches the events resource.
 type EventWatcherConfig struct {
-	FilterListFunc FilterListFunc
-	ResyncPeriod   time.Duration
-	Handler        EventHandler
+	OnList       OnListFunc
+	ResyncPeriod time.Duration
+	Handler      EventHandler
 }
 
 // NewEventWatcher create a new watcher that only watches the events resource.
@@ -55,7 +55,9 @@ func NewEventWatcher(client kubernetes.Interface, config *EventWatcherConfig) wa
 		ListerWatcher: &cache.ListWatch{
 			ListFunc: func(options meta_v1.ListOptions) (runtime.Object, error) {
 				list, err := client.CoreV1().Events(meta_v1.NamespaceAll).List(options)
-				list.Items = config.FilterListFunc(list.Items)
+				if err == nil {
+					config.OnList(list)
+				}
 				return list, err
 			},
 			WatchFunc: func(options meta_v1.ListOptions) (watch.Interface, error) {

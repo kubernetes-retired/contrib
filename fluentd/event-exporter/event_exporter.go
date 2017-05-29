@@ -44,8 +44,8 @@ func newEventExporter(client kubernetes.Interface, sink sinks.Sink, resyncPeriod
 
 func createWatcher(client kubernetes.Interface, sink sinks.Sink, resyncPeriod time.Duration) watchers.Watcher {
 	return events.NewEventWatcher(client, &events.EventWatcherConfig{
-		FilterListFunc: sink.FilterList,
-		ResyncPeriod:   resyncPeriod,
-		Handler:        sink,
+		OnList:       sink.OnList,
+		ResyncPeriod: resyncPeriod,
+		Handler:      sink,
 	})
 }

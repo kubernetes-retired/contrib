@@ -33,7 +33,7 @@ var (
 type Sink interface {
 	events.EventHandler
 
-	FilterList([]api_v1.Event) []api_v1.Event
+	OnList(*api_v1.EventList)
 
 	Run(stopCh <-chan struct{})
 }
