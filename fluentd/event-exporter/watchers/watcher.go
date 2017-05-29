@@ -32,15 +32,16 @@ type WatcherConfig struct {
 
 // Watcher is an interface of the generic proactive API watcher.
 type Watcher interface {
-	Start()
+	Run(stopCh <-chan struct{})
 }
 
 type watcher struct {
 	reflector *cache.Reflector
 }
 
-func (w *watcher) Start() {
+func (w *watcher) Run(stopCh <-chan struct{}) {
 	w.reflector.Run()
+	<-stopCh
 }
 
 // NewWatcher creates a new Kubernetes API watcher using provided configuration.

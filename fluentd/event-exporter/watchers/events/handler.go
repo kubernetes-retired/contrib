@@ -20,51 +20,50 @@ import (
 	"github.com/golang/glog"
 
 	api_v1 "k8s.io/client-go/pkg/api/v1"
-	"k8s.io/contrib/fluentd/event-exporter/watchers"
 )
 
-// EventWatchConsumer interface provides a way to act upon signals from
-// watcher that only watches the events resource.
-type EventWatchConsumer interface {
-	Add(*api_v1.Event)
-	Update(*api_v1.Event, *api_v1.Event)
-	Delete(*api_v1.Event)
+// EventHandler interface provides a way to act upon signals
+// from watcher that only watches the events resource.
+type EventHandler interface {
+	OnAdd(*api_v1.Event)
+	OnUpdate(*api_v1.Event, *api_v1.Event)
+	OnDelete(*api_v1.Event)
 }
 
-type eventWatchConsumer struct {
-	consumer EventWatchConsumer
+type eventHandlerWrapper struct {
+	handler EventHandler
 }
 
-func newWatchConsumer(consumer EventWatchConsumer) watchers.WatchConsumer {
-	return &eventWatchConsumer{
-		consumer: consumer,
+func newEventHandlerWrapper(handler EventHandler) *eventHandlerWrapper {
+	return &eventHandlerWrapper{
+		handler: handler,
 	}
 }
 
-func (c *eventWatchConsumer) Add(obj interface{}) {
+func (c *eventHandlerWrapper) OnAdd(obj interface{}) {
 	if event, ok := c.convert(obj); ok {
-		c.consumer.Add(event)
+		c.handler.OnAdd(event)
 	}
 }
 
-func (c *eventWatchConsumer) Update(oldObj interface{}, newObj interface{}) {
+func (c *eventHandlerWrapper) OnUpdate(oldObj interface{}, newObj interface{}) {
 	oldEvent, oldOk := c.convert(oldObj)
 	newEvent, newOk := c.convert(newObj)
 	if oldOk && newOk {
-		c.consumer.Update(oldEvent, newEvent)
+		c.handler.OnUpdate(oldEvent, newEvent)
 	}
 }
 
-func (c *eventWatchConsumer) Delete(obj interface{}) {
+func (c *eventHandlerWrapper) OnDelete(obj interface{}) {
 	if event, ok := c.convert(obj); ok {
-		c.consumer.Delete(event)
+		c.handler.OnDelete(event)
 	}
 }
 
-func (c *eventWatchConsumer) convert(obj interface{}) (*api_v1.Event, bool) {
+func (c *eventHandlerWrapper) convert(obj interface{}) (*api_v1.Event, bool) {
 	if event, ok := obj.(*api_v1.Event); ok {
 		return event, true
 	}
-	glog.V(2).Infof("Event watch consumer recieved not event, but %v", obj)
+	glog.V(2).Infof("Event watch handler recieved not event, but %v", obj)
 	return nil, false
 }

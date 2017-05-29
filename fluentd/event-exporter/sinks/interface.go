@@ -31,11 +31,11 @@ var (
 // Sink interface represents a generic sink that is responsible for handling
 // actions upon the event objects and filter the initial events list.
 type Sink interface {
-	events.EventWatchConsumer
+	events.EventHandler
 
 	FilterList([]api_v1.Event) []api_v1.Event
 
-	Start()
+	Run(stopCh <-chan struct{})
 }
 
 // SinkFactory creates a new sink, using user-provided parameters.

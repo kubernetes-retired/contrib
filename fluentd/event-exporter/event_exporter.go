@@ -21,6 +21,7 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/contrib/fluentd/event-exporter/sinks"
+	"k8s.io/contrib/fluentd/event-exporter/utils"
 	"k8s.io/contrib/fluentd/event-exporter/watchers"
 	"k8s.io/contrib/fluentd/event-exporter/watchers/events"
 )
@@ -30,10 +31,8 @@ type eventExporter struct {
 	watcher watchers.Watcher
 }
 
-func (e *eventExporter) Run(stopCh chan struct{}) {
-	e.sink.Start()
-	e.watcher.Start()
-	<-stopCh
+func (e *eventExporter) Run(stopCh <-chan struct{}) {
+	utils.RunConcurrentlyUntil(stopCh, e.sink.Run, e.watcher.Run)
 }
 
 func newEventExporter(client kubernetes.Interface, sink sinks.Sink, resyncPeriod time.Duration) *eventExporter {
@@ -47,6 +46,6 @@ func createWatcher(client kubernetes.Interface, sink sinks.Sink, resyncPeriod ti
 	return events.NewEventWatcher(client, &events.EventWatcherConfig{
 		FilterListFunc: sink.FilterList,
 		ResyncPeriod:   resyncPeriod,
-		Consumer:       sink,
+		Handler:        sink,
 	})
 }

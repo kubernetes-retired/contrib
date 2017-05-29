@@ -29,6 +29,11 @@ import (
 )
 
 const (
+	// Since events live in the apiserver only for 1 hour, we have to remove
+	// old objects to avoid memory leaks. If TTL is exactly 1 hour, race
+	// can occur in case of the event being updated right before the end of
+	// the hour, since it takes some time to deliver this event via watch.
+	// 2 hours ought to be enough for anybody.
 	eventStorageTTL = 2 * time.Hour
 )
 
@@ -41,7 +46,7 @@ type FilterListFunc func([]api_v1.Event) []api_v1.Event
 type EventWatcherConfig struct {
 	FilterListFunc FilterListFunc
 	ResyncPeriod   time.Duration
-	Consumer       EventWatchConsumer
+	Handler        EventHandler
 }
 
 // NewEventWatcher create a new watcher that only watches the events resource.
@@ -60,7 +65,7 @@ func NewEventWatcher(client kubernetes.Interface, config *EventWatcherConfig) wa
 		ExpectedType: &api_v1.Event{},
 		StoreConfig: &watchers.WatcherStoreConfig{
 			KeyFunc:     cache.DeletionHandlingMetaNamespaceKeyFunc,
-			Consumer:    newWatchConsumer(config.Consumer),
+			Handler:     newEventHandlerWrapper(config.Handler),
 			StorageType: watchers.TTLStorage,
 			StorageTTL:  eventStorageTTL,
 		},

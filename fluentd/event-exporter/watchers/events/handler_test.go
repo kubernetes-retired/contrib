@@ -22,33 +22,31 @@ import (
 	api_v1 "k8s.io/client-go/pkg/api/v1"
 )
 
-type fakeEventConsumer struct {
-	EventWatchConsumer
-
-	addFunc    func(*api_v1.Event)
-	updateFunc func(*api_v1.Event, *api_v1.Event)
-	deleteFunc func(*api_v1.Event)
+type fakeEventHandler struct {
+	onAddFunc    func(*api_v1.Event)
+	onUpdateFunc func(*api_v1.Event, *api_v1.Event)
+	onDeleteFunc func(*api_v1.Event)
 }
 
-func (c *fakeEventConsumer) Add(event *api_v1.Event) {
-	if c.addFunc != nil {
-		c.addFunc(event)
+func (c *fakeEventHandler) OnAdd(event *api_v1.Event) {
+	if c.onAddFunc != nil {
+		c.onAddFunc(event)
 	}
 }
 
-func (c *fakeEventConsumer) Update(oldEvent, newEvent *api_v1.Event) {
-	if c.updateFunc != nil {
-		c.updateFunc(oldEvent, newEvent)
+func (c *fakeEventHandler) OnUpdate(oldEvent, newEvent *api_v1.Event) {
+	if c.onUpdateFunc != nil {
+		c.onUpdateFunc(oldEvent, newEvent)
 	}
 }
 
-func (c *fakeEventConsumer) Delete(event *api_v1.Event) {
-	if c.deleteFunc != nil {
-		c.deleteFunc(event)
+func (c *fakeEventHandler) OnDelete(event *api_v1.Event) {
+	if c.onDeleteFunc != nil {
+		c.onDeleteFunc(event)
 	}
 }
 
-func TestEventWatchConsumerAdd(t *testing.T) {
+func TestEventWatchHandlerAdd(t *testing.T) {
 	testCases := []struct {
 		desc     string
 		obj      interface{}
@@ -74,12 +72,12 @@ func TestEventWatchConsumerAdd(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			isTriggered := false
-			fakeConsumer := &fakeEventConsumer{
-				addFunc: func(*api_v1.Event) { isTriggered = true },
+			fakeHandler := &fakeEventHandler{
+				onAddFunc: func(*api_v1.Event) { isTriggered = true },
 			}
 
-			c := newWatchConsumer(fakeConsumer)
-			c.Add(tc.obj)
+			c := newEventHandlerWrapper(fakeHandler)
+			c.OnAdd(tc.obj)
 
 			if isTriggered != tc.expected {
 				t.Fatalf("Add is triggered = %v, expected %v", isTriggered, tc.expected)
@@ -88,7 +86,7 @@ func TestEventWatchConsumerAdd(t *testing.T) {
 	}
 }
 
-func TestEventWatchConsumerUpdate(t *testing.T) {
+func TestEventWatchHandlerUpdate(t *testing.T) {
 	testCases := []struct {
 		desc     string
 		oldObj   interface{}
@@ -130,12 +128,12 @@ func TestEventWatchConsumerUpdate(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			isTriggered := false
-			fakeConsumer := &fakeEventConsumer{
-				updateFunc: func(*api_v1.Event, *api_v1.Event) { isTriggered = true },
+			fakeHandler := &fakeEventHandler{
+				onUpdateFunc: func(*api_v1.Event, *api_v1.Event) { isTriggered = true },
 			}
 
-			c := newWatchConsumer(fakeConsumer)
-			c.Update(tc.oldObj, tc.newObj)
+			c := newEventHandlerWrapper(fakeHandler)
+			c.OnUpdate(tc.oldObj, tc.newObj)
 
 			if isTriggered != tc.expected {
 				t.Fatalf("Update is triggered = %v, expected %v", isTriggered, tc.expected)
@@ -144,7 +142,7 @@ func TestEventWatchConsumerUpdate(t *testing.T) {
 	}
 }
 
-func TestEventWatchConsumerDelete(t *testing.T) {
+func TestEventWatchHandlerDelete(t *testing.T) {
 	testCases := []struct {
 		desc     string
 		obj      interface{}
@@ -170,12 +168,12 @@ func TestEventWatchConsumerDelete(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
 			isTriggered := false
-			fakeConsumer := &fakeEventConsumer{
-				deleteFunc: func(*api_v1.Event) { isTriggered = true },
+			fakeHandler := &fakeEventHandler{
+				onDeleteFunc: func(*api_v1.Event) { isTriggered = true },
 			}
 
-			c := newWatchConsumer(fakeConsumer)
-			c.Delete(tc.obj)
+			c := newEventHandlerWrapper(fakeHandler)
+			c.OnDelete(tc.obj)
 
 			if isTriggered != tc.expected {
 				t.Fatalf("Delete is triggered = %v, expected %v", isTriggered, tc.expected)

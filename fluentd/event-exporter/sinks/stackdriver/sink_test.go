@@ -24,6 +24,7 @@ import (
 	sd "google.golang.org/api/logging/v2"
 
 	"k8s.io/apimachinery/pkg/util/clock"
+	"k8s.io/apimachinery/pkg/util/wait"
 	api_v1 "k8s.io/client-go/pkg/api/v1"
 )
 
@@ -55,10 +56,10 @@ func TestMaxConcurrency(t *testing.T) {
 		MaxBufferSize:  10,
 	}
 	s := newSdSink(w, clock.NewFakeClock(time.Time{}), config)
-	s.Start()
+	go s.Run(wait.NeverStop)
 
 	for i := 0; i < 110; i++ {
-		s.Add(&api_v1.Event{})
+		s.OnAdd(&api_v1.Event{})
 	}
 
 	if writeCalledTimes != int32(config.MaxConcurrency) {
@@ -82,9 +83,9 @@ func TestBatchTimeout(t *testing.T) {
 		MaxBufferSize:  10,
 	}
 	s := newSdSink(w, clock.NewFakeClock(time.Time{}), config)
-	s.Start()
+	go s.Run(wait.NeverStop)
 
-	s.Add(&api_v1.Event{})
+	s.OnAdd(&api_v1.Event{})
 	time.Sleep(200 * time.Millisecond)
 
 	if writeCalledTimes != 1 {
@@ -108,10 +109,10 @@ func TestBatchSizeLimit(t *testing.T) {
 		MaxBufferSize:  10,
 	}
 	s := newSdSink(w, clock.NewFakeClock(time.Time{}), config)
-	s.Start()
+	go s.Run(wait.NeverStop)
 
 	for i := 0; i < 15; i++ {
-		s.Add(&api_v1.Event{})
+		s.OnAdd(&api_v1.Event{})
 	}
 
 	time.Sleep(100 * time.Millisecond)

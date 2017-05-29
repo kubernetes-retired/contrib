@@ -74,14 +74,14 @@ func newSdSink(writer sdWriter, clock clock.Clock, config *sdSinkConfig) *sdSink
 	}
 }
 
-func (s *sdSink) Add(event *api_v1.Event) {
+func (s *sdSink) OnAdd(event *api_v1.Event) {
 	receivedEntryCount.WithLabelValues(event.Source.Component, event.Source.Host).Inc()
 
 	logEntry := s.logEntryFactory.FromEvent(event)
 	s.logEntryChannel <- logEntry
 }
 
-func (s *sdSink) Update(oldEvent *api_v1.Event, newEvent *api_v1.Event) {
+func (s *sdSink) OnUpdate(oldEvent *api_v1.Event, newEvent *api_v1.Event) {
 	if newEvent.Count != oldEvent.Count+1 {
 		// Sink doesn't send a LogEntry to Stackdriver, b/c event compression might
 		// indicate that part of the watch history was lost, which may result in
@@ -97,7 +97,7 @@ func (s *sdSink) Update(oldEvent *api_v1.Event, newEvent *api_v1.Event) {
 	s.logEntryChannel <- logEntry
 }
 
-func (s *sdSink) Delete(*api_v1.Event) {
+func (s *sdSink) OnDelete(*api_v1.Event) {
 	// Nothing to do here
 }
 
@@ -109,24 +109,29 @@ func (s *sdSink) FilterList(events []api_v1.Event) []api_v1.Event {
 	return []api_v1.Event{}
 }
 
-func (s *sdSink) Start() {
-	go func() {
-		for {
-			select {
-			case entry := <-s.logEntryChannel:
-				s.currentBuffer = append(s.currentBuffer, entry)
-				if len(s.currentBuffer) >= s.config.MaxBufferSize {
-					s.flushBuffer()
-				} else if len(s.currentBuffer) == 1 {
-					s.setTimer()
-				}
-				break
-			case <-s.getTimerChannel():
+func (s *sdSink) Run(stopCh <-chan struct{}) {
+	for {
+		select {
+		case entry := <-s.logEntryChannel:
+			s.currentBuffer = append(s.currentBuffer, entry)
+			if len(s.currentBuffer) >= s.config.MaxBufferSize {
 				s.flushBuffer()
-				break
+			} else if len(s.currentBuffer) == 1 {
+				s.setTimer()
 			}
+			break
+		case <-s.getTimerChannel():
+			s.flushBuffer()
+			break
+		case <-stopCh:
+			glog.Info("Stackdriver sink recieved stop signal, waiting for all requests to finish")
+			for i := 0; i < s.config.MaxConcurrency; i++ {
+				s.concurrencyChannel <- struct{}{}
+			}
+			glog.Info("All requests to Stackdriver finished, exiting Stackdriver sink")
+			return
 		}
-	}()
+	}
 }
 
 func (s *sdSink) flushBuffer() {

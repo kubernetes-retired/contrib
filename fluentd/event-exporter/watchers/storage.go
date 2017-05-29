@@ -36,7 +36,7 @@ const (
 // WatcherStoreConfig represents the configuration of the storage backing the watcher.
 type WatcherStoreConfig struct {
 	KeyFunc     cache.KeyFunc
-	Consumer    WatchConsumer
+	Handler     cache.ResourceEventHandler
 	StorageType StorageType
 	StorageTTL  time.Duration
 }
@@ -44,20 +44,19 @@ type WatcherStoreConfig struct {
 type watcherStore struct {
 	cache.Store
 
-	cacheStorage cache.Store
-	consumer     WatchConsumer
+	handler cache.ResourceEventHandler
 }
 
 func (s *watcherStore) Add(obj interface{}) error {
-	if err := s.cacheStorage.Add(obj); err != nil {
+	if err := s.Store.Add(obj); err != nil {
 		return err
 	}
-	s.consumer.Add(obj)
+	s.handler.OnAdd(obj)
 	return nil
 }
 
 func (s *watcherStore) Update(obj interface{}) error {
-	oldObj, ok, err := s.cacheStorage.Get(obj)
+	oldObj, ok, err := s.Store.Get(obj)
 	if err != nil {
 		return err
 	}
@@ -65,43 +64,19 @@ func (s *watcherStore) Update(obj interface{}) error {
 		oldObj = nil
 	}
 
-	if err = s.cacheStorage.Update(obj); err != nil {
+	if err = s.Store.Update(obj); err != nil {
 		return err
 	}
-	s.consumer.Update(oldObj, obj)
+	s.handler.OnUpdate(oldObj, obj)
 	return nil
 }
 
 func (s *watcherStore) Delete(obj interface{}) error {
-	if err := s.cacheStorage.Delete(obj); err != nil {
+	if err := s.Store.Delete(obj); err != nil {
 		return err
 	}
-	s.consumer.Delete(obj)
+	s.handler.OnDelete(obj)
 	return nil
-}
-
-func (s *watcherStore) List() []interface{} {
-	return s.cacheStorage.List()
-}
-
-func (s *watcherStore) ListKeys() []string {
-	return s.cacheStorage.ListKeys()
-}
-
-func (s *watcherStore) Get(obj interface{}) (interface{}, bool, error) {
-	return s.cacheStorage.Get(obj)
-}
-
-func (s *watcherStore) GetByKey(key string) (interface{}, bool, error) {
-	return s.cacheStorage.GetByKey(key)
-}
-
-func (s *watcherStore) Replace(list []interface{}, rv string) error {
-	return s.cacheStorage.Replace(list, rv)
-}
-
-func (s *watcherStore) Resync() error {
-	return s.cacheStorage.Resync()
 }
 
 func newWatcherStore(config *WatcherStoreConfig) *watcherStore {
@@ -117,7 +92,7 @@ func newWatcherStore(config *WatcherStoreConfig) *watcherStore {
 	}
 
 	return &watcherStore{
-		cacheStorage: cacheStorage,
-		consumer:     config.Consumer,
+		Store:   cacheStorage,
+		handler: config.Handler,
 	}
 }
