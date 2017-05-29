@@ -1,0 +1,3 @@
+This directory was copied from https://github.com/kubernetes/heapster/tree/master/common/flags.
+
+TODO: Move this directory to a repository that can be accessed both from heapster and contrib repos.
