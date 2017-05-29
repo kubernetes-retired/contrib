@@ -87,8 +87,8 @@ func (s *sdSink) OnUpdate(oldEvent *api_v1.Event, newEvent *api_v1.Event) {
 		// indicate that part of the watch history was lost, which may result in
 		// multiple events being compressed. This may create an unecessary
 		// flood in Stackdriver.
-		glog.V(2).Infof("Event count has increased by something but one.\n"+
-			"\tOld event: %s\n\tNew event: %s", oldEvent, newEvent)
+		glog.V(2).Infof("Event count has increased by %d != 1.\n"+
+			"\tOld event: %s\n\tNew event: %s", newEvent.Count-oldEvent.Count, oldEvent, newEvent)
 	}
 
 	receivedEntryCount.WithLabelValues(newEvent.Source.Component, newEvent.Source.Host).Inc()
@@ -102,10 +102,8 @@ func (s *sdSink) OnDelete(*api_v1.Event) {
 }
 
 func (s *sdSink) OnList(list *api_v1.EventList) {
-	if len(list.Items) > 0 {
-		glog.V(2).Infof("List request returned non-empty response")
-		s.logEntryChannel <- s.logEntryFactory.FromMessage("Some events may have been lost")
-	}
+	s.logEntryChannel <- s.logEntryFactory.FromMessage("Event exporter started watching. " +
+		"Some events may have been lost up to this point.")
 }
 
 func (s *sdSink) Run(stopCh <-chan struct{}) {

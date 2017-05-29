@@ -45,7 +45,7 @@ type sdSinkConfig struct {
 
 func newGceSdSinkConfig() (*sdSinkConfig, error) {
 	if !metadata.OnGCE() {
-		return nil, errors.New("not running on GCE, which is not yet supported for Stackdriver sink")
+		return nil, errors.New("not running on GCE, which is not supported for Stackdriver sink")
 	}
 
 	projectID, err := metadata.ProjectID()

@@ -64,7 +64,7 @@ func (f *sdLogEntryFactory) FromEvent(event *api_v1.Event) *sd.LogEntry {
 
 	return &sd.LogEntry{
 		JsonPayload: payload,
-		Severity:    "INFO",
+		Severity:    f.detectSeverity(event),
 		Timestamp:   event.LastTimestamp.Format(time.RFC3339Nano),
 	}
 }
@@ -77,10 +77,11 @@ func (f *sdLogEntryFactory) FromMessage(msg string) *sd.LogEntry {
 	}
 }
 
-func newEncoder() runtime.Encoder {
-	jsonSerializer := json.NewSerializer(json.DefaultMetaFactory, scheme.Scheme, scheme.Scheme, false)
-	directCodecFactory := serializer.DirectCodecFactory{CodecFactory: scheme.Codecs}
-	return directCodecFactory.EncoderForVersion(jsonSerializer, api_v1.SchemeGroupVersion)
+func (f *sdLogEntryFactory) detectSeverity(event *api_v1.Event) string {
+	if event.Type == "Warning" {
+		return "WARNING"
+	}
+	return "INFO"
 }
 
 func (f *sdLogEntryFactory) serializeEvent(event *api_v1.Event) ([]byte, error) {
@@ -100,4 +101,10 @@ func (f *sdLogEntryFactory) serializeEvent(event *api_v1.Event) ([]byte, error) 
 	}
 
 	return go_json.Marshal(obj)
+}
+
+func newEncoder() runtime.Encoder {
+	jsonSerializer := json.NewSerializer(json.DefaultMetaFactory, scheme.Scheme, scheme.Scheme, false)
+	directCodecFactory := serializer.DirectCodecFactory{CodecFactory: scheme.Codecs}
+	return directCodecFactory.EncoderForVersion(jsonSerializer, api_v1.SchemeGroupVersion)
 }

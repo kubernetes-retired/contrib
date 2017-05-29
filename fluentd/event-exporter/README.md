@@ -2,7 +2,7 @@
 
 This tool is used to export Kubernetes events. It effectively runs a watch on
 the apiserver, detecting as granular as possible all changes to the event
-objects. Event exporter currently exports only to Stackdriver.
+objects. Event exporter exports only to Stackdriver.
 
 ## Build
 
@@ -63,4 +63,6 @@ spec:
 ```
 
 Note, that this pod's service account should be authorized to get events, you
-might need to set up ClusterRoleBinding in order to make it possible.
+might need to set up ClusterRoleBinding in order to make it possible. Complete
+example with the service account and the cluster role binding you can find in
+the `example` directory.

@@ -37,7 +37,7 @@ type sdSinkFactory struct {
 }
 
 func newSdSinkFactory() sinks.SinkFactory {
-	fs := flag.NewFlagSet("stackdrvier", flag.ContinueOnError)
+	fs := flag.NewFlagSet("stackdriver", flag.ContinueOnError)
 	return &sdSinkFactory{
 		flagSet: fs,
 		flushDelay: fs.Duration("flush-delay", defaultFlushDelay, "Delay after receiving "+
