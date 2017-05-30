@@ -18,11 +18,16 @@ package translator
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/golang/glog"
 	v3 "google.golang.org/api/monitoring/v3"
 
 	"k8s.io/contrib/prometheus-to-sd/config"
+)
+
+const (
+	maxTimeseriesesPerRequest = 200
 )
 
 // SendToStackdriver sends http request to Stackdriver to create the given timeserieses.
@@ -32,13 +37,24 @@ func SendToStackdriver(service *v3.Service, config *config.GceConfig, ts []*v3.T
 		return
 	}
 
-	req := &v3.CreateTimeSeriesRequest{TimeSeries: ts}
 	proj := fmt.Sprintf("projects/%s", config.Project)
 
-	_, err := service.Projects.TimeSeries.Create(proj, req).Do()
-	if err != nil {
-		glog.Errorf("Error while sending request to Stackdriver %v", err)
-	} else {
-		glog.V(4).Infof("Successfully sent %v timeserieses to Stackdriver", len(req.TimeSeries))
+	var wg sync.WaitGroup
+	for i := 0; i < len(ts); i += maxTimeseriesesPerRequest {
+		end := i + maxTimeseriesesPerRequest
+		if end > len(ts) {
+			end = len(ts)
+		}
+		wg.Add(1)
+		go func(begin int, end int) {
+			defer wg.Done()
+			req := &v3.CreateTimeSeriesRequest{TimeSeries: ts[begin:end]}
+			_, err := service.Projects.TimeSeries.Create(proj, req).Do()
+			if err != nil {
+				glog.Errorf("Error while sending request to Stackdriver %v", err)
+			}
+		}(i, end)
 	}
+	wg.Wait()
+	glog.V(4).Infof("Successfully sent %v timeserieses to Stackdriver", len(ts))
 }
