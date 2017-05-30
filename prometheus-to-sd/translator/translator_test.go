@@ -22,8 +22,24 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
+	v3 "google.golang.org/api/monitoring/v3"
 	"k8s.io/contrib/prometheus-to-sd/config"
+	"sort"
 )
+
+type ByMetricTypeReversed []*v3.TimeSeries
+
+func (ts ByMetricTypeReversed) Len() int {
+	return len(ts)
+}
+
+func (ts ByMetricTypeReversed) Swap(i, j int) {
+	ts[i], ts[j] = ts[j], ts[i]
+}
+
+func (ts ByMetricTypeReversed) Less(i, j int) bool {
+	return ts[i].Metric.Type > ts[j].Metric.Type
+}
 
 func TestTranslatePrometheusToStackdriver(t *testing.T) {
 	epsilon := float64(0.001)
@@ -120,6 +136,8 @@ func TestTranslatePrometheusToStackdriver(t *testing.T) {
 	ts := TranslatePrometheusToStackdriver(config, "testcomponent", metrics, []string{testMetricName, testMetricHistogram})
 
 	assert.Equal(t, 3, len(ts))
+	// TranslatePrometheusToStackdriver uses maps to represent data, so order of output is randomized.
+	sort.Sort(ByMetricTypeReversed(ts))
 
 	for i := 0; i <= 1; i++ {
 		metric := ts[i]
