@@ -29,7 +29,7 @@ import (
 
 const (
 	defaultFlushDelay     = 5 * time.Second
-	defaultMaxBufferSize  = 1000
+	defaultMaxBufferSize  = 100
 	defaultMaxConcurrency = 10
 
 	eventsLogName = "events"

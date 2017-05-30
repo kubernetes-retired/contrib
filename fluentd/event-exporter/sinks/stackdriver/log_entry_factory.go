@@ -59,7 +59,7 @@ func newSdLogEntryFactory(clock clock.Clock) *sdLogEntryFactory {
 func (f *sdLogEntryFactory) FromEvent(event *api_v1.Event) *sd.LogEntry {
 	payload, err := f.serializeEvent(event)
 	if err != nil {
-		glog.Warningf("Failed to encode event %v: %v", event, err)
+		glog.Warningf("Failed to encode event %+v: %v", event, err)
 	}
 
 	return &sd.LogEntry{

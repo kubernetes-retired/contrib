@@ -63,6 +63,10 @@ func (w sdWriterImpl) Write(entries []*sd.LogEntry, logName string, resource *sd
 		Resource: resource,
 	}
 
+	// We retry forever, until request either succeeds or API returns
+	// BadRequest, which means that the request is malformed, e.g. because
+	// it contains too large entries. This behavior mirrors the way logging
+	// agent pushes logs to Stackdriver.
 	for {
 		res, err := w.service.Entries.Write(req).Do()
 
@@ -82,12 +86,12 @@ func (w sdWriterImpl) Write(entries []*sd.LogEntry, logName string, resource *sd
 			// successfully ingested entries, parsed out from the response body.
 			if apiErr.Code == http.StatusBadRequest {
 				glog.Warningf("Recieved bad request response from server, "+
-					"assuming some entries were rejected: %s", err)
+					"assuming some entries were rejected: %v", err)
 				break
 			}
 		}
 
-		glog.Warningf("Failed to send request to Stackdriver: %s", err)
+		glog.Warningf("Failed to send request to Stackdriver: %v", err)
 		time.Sleep(retryDelay)
 	}
 

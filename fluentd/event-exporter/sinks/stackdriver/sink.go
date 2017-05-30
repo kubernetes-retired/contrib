@@ -53,9 +53,13 @@ type sdSink struct {
 	writer          sdWriter
 	logName         string
 
-	currentBuffer      []*sd.LogEntry
-	timer              *time.Timer
-	fakeTimeChannel    chan time.Time
+	currentBuffer   []*sd.LogEntry
+	timer           *time.Timer
+	fakeTimeChannel chan time.Time
+	// Channel for controlling how many requests are being sent at the same
+	// time. It's empty initially, each request adds an object at the start
+	// and takes it out upon completion. Channel's capacity is set to the
+	// maximum level of parallelism, so any extra request will lock on addition.
 	concurrencyChannel chan struct{}
 }
 
@@ -88,7 +92,7 @@ func (s *sdSink) OnUpdate(oldEvent *api_v1.Event, newEvent *api_v1.Event) {
 		// multiple events being compressed. This may create an unecessary
 		// flood in Stackdriver.
 		glog.V(2).Infof("Event count has increased by %d != 1.\n"+
-			"\tOld event: %s\n\tNew event: %s", newEvent.Count-oldEvent.Count, oldEvent, newEvent)
+			"\tOld event: %+v\n\tNew event: %+v", newEvent.Count-oldEvent.Count, oldEvent, newEvent)
 	}
 
 	receivedEntryCount.WithLabelValues(newEvent.Source.Component, newEvent.Source.Host).Inc()
