@@ -3,6 +3,8 @@ alias-file
 allowed-shame-domains
 api-override
 api-token
+auto-whitelist-metrics
+auto-whitelist-metrics-resolution
 balance-algorithm
 batch-url
 block-path-config

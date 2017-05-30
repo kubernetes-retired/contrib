@@ -23,7 +23,9 @@ import (
 	"github.com/golang/glog"
 	v3 "google.golang.org/api/monitoring/v3"
 
+	"golang.org/x/net/context"
 	"k8s.io/contrib/prometheus-to-sd/config"
+	"strings"
 )
 
 const (
@@ -57,4 +59,49 @@ func SendToStackdriver(service *v3.Service, config *config.GceConfig, ts []*v3.T
 	}
 	wg.Wait()
 	glog.V(4).Infof("Successfully sent %v timeserieses to Stackdriver", len(ts))
+}
+
+// GetMetricType formats a Metric.Type for given component and metric names.
+func GetMetricType(config *config.GceConfig, component string, metricName string) string {
+	return fmt.Sprintf("%s/%s/%s", config.MetricsPrefix, component, metricName)
+}
+
+// ParseMetricType extracts component and metricName from Metric.Type (e.g. output of GetMetricType).
+func ParseMetricType(config *config.GceConfig, metricType string) (component, metricName string, err error) {
+	if !strings.HasPrefix(metricType, config.MetricsPrefix) {
+		return "", "", fmt.Errorf("MetricType is expected to have prefix: %v. Got %v instead.", config.MetricsPrefix, metricType)
+	}
+
+	componentMetricName := strings.TrimPrefix(metricType, fmt.Sprintf("%s/", config.MetricsPrefix))
+	split := strings.SplitN(componentMetricName, "/", 2)
+
+	if len(split) != 2 {
+		return "", "", fmt.Errorf("MetricType should be in format %v/component/name. Got %v instead.", config.MetricsPrefix, metricType)
+	}
+
+	return split[0], split[1], nil
+}
+
+// GetMetricDescriptors fetches all metric descriptors of all metrics defined for given component.
+func GetMetricDescriptors(service *v3.Service, config *config.GceConfig, component string) (map[string]*v3.MetricDescriptor, error) {
+	proj := fmt.Sprintf("projects/%s", config.Project)
+
+	metrics := make(map[string]*v3.MetricDescriptor)
+
+	ctx := context.TODO()
+	fn := func(page *v3.ListMetricDescriptorsResponse) error {
+		for _, metricDescriptor := range page.MetricDescriptors {
+			if _, metricName, err := ParseMetricType(config, metricDescriptor.Type); err == nil {
+				metrics[metricName] = metricDescriptor
+			} else {
+				glog.Warningf("Unable to parse %v: %v", metricDescriptor.Type, err)
+			}
+		}
+
+		return nil
+	}
+
+	filter := fmt.Sprintf("metric.type = starts_with(\"%s/%s\")", config.MetricsPrefix, component)
+
+	return metrics, service.Projects.MetricDescriptors.List(proj).Filter(filter).Pages(ctx, fn)
 }
