@@ -25,13 +25,13 @@ import (
 func TestGetMetricType(t *testing.T) {
 	testConfig := &config.GceConfig{MetricsPrefix: "container.googleapis.com/master"}
 	expected := "container.googleapis.com/master/component/name"
-	assert.Equal(t, expected, GetMetricType(testConfig, "component", "name"))
+	assert.Equal(t, expected, getMetricType(testConfig, "component", "name"))
 }
 
 func TestParseMetricType(t *testing.T) {
 	testConfig := &config.GceConfig{MetricsPrefix: "container.googleapis.com/master"}
 	correct := "container.googleapis.com/master/component/name"
-	component, metricName, err := ParseMetricType(testConfig, correct)
+	component, metricName, err := parseMetricType(testConfig, correct)
 
 	if assert.NoError(t, err) {
 		assert.Equal(t, "component", component)
@@ -39,10 +39,10 @@ func TestParseMetricType(t *testing.T) {
 	}
 
 	incorrect1 := "container.googleapis.com/master/component"
-	_, _, err = ParseMetricType(testConfig, incorrect1)
+	_, _, err = parseMetricType(testConfig, incorrect1)
 	assert.Error(t, err)
 
 	incorrect2 := "incorrect.prefix.com/master/component"
-	_, _, err = ParseMetricType(testConfig, incorrect2)
+	_, _, err = parseMetricType(testConfig, incorrect2)
 	assert.Error(t, err)
 }

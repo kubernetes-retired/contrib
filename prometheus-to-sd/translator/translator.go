@@ -92,24 +92,21 @@ func translateFamily(config *config.GceConfig, component string, family *dto.Met
 	return ts, nil
 }
 
+// getMetricType creates metric type name base on the metric prefix, component name and metric name.
+func getMetricType(config *config.GceConfig, component string, name string) string {
+	return fmt.Sprintf("%s/%s/%s", config.MetricsPrefix, component, name)
+}
+
 // assumes that mType is Counter, Gauge or Histogram
 func translateOne(config *config.GceConfig, component string, name string, mType dto.MetricType, metric *dto.Metric, start, end time.Time) *v3.TimeSeries {
-	fullName := GetMetricType(config, component, name)
-
-	metricKind := "GAUGE"
 	interval := &v3.TimeInterval{
 		EndTime: end.UTC().Format(time.RFC3339),
 	}
-	if mType == dto.MetricType_COUNTER || mType == dto.MetricType_HISTOGRAM {
-		metricKind = "CUMULATIVE"
+	metricKind := extractMetricKind(mType)
+	if metricKind == "CUMULATIVE" {
 		interval.StartTime = start.UTC().Format(time.RFC3339)
 	}
-
-	valueType := "INT64"
-	if mType == dto.MetricType_HISTOGRAM {
-		valueType = "DISTRIBUTION"
-	}
-
+	valueType := extractValueType(mType)
 	point := &v3.Point{
 		Interval: interval,
 		Value: &v3.TypedValue{
@@ -121,7 +118,7 @@ func translateOne(config *config.GceConfig, component string, name string, mType
 	return &v3.TimeSeries{
 		Metric: &v3.Metric{
 			Labels: getMetricLabels(metric.GetLabel()),
-			Type:   fullName,
+			Type:   getMetricType(config, component, name),
 		},
 		Resource: &v3.MonitoredResource{
 			Labels: getResourceLabels(config),
@@ -197,6 +194,50 @@ func getMetricLabels(labels []*dto.LabelPair) map[string]string {
 		metricLabels[label.GetName()] = label.GetValue()
 	}
 	return metricLabels
+}
+
+// MetricFamilyToMetricDescriptor converts MetricFamily object to the MetricDescriptor.
+func MetricFamilyToMetricDescriptor(config *config.GceConfig, component string, family *dto.MetricFamily) *v3.MetricDescriptor {
+	return &v3.MetricDescriptor{
+		Description: family.GetHelp(),
+		Type:        getMetricType(config, component, family.GetName()),
+		MetricKind:  extractMetricKind(family.GetType()),
+		ValueType:   extractValueType(family.GetType()),
+		Labels:      extractAllLabels(family),
+	}
+}
+
+func extractMetricKind(mType dto.MetricType) string {
+	if mType == dto.MetricType_COUNTER || mType == dto.MetricType_HISTOGRAM {
+		return "CUMULATIVE"
+	}
+	return "GAUGE"
+}
+
+func extractValueType(mType dto.MetricType) string {
+	if mType == dto.MetricType_HISTOGRAM {
+		return "DISTRIBUTION"
+	}
+	return "INT64"
+}
+
+func extractAllLabels(family *dto.MetricFamily) []*v3.LabelDescriptor {
+	var labels []*v3.LabelDescriptor
+	labelSet := make(map[string]bool)
+	for _, metric := range family.GetMetric() {
+		for _, label := range metric.GetLabel() {
+			_, ok := labelSet[label.GetName()]
+			if !ok {
+				labels = append(labels, &v3.LabelDescriptor{Key: label.GetName()})
+				labelSet[label.GetName()] = true
+			}
+		}
+	}
+	return labels
+}
+
+func createProjectName(config *config.GceConfig) string {
+	return fmt.Sprintf("projects/%s", config.Project)
 }
 
 func getResourceLabels(config *config.GceConfig) map[string]string {

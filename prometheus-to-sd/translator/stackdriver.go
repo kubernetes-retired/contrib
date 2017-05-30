@@ -38,7 +38,7 @@ func SendToStackdriver(service *v3.Service, config *config.GceConfig, ts []*v3.T
 		return
 	}
 
-	proj := fmt.Sprintf("projects/%s", config.Project)
+	proj := createProjectName(config)
 
 	var wg sync.WaitGroup
 	for i := 0; i < len(ts); i += maxTimeseriesesPerRequest {
@@ -60,13 +60,8 @@ func SendToStackdriver(service *v3.Service, config *config.GceConfig, ts []*v3.T
 	glog.V(4).Infof("Successfully sent %v timeserieses to Stackdriver", len(ts))
 }
 
-// GetMetricType formats a Metric.Type for given component and metric names.
-func GetMetricType(config *config.GceConfig, component string, metricName string) string {
-	return fmt.Sprintf("%s/%s/%s", config.MetricsPrefix, component, metricName)
-}
-
-// ParseMetricType extracts component and metricName from Metric.Type (e.g. output of GetMetricType).
-func ParseMetricType(config *config.GceConfig, metricType string) (component, metricName string, err error) {
+// parseMetricType extracts component and metricName from Metric.Type (e.g. output of getMetricType).
+func parseMetricType(config *config.GceConfig, metricType string) (component, metricName string, err error) {
 	if !strings.HasPrefix(metricType, config.MetricsPrefix) {
 		return "", "", fmt.Errorf("MetricType is expected to have prefix: %v. Got %v instead.", config.MetricsPrefix, metricType)
 	}
@@ -83,13 +78,13 @@ func ParseMetricType(config *config.GceConfig, metricType string) (component, me
 
 // GetMetricDescriptors fetches all metric descriptors of all metrics defined for given component.
 func GetMetricDescriptors(service *v3.Service, config *config.GceConfig, component string) (map[string]*v3.MetricDescriptor, error) {
-	proj := fmt.Sprintf("projects/%s", config.Project)
+	proj := createProjectName(config)
 
 	metrics := make(map[string]*v3.MetricDescriptor)
 
 	fn := func(page *v3.ListMetricDescriptorsResponse) error {
 		for _, metricDescriptor := range page.MetricDescriptors {
-			if _, metricName, err := ParseMetricType(config, metricDescriptor.Type); err == nil {
+			if _, metricName, err := parseMetricType(config, metricDescriptor.Type); err == nil {
 				metrics[metricName] = metricDescriptor
 			} else {
 				glog.Warningf("Unable to parse %v: %v", metricDescriptor.Type, err)
@@ -102,4 +97,13 @@ func GetMetricDescriptors(service *v3.Service, config *config.GceConfig, compone
 	filter := fmt.Sprintf("metric.type = starts_with(\"%s/%s\")", config.MetricsPrefix, component)
 
 	return metrics, service.Projects.MetricDescriptors.List(proj).Filter(filter).Pages(nil, fn)
+}
+
+// CreateMetricDescriptor creates or updates MetricDescriptor base on the provided MetricFamily
+func CreateMetricDescriptor(service *v3.Service, config *config.GceConfig, metricDescriptor *v3.MetricDescriptor) {
+	projectName := createProjectName(config)
+	_, err := service.Projects.MetricDescriptors.Create(projectName, metricDescriptor).Do()
+	if err != nil {
+		glog.Errorf("Error in attempt to update metric descriptor %v", err)
+	}
 }
