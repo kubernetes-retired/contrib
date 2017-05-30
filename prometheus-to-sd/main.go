@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	dto "github.com/prometheus/client_model/go"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	v3 "google.golang.org/api/monitoring/v3"
@@ -122,11 +123,12 @@ func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *confi
 
 	for range time.Tick(*resolution) {
 		glog.V(4).Infof("Scraping metrics of component %v", sourceConfig.Component)
-
+		var metricDescriptors map[string]*v3.MetricDescriptor
 		select {
 		case <-signal:
 			glog.V(4).Infof("Updating metrics cache for component %v", sourceConfig.Component)
-			metricDescriptors, err := translator.GetMetricDescriptors(stackdriverService, gceConf, sourceConfig.Component);
+			var err error
+			metricDescriptors, err = translator.GetMetricDescriptors(stackdriverService, gceConf, sourceConfig.Component)
 			if err != nil {
 				glog.Warningf("Error while fetching metric descriptors for %v: %v", sourceConfig.Component, err)
 			}
@@ -146,7 +148,9 @@ func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *confi
 			glog.Warningf("Error while getting Prometheus metrics %v", err)
 			continue
 		}
-
+		if metricDescriptors != nil {
+			updateMetricDescriptorsDescription(stackdriverService, gceConf, metricDescriptors, metrics)
+		}
 		ts := translator.TranslatePrometheusToStackdriver(gceConf, sourceConfig.Component, metrics, sourceConfig.Whitelisted)
 		translator.SendToStackdriver(stackdriverService, gceConf, ts)
 	}
@@ -156,5 +160,17 @@ func updateWhitelistedMetrics(sourceConfig *config.SourceConfig, metricDescripto
 	sourceConfig.Whitelisted = nil
 	for metricName := range metricDescriptors {
 		sourceConfig.Whitelisted = append(sourceConfig.Whitelisted, metricName)
+	}
+}
+
+func updateMetricDescriptorsDescription(stackdriverService *v3.Service,
+	config *config.GceConfig,
+	descriptors map[string]*v3.MetricDescriptor,
+	metrics map[string]*dto.MetricFamily) {
+	for _, metricFamily := range metrics {
+		metricDescriptor, ok := descriptors[metricFamily.GetName()]
+		if !ok || metricDescriptor.Description != metricFamily.GetHelp() {
+			translator.CreateMetricDescriptor(stackdriverService, config, *component, metricFamily)
+		}
 	}
 }
