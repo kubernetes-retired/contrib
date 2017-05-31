@@ -41,6 +41,10 @@ var (
 		"Prefix that is appended to every metric.")
 	whitelisted = flag.String("whitelisted-metrics", "",
 		"Comma-separated list of whitelisted metrics. If empty all metrics will be exported. DEPRECATED: Use --source instead.")
+	autoWhitelistMetrics = flag.Bool("auto-whitelist-metrics", false,
+		"If component has no whitelisted metrics, prometheus-to-sd will fetch them from Stackdriver.")
+	autoWhitelistMetricsResolution = flag.Duration("auto-whitelist-metrics-resolution", 10*time.Minute,
+		"The resolution at which prometheus-to-sd will scrape metric descriptors from Stackdriver.")
 	apioverride = flag.String("api-override", "",
 		"The stackdriver API endpoint to override the default one used (which is prod).")
 	source = flags.Uris{}
@@ -102,8 +106,35 @@ func main() {
 		go func(sourceConfig config.SourceConfig) {
 			glog.Infof("Running prometheus-to-sd, monitored target is %s %v:%v", sourceConfig.Component, sourceConfig.Host, sourceConfig.Port)
 
+			signal := time.After(0)
+			useWhitelistedMetricsAutodiscovery := *autoWhitelistMetrics && len(sourceConfig.Whitelisted) == 0
+
 			for range time.Tick(*resolution) {
 				glog.V(4).Infof("Scraping metrics of component %v", sourceConfig.Component)
+
+				if useWhitelistedMetricsAutodiscovery {
+					select {
+					case <-signal:
+						glog.V(4).Infof("Updating metrics cache for component %v", sourceConfig.Component)
+						if metricDescriptors, err := translator.GetMetricDescriptors(stackdriverService, gceConf, sourceConfig.Component); err == nil {
+							sourceConfig.Whitelisted = nil
+							for metricName := range metricDescriptors {
+								sourceConfig.Whitelisted = append(sourceConfig.Whitelisted, metricName)
+							}
+						} else {
+							glog.Warningf("Error while fetching metric descriptors for %v: %v", sourceConfig.Component, err)
+						}
+
+						signal = time.After(*autoWhitelistMetricsResolution)
+					default:
+					}
+
+					if len(sourceConfig.Whitelisted) == 0 {
+						glog.V(4).Infof("Skipping %v component as there are no metric to expose.", sourceConfig.Component)
+						continue
+					}
+				}
+
 				metrics, err := translator.GetPrometheusMetrics(sourceConfig.Host, sourceConfig.Port)
 				if err != nil {
 					glog.Warningf("Error while getting Prometheus metrics %v", err)
