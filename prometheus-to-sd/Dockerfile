@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM scratch
+FROM gcr.io/google-containers/debian-base-amd64:0.1
+
+RUN clean-install ca-certificates
 
 #   nobody:nobody
 USER 65534:65534

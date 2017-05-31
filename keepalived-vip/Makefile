@@ -20,7 +20,7 @@ keepalived:
 	docker rm -f $(BUILD_IMAGE)
 
 push: container
-	gcloud docker push $(PREFIX):$(TAG)
+	gcloud docker -- push $(PREFIX):$(TAG)
 
 clean:
 	rm -f kube-keepalived-vip

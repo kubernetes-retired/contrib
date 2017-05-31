@@ -25,7 +25,7 @@ import (
 //   and print the PerfData in e2e test log.
 //   2) Add corresponding bucket, job and test into *TestConfig*.
 
-// Tests is a map from test description to test name.
+// Tests is a map from test name to test output file prefix.
 type Tests map[string]string
 
 // Jobs is a map from job name to all supported tests in the job.
@@ -40,13 +40,13 @@ var (
 	// Notice that all the tests should have different name for now.
 	TestConfig = Buckets{
 		utils.KubekinsBucket: Jobs{
-			"kubernetes-e2e-gce-scalability": Tests{
-				"[Feature:Performance] should allow starting 30 pods per node":    "Density",
-				"[Feature:Performance] should be able to handle 30 pods per node": "Load",
+			"ci-kubernetes-e2e-gci-gce-scalability": Tests{
+				"Density": "APIResponsiveness",
+				"Load":    "APIResponsiveness",
 			},
-			"kubernetes-e2e-gce-serial": Tests{
-				"resource tracking for 35 pods per node":  "Kubelet Perf 35",
-				"resource tracking for 100 pods per node": "Kubelet Perf 100",
+			"ci-kubernetes-e2e-gci-gce-serial": Tests{
+				"Kubelet Perf 35":  "TBD",
+				"Kubelet Perf 100": "TBD",
 			},
 		},
 	}

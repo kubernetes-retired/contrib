@@ -17,16 +17,12 @@ limitations under the License.
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"strings"
 
 	"k8s.io/contrib/test-utils/utils"
-)
-
-// constants to use for downloading data.
-const (
-	logFile = "build-log.txt"
 )
 
 // GoogleGCSDownloader that gets data about Google results from the GCS repository
@@ -52,19 +48,34 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 		if err != nil {
 			return result, err
 		}
-		fmt.Printf("Last build no: %v\n", lastBuildNo)
+		fmt.Printf("Last build no for %v: %v\n", job, lastBuildNo)
 		for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
 			fmt.Printf("Fetching build %v...\n", buildNumber)
-			testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, logFile)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error while fetching data: %v\n", err)
-				continue
-			}
+			for test, filePrefix := range tests {
+				artifacts, err := g.GoogleGCSBucketUtils.ListFilesInBuild(
+					job, buildNumber, fmt.Sprintf("artifacts/%v_%v", filePrefix, strings.ToLower(test)))
+				if err != nil || len(artifacts) == 0 {
+					fmt.Printf("Error while looking for data in build %v: %v", buildNumber, err)
+					continue
+				}
+				if len(artifacts) > 1 {
+					fmt.Printf("WARNING: found multiple files with data, reading only one")
+				}
+				metricsFilename := artifacts[0][strings.LastIndex(artifacts[0], "/")+1:]
+				testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, fmt.Sprintf("artifacts/%v", metricsFilename))
+				if err != nil {
+					panic(err)
+				}
 
-			testDataBody := testDataResponse.Body
-			defer testDataBody.Close()
-			testDataScanner := bufio.NewScanner(testDataBody)
-			parseTestOutput(testDataScanner, job, tests, buildNumber, result)
+				testDataBody := testDataResponse.Body
+				defer testDataBody.Close()
+				data, err := ioutil.ReadAll(testDataBody)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error when reading response Body: %v", err)
+					continue
+				}
+				parseTestOutput(data, buildNumber, job, test, result)
+			}
 		}
 	}
 	return result, nil

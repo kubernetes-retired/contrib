@@ -1,7 +1,7 @@
 all: push
 
 # See pod.yaml for the version currently running-- bump this ahead before rebuilding!
-TAG = 0.6
+TAG = 0.7
 
 PROJ = google_containers
 
@@ -12,7 +12,7 @@ container: perfdash
 	docker build --pull -t gcr.io/$(PROJ)/perfdash:$(TAG) .
 
 push: container
-	gcloud docker push gcr.io/$(PROJ)/perfdash:$(TAG)
+	gcloud docker -- push gcr.io/$(PROJ)/perfdash:$(TAG)
 
 clean:
 	rm -f perfdash
