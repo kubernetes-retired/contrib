@@ -122,6 +122,7 @@ required-retest-contexts
 resync-period
 retest-body
 right-build-number
+router-id
 running-in-cluster
 scale-down-delay
 scale-down-enabled
