@@ -31,6 +31,8 @@ const (
 	// TTLStorage storage type indicates storage with expiration. When this
 	// type of storage is used, TTL should be specified.
 	TTLStorage
+	// FakeStorage storage type indicates always empty stub for a storage.
+	FakeStorage
 )
 
 // WatcherStoreConfig represents the configuration of the storage backing the watcher.
@@ -84,6 +86,9 @@ func newWatcherStore(config *WatcherStoreConfig) *watcherStore {
 	switch config.StorageType {
 	case TTLStorage:
 		cacheStorage = cache.NewTTLStore(config.KeyFunc, config.StorageTTL)
+		break
+	case FakeStorage:
+		cacheStorage = &cache.FakeCustomStore{}
 		break
 	case SimpleStorage:
 	default:

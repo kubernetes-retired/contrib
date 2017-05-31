@@ -47,5 +47,6 @@ func createWatcher(client kubernetes.Interface, sink sinks.Sink, resyncPeriod ti
 		OnList:       sink.OnList,
 		ResyncPeriod: resyncPeriod,
 		Handler:      sink,
+		StoreEvents:  false,
 	})
 }
