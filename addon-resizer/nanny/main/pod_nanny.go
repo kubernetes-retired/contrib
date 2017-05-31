@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	goflag "flag"
 	"os"
 	"time"
 
@@ -34,13 +35,15 @@ const noValue = "MISSING"
 
 var (
 	// Flags to define the resource requirements.
-	baseCPU        = flag.String("cpu", noValue, "The base CPU resource requirement.")
-	cpuPerNode     = flag.String("extra-cpu", "0", "The amount of CPU to add per node.")
-	baseMemory     = flag.String("memory", noValue, "The base memory resource requirement.")
-	memoryPerNode  = flag.String("extra-memory", "0Mi", "The amount of memory to add per node.")
-	baseStorage    = flag.String("storage", noValue, "The base storage resource requirement.")
-	storagePerNode = flag.String("extra-storage", "0Gi", "The amount of storage to add per node.")
-	threshold      = flag.Int("threshold", 0, "A number between 0-100. The dependent's resources are rewritten when they deviate from expected by more than threshold.")
+	baseCPU              = flag.String("cpu", noValue, "The base CPU resource requirement.")
+	cpuPerNode           = flag.String("extra-cpu", "0", "The amount of CPU to add per node.")
+	baseMemory           = flag.String("memory", noValue, "The base memory resource requirement.")
+	memoryPerNode        = flag.String("extra-memory", "0Mi", "The amount of memory to add per node.")
+	baseStorage          = flag.String("storage", noValue, "The base storage resource requirement.")
+	storagePerNode       = flag.String("extra-storage", "0Gi", "The amount of storage to add per node.")
+	threshold            = flag.Int("threshold", 0, "[DEPRECATED] Please use recommendation-offset and acceptance-offset istead.\nA number between 0-100. The dependent's resources are rewritten when they deviate from expected by more than threshold.")
+	recommendationOffset = flag.Int("recommendation-offset", 10, "A number from range 0-100. When the dependent's resources are rewritten, they are set to the closer end of the range defined by this percentage threshold.")
+	acceptanceOffset     = flag.Int("acceptance-offset", 20, "A number from range 0-100. The dependent's resources are rewritten when they deviate from expected by a percentage that is higher than this threshold. Can't be lower than recommendation-offset.")
 	// Flags to identify the container to nanny.
 	podNamespace  = flag.String("namespace", os.Getenv("MY_POD_NAMESPACE"), "The namespace of the ward. This defaults to the nanny pod's own namespace.")
 	deployment    = flag.String("deployment", "", "The name of the deployment being monitored. This is required.")
@@ -48,12 +51,20 @@ var (
 	containerName = flag.String("container", "pod-nanny", "The name of the container to watch. This defaults to the nanny itself.")
 	// Flags to control runtime behavior.
 	pollPeriodMillis = flag.Int("poll-period", 10000, "The time, in milliseconds, to poll the dependent container.")
-	estimator  = flag.String("estimator", "linear", "The estimator to use. Currently supported: linear, exponential")
+	estimator        = flag.String("estimator", "linear", "[DEPRECATED] No-op. Can be set to: linear, exponential")
 )
+
+func checkPercentageBounds(flagName string, flagValue int) {
+	if flagValue < 0 || flagValue > 100 {
+		log.Fatal("%s flag must be between 0 and 100 inclusively, was %d.", flagName, flagValue)
+	}
+}
 
 func main() {
 	// First log our starting config, and then set up.
 	log.Infof("Invoked by %v", os.Args)
+	// Add standard go flags to the flag set, to enable e.g. setting glog flags.
+	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
 
 	// Perform further validation of flags.
@@ -61,9 +72,18 @@ func main() {
 		log.Fatal("Must specify a deployment.")
 	}
 
-	if *threshold < 0 || *threshold > 100 {
-		log.Fatalf("Threshold must be between 0 and 100 inclusively, was %d.", threshold)
+	checkPercentageBounds("threshold", *threshold)
+
+	if *threshold != 0 {
+		if *recommendationOffset != 10 || *acceptanceOffset != 20 {
+			log.Fatal("Can't use both threshold and acceptance/recommendation-offset flags!")
+		}
+		*recommendationOffset = *threshold / 2
+		*acceptanceOffset = *threshold
 	}
+
+	checkPercentageBounds("recommendation-offset", *recommendationOffset)
+	checkPercentageBounds("acceptance-offset", *acceptanceOffset)
 
 	pollPeriod := time.Millisecond * time.Duration(*pollPeriodMillis)
 	log.Infof("Poll period: %+v", pollPeriod)
@@ -111,20 +131,21 @@ func main() {
 
 	log.Infof("Resources: %+v", resources)
 
-	var est nanny.ResourceEstimator
-	if *estimator == "linear" {
-		est = nanny.LinearEstimator{
-			Resources: resources,
-		}
-	} else if *estimator == "exponential" {
-		est = nanny.ExponentialEstimator{
-			Resources:   resources,
-			ScaleFactor: 1.5,
-		}
+	if *estimator == "linear" || *estimator == "exponential" {
+		log.Warning("estimator flag is deprecated.")
 	} else {
-		log.Fatalf("Estimator %s not supported", *estimator)
+		log.Fatalf("Unknown value %s provided for estimator flag", *estimator)
 	}
 
 	// Begin nannying.
-	nanny.PollAPIServer(k8s, est, *containerName, pollPeriod, uint64(*threshold))
+	nanny.PollAPIServer(
+		k8s,
+		nanny.Estimator{
+			AcceptanceOffset:     int64(*acceptanceOffset),
+			RecommendationOffset: int64(*recommendationOffset),
+			Resources:            resources,
+		},
+		*containerName,
+		pollPeriod,
+		uint64(*threshold))
 }
