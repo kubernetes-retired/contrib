@@ -32,14 +32,17 @@ type Resource struct {
 	Name               api.ResourceName
 }
 
+// ResourceListPair is a pair of ResourceLists, denoting a range.
 type ResourceListPair struct {
 	lower, upper api.ResourceList
 }
 
+// EstimatorResult is the result of the resource Estimation, used by Estimator struct.
 type EstimatorResult struct {
 	RecommendedRange, AcceptableRange ResourceListPair
 }
 
+// Estimator is a struct used for estimating accepted and recommended resource requirements.
 type Estimator struct {
 	Resources            []Resource
 	AcceptanceOffset     int64
