@@ -18,7 +18,7 @@ package main
 
 import (
 	"flag"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/golang/glog"
@@ -27,33 +27,57 @@ import (
 	v3 "google.golang.org/api/monitoring/v3"
 
 	"k8s.io/contrib/prometheus-to-sd/config"
+	"k8s.io/contrib/prometheus-to-sd/flags"
 	"k8s.io/contrib/prometheus-to-sd/translator"
 )
 
 var (
-	host       = flag.String("target-host", "localhost", "The monitored component's hostname.")
-	port       = flag.Uint("target-port", 80, "The monitored component's port.")
-	component  = flag.String("component", "", "Required: The monitored target's name.")
+	host       = flag.String("target-host", "localhost", "The monitored component's hostname. DEPRECATED: Use --source instead.")
+	port       = flag.Uint("target-port", 80, "The monitored component's port. DEPRECATED: Use --source instead.")
+	component  = flag.String("component", "", "The monitored target's name. DEPRECATED: Use --source instead.")
 	resolution = flag.Duration("metrics-resolution", 60*time.Second,
 		"The resolution at which prometheus-to-sd will scrape the component for metrics.")
 	metricsPrefix = flag.String("stackdriver-prefix", "container.googleapis.com/master",
 		"Prefix that is appended to every metric.")
 	whitelisted = flag.String("whitelisted-metrics", "",
-		"Comma-separated list of whitelisted metrics. If empty all metrics will be exported.")
+		"Comma-separated list of whitelisted metrics. If empty all metrics will be exported. DEPRECATED: Use --source instead.")
+	autoWhitelistMetrics = flag.Bool("auto-whitelist-metrics", false,
+		"If component has no whitelisted metrics, prometheus-to-sd will fetch them from Stackdriver.")
+	autoWhitelistMetricsResolution = flag.Duration("auto-whitelist-metrics-resolution", 10*time.Minute,
+		"The resolution at which prometheus-to-sd will scrape metric descriptors from Stackdriver.")
 	apioverride = flag.String("api-override", "",
 		"The stackdriver API endpoint to override the default one used (which is prod).")
+	source = flags.Uris{}
 )
 
 func main() {
 	flag.Set("logtostderr", "true")
+	flag.Var(&source, "source", "source(s) to watch in [component-name]:http://host:port?whitelisted=a,b,c format")
+
 	defer glog.Flush()
 	flag.Parse()
 
-	if *component == "" {
-		glog.Fatalf("--component flag is required")
+	var sourceConfigs []config.SourceConfig
+
+	for _, c := range source {
+		if sourceConfig, err := config.ParseSourceConfig(c); err != nil {
+			glog.Fatalf("Error while parsing source config flag %v: %v", c, err)
+		} else {
+			sourceConfigs = append(sourceConfigs, *sourceConfig)
+		}
 	}
 
-	glog.Infof("Running prometheus-to-sd, monitored target is %s %v:%v", *component, *host, *port)
+	if len(source) == 0 && *component != "" {
+		glog.Warningf("--component, --host, --port and --whitelisted flags are deprecated. Please use --source instead.")
+		portStr := strconv.FormatUint(uint64(*port), 10)
+
+		if sourceConfig, err := config.NewSourceConfig(*component, *host, portStr, *whitelisted); err != nil {
+			glog.Fatalf("Error while parsing --component flag: %v", err)
+		} else {
+			glog.Infof("Created a new source instance from --component flag: %+v", sourceConfig)
+			sourceConfigs = append(sourceConfigs, *sourceConfig)
+		}
+	}
 
 	gceConf, err := config.GetGceConfig(*metricsPrefix)
 	if err != nil {
@@ -71,20 +95,58 @@ func main() {
 	}
 	glog.V(4).Infof("Successfully created Stackdriver client")
 
-	var whitelistedList []string
-	if *whitelisted != "" {
-		whitelistedList = strings.Split(*whitelisted, ",")
+	if len(sourceConfigs) == 0 {
+		glog.Fatalf("No sources defined. Please specify at least one --source flag.")
 	}
 
-	for range time.Tick(*resolution) {
-		glog.V(4).Infof("Scraping metrics")
-		metrics, err := translator.GetPrometheusMetrics(*host, *port)
-		if err != nil {
-			glog.Warningf("Error while getting Prometheus metrics %v", err)
-			continue
-		}
+	for _, sourceConfig := range sourceConfigs {
+		glog.V(4).Infof("Starting goroutine for %+v", sourceConfig)
 
-		ts := translator.TranslatePrometheusToStackdriver(gceConf, *component, metrics, whitelistedList)
-		translator.SendToStackdriver(stackdriverService, gceConf, ts)
+		// Pass sourceConfig as a parameter to avoid using the last sourceConfig by all goroutines.
+		go func(sourceConfig config.SourceConfig) {
+			glog.Infof("Running prometheus-to-sd, monitored target is %s %v:%v", sourceConfig.Component, sourceConfig.Host, sourceConfig.Port)
+
+			signal := time.After(0)
+			useWhitelistedMetricsAutodiscovery := *autoWhitelistMetrics && len(sourceConfig.Whitelisted) == 0
+
+			for range time.Tick(*resolution) {
+				glog.V(4).Infof("Scraping metrics of component %v", sourceConfig.Component)
+
+				if useWhitelistedMetricsAutodiscovery {
+					select {
+					case <-signal:
+						glog.V(4).Infof("Updating metrics cache for component %v", sourceConfig.Component)
+						if metricDescriptors, err := translator.GetMetricDescriptors(stackdriverService, gceConf, sourceConfig.Component); err == nil {
+							sourceConfig.Whitelisted = nil
+							for metricName := range metricDescriptors {
+								sourceConfig.Whitelisted = append(sourceConfig.Whitelisted, metricName)
+							}
+						} else {
+							glog.Warningf("Error while fetching metric descriptors for %v: %v", sourceConfig.Component, err)
+						}
+
+						signal = time.After(*autoWhitelistMetricsResolution)
+					default:
+					}
+
+					if len(sourceConfig.Whitelisted) == 0 {
+						glog.V(4).Infof("Skipping %v component as there are no metric to expose.", sourceConfig.Component)
+						continue
+					}
+				}
+
+				metrics, err := translator.GetPrometheusMetrics(sourceConfig.Host, sourceConfig.Port)
+				if err != nil {
+					glog.Warningf("Error while getting Prometheus metrics %v", err)
+					continue
+				}
+
+				ts := translator.TranslatePrometheusToStackdriver(gceConf, sourceConfig.Component, metrics, sourceConfig.Whitelisted)
+				translator.SendToStackdriver(stackdriverService, gceConf, ts)
+			}
+		}(sourceConfig)
 	}
+
+	// As worker goroutines work forever, block main thread as well.
+	<-make(chan int)
 }
