@@ -105,15 +105,39 @@ $ curl http://104.197.63.17/nginxsvc
 ```
 
 #### HTTPS
-HTTPS services are handled at L4 (see [wishlist](#wishlist))
-```console
-$ curl https://104.197.63.17:8080 -k
+HTTPS services can be bridged to re-encrypt the client side traffic using service-loadbalancer's ssl certificate. To use this mode you need to annotate the service with ``` serviceloadbalancer/lb.sslBridge: "true" ``` as seen below.
+
+```yaml
+metadata:
+  name: myservice
+  annotations:
+    serviceloadbalancer/lb.sslBridge: "true"
+  labels:
 ```
 
-A couple of points to note:
-- The nginxsvc is specified in the tcpServices of the loadbalancer.json manifest.
-- The https service is accessible directly on the specified port, which matches the *service port*.
-- You need to take care of ensuring there is no collision between these service ports on the node.
+You can bridge SSL traffic only for a subset of ServicePorts by adding annotations per ServicePort with ``` serviceloadbalancer/lb.sslBridge.svc-port1: "true" ``` as below.
+Also you can define ACL rules per ServicePort with ``` serviceloadbalancer/lb.host.svc-port1: "svc-port1.mydomain" ``` or ``` serviceloadbalancer/lb.aclMatch.svc-port1: "/svc-port1" ```
+
+```yaml
+metadata:
+  name: myservice
+  annotations:
+    serviceloadbalancer/lb.sslBridge.svc-port1: "true"
+    serviceloadbalancer/lb.host.svc-port1: "svc-port1.mydomain"
+    serviceloadbalancer/lb.host.svc-port2: "svc-port2.mydomain"
+spec:
+  ports:
+    -
+# SSL/TLS backend - re-encrypt traffic
+      name: 'svc-port1'
+      port: 443
+      targetPort: 443
+    -
+# HTTP backend - forward plain-text traffic
+      name: 'svc-port2'
+      port: 80
+      targetPort: 80
+```
 
 #### SSL Termination
 To terminate SSL for a service you just need to annotate the service with ``` serviceloadbalancer/lb.sslTerm: "true" ``` as seen below. This will cause your service to be served behind /{service-name} or /{service-name}:{port} if not running on port 80. This mimics the standard http functionality.

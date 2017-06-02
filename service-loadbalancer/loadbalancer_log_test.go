@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"os"
 	"testing"
 )
 
@@ -27,4 +28,5 @@ func TestSyslogSocket(t *testing.T) {
 	}
 
 	server.Shutdown()
+	os.Remove("./test-syslog.socket")
 }
