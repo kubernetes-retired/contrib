@@ -1,0 +1,17 @@
+vrrp_instance vips {
+  interface {{ .interface  }}
+  virtual_router_id {{ .virtualRouterID }}
+  nopreempt
+  advert_int 1
+  authentication {
+          auth_type PASS
+          auth_pass {{ .password }}
+  }
+  track_interface {
+    {{ .interface  }}
+  }
+
+  virtual_ipaddress { {{ range .vips  }}
+    {{ . }}{{ end }}
+  }
+}

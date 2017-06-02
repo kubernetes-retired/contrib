@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: kube-loadbalancer-rc
+  labels:
+    app: kube-loadbalancer
+spec:
+  replicas: 1
+  selector:
+    app: kube-loadbalancer
+  template:
+    metadata:
+      labels:
+        app: kube-loadbalancer
+    spec:
+      containers:
+      - env:
+        - name: OS_REGION_NAME
+          value: RegionOne
+        - name: OS_AUTH_URL
+          value: http://192.168.41.64:5000/v2.0
+        - name: OS_USERNAME
+          value: admin
+        - name: OS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: os-password
+              key: password
+        - name: OS_TENANT_NAME
+          value: admin
+        - name: OS_SUBNET_ID
+          value: 9749b2b9-dfe5-40d6-b5fa-266a44f8a3b7
+        image: kokhang/kube-loadbalancer:0.1
+        imagePullPolicy: Always
+        name: kube-loadbalancer
+        args:
+          - --backend=openstack-lbaasv2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: os-password
+type: Opaque
+data:
+  password: cGFzc3dvcmQ= # Encrypted password here. Value of: $echo -n password | base64

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: configmap-coffee-svc
+    labels:
+        app: loadbalancer
+data:
+    namespace: "default"
+    target-service-name: "coffee-svc"

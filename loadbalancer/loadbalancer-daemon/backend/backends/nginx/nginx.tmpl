@@ -1,0 +1,40 @@
+{{range $upstream := .Upstreams}}
+upstream {{$upstream.Name}} {
+    server {{$upstream.UpstreamServer.Address}}:{{$upstream.UpstreamServer.Port}};
+}{{end}}
+
+{{range $server := .Servers}}
+server {
+    listen {{if $server.BindIP}}{{$server.BindIP}}:{{end}}{{$server.BindPort}};
+    {{if $server.SSL}}
+    listen {{$server.BindPort}} ssl;
+    ssl_certificate {{$server.SSLCertificate}};
+    ssl_certificate_key {{$server.SSLCertificateKey}};
+    {{end}}
+
+    {{if $server.Location.Path}}
+    server_name {{$server.Name}};
+    {{end}}
+
+    {{if $server.SSL}}
+    if ($scheme = http) {
+        return 301 https://$host$request_uri;
+    }
+    {{end}}
+
+    {{if $server.Location.Path}}
+    location {{$server.Location.Path}} {
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://{{$server.Location.Upstream.Name}};
+    }
+    {{else}}
+    proxy_connect_timeout  5;
+    proxy_timeout          60;
+    proxy_pass             {{$server.Location.Upstream.Name}};
+    {{end}}
+}{{end}}
