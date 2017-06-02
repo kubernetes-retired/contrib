@@ -94,7 +94,7 @@ func translateFamily(config *config.GceConfig, component string, family *dto.Met
 
 // assumes that mType is Counter, Gauge or Histogram
 func translateOne(config *config.GceConfig, component string, name string, mType dto.MetricType, metric *dto.Metric, start, end time.Time) *v3.TimeSeries {
-	fullName := fmt.Sprintf("%s/%s/%s", config.MetricsPrefix, component, name)
+	fullName := GetMetricType(config, component, name)
 
 	metricKind := "GAUGE"
 	interval := &v3.TimeInterval{
