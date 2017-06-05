@@ -53,8 +53,8 @@ func init() {
 	flag.BoolVar(&printResults, "print", true, "print results to standard out")
 	flag.BoolVar(&debug, "debug", true, "print debug to log")
 	flag.BoolVar(&deletePods, "cleanup", false, "delete test pods when done")
-	flag.StringVar(&serverNode, "serverNode", "", "kubernetes.io/hostname label value for nodeSelector for server")
-	flag.StringVar(&clientNode, "clientNode", "", "kubernetes.io/hostname label value for nodeSelector for client")
+	flag.StringVar(&serverNode, "serverNode", "", "kubernetes.io/hostname label value for nodeSelector for Server")
+	flag.StringVar(&clientNode, "clientNode", "", "kubernetes.io/hostname label value for nodeSelector for Client")
 }
 
 func main() {
