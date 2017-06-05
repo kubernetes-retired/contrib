@@ -51,10 +51,19 @@ type EventWatcherConfig struct {
 	OnList       OnListFunc
 	ResyncPeriod time.Duration
 	Handler      EventHandler
+	// If true, watcher will initialize a cache to process event object updates
+	// as OnUpdate actions, with populating previous events. Otherwise, store
+	// will be faked, so that each update will trigger OnAdd method.
+	StoreEvents bool
 }
 
 // NewEventWatcher create a new watcher that only watches the events resource.
 func NewEventWatcher(client kubernetes.Interface, config *EventWatcherConfig) watchers.Watcher {
+	storageType := watchers.FakeStorage
+	if config.StoreEvents {
+		storageType = watchers.TTLStorage
+	}
+
 	return watchers.NewWatcher(&watchers.WatcherConfig{
 		ListerWatcher: &cache.ListWatch{
 			ListFunc: func(options meta_v1.ListOptions) (runtime.Object, error) {
@@ -72,7 +81,7 @@ func NewEventWatcher(client kubernetes.Interface, config *EventWatcherConfig) wa
 		StoreConfig: &watchers.WatcherStoreConfig{
 			KeyFunc:     cache.DeletionHandlingMetaNamespaceKeyFunc,
 			Handler:     newEventHandlerWrapper(config.Handler),
-			StorageType: watchers.TTLStorage,
+			StorageType: storageType,
 			StorageTTL:  eventStorageTTL,
 		},
 		ResyncPeriod: config.ResyncPeriod,
