@@ -1,0 +1,7 @@
+source "https://rubygems.org"
+
+gem 'fluentd', '~>0.12.31'
+gem 'fluent-plugin-record-reformer', '~>0.8.3'
+gem 'fluent-plugin-systemd', '~>0.0.7'
+gem 'fluent-plugin-google-cloud', '~>0.5.6'
+gem 'fluent-plugin-detect-exceptions', '~>0.0.5'
