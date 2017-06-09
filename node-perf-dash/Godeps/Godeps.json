@@ -1,7 +1,7 @@
 {
 	"ImportPath": "k8s.io/contrib/node-perf-dash",
 	"GoVersion": "go1.6",
-	"GodepVersion": "v74",
+	"GodepVersion": "v79",
 	"Deps": [
 		{
 			"ImportPath": "github.com/golang/glog",
@@ -14,8 +14,13 @@
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/test/e2e/perftype",
-			"Comment": "v1.4.0-alpha.3-255-g0167f74",
-			"Rev": "0167f74c6cf5dc17abe451fe77f728ad553c0383"
+			"Comment": "v1.8.0-alpha.0-185-g1ab2320990",
+			"Rev": "1ab2320990f9937fd15986f5830840f3fb67caad"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/test/e2e_node/perftype",
+			"Comment": "v1.8.0-alpha.0-185-g1ab2320990",
+			"Rev": "1ab2320990f9937fd15986f5830840f3fb67caad"
 		}
 	]
 }

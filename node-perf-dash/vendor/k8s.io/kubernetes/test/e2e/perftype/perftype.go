@@ -18,6 +18,11 @@ package perftype
 
 // TODO(random-liu): Replace this with prometheus' data model.
 
+// CurrentKubeletPerfMetricsVersion is the current kubelet performance metrics
+// version. This is used by mutiple perf related data structures. We should
+// bump up the version each time we make an incompatible change to the metrics.
+const CurrentKubeletPerfMetricsVersion = "v2"
+
 // The following performance data structures are generalized and well-formatted.
 // They can be pretty printed in json format and be analyzed by other performance
 // analyzing tools, such as Perfdash (k8s.io/contrib/perfdash).
