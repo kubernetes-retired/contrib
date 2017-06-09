@@ -26,6 +26,8 @@ import (
 	"time"
 )
 
+// TODO(yguo0905): Put each component into its own package.
+
 const (
 	// TODO(coufon): make them configurable?
 	pollDuration = 10 * time.Minute
@@ -42,6 +44,15 @@ var (
 	localDataDir = flag.String("local-data-dir", "", "The path to test data directory")
 	tracing      = flag.Bool("tracing", false, "If true, try to get tracing data from Kubelet log")
 	jenkinsJob   = flag.String("jenkins-job", "kubelet-benchmark-gce-e2e-ci", "The Jenkins projects to display, separated by ,")
+)
+
+var (
+	// allTestData stores all parsed perf and time series data in memeory
+	// for each job.
+	allTestData = map[string]TestToBuildData{}
+
+	// allTestInfo stores the test description of all tests.
+	allTestInfo = TestInfo{Info: make(map[string]string)}
 )
 
 func main() {
@@ -74,13 +85,13 @@ func main() {
 
 	// Initialize test result map.
 	for _, job := range jobs {
-		allTestData[job] = &TestToBuildData{}
+		allTestData[job] = TestToBuildData{}
 	}
 
 	// Grab test results but not start webserver.
 	if !*www {
 		for _, job := range jobs {
-			err = GetData(job, downloader)
+			err = Parse(allTestData, &allTestInfo, job, downloader)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
 				os.Exit(1)
@@ -101,7 +112,7 @@ func main() {
 		go func(job string) {
 			for {
 				fmt.Printf("Fetching new data...\n")
-				err = GetData(job, downloader)
+				err = Parse(allTestData, &allTestInfo, job, downloader)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
 					time.Sleep(errorDelay)
@@ -116,7 +127,7 @@ func main() {
 	for _, job := range jobs {
 		http.Handle(fmt.Sprintf("/data/%s", job), allTestData[job])
 	}
-	http.Handle("/testinfo", &testInfoMap)
+	http.Handle("/testinfo", &allTestInfo)
 	http.Handle("/jobs", &jobs)
 	http.Handle("/", http.FileServer(http.Dir(*wwwDir)))
 	http.ListenAndServe(*addr, nil)
