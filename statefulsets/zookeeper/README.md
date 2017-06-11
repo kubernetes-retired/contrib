@@ -1,7 +1,7 @@
 #Kubernetes ZooKeeper K8SZK
 This project contains a Docker image meant to facilitate the deployment of 
 [Apache ZooKeeper](https://zookeeper.apache.org/) on [Kubernetes](http://kubernetes.io/) using 
-[StatefulSets](http://kubernetes.io/docs/abstractions/controllers/petset/). 
+[StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). 
 ##Limitations
 1. Scaling is not currently supported. An ensemble's membership can not be updated in a safe way 
 in ZooKeeper 3.4.9 (The current stable release).
@@ -23,6 +23,7 @@ configuration is sym linked into the /usr/etc/zookeeper/, and all executables ar
 /usr/bin. The ZooKeeper data directories are contained in /var/lib/zookeeper. This is identical to 
 the RPM distribution that users should be familiar with.
 ##Configuration
+
 ###Headless Service
 The ZooKeeper Stateful Set requires a Headless Service to control the network domain for the 
 ZooKeeper processes. An example configuration is provided below.
@@ -30,11 +31,9 @@ ZooKeeper processes. An example configuration is provided below.
 apiVersion: v1
 kind: Service
 metadata:
-  annotations:
-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
-  name: zk-headless
+  name: zk-svc
   labels:
-    app: zk-headless
+    app: zk-svc
 spec:
   ports:
   - port: 2888
@@ -43,7 +42,7 @@ spec:
     name: leader-election
   clusterIP: None
   selector:
-    app: zk-headless
+    app: zk-svc
 ```
 Note that the Service contains two ports. The server port is used for followers to tail the leaders
 even log, and the leader-election port is used by the ensemble to perform leader election.
