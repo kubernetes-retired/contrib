@@ -32,6 +32,11 @@ import (
 	nodeperftype "k8s.io/kubernetes/test/e2e_node/perftype"
 )
 
+// supportedMetricVersion is the metric version supported in node-perf-dash.
+// node-perf-dash will only parse the metrics with this exact version -- any
+// older or newer versions will be ignored.
+const supportedMetricVersion = "v2"
+
 var (
 	// buildFIFOs is a map from (job, test, node) to a list of build
 	// numbers. It is used to find and the oldest build for a
@@ -158,6 +163,11 @@ func populatePerformanceData(testData TestToBuildData, testInfo *TestInfo, testT
 			return fmt.Errorf("failed to parse performance data: %v\ndata=\n%v", err, string(data))
 		}
 
+		// Ignore the metrics with unsupported versions.
+		if obj.Version != supportedMetricVersion {
+			continue
+		}
+
 		// Populate the metadata (testInfo and testTime) with the
 		// version and labels in the perf data.
 		if err := populateMetadata(testInfo, testTime, obj.Labels); err != nil {
@@ -167,7 +177,7 @@ func populatePerformanceData(testData TestToBuildData, testInfo *TestInfo, testT
 		// Populate the result (testData) with the perf data.
 		node := formatNodeName(obj.Labels, job)
 		test := obj.Labels["test"]
-		data := testData.GetDataPerBuild(job, build, test, node, obj.Version)
+		data := testData.GetDataPerBuild(job, build, test, node)
 		data.Perf = append(data.Perf, obj.DataItems...)
 
 		removeStaledBuilds(testData, job, test, node, build)
@@ -190,6 +200,11 @@ func populateTimeSeriesData(testData TestToBuildData, testInfo *TestInfo, testTi
 			return fmt.Errorf("failed to parse time_series data: %v\ndata=\n%v", err, string(data))
 		}
 
+		// Ignore the metrics with unsupported versions.
+		if obj.Version != supportedMetricVersion {
+			continue
+		}
+
 		// Populate the metadata (testInfo and testTime) with the
 		// version and labels in the perf data.
 		if err := populateMetadata(testInfo, testTime, obj.Labels); err != nil {
@@ -199,7 +214,7 @@ func populateTimeSeriesData(testData TestToBuildData, testInfo *TestInfo, testTi
 		// Populate the result (testData) with the perf data.
 		node := formatNodeName(obj.Labels, job)
 		test := obj.Labels["test"]
-		data := testData.GetDataPerBuild(job, build, test, node, obj.Version)
+		data := testData.GetDataPerBuild(job, build, test, node)
 		data.Series = append(data.Series, obj)
 
 		removeStaledBuilds(testData, job, test, node, build)
@@ -253,6 +268,11 @@ func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, resul
 					continue
 				}
 
+				// We do not check the obj's version against
+				// the supportedMetricVersion because this data
+				// is generated internally by
+				// ParseKubeletLog().
+
 				testName, nodeName := obj.Labels["test"], formatNodeName(obj.Labels, job)
 
 				if _, found := result[testName]; !found {
@@ -268,10 +288,8 @@ func parseTracingData(scanner *bufio.Scanner, job string, buildNumber int, resul
 					continue
 				}
 
-				if result[testName].Version == obj.Version {
-					data := result.GetDataPerBuild(job, build, testName, nodeName, obj.Version)
-					data.Series = append(data.Series, obj)
-				}
+				data := result.GetDataPerBuild(job, build, testName, nodeName)
+				data.Series = append(data.Series, obj)
 
 				buff.Reset()
 			}

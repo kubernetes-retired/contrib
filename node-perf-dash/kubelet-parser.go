@@ -26,8 +26,6 @@ import (
 	"regexp"
 	"sort"
 	"time"
-
-	"k8s.io/kubernetes/test/e2e/perftype"
 )
 
 const (
@@ -194,8 +192,9 @@ func GrabTracingKubelet(d Downloader, job string, buildNumber int, nodeName stri
 			"test": sortedTestTime[currentTestIndex].TestName,
 			"node": nodeName,
 		},
-		Version: perftype.CurrentKubeletPerfMetricsVersion,
-		Data:    map[string]int64arr{},
+		Data: map[string]int64arr{},
+		// Version is unspecified since this data will only be used
+		// internally by parseTracingData().
 	}
 	statePerPod := map[string]*PodState{}
 
@@ -222,8 +221,9 @@ func GrabTracingKubelet(d Downloader, job string, buildNumber int, nodeName stri
 						"test": sortedTestTime[currentTestIndex].TestName,
 						"node": nodeName,
 					},
-					Version: perftype.CurrentKubeletPerfMetricsVersion,
-					Data:    map[string]int64arr{},
+					Data: map[string]int64arr{},
+					// Version is unspecified since this data will only be used
+					// internally by parseTracingData().
 				}
 				statePerPod = map[string]*PodState{}
 				testStarted = false

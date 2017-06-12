@@ -36,23 +36,20 @@ type DataPerNode map[string]*DataPerBuild
 
 // DataPerTest contains perf/time series data for a test.
 type DataPerTest struct {
-	Data    map[string]DataPerNode `json:"data"`
-	Job     string                 `json:"job"`
-	Version string                 `json:"version"`
+	Data map[string]DataPerNode `json:"data"`
+	Job  string                 `json:"job"`
 }
 
 // TestToBuildData is a map from job name to DataPerTest.
 type TestToBuildData map[string]*DataPerTest
 
 // GetDataPerBuild creates a DataPerBuild structure for the given build using
-// the specified job, test, node and version if it does not exist, and then
-// returns it.
-func (b TestToBuildData) GetDataPerBuild(job, build, test, node, version string) *DataPerBuild {
+// the specified job, test, and node if it does not exist, and then returns it.
+func (b TestToBuildData) GetDataPerBuild(job, build, test, node string) *DataPerBuild {
 	if _, ok := b[test]; !ok {
 		b[test] = &DataPerTest{
-			Job:     job,
-			Version: version,
-			Data:    map[string]DataPerNode{},
+			Job:  job,
+			Data: map[string]DataPerNode{},
 		}
 	}
 	if _, ok := b[test].Data[node]; !ok {
