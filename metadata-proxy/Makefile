@@ -15,8 +15,8 @@
 .PHONY:	build push
 
 # TAG is the version to build and push to.
-PREFIX = gcr.io/google_containers
-TAG = 0.1
+PREFIX = gcr.io/google-containers
+TAG = 0.1.1
 
 build:
 	# We explicitly add "--pull" flag to always fetch the latest version
