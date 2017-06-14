@@ -2,7 +2,7 @@
 This project contains a Docker image meant to facilitate the deployment of 
 [Apache ZooKeeper](https://zookeeper.apache.org/) on [Kubernetes](http://kubernetes.io/) using 
 [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). 
-##Limitations
+## Limitations
 1. Scaling is not currently supported. An ensemble's membership can not be updated in a safe way 
 in ZooKeeper 3.4.9 (The current stable release).
 2. Observers are currently not supported. Contributions are welcome.
