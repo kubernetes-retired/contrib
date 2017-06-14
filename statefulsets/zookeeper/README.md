@@ -48,7 +48,7 @@ spec:
 ```
 Note that the Service contains two ports. The server port is used for followers to tail the leaders
 even log, and the leader-election port is used by the ensemble to perform leader election.
-###Stateful Set
+### Stateful Set
 The Stateful Set configuration must match the Headless Service, and it must provide the number of 
 replicas. In the example below we request a ZooKeeper ensemble of size 3. 
 **As weighted quorums are not supported, it is imperative that an odd number of replicas be chosen.
@@ -61,7 +61,7 @@ kind: StatefulSet
 metadata:
   name: zk
 spec:
-  serviceName: zk-headless
+  serviceName: zk-svc
   replicas: 3
 ```
 ### Container Configuration
