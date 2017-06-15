@@ -28,13 +28,17 @@ import (
 	"time"
 )
 
+const (
+	timeSeriesTag = "[Result:TimeSeries]"
+	timeSeriesEnd = "[Finish:TimeSeries]"
+
+	kubeletLogFile = "kubelet.log"
+)
+
 // This parser does not require additional probes for kubelet tracing. It is currently used by node-perf-dash.
 // TODO(coufon): we plan to adopt event for tracing in future.
 
 const (
-	// TODO(coufon): define it in Kubernetes packages (perftype) and use it.
-	tracingVersion = "v1"
-
 	// Timestamp format of test result log (build-log.txt).
 	testLogTimeFormat = "2006 Jan 2 15:04:05.000"
 	// Timestamp format of kubelet log (kubelet.log).
@@ -105,7 +109,7 @@ func (ete TestTime) Add(testName, nodeName, Endtime string) {
 		ete[nodeName] = make(map[string]time.Time)
 	}
 	if _, ok := ete[nodeName][testName]; !ok {
-		end, err := time.Parse(testLogTimeFormat, currentYear+" "+Endtime)
+		end, err := time.Parse(testLogTimeFormat, Endtime)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -188,8 +192,9 @@ func GrabTracingKubelet(d Downloader, job string, buildNumber int, nodeName stri
 			"test": sortedTestTime[currentTestIndex].TestName,
 			"node": nodeName,
 		},
-		Version: tracingVersion,
-		Data:    map[string]int64arr{},
+		Data: map[string]int64arr{},
+		// Version is unspecified since this data will only be used
+		// internally by parseTracingData().
 	}
 	statePerPod := map[string]*PodState{}
 
@@ -216,8 +221,9 @@ func GrabTracingKubelet(d Downloader, job string, buildNumber int, nodeName stri
 						"test": sortedTestTime[currentTestIndex].TestName,
 						"node": nodeName,
 					},
-					Version: tracingVersion,
-					Data:    map[string]int64arr{},
+					Data: map[string]int64arr{},
+					// Version is unspecified since this data will only be used
+					// internally by parseTracingData().
 				}
 				statePerPod = map[string]*PodState{}
 				testStarted = false
