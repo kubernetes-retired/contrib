@@ -1,7 +1,7 @@
 all: push
 
 # See pod.yaml for the version currently running-- bump this ahead before rebuilding!
-TAG = v0.2
+TAG = v0.3
 
 REPO = gcr.io/google_containers
 
