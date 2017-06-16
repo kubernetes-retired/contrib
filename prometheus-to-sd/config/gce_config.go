@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	gce "cloud.google.com/go/compute/metadata"
+	"strings"
 )
 
 // GceConfig aggregates all GCE related configuration parameters.
@@ -50,6 +51,10 @@ func GetGceConfig(metricsPrefix string) (*GceConfig, error) {
 	cluster, err := gce.InstanceAttributeValue("cluster-name")
 	if err != nil {
 		return nil, fmt.Errorf("error while getting cluster name: %v", err)
+	}
+	cluster = strings.TrimSpace(cluster)
+	if cluster == "" {
+		return nil, fmt.Errorf("cluster-name metadata was empty")
 	}
 
 	instance, err := gce.Hostname()
