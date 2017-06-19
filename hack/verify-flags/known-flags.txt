@@ -1,3 +1,4 @@
+acceptance-offset
 admin-port
 alias-file
 allowed-shame-domains
@@ -97,13 +98,13 @@ nonblocking-jenkins-jobs
 number-of-old-test-results
 ok-total-unready-count
 on-change
-one-time
 on-start
+one-time
 path-label-config
 pod-scheduled-timeout
 poll-period
-presubmit-jobs
 pr-mungers
+presubmit-jobs
 prometheus-addr
 prometheus-endpoint
 prometheus-namespace
@@ -117,6 +118,7 @@ pull-key
 pull-logs-dir
 rate-limit
 rate-limit-burst
+recommendation-offset
 relnote-filter
 repo-dir
 required-contexts
@@ -168,14 +170,14 @@ use-ip
 use-kubernetes-cluster-service
 use-real-cloud
 use-reviewers
-user-whitelist
 use-unicast
+user-whitelist
 verify-unschedulable-pods
 vrid
 vrrp-password
 watch-all-namespaces
 watch-namespace
 weak-stable-jobs
-whitelisted-metrics
 whitelist-override-label
+whitelisted-metrics
 write-status-configmap
