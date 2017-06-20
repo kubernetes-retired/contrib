@@ -17,6 +17,7 @@ The image is built such that the ZooKeeper process is designated to run as a non
 ## Configuration
 
 ### Headless Service
+
 The ZooKeeper Stateful Set requires a Headless Service to control the network domain for the ZooKeeper processes. An example configuration is provided below.
 
 ```yaml
@@ -41,8 +42,7 @@ Note that the Service contains two ports. The server port is used for followers 
 
 ### Stateful Set
 
-The Stateful Set configuration must match the Headless Service, and it must provide the number of replicas. In the example below we request a ZooKeeper ensemble of size 3. **As weighted quorums are not supported, it is imperative that an odd number of replicas be chosen. Moreover, the number of replicas should be either 1, 3, 5, or 7. Ensembles may be scaled to larger membership for read fan out, but, as this will adversely impact write performance, careful thought
-should be given to selecting a larger value.**
+The Stateful Set configuration must match the Headless Service, and it must provide the number of replicas. In the example below we request a ZooKeeper ensemble of size 3. **As weighted quorums are not supported, it is imperative that an odd number of replicas be chosen. Moreover, the number of replicas should be either 1, 3, 5, or 7. Ensembles may be scaled to larger membership for read fan out, but, as this will adversely impact write performance, careful thought should be given to selecting a larger value.**
 
 ```yaml
 apiVersion: apps/v1beta1
@@ -50,7 +50,7 @@ kind: StatefulSet
 metadata:
   name: zk
 spec:
-  serviceName: zk-headless
+  serviceName: zk-svc
   replicas: 3
 ```
 ### Container Configuration
