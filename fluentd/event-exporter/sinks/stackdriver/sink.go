@@ -61,6 +61,8 @@ type sdSink struct {
 	// and takes it out upon completion. Channel's capacity is set to the
 	// maximum level of parallelism, so any extra request will lock on addition.
 	concurrencyChannel chan struct{}
+
+	beforeFirstList bool
 }
 
 func newSdSink(writer sdWriter, clock clock.Clock, config *sdSinkConfig) *sdSink {
@@ -75,6 +77,8 @@ func newSdSink(writer sdWriter, clock clock.Clock, config *sdSinkConfig) *sdSink
 		timer:              nil,
 		fakeTimeChannel:    make(chan time.Time),
 		concurrencyChannel: make(chan struct{}, config.MaxConcurrency),
+
+		beforeFirstList: true,
 	}
 }
 
@@ -106,8 +110,11 @@ func (s *sdSink) OnDelete(*api_v1.Event) {
 }
 
 func (s *sdSink) OnList(list *api_v1.EventList) {
-	s.logEntryChannel <- s.logEntryFactory.FromMessage("Event exporter started watching. " +
-		"Some events may have been lost up to this point.")
+	if s.beforeFirstList {
+		s.logEntryChannel <- s.logEntryFactory.FromMessage("Event exporter started watching. " +
+			"Some events may have been lost up to this point.")
+		s.beforeFirstList = false
+	}
 }
 
 func (s *sdSink) Run(stopCh <-chan struct{}) {
