@@ -121,3 +121,38 @@ func TestBatchSizeLimit(t *testing.T) {
 		t.Fatalf("writeCalledTimes = %d, expected 1", writeCalledTimes)
 	}
 }
+
+func TestInitialList(t *testing.T) {
+	var writeCalledTimes int32
+	w := &fakeSdWriter{
+		writeFunc: func([]*sd.LogEntry, string, *sd.MonitoredResource) int {
+			atomic.AddInt32(&writeCalledTimes, 1)
+			return 0
+		},
+	}
+	config := &sdSinkConfig{
+		Resource:       nil,
+		FlushDelay:     100 * time.Millisecond,
+		LogName:        "logname",
+		MaxConcurrency: 10,
+		MaxBufferSize:  10,
+	}
+	s := newSdSink(w, clock.NewFakeClock(time.Time{}), config)
+	go s.Run(wait.NeverStop)
+
+	s.OnList(&api_v1.EventList{})
+
+	time.Sleep(200 * time.Millisecond)
+
+	if writeCalledTimes != 1 {
+		t.Fatalf("writeCalledTimes = %d, expected 1", writeCalledTimes)
+	}
+
+	s.OnList(&api_v1.EventList{})
+
+	time.Sleep(200 * time.Millisecond)
+
+	if writeCalledTimes != 1 {
+		t.Fatalf("writeCalledTimes = %d, expected 1", writeCalledTimes)
+	}
+}
