@@ -4,7 +4,6 @@ allowed-shame-domains
 api-override
 api-token
 auto-whitelist-metrics
-auto-whitelist-metrics-resolution
 balance-algorithm
 batch-url
 block-path-config
@@ -87,6 +86,7 @@ max-nodes-total
 max-pr-number
 max-sync-failures
 max-total-unready-percentage
+metric-descriptors-resolution
 metrics-resolution
 min-pr-number
 min-replica-count
