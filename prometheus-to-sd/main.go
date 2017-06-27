@@ -23,6 +23,7 @@ import (
 
 	"github.com/golang/glog"
 	dto "github.com/prometheus/client_model/go"
+	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	v3 "google.golang.org/api/monitoring/v3"
@@ -69,7 +70,7 @@ func main() {
 	}
 	glog.Infof("GCE config: %+v", gceConf)
 
-	client := oauth2.NewClient(oauth2.NoContext, google.ComputeTokenSource(""))
+	client := oauth2.NewClient(context.Background(), google.ComputeTokenSource(""))
 	stackdriverService, err := v3.New(client)
 	if *apioverride != "" {
 		stackdriverService.BasePath = *apioverride
