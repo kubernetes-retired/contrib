@@ -41,15 +41,20 @@ func (ts ByMetricTypeReversed) Less(i, j int) bool {
 	return ts[i].Metric.Type > ts[j].Metric.Type
 }
 
-var gceConfig = &config.GceConfig{
-	Project:       "test-proj",
-	Zone:          "us-central1-f",
-	Cluster:       "test-cluster",
-	Instance:      "kubernetes-master.c.test-proj.internal",
-	MetricsPrefix: "container.googleapis.com/master",
+var commonConfig = &config.CommonConfig{
+	GceConfig: &config.GceConfig{
+		Project:       "test-proj",
+		Zone:          "us-central1-f",
+		Cluster:       "test-cluster",
+		Instance:      "kubernetes-master.c.test-proj.internal",
+		MetricsPrefix: "container.googleapis.com/master",
+	},
+	ContainerConfig: &config.ContainerConfig{
+		NamespaceId: "",
+		PodId:       "machine",
+	},
+	ComponentName: "testcomponent",
 }
-
-var component = "testcomponent"
 
 var metricTypeGauge = dto.MetricType_GAUGE
 var metricTypeCounter = dto.MetricType_COUNTER
@@ -170,7 +175,7 @@ var metricDescriptors = map[string]*v3.MetricDescriptor{
 func TestTranslatePrometheusToStackdriver(t *testing.T) {
 	epsilon := float64(0.001)
 
-	ts := TranslatePrometheusToStackdriver(gceConfig, component, metrics, []string{testMetricName, testMetricHistogram})
+	ts := TranslatePrometheusToStackdriver(commonConfig, metrics, []string{testMetricName, testMetricHistogram})
 
 	assert.Equal(t, 3, len(ts))
 	// TranslatePrometheusToStackdriver uses maps to represent data, so order of output is randomized.
@@ -229,7 +234,7 @@ func TestTranslatePrometheusToStackdriver(t *testing.T) {
 
 func TestMetricFamilyToMetricDescriptor(t *testing.T) {
 	for metricName, metric := range metrics {
-		metricDescriptor := MetricFamilyToMetricDescriptor(gceConfig, component, metric)
+		metricDescriptor := MetricFamilyToMetricDescriptor(commonConfig, metric)
 		expectedMetricDescriptor := metricDescriptors[metricName]
 		assert.Equal(t, metricDescriptor, expectedMetricDescriptor)
 	}

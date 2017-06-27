@@ -33,8 +33,33 @@ const (
 	processStartTimeMetric = "process_start_time_seconds"
 )
 
+var supportedMetricTypes = map[dto.MetricType]bool{
+	dto.MetricType_COUNTER:   true,
+	dto.MetricType_GAUGE:     true,
+	dto.MetricType_HISTOGRAM: true,
+}
+
 // TranslatePrometheusToStackdriver translates metrics in Prometheus format to Stackdriver format.
-func TranslatePrometheusToStackdriver(config *config.GceConfig, component string, metrics map[string]*dto.MetricFamily, whitelisted []string) []*v3.TimeSeries {
+func TranslatePrometheusToStackdriver(config *config.CommonConfig,
+	metrics map[string]*dto.MetricFamily,
+	whitelisted []string) []*v3.TimeSeries {
+
+	startTime := getStartTime(metrics)
+	metrics = filterWhitelisted(metrics, whitelisted)
+
+	var ts []*v3.TimeSeries
+	for name, metric := range metrics {
+		t, err := translateFamily(config, metric, startTime)
+		if err != nil {
+			glog.Warningf("Error while processing metric %s: %v", name, err)
+		} else {
+			ts = append(ts, t...)
+		}
+	}
+	return ts
+}
+
+func getStartTime(metrics map[string]*dto.MetricFamily) time.Time {
 	// For cumulative metrics we need to know process start time.
 	// If the process start time is not specified, assuming it's
 	// the unix 1 second, because Stackdriver can't handle
@@ -47,25 +72,13 @@ func TranslatePrometheusToStackdriver(config *config.GceConfig, component string
 	} else {
 		glog.Warningf("Metric %s invalid or not defined. Using %v instead. Cumulative metrics might be inaccurate.", processStartTimeMetric, startTime)
 	}
-	endTime := time.Now()
-
-	if len(whitelisted) > 0 {
-		metrics = filterWhitelisted(metrics, whitelisted)
-	}
-
-	var ts []*v3.TimeSeries
-	for name, metric := range metrics {
-		t, err := translateFamily(config, component, metric, startTime, endTime)
-		if err != nil {
-			glog.Warningf("Error while processing metric %s: %v", name, err)
-		} else {
-			ts = append(ts, t...)
-		}
-	}
-	return ts
+	return startTime
 }
 
 func filterWhitelisted(allMetrics map[string]*dto.MetricFamily, whitelisted []string) map[string]*dto.MetricFamily {
+	if len(whitelisted) == 0 {
+		return allMetrics
+	}
 	glog.V(4).Infof("Exporting only whitelisted metrics: %v", whitelisted)
 	res := map[string]*dto.MetricFamily{}
 	for _, w := range whitelisted {
@@ -78,14 +91,14 @@ func filterWhitelisted(allMetrics map[string]*dto.MetricFamily, whitelisted []st
 	return res
 }
 
-func translateFamily(config *config.GceConfig, component string, family *dto.MetricFamily, start, end time.Time) ([]*v3.TimeSeries, error) {
+func translateFamily(config *config.CommonConfig, family *dto.MetricFamily, startTime time.Time) ([]*v3.TimeSeries, error) {
 	glog.V(4).Infof("Translating metric family %v", family.GetName())
 	var ts []*v3.TimeSeries
-	if family.GetType() != dto.MetricType_COUNTER && family.GetType() != dto.MetricType_GAUGE && family.GetType() != dto.MetricType_HISTOGRAM {
+	if _, found := supportedMetricTypes[family.GetType()]; !found {
 		return ts, fmt.Errorf("Metric type %v of family %s not supported", family.GetType(), family.GetName())
 	}
 	for _, metric := range family.GetMetric() {
-		t := translateOne(config, component, family.GetName(), family.GetType(), metric, start, end)
+		t := translateOne(config, family.GetName(), family.GetType(), metric, startTime)
 		ts = append(ts, t)
 		glog.V(4).Infof("%+v\nMetric: %+v, Interval: %+v", *t, *(t.Metric), t.Points[0].Interval)
 	}
@@ -93,14 +106,14 @@ func translateFamily(config *config.GceConfig, component string, family *dto.Met
 }
 
 // getMetricType creates metric type name base on the metric prefix, component name and metric name.
-func getMetricType(config *config.GceConfig, component string, name string) string {
-	return fmt.Sprintf("%s/%s/%s", config.MetricsPrefix, component, name)
+func getMetricType(config *config.CommonConfig, name string) string {
+	return fmt.Sprintf("%s/%s/%s", config.GceConfig.MetricsPrefix, config.ComponentName, name)
 }
 
 // assumes that mType is Counter, Gauge or Histogram
-func translateOne(config *config.GceConfig, component string, name string, mType dto.MetricType, metric *dto.Metric, start, end time.Time) *v3.TimeSeries {
+func translateOne(config *config.CommonConfig, name string, mType dto.MetricType, metric *dto.Metric, start time.Time) *v3.TimeSeries {
 	interval := &v3.TimeInterval{
-		EndTime: end.UTC().Format(time.RFC3339),
+		EndTime: time.Now().UTC().Format(time.RFC3339),
 	}
 	metricKind := extractMetricKind(mType)
 	if metricKind == "CUMULATIVE" {
@@ -118,7 +131,7 @@ func translateOne(config *config.GceConfig, component string, name string, mType
 	return &v3.TimeSeries{
 		Metric: &v3.Metric{
 			Labels: getMetricLabels(metric.GetLabel()),
-			Type:   getMetricType(config, component, name),
+			Type:   getMetricType(config, name),
 		},
 		Resource: &v3.MonitoredResource{
 			Labels: getResourceLabels(config),
@@ -136,7 +149,7 @@ func setValue(mType dto.MetricType, metric *dto.Metric, point *v3.Point) {
 		point.Value.Int64Value = &val
 		point.ForceSendFields = append(point.ForceSendFields, "Int64Value")
 	} else if mType == dto.MetricType_HISTOGRAM {
-		point.Value.DistributionValue = getHistogramValue(metric.GetHistogram())
+		point.Value.DistributionValue = convertToDistributionValue(metric.GetHistogram())
 		point.ForceSendFields = append(point.ForceSendFields, "DistributionValue")
 	} else {
 		val := int64(metric.GetCounter().GetValue())
@@ -145,7 +158,7 @@ func setValue(mType dto.MetricType, metric *dto.Metric, point *v3.Point) {
 	}
 }
 
-func getHistogramValue(h *dto.Histogram) *v3.Distribution {
+func convertToDistributionValue(h *dto.Histogram) *v3.Distribution {
 	count := int64(h.GetSampleCount())
 	mean := float64(0)
 	dev := float64(0)
@@ -197,10 +210,10 @@ func getMetricLabels(labels []*dto.LabelPair) map[string]string {
 }
 
 // MetricFamilyToMetricDescriptor converts MetricFamily object to the MetricDescriptor.
-func MetricFamilyToMetricDescriptor(config *config.GceConfig, component string, family *dto.MetricFamily) *v3.MetricDescriptor {
+func MetricFamilyToMetricDescriptor(config *config.CommonConfig, family *dto.MetricFamily) *v3.MetricDescriptor {
 	return &v3.MetricDescriptor{
 		Description: family.GetHelp(),
-		Type:        getMetricType(config, component, family.GetName()),
+		Type:        getMetricType(config, family.GetName()),
 		MetricKind:  extractMetricKind(family.GetType()),
 		ValueType:   extractValueType(family.GetType()),
 		Labels:      extractAllLabels(family),
@@ -240,14 +253,14 @@ func createProjectName(config *config.GceConfig) string {
 	return fmt.Sprintf("projects/%s", config.Project)
 }
 
-func getResourceLabels(config *config.GceConfig) map[string]string {
+func getResourceLabels(config *config.CommonConfig) map[string]string {
 	return map[string]string{
-		"project_id":     config.Project,
-		"cluster_name":   config.Cluster,
-		"zone":           config.Zone,
-		"instance_id":    config.Instance,
-		"namespace_id":   "",
-		"pod_id":         "machine",
+		"project_id":     config.GceConfig.Project,
+		"cluster_name":   config.GceConfig.Cluster,
+		"zone":           config.GceConfig.Zone,
+		"instance_id":    config.GceConfig.Instance,
+		"namespace_id":   config.ContainerConfig.NamespaceId,
+		"pod_id":         config.ContainerConfig.PodId,
 		"container_name": "",
 	}
 }

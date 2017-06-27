@@ -90,6 +90,7 @@ metric-descriptors-resolution
 metrics-resolution
 min-pr-number
 min-replica-count
+namespace-id
 netrc-dir
 network-config
 nginx-configmap
@@ -100,6 +101,7 @@ on-change
 one-time
 on-start
 path-label-config
+pod-id
 pod-scheduled-timeout
 poll-period
 presubmit-jobs
