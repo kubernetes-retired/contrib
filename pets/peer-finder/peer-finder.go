@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/sets"
 	"io/ioutil"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -98,8 +98,6 @@ func main() {
 		domainName = strings.Join([]string{ns, "svc", *domain}, ".")
 	}
 
-
-
 	if *svc == "" || domainName == "" || (*onChange == "" && *onStart == "") {
 		log.Fatalf("Incomplete args, require -on-change and/or -on-start, -service and -ns or an env var for POD_NAMESPACE.")
 	}
@@ -117,7 +115,7 @@ func main() {
 			continue
 		}
 		if newPeers.Equal(peers) || !newPeers.Has(myName) {
-			log.Printf( "Have not found myself in list yet.\nMy Hostname: %s\nHosts in list: %s", myName, strings.Join(newPeers.List(), ", "))
+			log.Printf("Have not found myself in list yet.\nMy Hostname: %s\nHosts in list: %s", myName, strings.Join(newPeers.List(), ", "))
 			continue
 		}
 		peerList := newPeers.List()
