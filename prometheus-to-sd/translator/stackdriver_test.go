@@ -23,9 +23,12 @@ import (
 )
 
 func TestGetMetricType(t *testing.T) {
-	testConfig := &config.GceConfig{MetricsPrefix: "container.googleapis.com/master"}
+	testConfig := &config.CommonConfig{
+		GceConfig:     &config.GceConfig{MetricsPrefix: "container.googleapis.com/master"},
+		ComponentName: "component",
+	}
 	expected := "container.googleapis.com/master/component/name"
-	assert.Equal(t, expected, getMetricType(testConfig, "component", "name"))
+	assert.Equal(t, expected, getMetricType(testConfig, "name"))
 }
 
 func TestParseMetricType(t *testing.T) {

@@ -100,8 +100,8 @@ func GetMetricDescriptors(service *v3.Service, config *config.GceConfig, compone
 }
 
 // CreateMetricDescriptor creates or updates existing MetricDescriptor.
-func CreateMetricDescriptor(service *v3.Service, config *config.GceConfig, metricDescriptor *v3.MetricDescriptor) {
-	projectName := createProjectName(config)
+func CreateMetricDescriptor(service *v3.Service, config *config.CommonConfig, metricDescriptor *v3.MetricDescriptor) {
+	projectName := createProjectName(config.GceConfig)
 	_, err := service.Projects.MetricDescriptors.Create(projectName, metricDescriptor).Do()
 	if err != nil {
 		glog.Errorf("Error in attempt to update metric descriptor %v", err)

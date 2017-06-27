@@ -50,6 +50,10 @@ var (
 	apioverride = flag.String("api-override", "",
 		"The stackdriver API endpoint to override the default one used (which is prod).")
 	source = flags.Uris{}
+	podId  = flag.String("pod-id", "machine",
+		"Name of the pod in which monitored component is running.")
+	namespaceId = flag.String("namespace-id", "",
+		"Namespace name of the pod in which monitored component is running.")
 
 	customMetricsPrefix = "custom.googleapis.com"
 )
@@ -64,6 +68,10 @@ func main() {
 	sourceConfigs := extractSourceConfigsFromFlags()
 
 	gceConf, err := config.GetGceConfig(*metricsPrefix)
+	podConfig := &config.PodConfig{
+		PodId:       *podId,
+		NamespaceId: *namespaceId,
+	}
 	if err != nil {
 		glog.Fatalf("Failed to get GCE config: %v", err)
 	}
@@ -87,7 +95,7 @@ func main() {
 		glog.V(4).Infof("Starting goroutine for %+v", sourceConfig)
 
 		// Pass sourceConfig as a parameter to avoid using the last sourceConfig by all goroutines.
-		go readAndPushDataToStackdriver(stackdriverService, gceConf, sourceConfig)
+		go readAndPushDataToStackdriver(stackdriverService, gceConf, podConfig, sourceConfig)
 	}
 
 	// As worker goroutines work forever, block main thread as well.
@@ -118,7 +126,7 @@ func extractSourceConfigsFromFlags() []config.SourceConfig {
 	return sourceConfigs
 }
 
-func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *config.GceConfig, sourceConfig config.SourceConfig) {
+func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *config.GceConfig, podConfig *config.PodConfig, sourceConfig config.SourceConfig) {
 	glog.Infof("Running prometheus-to-sd, monitored target is %s %v:%v", sourceConfig.Component, sourceConfig.Host, sourceConfig.Port)
 
 	signal := time.After(0)
@@ -146,14 +154,19 @@ func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *confi
 		}
 
 		metrics, err := translator.GetPrometheusMetrics(sourceConfig.Host, sourceConfig.Port)
+		commonConfig := &config.CommonConfig{
+			GceConfig:     gceConf,
+			PodConfig:     podConfig,
+			ComponentName: sourceConfig.Component,
+		}
 		if err != nil {
 			glog.Warningf("Error while getting Prometheus metrics %v", err)
 			continue
 		}
 		if metricDescriptors != nil {
-			updateMetricDescriptorsDescription(stackdriverService, gceConf, metricDescriptors, metrics)
+			updateMetricDescriptorsDescription(stackdriverService, commonConfig, metricDescriptors, metrics)
 		}
-		ts := translator.TranslatePrometheusToStackdriver(gceConf, sourceConfig.Component, metrics, sourceConfig.Whitelisted)
+		ts := translator.TranslatePrometheusToStackdriver(commonConfig, metrics, sourceConfig.Whitelisted)
 		translator.SendToStackdriver(stackdriverService, gceConf, ts)
 	}
 }
@@ -166,13 +179,13 @@ func updateWhitelistedMetrics(sourceConfig *config.SourceConfig, metricDescripto
 }
 
 func updateMetricDescriptorsDescription(stackdriverService *v3.Service,
-	config *config.GceConfig,
+	config *config.CommonConfig,
 	descriptors map[string]*v3.MetricDescriptor,
 	metrics map[string]*dto.MetricFamily) {
 	for _, metricFamily := range metrics {
 		metricDescriptor, ok := descriptors[metricFamily.GetName()]
 		if (!ok || metricDescriptor.Description != metricFamily.GetHelp()) && strings.HasPrefix(metricDescriptor.Type, customMetricsPrefix) {
-			updatedMetricDescriptor := translator.MetricFamilyToMetricDescriptor(config, *component, metricFamily)
+			updatedMetricDescriptor := translator.MetricFamilyToMetricDescriptor(config, metricFamily)
 			translator.CreateMetricDescriptor(stackdriverService, config, updatedMetricDescriptor)
 		}
 	}
