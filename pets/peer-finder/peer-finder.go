@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	"io/ioutil"
 )
 
 const (
@@ -40,7 +41,7 @@ var (
 	onStart   = flag.String("on-start", "", "Script to run on start, must accept a new line separated list of peers via stdin.")
 	svc       = flag.String("service", "", "Governing service responsible for the DNS records of the domain this pod is in.")
 	namespace = flag.String("ns", "", "The namespace this pod is running in. If unspecified, the POD_NAMESPACE env var is used.")
-	domain    = flag.String("domain", "cluster.local", "The Cluster Domain which is used by the Cluster.")
+	domain    = flag.String("domain", "", "The Cluster Domain which is used by the Cluster.")
 )
 
 func lookup(svcName string) (sets.String, error) {
@@ -74,17 +75,34 @@ func main() {
 	if ns == "" {
 		ns = os.Getenv("POD_NAMESPACE")
 	}
-	if *svc == "" || ns == "" || (*onChange == "" && *onStart == "") {
-		log.Fatalf("Incomplete args, require -on-change and/or -on-start, -service and -ns or an env var for POD_NAMESPACE.")
-	}
-
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Fatalf("Failed to get hostname: %s", err)
 	}
+	var domainName string
 
-	svcLocalSuffix := strings.Join([]string{"svc", *domain}, ".")
-	myName := strings.Join([]string{hostname, *svc, ns, svcLocalSuffix}, ".")
+	// If domain is not provided, try to get it from resolv.conf
+	if (*domain == "") || (ns == "") {
+		resolvConfBytes, err := ioutil.ReadFile("/etc/resolv.conf")
+		resolvConf := string(resolvConfBytes)
+		if err != nil {
+			log.Fatal("Unable to read /etc/resolv.conf")
+		}
+		domainName = strings.Split(strings.Split(resolvConf, ("search " + ns + "."))[1], " ")[0]
+		if ns != "" {
+			domainName = strings.Join([]string{ns, domainName}, ".")
+		}
+	} else {
+		domainName = strings.Join([]string{ns, "svc", *domain}, ".")
+	}
+
+
+
+	if *svc == "" || domainName == "" || (*onChange == "" && *onStart == "") {
+		log.Fatalf("Incomplete args, require -on-change and/or -on-start, -service and -ns or an env var for POD_NAMESPACE.")
+	}
+
+	myName := strings.Join([]string{hostname, *svc, domainName}, ".")
 	script := *onStart
 	if script == "" {
 		script = *onChange
@@ -97,6 +115,7 @@ func main() {
 			continue
 		}
 		if newPeers.Equal(peers) || !newPeers.Has(myName) {
+			log.Printf( "Have not found myself in list yet.\nMy Hostname: %s\nHosts in list: %s", myName, strings.Join(newPeers.List(), ", "))
 			continue
 		}
 		peerList := newPeers.List()
