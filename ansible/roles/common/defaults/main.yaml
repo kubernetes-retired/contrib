@@ -13,3 +13,7 @@ is_coreos: false
 has_rpm: false
 has_firewalld: false
 has_iptables: false
+
+#Set ansible_architecture as amd64 if it's x86_64
+ansible_architecture: "amd64"
+when: ansible_architecture == "x86_64"
