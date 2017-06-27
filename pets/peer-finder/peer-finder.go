@@ -88,9 +88,11 @@ func main() {
 		if err != nil {
 			log.Fatal("Unable to read /etc/resolv.conf")
 		}
-		domainName = strings.Split(strings.Split(resolvConf, ("search " + ns + "."))[1], " ")[0]
 		if ns != "" {
+			domainName = strings.Split(strings.Split(resolvConf, ("search " + ns + "."))[1], " ")[0]
 			domainName = strings.Join([]string{ns, domainName}, ".")
+		} else {
+			domainName = strings.Split(strings.Split(resolvConf, ("search "))[1], " ")[0]
 		}
 	} else {
 		domainName = strings.Join([]string{ns, "svc", *domain}, ".")
