@@ -30,7 +30,7 @@ else
     cat <<EOF
 {
   "cniVersion": "0.1.0",
-  "code": "${RC}",
+  "code": ${RC},
   "msg": "${0}-inner returned ${RC}",
   "details": $(jq -R -s . < "${LOG}")
 }
