@@ -76,7 +76,7 @@ spec:
         #                    beginning with fs.mqueue.*
         # Network Namespace: Sysctls beginning with net.*
         #
-        # kubectl <podname> -c sysctl-buddy -- sysctl -A | grep net
+        # kubectl exec <podname> -c sysctl-buddy -- sysctl -A | grep net
         command:
         - /bin/sh
         - -c
