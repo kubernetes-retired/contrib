@@ -54,7 +54,9 @@ var (
 
 func main() {
 	// First log our starting config, and then set up.
+	flag.CommandLine.Parse([]string{})
 	flag.Set("logtostderr", "true") // This spoofs glog into teeing logs to stderr.
+
 	defer log.Flush()
 	pflag.Parse()
 	log.Infof("Invoked by %v", os.Args)
