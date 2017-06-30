@@ -20,15 +20,16 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 
-	"io/ioutil"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -41,7 +42,7 @@ var (
 	onStart   = flag.String("on-start", "", "Script to run on start, must accept a new line separated list of peers via stdin.")
 	svc       = flag.String("service", "", "Governing service responsible for the DNS records of the domain this pod is in.")
 	namespace = flag.String("ns", "", "The namespace this pod is running in. If unspecified, the POD_NAMESPACE env var is used.")
-	domain    = flag.String("domain", "", "The Cluster Domain which is used by the Cluster.")
+	domain    = flag.String("domain", "", "The Cluster Domain which is used by the Cluster, if not set tries to determine it from /etc/resolv.conf file.")
 )
 
 func lookup(svcName string) (sets.String, error) {
@@ -82,26 +83,39 @@ func main() {
 	var domainName string
 
 	// If domain is not provided, try to get it from resolv.conf
-	if (*domain == "") || (ns == "") {
+	if *domain == "" {
 		resolvConfBytes, err := ioutil.ReadFile("/etc/resolv.conf")
 		resolvConf := string(resolvConfBytes)
 		if err != nil {
 			log.Fatal("Unable to read /etc/resolv.conf")
 		}
-		if ns != "" {
-			tempResolv := strings.Split(resolvConf, ("search " + ns + "."))
-			if len(tempResolv) < 2 {
-				log.Fatalf("Could not find \"search %s.\" in /etc/resolv.conf - bailing", ns)
-			}
-			domainName = strings.Split(tempResolv[1], " ")[0]
-			domainName = strings.Join([]string{ns, domainName}, ".")
+
+		var re *regexp.Regexp
+		if ns == "" {
+			// Going to presume first search entry has most specific entry
+			re, err = regexp.Compile(`\A(.*\n)*search\s{1,}(.*\s{1,})*(?P<goal>[a-zA-Z0-9-]{1,63}.svc.([a-zA-Z0-9-]{1,63}\.)*[a-zA-Z0-9]{2,63})`)
 		} else {
-			tempResolv := strings.Split(resolvConf, ("search "))
-			if len(tempResolv) < 2 {
-				log.Fatal("Could not find \"search \" in /etc/resolv.conf - bailing")
-			}
-			domainName = strings.Split(tempResolv[1], " ")[0]
+			// Appending namespace to search
+			re, err = regexp.Compile(`\A(.*\n)*search\s{1,}(.*\s{1,})*(?P<goal>svc.([a-zA-Z0-9-]{1,63}\.)*[a-zA-Z0-9]{2,63})`)
 		}
+		if err != nil {
+			log.Fatalf("Failed to create regular expression: %v", err)
+		}
+
+		groupNames := re.SubexpNames()
+		result := re.FindStringSubmatch(resolvConf)
+		for k, v := range result {
+			if groupNames[k] == "goal" {
+				if ns == "" {
+					domainName = v
+				} else {
+					domainName = ns + "." + v
+				}
+				break
+			}
+		}
+		log.Printf("Determined Domain to be %s", domainName)
+
 	} else {
 		domainName = strings.Join([]string{ns, "svc", *domain}, ".")
 	}
