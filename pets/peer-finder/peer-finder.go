@@ -92,10 +92,10 @@ func main() {
 
 		var re *regexp.Regexp
 		if ns == "" {
-			// Going to presume first search entry has most specific entry
+			// Looking for a domain that looks like with *.svc.**
 			re, err = regexp.Compile(`\A(.*\n)*search\s{1,}(.*\s{1,})*(?P<goal>[a-zA-Z0-9-]{1,63}.svc.([a-zA-Z0-9-]{1,63}\.)*[a-zA-Z0-9]{2,63})`)
 		} else {
-			// Appending namespace to search
+			// Looking for a domain that looks like svc.**
 			re, err = regexp.Compile(`\A(.*\n)*search\s{1,}(.*\s{1,})*(?P<goal>svc.([a-zA-Z0-9-]{1,63}\.)*[a-zA-Z0-9]{2,63})`)
 		}
 		if err != nil {
@@ -107,8 +107,10 @@ func main() {
 		for k, v := range result {
 			if groupNames[k] == "goal" {
 				if ns == "" {
+					// Domain is complete if ns is empty
 					domainName = v
 				} else {
+					// Need to convert svc.** into ns.svc.**
 					domainName = ns + "." + v
 				}
 				break
