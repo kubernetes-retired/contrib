@@ -43,22 +43,22 @@ type MetricsSource interface {
 func Once(src MetricsSource, gcm *v3.Service) {
 	req, err := src.GetTimeSeriesReq()
 	if err != nil {
-		log.Errorf("Failed to create time series request: %v", err)
+		log.Warningf("Failed to create time series request: %v", err)
 		return
 	}
 
 	// Push that data to GCM's v3 API.
 	createCall := gcm.Projects.TimeSeries.Create(src.ProjectPath(), req)
 	if empty, err := createCall.Do(); err != nil {
-		log.Errorf("Failed to write time series data, empty: %v, err: %v", empty, err)
+		log.Warningf("Failed to write time series data, empty: %v, err: %v", empty, err)
 
 		jsonReq, err := req.MarshalJSON()
 		if err != nil {
-			log.Errorf("Failed to marshal time series as JSON")
+			log.Warningf("Failed to marshal time series as JSON")
 			return
 		}
-		log.Errorf("JSON GCM: %s", string(jsonReq[:]))
+		log.Warningf("JSON GCM: %s", string(jsonReq[:]))
 		return
 	}
-	log.Infof("Successfully wrote TimeSeries data for %s to GCM v3 API.", src.Name())
+	log.V(4).Infof("Successfully wrote TimeSeries data for %s to GCM v3 API.", src.Name())
 }

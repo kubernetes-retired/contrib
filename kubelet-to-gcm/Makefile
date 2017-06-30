@@ -24,8 +24,8 @@
 
 OUT_DIR = build
 PACKAGE = k8s.io/contrib/kubelet-to-gcm
-PREFIX = gcr.io/google_containers
-TAG = 1.2.2
+PREFIX = gcr.io/google-containers
+TAG = 1.2.3
 
 # Rules for building the real image for deployment to gcr.io
 
