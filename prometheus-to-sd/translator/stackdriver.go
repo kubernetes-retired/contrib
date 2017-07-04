@@ -75,35 +75,3 @@ func parseMetricType(config *config.GceConfig, metricType string) (component, me
 
 	return split[0], split[1], nil
 }
-
-// GetMetricDescriptors fetches all metric descriptors of all metrics defined for given component.
-func GetMetricDescriptors(service *v3.Service, config *config.GceConfig, component string) (map[string]*v3.MetricDescriptor, error) {
-	proj := createProjectName(config)
-
-	metrics := make(map[string]*v3.MetricDescriptor)
-
-	fn := func(page *v3.ListMetricDescriptorsResponse) error {
-		for _, metricDescriptor := range page.MetricDescriptors {
-			if _, metricName, err := parseMetricType(config, metricDescriptor.Type); err == nil {
-				metrics[metricName] = metricDescriptor
-			} else {
-				glog.Warningf("Unable to parse %v: %v", metricDescriptor.Type, err)
-			}
-		}
-
-		return nil
-	}
-
-	filter := fmt.Sprintf("metric.type = starts_with(\"%s/%s\")", config.MetricsPrefix, component)
-
-	return metrics, service.Projects.MetricDescriptors.List(proj).Filter(filter).Pages(nil, fn)
-}
-
-// CreateMetricDescriptor creates or updates existing MetricDescriptor.
-func CreateMetricDescriptor(service *v3.Service, config *config.CommonConfig, metricDescriptor *v3.MetricDescriptor) {
-	projectName := createProjectName(config.GceConfig)
-	_, err := service.Projects.MetricDescriptors.Create(projectName, metricDescriptor).Do()
-	if err != nil {
-		glog.Errorf("Error in attempt to update metric descriptor %v", err)
-	}
-}

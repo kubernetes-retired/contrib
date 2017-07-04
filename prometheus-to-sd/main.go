@@ -18,11 +18,9 @@ package main
 
 import (
 	"flag"
-	"strconv"
 	"time"
 
 	"github.com/golang/glog"
-	dto "github.com/prometheus/client_model/go"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -31,7 +29,6 @@ import (
 	"k8s.io/contrib/prometheus-to-sd/config"
 	"k8s.io/contrib/prometheus-to-sd/flags"
 	"k8s.io/contrib/prometheus-to-sd/translator"
-	"strings"
 )
 
 var (
@@ -55,8 +52,6 @@ var (
 		"Name of the pod in which monitored component is running.")
 	namespaceId = flag.String("namespace-id", "",
 		"Namespace name of the pod in which monitored component is running.")
-
-	customMetricsPrefix = "custom.googleapis.com"
 )
 
 func main() {
@@ -66,7 +61,7 @@ func main() {
 	defer glog.Flush()
 	flag.Parse()
 
-	sourceConfigs := extractSourceConfigsFromFlags()
+	sourceConfigs := config.SourceConfigsFromFlags(source, component, host, port, whitelisted)
 
 	gceConf, err := config.GetGceConfig(*metricsPrefix)
 	podConfig := &config.PodConfig{
@@ -103,48 +98,21 @@ func main() {
 	<-make(chan int)
 }
 
-func extractSourceConfigsFromFlags() []config.SourceConfig {
-	var sourceConfigs []config.SourceConfig
-	for _, c := range source {
-		if sourceConfig, err := config.ParseSourceConfig(c); err != nil {
-			glog.Fatalf("Error while parsing source config flag %v: %v", c, err)
-		} else {
-			sourceConfigs = append(sourceConfigs, *sourceConfig)
-		}
-	}
-
-	if len(source) == 0 && *component != "" {
-		glog.Warningf("--component, --host, --port and --whitelisted flags are deprecated. Please use --source instead.")
-		portStr := strconv.FormatUint(uint64(*port), 10)
-
-		if sourceConfig, err := config.NewSourceConfig(*component, *host, portStr, *whitelisted); err != nil {
-			glog.Fatalf("Error while parsing --component flag: %v", err)
-		} else {
-			glog.Infof("Created a new source instance from --component flag: %+v", sourceConfig)
-			sourceConfigs = append(sourceConfigs, *sourceConfig)
-		}
-	}
-	return sourceConfigs
-}
-
 func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *config.GceConfig, podConfig *config.PodConfig, sourceConfig config.SourceConfig) {
 	glog.Infof("Running prometheus-to-sd, monitored target is %s %v:%v", sourceConfig.Component, sourceConfig.Host, sourceConfig.Port)
-
+	metricDescriptorCache := translator.NewMetricDescriptorCache(stackdriverService, gceConf, sourceConfig.Component)
 	signal := time.After(0)
 	useWhitelistedMetricsAutodiscovery := *autoWhitelistMetrics && len(sourceConfig.Whitelisted) == 0
 
 	for range time.Tick(*resolution) {
+		metricDescriptorCache.MarkStale()
 		glog.V(4).Infof("Scraping metrics of component %v", sourceConfig.Component)
-		var metricDescriptors map[string]*v3.MetricDescriptor
 		select {
 		case <-signal:
 			glog.V(4).Infof("Updating metrics cache for component %v", sourceConfig.Component)
-			var err error
-			if metricDescriptors, err = translator.GetMetricDescriptors(stackdriverService, gceConf, sourceConfig.Component); err != nil {
-				glog.Warningf("Error while fetching metric descriptors for %v: %v", sourceConfig.Component, err)
-			}
+			metricDescriptorCache.Refresh()
 			if useWhitelistedMetricsAutodiscovery {
-				updateWhitelistedMetrics(&sourceConfig, metricDescriptors)
+				sourceConfig.UpdateWhitelistedMetrics(metricDescriptorCache.GetMetricNames())
 			}
 			signal = time.After(*metricDescriptorsResolution)
 		default:
@@ -153,7 +121,6 @@ func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *confi
 			glog.V(4).Infof("Skipping %v component as there are no metric to expose.", sourceConfig.Component)
 			continue
 		}
-
 		metrics, err := translator.GetPrometheusMetrics(sourceConfig.Host, sourceConfig.Port)
 		commonConfig := &config.CommonConfig{
 			GceConfig:     gceConf,
@@ -164,30 +131,8 @@ func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *confi
 			glog.Warningf("Error while getting Prometheus metrics %v", err)
 			continue
 		}
-		if metricDescriptors != nil {
-			updateMetricDescriptorsDescription(stackdriverService, commonConfig, metricDescriptors, metrics)
-		}
+		metricDescriptorCache.UpdateMetricDescriptors(metrics)
 		ts := translator.TranslatePrometheusToStackdriver(commonConfig, metrics, sourceConfig.Whitelisted)
 		translator.SendToStackdriver(stackdriverService, gceConf, ts)
-	}
-}
-
-func updateWhitelistedMetrics(sourceConfig *config.SourceConfig, metricDescriptors map[string]*v3.MetricDescriptor) {
-	sourceConfig.Whitelisted = nil
-	for metricName := range metricDescriptors {
-		sourceConfig.Whitelisted = append(sourceConfig.Whitelisted, metricName)
-	}
-}
-
-func updateMetricDescriptorsDescription(stackdriverService *v3.Service,
-	config *config.CommonConfig,
-	descriptors map[string]*v3.MetricDescriptor,
-	metrics map[string]*dto.MetricFamily) {
-	for _, metricFamily := range metrics {
-		metricDescriptor, ok := descriptors[metricFamily.GetName()]
-		if (!ok || metricDescriptor.Description != metricFamily.GetHelp()) && strings.HasPrefix(metricDescriptor.Type, customMetricsPrefix) {
-			updatedMetricDescriptor := translator.MetricFamilyToMetricDescriptor(config, metricFamily)
-			translator.CreateMetricDescriptor(stackdriverService, config, updatedMetricDescriptor)
-		}
 	}
 }
