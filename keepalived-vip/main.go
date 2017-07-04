@@ -61,6 +61,9 @@ var (
 		`The keepalived VRID (Virtual Router Identifier, between 0 and 255 as per
 			RFC-5798), which must be different for every Virtual Router (ie. every
 			keepalived sets) running on the same network.`)
+	
+	dryrun = flags.Bool("dry-run", false, `If true, No keepalived will be started, only the configfile will be written. Useful for testing and debugging.`)
+	
 )
 
 func main() {
@@ -103,26 +106,30 @@ func main() {
 		glog.Infof("watching namespace: '%v'", namespace)
 	}
 
-	err = loadIPVModule()
-	if err != nil {
-		glog.Fatalf("unexpected error: %v", err)
-	}
-
-	err = changeSysctl()
-	if err != nil {
-		glog.Fatalf("unexpected error: %v", err)
-	}
-
-	err = resetIPVS()
-	if err != nil {
-		glog.Fatalf("unexpected error: %v", err)
+	if *dryrun {
+		glog.Info("dry run - not doing inits (loadIPVModule, changeSysctl, resetIPVS")
+	} else {
+		err = loadIPVModule()
+		if err != nil {
+			glog.Fatalf("unexpected error: %v", err)
+		}
+	
+		err = changeSysctl()
+		if err != nil {
+			glog.Fatalf("unexpected error: %v", err)
+		}
+	
+		err = resetIPVS()
+		if err != nil {
+			glog.Fatalf("unexpected error: %v", err)
+		}
 	}
 
 	glog.Info("starting LVS configuration")
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid, *dryrun)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 
