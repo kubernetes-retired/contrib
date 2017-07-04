@@ -58,21 +58,36 @@ func (this *MetricDescriptorCache) GetMetricNames() []string {
 	return keys
 }
 
-// MarkStale makes function IsFresh to return false until the next cache refresh.
+// MarkStale marks all records in the cache as stale until next Refresh() call.
 func (this *MetricDescriptorCache) MarkStale() {
 	this.fresh = false
 }
 
 // UpdateMetricDescriptors iterates over all metricFamilies and updates metricDescriptors in the Stackdriver if required.
-func (this *MetricDescriptorCache) UpdateMetricDescriptors(metrics map[string]*dto.MetricFamily) {
+func (this *MetricDescriptorCache) UpdateMetricDescriptors(metrics map[string]*dto.MetricFamily, whitelisted []string) {
 	// Perform this operation only if cache was recently refreshed. This is done mostly from the optimization point
 	// of view, we don't want to check all metric descriptors too often, as they should change rarely.
 	if !this.fresh {
 		return
 	}
 	for _, metricFamily := range metrics {
-		this.updateMetricDescriptorIfStale(metricFamily)
+		if metricWhitelisted(metricFamily.GetName(), whitelisted) {
+			this.updateMetricDescriptorIfStale(metricFamily)
+		}
 	}
+}
+
+func metricWhitelisted(metric string, whitelisted []string) bool {
+	// Empty list means that we want to fetch all metrics.
+	if len(whitelisted) == 0 {
+		return true
+	}
+	for _, whitelistedMetric := range whitelisted {
+		if whitelistedMetric == metric {
+			return true
+		}
+	}
+	return false
 }
 
 // updateMetricDescriptorIfStale checks if descriptor created from MetricFamily object differs from the existing one

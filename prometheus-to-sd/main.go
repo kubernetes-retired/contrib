@@ -131,7 +131,7 @@ func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *confi
 			glog.Warningf("Error while getting Prometheus metrics %v", err)
 			continue
 		}
-		metricDescriptorCache.UpdateMetricDescriptors(metrics)
+		metricDescriptorCache.UpdateMetricDescriptors(metrics, sourceConfig.Whitelisted)
 		ts := translator.TranslatePrometheusToStackdriver(commonConfig, metrics, sourceConfig.Whitelisted)
 		translator.SendToStackdriver(stackdriverService, gceConf, ts)
 	}
