@@ -32,6 +32,7 @@ var (
 
 type MetricDescriptorCache struct {
 	descriptors map[string]*v3.MetricDescriptor
+	broken		map[string]bool
 	service     *v3.Service
 	config      *config.GceConfig
 	component   string
@@ -42,11 +43,17 @@ type MetricDescriptorCache struct {
 func NewMetricDescriptorCache(service *v3.Service, config *config.GceConfig, component string) *MetricDescriptorCache {
 	return &MetricDescriptorCache{
 		descriptors: make(map[string]*v3.MetricDescriptor),
+		broken:      make(map[string]bool),
 		service:     service,
 		config:      config,
 		component:   component,
 		fresh:       false,
 	}
+}
+
+func (this *MetricDescriptorCache) IsMetricBroken(name string) bool {
+	broken, ok := this.broken[name]
+	return ok && broken
 }
 
 // GetMetricNames returns a list of all metric names from the cache.
@@ -94,7 +101,7 @@ func metricWhitelisted(metric string, whitelisted []string) bool {
 // and updates if needed.
 func (this *MetricDescriptorCache) updateMetricDescriptorIfStale(metricFamily *dto.MetricFamily) {
 	metricDescriptor, ok := this.descriptors[metricFamily.GetName()]
-	updatedMetricDescriptor := MetricFamilyToMetricDescriptor(this.config, this.component, metricFamily)
+	updatedMetricDescriptor := MetricFamilyToMetricDescriptor(this.config, this.component, metricFamily, metricDescriptor)
 	if strings.HasPrefix(updatedMetricDescriptor.Type, customMetricsPrefix) &&
 		(!ok || descriptorChanged(metricDescriptor, updatedMetricDescriptor)) {
 		this.updateMetricDescriptorInStackdriver(updatedMetricDescriptor)
@@ -107,16 +114,33 @@ func descriptorChanged(original *v3.MetricDescriptor, checked *v3.MetricDescript
 		glog.V(4).Infof("Description is different, %v != %v", original.Description, checked.Description)
 		return true
 	}
+	for _, label := range checked.Labels {
+		found := false
+		for _, labelFromOriginal := range original.Labels {
+			if label.Key == labelFromOriginal.Key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			glog.V(4).Infof("Missing label %v in the original metric descriptor", label)
+			return true
+		}
+	}
 	return false
 }
 
 // updateMetricDescriptorInStackdriver writes metric descriptor to the stackdriver.
 func (this *MetricDescriptorCache) updateMetricDescriptorInStackdriver(metricDescriptor *v3.MetricDescriptor) {
 	glog.V(4).Infof("Updating metric descriptor: %+v", metricDescriptor)
-
 	projectName := createProjectName(this.config)
 	_, err := this.service.Projects.MetricDescriptors.Create(projectName, metricDescriptor).Do()
 	if err != nil {
+		if _, metricName, err := parseMetricType(this.config, metricDescriptor.Type); err == nil {
+			this.broken[metricName] = true
+		} else {
+			glog.Warningf("Unable to parse %v: %v", metricDescriptor.Type, err)
+		}
 		glog.Errorf("Error in attempt to update metric descriptor %v", err)
 	}
 }
@@ -125,11 +149,12 @@ func (this *MetricDescriptorCache) updateMetricDescriptorInStackdriver(metricDes
 // and puts them into cache.
 func (this *MetricDescriptorCache) Refresh() {
 	proj := createProjectName(this.config)
-	metrics := make(map[string]*v3.MetricDescriptor)
+	this.descriptors = make(map[string]*v3.MetricDescriptor)
+	this.broken = make(map[string]bool)
 	fn := func(page *v3.ListMetricDescriptorsResponse) error {
 		for _, metricDescriptor := range page.MetricDescriptors {
 			if _, metricName, err := parseMetricType(this.config, metricDescriptor.Type); err == nil {
-				metrics[metricName] = metricDescriptor
+				this.descriptors[metricName] = metricDescriptor
 			} else {
 				glog.Warningf("Unable to parse %v: %v", metricDescriptor.Type, err)
 			}
