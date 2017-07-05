@@ -174,7 +174,7 @@ var metricDescriptors = map[string]*v3.MetricDescriptor{
 
 func TestTranslatePrometheusToStackdriver(t *testing.T) {
 	epsilon := float64(0.001)
-	cache := NewMetricDescriptorCache(nil, nil, commonConfig.ComponentName)
+	cache := NewMetricDescriptorCache(nil, commonConfig)
 
 	ts := TranslatePrometheusToStackdriver(commonConfig, []string{testMetricName, testMetricHistogram}, metrics, cache)
 

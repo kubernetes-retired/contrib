@@ -18,11 +18,11 @@ package config
 
 import (
 	"fmt"
+	"github.com/golang/glog"
 	"k8s.io/contrib/prometheus-to-sd/flags"
 	"net"
 	"strconv"
 	"strings"
-	"github.com/golang/glog"
 )
 
 // SourceConfig contains data specific for scraping one component.
@@ -71,8 +71,9 @@ func parseSourceConfig(uri flags.Uri) (*SourceConfig, error) {
 	return newSourceConfig(component, host, port, whitelisted)
 }
 
-func (this *SourceConfig) UpdateWhitelistedMetrics(list []string) {
-	this.Whitelisted = list
+// UpdateWhitelistedMetrics sets passed list as a list of whitelisted metrics.
+func (config *SourceConfig) UpdateWhitelistedMetrics(list []string) {
+	config.Whitelisted = list
 }
 
 // SourceConfigsFromFlags creates a slice of SourceConfig's base on the provided flags.

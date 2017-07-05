@@ -100,7 +100,12 @@ func main() {
 
 func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *config.GceConfig, podConfig *config.PodConfig, sourceConfig config.SourceConfig) {
 	glog.Infof("Running prometheus-to-sd, monitored target is %s %v:%v", sourceConfig.Component, sourceConfig.Host, sourceConfig.Port)
-	metricDescriptorCache := translator.NewMetricDescriptorCache(stackdriverService, gceConf, sourceConfig.Component)
+	commonConfig := &config.CommonConfig{
+		GceConfig:     gceConf,
+		PodConfig:     podConfig,
+		ComponentName: sourceConfig.Component,
+	}
+	metricDescriptorCache := translator.NewMetricDescriptorCache(stackdriverService, commonConfig)
 	signal := time.After(0)
 	useWhitelistedMetricsAutodiscovery := *autoWhitelistMetrics && len(sourceConfig.Whitelisted) == 0
 
@@ -122,11 +127,6 @@ func readAndPushDataToStackdriver(stackdriverService *v3.Service, gceConf *confi
 			continue
 		}
 		metrics, err := translator.GetPrometheusMetrics(sourceConfig.Host, sourceConfig.Port)
-		commonConfig := &config.CommonConfig{
-			GceConfig:     gceConf,
-			PodConfig:     podConfig,
-			ComponentName: sourceConfig.Component,
-		}
 		if err != nil {
 			glog.Warningf("Error while getting Prometheus metrics %v", err)
 			continue

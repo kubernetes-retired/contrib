@@ -42,7 +42,7 @@ func SendToStackdriver(service *v3.Service, config *config.GceConfig, ts []*v3.T
 	proj := createProjectName(config)
 
 	var wg sync.WaitGroup
-	var failedTs uint32 = 0
+	var failedTs uint32
 	for i := 0; i < len(ts); i += maxTimeseriesesPerRequest {
 		end := i + maxTimeseriesesPerRequest
 		if end > len(ts) {
@@ -54,13 +54,13 @@ func SendToStackdriver(service *v3.Service, config *config.GceConfig, ts []*v3.T
 			req := &v3.CreateTimeSeriesRequest{TimeSeries: ts[begin:end]}
 			_, err := service.Projects.TimeSeries.Create(proj, req).Do()
 			if err != nil {
-				atomic.AddUint32(&failedTs, uint32(end - begin))
+				atomic.AddUint32(&failedTs, uint32(end-begin))
 				glog.Errorf("Error while sending request to Stackdriver %v", err)
 			}
 		}(i, end)
 	}
 	wg.Wait()
-	glog.V(4).Infof("Successfully sent %v timeserieses to Stackdriver", uint32(len(ts)) - failedTs)
+	glog.V(4).Infof("Successfully sent %v timeserieses to Stackdriver", uint32(len(ts))-failedTs)
 }
 
 // parseMetricType extracts component and metricName from Metric.Type (e.g. output of getMetricType).
