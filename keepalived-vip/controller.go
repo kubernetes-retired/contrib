@@ -171,6 +171,22 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 	// k -> IP to use
 	// v -> <namespace>/<service name>:<lvs method>
 	for externalIP, nsSvcLvs := range cfgMap.Data {
+		if nsSvcLvs == "" {
+			// if target is empty string we will not forward to any service but
+			// instead just configure the IP on the machine and let it up to
+			// another Pod or daemon to bind to the IP address
+			svcs = append(svcs, vip{
+				Name:      "",
+				IP:        externalIP,
+				Port:      0,
+				LVSMethod: "VIP",
+				Backends:  nil,
+				Protocol:  "TCP",
+			})
+			glog.V(2).Infof("Adding VIP only service: %v", externalIP)
+			continue
+		}
+
 		ns, svc, lvsm, err := parseNsSvcLVS(nsSvcLvs)
 		if err != nil {
 			glog.Warningf("%v", err)

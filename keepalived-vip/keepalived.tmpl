@@ -30,6 +30,9 @@ vrrp_instance vips {
 }
 
 {{ range $i, $svc := .svcs }}
+{{ if eq $svc.LVSMethod "VIP" }}
+# VIP Service with no pods: {{ $svc.IP }}
+{{ else }}
 # Service: {{ $svc.Name }}
 virtual_server {{ $svc.IP }} {{ $svc.Port }} {
   delay_loop 5
@@ -48,4 +51,5 @@ virtual_server {{ $svc.IP }} {{ $svc.Port }} {
   }
 {{ end }}
 }
+{{ end }}
 {{ end }}

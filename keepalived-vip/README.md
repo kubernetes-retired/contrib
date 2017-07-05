@@ -73,7 +73,7 @@ The only requirement is for [DaemonSets](https://github.com/kubernetes/kubernete
 
 ## Configuration
 
-To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`. Optionally it is possible to specify forwarding method using `:` after the service name. The valid options are `NAT` and `DR`. For instance `external IP -> namespace/serviceName:DR`. By default, if the method is not specified it will use NAT.
+To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`. Optionally it is possible to specify forwarding method using `:` after the service name. The valid options are `NAT` and `DR`. For instance `external IP -> namespace/serviceName:DR`. By default, if the method is not specified it will use NAT. If the service name is left blank, only the VIP will be assigned and no routing will be done. This is useful e.g. if you run HAProxy in another pod on the same machines with hostnetwork in order to forward incoming smtp requests via  proxy protocol to postfix. 
 
 This IP must be routable within the LAN and must be available. By default the IP address of the pods is used to route the traffic. This means that is one pod dies or a new one is created by a scale event the keepalived configuration file will be updated and reloaded.
 
