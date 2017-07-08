@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/json"
+	goflag "flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -85,8 +86,10 @@ var (
 )
 
 func main() {
-	glog.Infof("Running Rescheduler")
+	flags.AddGoFlagSet(goflag.CommandLine)
 	flags.Parse(os.Args)
+
+	glog.Infof("Running Rescheduler")
 
 	go func() {
 		http.Handle("/metrics", prometheus.Handler())
