@@ -14,4 +14,4 @@ KUBELET_HOSTNAME="--hostname-override=127.0.0.1"
 KUBELET_API_SERVER="--api-servers=http://127.0.0.1:8080"
 
 # Add your own!
-KUBELET_ARGS=""
+KUBELET_ARGS="--cgroup-driver=systemd"
