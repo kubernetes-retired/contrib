@@ -20,10 +20,12 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"strconv"
+	"strings"
 
 	"k8s.io/contrib/test-utils/utils"
 )
@@ -69,10 +71,43 @@ func (d *LocalDownloader) GetLastestBuildNumber(job string) (int, error) {
 
 // ListFilesInBuild returns the contents of the files with the specified prefix
 // for the test job at the given buildNumber.
-//
-// TODO(yguo0905): Implement this function.
 func (d *LocalDownloader) ListFilesInBuild(job string, buildNumber int, prefix string) ([]string, error) {
-	return nil, fmt.Errorf("ListFilesInBuild() is not yet implemented for local downloader")
+	filesInDir, err := filesInLocalDir(path.Join(*localDataDir, fmt.Sprintf("%d", buildNumber)), "", 0, 10)
+	if err != nil {
+		return nil, err
+	}
+	filesInBuild := []string{}
+	for _, file := range filesInDir {
+		if strings.HasPrefix(file, prefix) {
+			filesInBuild = append(filesInBuild, file)
+		}
+	}
+	return filesInBuild, nil
+}
+
+func filesInLocalDir(baseDir, extraDirs string, currentDepth, maxDepth int) ([]string, error) {
+	if currentDepth > maxDepth {
+		return []string{}, nil
+	}
+	filesInDir, err := ioutil.ReadDir(path.Join(baseDir, extraDirs))
+	if err != nil {
+		return nil, err
+	}
+	allFiles := []string{}
+	for _, file := range filesInDir {
+		if file.IsDir() {
+			files, err := filesInLocalDir(baseDir, path.Join(extraDirs, file.Name()), currentDepth+1, maxDepth)
+			if err != nil {
+				return nil, err
+			}
+			for _, subFile := range files {
+				allFiles = append(allFiles, path.Join(extraDirs, file.Name(), subFile))
+			}
+		} else {
+			allFiles = append(allFiles, file.Name())
+		}
+	}
+	return allFiles, nil
 }
 
 // GetFile returns readcloser of the desired file.
