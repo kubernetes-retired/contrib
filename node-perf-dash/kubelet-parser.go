@@ -74,6 +74,9 @@ const (
 	// Test container stops.
 	probeTestContainerStopPLEG     = "container_deletion_PLEG"
 	probeTestContainerStopPLEGSync = "container_deletion_PLEG_sync"
+
+	// Test cGroup removal.
+	probeCgroupsRemoved = "control_groups_removed"
 )
 
 var (
@@ -102,6 +105,7 @@ var (
 		probeContainerStopPLEG:     regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}) .* GenericPLEG: ([^\/]*)\/([^:]*): .* -> exited`),
 		probeContainerStopPLEGSync: regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet.go.*SyncLoop \(PLEG\): \".*\((.*)\)\".*Type:"ContainerDied", Data:"(.*)".*`),
 		probeDeleteComplete:        regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*status_manager.go.*Pod \".*\((.*)\)\" fully terminated and removed from etcd`),
+		probeCgroupsRemoved:        regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet_pods.go.*Orphaned pod (.*) found, removing pod cgroups`),
 	}
 	// We do not process logs for cAdvisor pod. Use this regex to filter them out.
 	regexMapCadvisorLog = regexp.MustCompile(`.*cadvisor.*`)
@@ -195,6 +199,7 @@ type PodState struct {
 	DeleteComplete           bool
 	VolumeMounted            bool
 	VolumeTornDown           bool
+	CGroupDeleted            bool
 }
 
 // GrabTracingKubelet parse tracing data using kubelet.log.
@@ -431,6 +436,18 @@ func parseLogEntry(line []byte, statePerPod map[string]*PodState) *DetectedEntry
 							return nil
 						}
 						statePerPod[pod].VolumeTornDown = true
+					}
+				case probeCgroupsRemoved:
+					{
+						// We only trace the first volume teardown event.
+						pod := string(matchResult[1])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{}
+						}
+						if statePerPod[pod].CGroupDeleted {
+							return nil
+						}
+						statePerPod[pod].CGroupDeleted = true
 					}
 				}
 				return &DetectedEntry{Probe: probe, Timestamp: ts}
