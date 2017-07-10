@@ -41,14 +41,18 @@ var supportedMetricTypes = map[dto.MetricType]bool{
 
 // TranslatePrometheusToStackdriver translates metrics in Prometheus format to Stackdriver format.
 func TranslatePrometheusToStackdriver(config *config.CommonConfig,
+	whitelisted []string,
 	metrics map[string]*dto.MetricFamily,
-	whitelisted []string) []*v3.TimeSeries {
+	cache *MetricDescriptorCache) []*v3.TimeSeries {
 
 	startTime := getStartTime(metrics)
 	metrics = filterWhitelisted(metrics, whitelisted)
 
 	var ts []*v3.TimeSeries
 	for name, metric := range metrics {
+		if cache.IsMetricBroken(name) {
+			continue
+		}
 		t, err := translateFamily(config, metric, startTime)
 		if err != nil {
 			glog.Warningf("Error while processing metric %s: %v", name, err)
@@ -209,14 +213,16 @@ func getMetricLabels(labels []*dto.LabelPair) map[string]string {
 	return metricLabels
 }
 
-// MetricFamilyToMetricDescriptor converts MetricFamily object to the MetricDescriptor.
-func MetricFamilyToMetricDescriptor(config *config.CommonConfig, family *dto.MetricFamily) *v3.MetricDescriptor {
+// MetricFamilyToMetricDescriptor converts MetricFamily object to the MetricDescriptor. If needed it uses information
+// from the previously created metricDescriptor (for example for merging labels).
+func MetricFamilyToMetricDescriptor(config *config.CommonConfig,
+	family *dto.MetricFamily, originalDescriptor *v3.MetricDescriptor) *v3.MetricDescriptor {
 	return &v3.MetricDescriptor{
 		Description: family.GetHelp(),
 		Type:        getMetricType(config, family.GetName()),
 		MetricKind:  extractMetricKind(family.GetType()),
 		ValueType:   extractValueType(family.GetType()),
-		Labels:      extractAllLabels(family),
+		Labels:      extractAllLabels(family, originalDescriptor),
 	}
 }
 
@@ -234,7 +240,7 @@ func extractValueType(mType dto.MetricType) string {
 	return "INT64"
 }
 
-func extractAllLabels(family *dto.MetricFamily) []*v3.LabelDescriptor {
+func extractAllLabels(family *dto.MetricFamily, originalDescriptor *v3.MetricDescriptor) []*v3.LabelDescriptor {
 	var labels []*v3.LabelDescriptor
 	labelSet := make(map[string]bool)
 	for _, metric := range family.GetMetric() {
@@ -243,6 +249,15 @@ func extractAllLabels(family *dto.MetricFamily) []*v3.LabelDescriptor {
 			if !ok {
 				labels = append(labels, &v3.LabelDescriptor{Key: label.GetName()})
 				labelSet[label.GetName()] = true
+			}
+		}
+	}
+	if originalDescriptor != nil {
+		for _, label := range originalDescriptor.Labels {
+			_, ok := labelSet[label.Key]
+			if !ok {
+				labels = append(labels, label)
+				labelSet[label.Key] = true
 			}
 		}
 	}
