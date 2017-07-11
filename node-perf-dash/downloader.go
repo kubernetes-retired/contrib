@@ -20,10 +20,12 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"strconv"
+	"strings"
 
 	"k8s.io/contrib/test-utils/utils"
 )
@@ -69,10 +71,19 @@ func (d *LocalDownloader) GetLastestBuildNumber(job string) (int, error) {
 
 // ListFilesInBuild returns the contents of the files with the specified prefix
 // for the test job at the given buildNumber.
-//
-// TODO(yguo0905): Implement this function.
 func (d *LocalDownloader) ListFilesInBuild(job string, buildNumber int, prefix string) ([]string, error) {
-	return nil, fmt.Errorf("ListFilesInBuild() is not yet implemented for local downloader")
+	prefixDir, prefixFile := path.Split(prefix)
+	filesInDir, err := ioutil.ReadDir(path.Join(*localDataDir, fmt.Sprintf("%d", buildNumber), prefixDir))
+	if err != nil {
+		return nil, err
+	}
+	filesInBuild := []string{}
+	for _, file := range filesInDir {
+		if strings.HasPrefix(file.Name(), prefixFile) {
+			filesInBuild = append(filesInBuild, path.Join(prefixDir, file.Name()))
+		}
+	}
+	return filesInBuild, nil
 }
 
 // GetFile returns readcloser of the desired file.
