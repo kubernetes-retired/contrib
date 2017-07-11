@@ -46,7 +46,7 @@ ifeq ($(ARCH),ppc64le)
     BASEIMAGE?=ppc64le/busybox
 endif
 ifeq ($(ARCH),s390x)
-    BASEIMAGE?=s390x/busybox
+    BASEIMAGE?=s390x/alpine
 endif
 
 IMAGE := $(REGISTRY)/$(BIN)-$(ARCH)
