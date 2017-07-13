@@ -87,6 +87,12 @@ var (
 
 func main() {
 	flags.AddGoFlagSet(goflag.CommandLine)
+
+	// Log to stderr by default and fix usage message accordingly
+	logToStdErr := flags.Lookup("logtostderr")
+	logToStdErr.DefValue = "true"
+	flags.Set("logtostderr", "true")
+
 	flags.Parse(os.Args)
 
 	glog.Infof("Running Rescheduler")
