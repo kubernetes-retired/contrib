@@ -45,21 +45,38 @@ const (
 	kubeletLogTimeFormat = "2006 0102 15:04:05.000000"
 
 	// Probe names.
-	probeFirstseen              = "pod_config_change"
+	probeFirstseen              = "pod_syncloop_add"
 	probeRuntime                = "runtime_manager"
-	probeContainerStartPLEG     = "container_start_pleg"
-	probeContainerStartPLEGSync = "container_start_pleg_sync"
+	probeContainerStartPLEG     = "container_creation_PLEG"
+	probeContainerStartPLEGSync = "container_creation_PLEG_sync"
 	probeStatusUpdate           = "pod_status_running"
+	probeTestPodStart           = "pod_creation_event"
+	probeTestVolumeMount        = "volume_mounted"
+	probeTestVolumeTeardown     = "volume_torn_down"
+	probeDelete                 = "pod_syncloop_delete"
+	probeTestPodStop            = "pod_deletion_event"
+	probeContainerStopPLEG      = "container_deletion_PLEG"
+	probeContainerStopPLEGSync  = "container_deletion_PLEG_sync"
+	probeDeleteComplete         = "pod_status_deleted"
 
 	// Infra container starts.
-	probeInfraContainerPLEG     = "infra_container_start_pleg"
-	probeInfraContainerPLEGSync = "infra_container_start_pleg_sync"
+	probeInfraContainerStartPLEG     = "infra_container_creation_PLEG"
+	probeInfraContainerStartPLEGSync = "infra_container_creation_PLEG_sync"
 
 	// Test container starts.
-	probeTestContainerPLEG     = "container_start_pleg"
-	probeTestContainerPLEGSync = "container_start_pleg_sync"
+	probeTestContainerStartPLEG     = "container_creation_PLEG"
+	probeTestContainerStartPLEGSync = "container_creation_PLEG_sync"
 
-	probeTestPodStart = "pod_running"
+	// Infra container stops.
+	probeInfraContainerStopPLEG     = "infra_container_deletion_PLEG"
+	probeInfraContainerStopPLEGSync = "infra_container_deletion_PLEG_sync"
+
+	// Test container stops.
+	probeTestContainerStopPLEG     = "container_deletion_PLEG"
+	probeTestContainerStopPLEGSync = "container_deletion_PLEG_sync"
+
+	// Test cGroup removal.
+	probeCgroupsRemoved = "control_groups_removed"
 )
 
 var (
@@ -79,6 +96,16 @@ var (
 		probeContainerStartPLEGSync: regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet.go.*SyncLoop \(PLEG\): \".*\((.*)\)\".*Type:"ContainerStarted", Data:"(.*)".*`),
 		probeStatusUpdate:           regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*status_manager.go.*Status for pod \".*\((.*)\)\" updated successfully.*Phase:Running.*`),
 		probeTestPodStart:           regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}) .* server.go.*Event.*UID:\"([^\"]*)\", .* type: 'Normal' reason: 'Started' Started container.*`),
+		// Volume events
+		probeTestVolumeMount:    regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*volume_manager.go.*All volumes are attached and mounted for pod \".*\((.*)\)\"`),
+		probeTestVolumeTeardown: regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*operation_generator.go.*UnmountVolume.TearDown succeeded for volume \"(.*)\" \(OuterVolumeSpecName: .*\) pod \"(.*)\" .*`),
+		// Pod deletion event
+		probeDelete:                regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet.go.*SyncLoop \(DELETE, \"api\"\): \"(.*)\(.*\)\"`),
+		probeTestPodStop:           regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}) .* server.go.*Event.*UID:\"([^\"]*)\", .* type: 'Normal' reason: 'Killing' Killing container.*`),
+		probeContainerStopPLEG:     regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}) .* GenericPLEG: ([^\/]*)\/([^:]*): .* -> exited`),
+		probeContainerStopPLEGSync: regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet.go.*SyncLoop \(PLEG\): \".*\((.*)\)\".*Type:"ContainerDied", Data:"(.*)".*`),
+		probeDeleteComplete:        regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*status_manager.go.*Pod \".*\((.*)\)\" fully terminated and removed from etcd`),
+		probeCgroupsRemoved:        regexp.MustCompile(`[IW](\d{2}\d{2} \d{2}:\d{2}:\d{2}.\d{6}).*kubelet_pods.go.*Orphaned pod (.*) found, removing pod cgroups`),
 	}
 	// We do not process logs for cAdvisor pod. Use this regex to filter them out.
 	regexMapCadvisorLog = regexp.MustCompile(`.*cadvisor.*`)
@@ -163,9 +190,16 @@ func ParseKubeletLog(d Downloader, job string, buildNumber int, testTime TestTim
 
 // PodState records the state of a pod from parsed kubelet log. The state is used for parsing.
 type PodState struct {
-	ContainerNrPLEG     int
-	ContainerNrPLEGSync int
-	StatusUpdated       bool
+	ContainerNrStartPLEG     int
+	ContainerNrStartPLEGSync int
+	ContainerNrStopPLEG      int
+	ContainerNrStopPLEGSync  int
+	StatusUpdated            bool
+	DeleteStarted            bool
+	DeleteComplete           bool
+	VolumeMounted            bool
+	VolumeTornDown           bool
+	CGroupDeleted            bool
 }
 
 // GrabTracingKubelet parse tracing data using kubelet.log.
@@ -269,16 +303,16 @@ func parseLogEntry(line []byte, statePerPod map[string]*PodState) *DetectedEntry
 					{
 						pod := string(matchResult[2])
 						if _, ok := statePerPod[pod]; !ok {
-							statePerPod[pod] = &PodState{ContainerNrPLEG: 1}
+							statePerPod[pod] = &PodState{ContainerNrStartPLEG: 1}
 						} else {
-							statePerPod[pod].ContainerNrPLEG++
+							statePerPod[pod].ContainerNrStartPLEG++
 						}
 						// In our test the pod contains an infra container and test container.
-						switch statePerPod[pod].ContainerNrPLEG {
+						switch statePerPod[pod].ContainerNrStartPLEG {
 						case 1:
-							probe = probeInfraContainerPLEG
+							probe = probeInfraContainerStartPLEG
 						case 2:
-							probe = probeTestContainerPLEG
+							probe = probeTestContainerStartPLEG
 						default:
 							return nil
 						}
@@ -288,16 +322,16 @@ func parseLogEntry(line []byte, statePerPod map[string]*PodState) *DetectedEntry
 					{
 						pod := string(matchResult[2])
 						if _, ok := statePerPod[pod]; !ok {
-							statePerPod[pod] = &PodState{ContainerNrPLEGSync: 1}
+							statePerPod[pod] = &PodState{ContainerNrStartPLEGSync: 1}
 						} else {
-							statePerPod[pod].ContainerNrPLEGSync++
+							statePerPod[pod].ContainerNrStartPLEGSync++
 						}
 						// In our test the pod contains an infra container and test container.
-						switch statePerPod[pod].ContainerNrPLEGSync {
+						switch statePerPod[pod].ContainerNrStartPLEGSync {
 						case 1:
-							probe = probeInfraContainerPLEGSync
+							probe = probeInfraContainerStartPLEGSync
 						case 2:
-							probe = probeTestContainerPLEGSync
+							probe = probeTestContainerStartPLEGSync
 						default:
 							return nil
 						}
@@ -314,6 +348,106 @@ func parseLogEntry(line []byte, statePerPod map[string]*PodState) *DetectedEntry
 							return nil
 						}
 						statePerPod[pod].StatusUpdated = true
+					}
+				// 'container stops' reported by PLEG event.
+				case probeContainerStopPLEG:
+					{
+						pod := string(matchResult[2])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{ContainerNrStopPLEG: 1}
+						} else {
+							statePerPod[pod].ContainerNrStopPLEG++
+						}
+						// In our test the pod contains an infra container and test container.
+						switch statePerPod[pod].ContainerNrStopPLEG {
+						case 1:
+							probe = probeInfraContainerStopPLEG
+						case 2:
+							probe = probeTestContainerStopPLEG
+						default:
+							return nil
+						}
+					}
+				// 'container stops' detected by PLEG reported in Kublet SyncPod.
+				case probeContainerStopPLEGSync:
+					{
+						pod := string(matchResult[2])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{ContainerNrStopPLEGSync: 1}
+						} else {
+							statePerPod[pod].ContainerNrStopPLEGSync++
+						}
+						// In our test the pod contains an infra container and test container.
+						switch statePerPod[pod].ContainerNrStopPLEGSync {
+						case 1:
+							probe = probeInfraContainerStopPLEGSync
+						case 2:
+							probe = probeTestContainerStopPLEGSync
+						default:
+							return nil
+						}
+					}
+				// 'pod delete' from Syncloop DELETE.
+				case probeDelete:
+					{
+						// We only trace the first status update event.
+						pod := string(matchResult[2])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{}
+						}
+						if statePerPod[pod].DeleteStarted {
+							return nil
+						}
+						statePerPod[pod].DeleteStarted = true
+					}
+				// 'pod deleted' reported by Kubelet status manager.
+				case probeDeleteComplete:
+					{
+						// We only trace the first status update event.
+						pod := string(matchResult[1])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{}
+						}
+						if statePerPod[pod].DeleteComplete {
+							return nil
+						}
+						statePerPod[pod].DeleteComplete = true
+					}
+				case probeTestVolumeMount:
+					{
+						// We only trace the first volume mount event.
+						pod := string(matchResult[2])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{}
+						}
+						if statePerPod[pod].VolumeMounted {
+							return nil
+						}
+						statePerPod[pod].VolumeMounted = true
+					}
+				case probeTestVolumeTeardown:
+					{
+						// We only trace the first volume teardown event.
+						pod := string(matchResult[2])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{}
+						}
+						if statePerPod[pod].VolumeTornDown {
+							return nil
+						}
+						statePerPod[pod].VolumeTornDown = true
+					}
+				case probeCgroupsRemoved:
+					{
+						// We only trace the first volume teardown event.
+						pod := string(matchResult[1])
+						if _, ok := statePerPod[pod]; !ok {
+							statePerPod[pod] = &PodState{}
+						}
+						if statePerPod[pod].CGroupDeleted {
+							return nil
+						}
+						statePerPod[pod].CGroupDeleted = true
 					}
 				}
 				return &DetectedEntry{Probe: probe, Timestamp: ts}
