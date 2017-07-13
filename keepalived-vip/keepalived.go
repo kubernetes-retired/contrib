@@ -52,7 +52,7 @@ type keepalived struct {
 	ipt        iptables.Interface
 	vrid       int
 	dryrun     bool
-	dryrun_break bool
+	dryrunBreak bool
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -106,10 +106,10 @@ func (k *keepalived) Start() {
 			"keepalived --dont-fork --log-console --release-vips --pid /keepalived.pid")
 		k.started = true // simulate a started keepalived
 		
-		k.dryrun_break = false
+		k.dryrunBreak = false
 		for {
 			time.Sleep(10 * time.Second) // This is really bad, but for testing in dry run it will do
-			if k.dryrun_break {
+			if k.dryrunBreak {
 				break
 			}
 		}
@@ -179,7 +179,7 @@ func (k *keepalived) Stop() {
 	if k.dryrun {
 		glog.Infof("dry run - not flushing iptables Chain %v", iptablesChain);
 		glog.Info("dry run - not stopping keepalived")
-		k.dryrun_break = true
+		k.dryrunBreak = true
 	} else {
 		err := k.ipt.FlushChain(iptables.TableFilter, iptables.Chain(iptablesChain))
 		if err != nil {
