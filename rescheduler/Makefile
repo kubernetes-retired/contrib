@@ -3,7 +3,7 @@ all: build
 FLAGS =
 ENVVAR = GOOS=linux GOARCH=amd64
 REGISTRY = gcr.io/google-containers
-TAG = v0.3.0
+TAG = v0.3.1
 
 deps:
 	go get github.com/tools/godep
