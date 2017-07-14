@@ -61,9 +61,8 @@ var (
 		`The keepalived VRID (Virtual Router Identifier, between 0 and 255 as per
 			RFC-5798), which must be different for every Virtual Router (ie. every
 			keepalived sets) running on the same network.`)
-	
+
 	dryrun = flags.Bool("dry-run", false, `If true, No keepalived will be started, only the configfile will be written. Useful for testing and debugging.`)
-	
 )
 
 func main() {
@@ -113,12 +112,12 @@ func main() {
 		if err != nil {
 			glog.Fatalf("unexpected error: %v", err)
 		}
-	
+
 		err = changeSysctl()
 		if err != nil {
 			glog.Fatalf("unexpected error: %v", err)
 		}
-	
+
 		err = resetIPVS()
 		if err != nil {
 			glog.Fatalf("unexpected error: %v", err)
