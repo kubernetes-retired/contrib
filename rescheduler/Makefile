@@ -1,7 +1,7 @@
 all: build
 
 FLAGS =
-ENVVAR = GOOS=linux GOARCH=amd64
+ENVVAR = GOOS=linux GOARCH=amd64 CGO_ENABLED=0
 REGISTRY = gcr.io/google-containers
 TAG = v0.3.1
 
