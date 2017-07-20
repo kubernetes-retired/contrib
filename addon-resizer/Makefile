@@ -23,30 +23,79 @@
 # 7. Revert the references to kubernetes/addon-resizer:$(TAG) to gcr.io/google_containers/addon-resizer:$(TAG) 
 
 OUT_DIR = build
-PACKAGE = k8s.io/contrib/addon-resizer
-PREFIX = gcr.io/google_containers
-TAG = 1.7
+GOLANG_VERSION = 1.8.3
+REGISTRY = gcr.io/google_containers
+IMGNAME = addon-resizer
+IMAGE = $(REGISTRY)/$(IMGNAME)
+MULTI_ARCH_IMG = $(IMAGE)-$(ARCH)
+TAG = 1.8
 
-# Rules for building the real image for deployment to gcr.io
 
-deps:
-		go get -u github.com/tools/godep
+ALL_ARCH = amd64 arm arm64 ppc64le s390x
 
-compile: nanny/ deps
-		GOOS=linux GOARCH=amd64 CGO_ENABLED=0 godep go build -a -o $(OUT_DIR)/pod_nanny nanny/main/pod_nanny.go
+ifeq ($(ARCH),amd64)
+	BASEIMAGE=busybox
+endif
+ifeq ($(ARCH),arm)
+	BASEIMAGE=arm32v6/busybox
+endif
+ifeq ($(ARCH),arm64)
+	BASEIMAGE=arm64v8/busybox
+endif
+ifeq ($(ARCH),ppc64le)
+	BASEIMAGE=ppc64le/busybox
+endif
+ifeq ($(ARCH),s390x)
+	BASEIMAGE=s390x/busybox
+endif
 
-test: nanny/
-		godep go test ${PACKAGE}/nanny -v
+TEMP_DIR := $(shell mktemp -d)
 
-go: compile test
+all: all-container
 
-clean:
-	rm -rf build
+sub-container-%:
+	$(MAKE) ARCH=$* container
 
-build: go
-	docker build --pull -t ${PREFIX}/addon-resizer:$(TAG) .
+sub-push-%:
+	$(MAKE) ARCH=$* push
 
-docker: build
+all-container: test $(addprefix sub-container-,$(ALL_ARCH))
 
-push: docker
-	gcloud docker -- push ${PREFIX}/addon-resizer:$(TAG)
+all-push: $(addprefix sub-push-,$(ALL_ARCH))
+container: .container-$(ARCH)
+.container-$(ARCH):
+	cp -r * $(TEMP_DIR)
+	cd $(TEMP_DIR) && sed -i 's|BASEIMAGE|$(BASEIMAGE)|g' Dockerfile
+
+	docker run --rm -it -v $(TEMP_DIR):$(TEMP_DIR):Z -v $(shell pwd)/../../contrib:/go/src/k8s.io/contrib:Z \
+        golang:${GOLANG_VERSION} \
+        /bin/bash -c "\
+		go get github.com/tools/godep && \
+                cd /go/src/k8s.io/contrib/addon-resizer && \
+                CGO_ENABLED=0 GOARM=$(GOARM) GOARCH=$(ARCH) godep go build -a -installsuffix cgo --ldflags '-w' -o $(TEMP_DIR)/pod_nanny nanny/main/pod_nanny.go"
+
+	docker build -t $(MULTI_ARCH_IMG):$(TAG) $(TEMP_DIR)
+
+ifeq ($(ARCH), amd64)
+	# This is for to maintain the backward compatibility
+	docker tag $(MULTI_ARCH_IMG):$(TAG) $(IMAGE):$(TAG)
+endif
+
+test:
+	docker run --rm -it -v $(shell pwd)/../../contrib:/go/src/k8s.io/contrib:Z \
+	golang:${GOLANG_VERSION} \
+        /bin/bash -c "\
+                go get github.com/tools/godep && \
+                cd /go/src/k8s.io/contrib/addon-resizer && \
+		godep go test ./nanny -v"
+
+push: .push-$(ARCH)
+.push-$(ARCH): .container-$(ARCH)
+	gcloud docker -- push $(MULTI_ARCH_IMG):$(TAG)
+ifeq ($(ARCH), amd64)
+	gcloud docker -- push $(IMAGE):$(TAG)
+endif
+
+clean: $(addprefix sub-clean-,$(ALL_ARCH))
+sub-clean-%:
+	docker rmi -f $(IMAGE)-$*:$(TAG) || true
