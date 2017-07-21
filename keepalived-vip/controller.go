@@ -24,6 +24,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -170,44 +171,55 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 
 	// k -> IP to use
 	// v -> <namespace>/<service name>:<lvs method>
-	for externalIP, nsSvcLvs := range cfgMap.Data {
-		ns, svc, lvsm, err := parseNsSvcLVS(nsSvcLvs)
-		if err != nil {
-			glog.Warningf("%v", err)
-			continue
-		}
-
-		nsSvc := fmt.Sprintf("%v/%v", ns, svc)
-		svcObj, svcExists, err := ipvsc.svcLister.Indexer.GetByKey(nsSvc)
-		if err != nil {
-			glog.Warningf("error getting service %v: %v", nsSvc, err)
-			continue
-		}
-
-		if !svcExists {
-			glog.Warningf("service %v not found", nsSvc)
-			continue
-		}
-
-		s := svcObj.(*api.Service)
-		for _, servicePort := range s.Spec.Ports {
-			ep := ipvsc.getEndpoints(s, &servicePort)
-			if len(ep) == 0 {
-				glog.Warningf("no endpoints found for service %v, port %+v", s.Name, servicePort)
+	for externalIP, LnsSvcLvs := range cfgMap.Data {
+		usedPorts := map[int]string{}
+		for _, nsSvcLvs := range strings.Split(LnsSvcLvs, "\n") {
+			ns, svc, lvsm, err := parseNsSvcLVS(nsSvcLvs)
+			if err != nil {
+				glog.Warningf("%v", err)
 				continue
 			}
 
-			sort.Sort(serviceByIPPort(ep))
+			nsSvc := fmt.Sprintf("%v/%v", ns, svc)
+			svcObj, svcExists, err := ipvsc.svcLister.Indexer.GetByKey(nsSvc)
+			if err != nil {
+				glog.Warningf("error getting service %v: %v", nsSvc, err)
+				continue
+			}
 
-			svcs = append(svcs, vip{
-				Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
-				IP:        externalIP,
-				Port:      int(servicePort.Port),
-				LVSMethod: lvsm,
-				Backends:  ep,
-				Protocol:  fmt.Sprintf("%v", servicePort.Protocol),
-			})
-			glog.V(2).Infof("found service: %v:%v", s.Name, servicePort.Port)
+			if !svcExists {
+				glog.Warningf("service %v not found", nsSvc)
+				continue
+			}
+
+			s := svcObj.(*api.Service)
+			for _, servicePort := range s.Spec.Ports {
+				ep := ipvsc.getEndpoints(s, &servicePort)
+				if len(ep) == 0 {
+					glog.Warningf("no endpoints found for service %v, port %+v", s.Name, servicePort)
+					continue
+				}
+
+				if usedPort, ok := usedPorts[int(servicePort.Port)]; ok {
+					glog.Warningf("port %v of the service %v has already been allocated by the service %v",
+						usedPort, s.Name, usedPorts[int(servicePort.Port)])
+					continue
+				} else {
+					usedPorts[int(servicePort.Port)] = s.Name
+				}
+
+				sort.Sort(serviceByIPPort(ep))
+
+				svcs = append(svcs, vip{
+					Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
+					IP:        externalIP,
+					Port:      int(servicePort.Port),
+					LVSMethod: lvsm,
+					Backends:  ep,
+					Protocol:  fmt.Sprintf("%v", servicePort.Protocol),
+				})
+				glog.V(2).Infof("found service: %v:%v", s.Name, servicePort.Port)
+			}
 		}
 	}
 

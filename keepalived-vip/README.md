@@ -154,6 +154,17 @@ data:
   10.4.0.50: default/echoheaders" | kubectl create -f -
 ```
 
+You can also set multiple services on a single ip, for example
+
+```
+data:
+  10.4.0.50: |-
+  default/echoheaders
+  default/someanotherservice
+```
+
+But in this case you need to ensure that there are no any overlaps with services ports
+
 Now the creation of the daemonset
 ```
 $ kubectl create -f vip-daemonset.yaml
