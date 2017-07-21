@@ -1,0 +1,33 @@
+global
+  ulimit-n      108035
+  stats         socket /tmp/haproxy mode 600 level admin
+
+defaults
+  maxconn       100000
+
+userlist users
+  user stats insecure-password statspassword
+
+listen stats
+  bind      :1936
+  mode      http
+  stats     uri /
+  stats     realm Haproxy\ Statistics
+  stats     enable
+  timeout   connect 5000
+  timeout   client 5000
+  timeout   server 5000
+
+{{ range $i, $svc := .svcs }}
+listen {{ $svc.Name }}-{{ $svc.Port }}
+  bind      {{ $svc.IP }}:{{ $svc.Port }}
+  mode      tcp
+  option    redispatch
+  balance   roundrobin
+  timeout   connect 1s
+  timeout   queue 5s
+  timeout   client 1200s
+  timeout   server 1200s
+  {{ range $j, $backend := $svc.Backends }}server {{ $backend.IP }} {{ $backend.IP }}:{{ $backend.Port }} check {{ if eq $svc.LVSMethod "PROXY" }}send-proxy{{ end }} inter 5000
+  {{ end }}
+{{ end }}

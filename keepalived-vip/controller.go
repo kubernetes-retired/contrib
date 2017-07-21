@@ -29,14 +29,15 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/fields"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/flowcontrol"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	"k8s.io/kubernetes/pkg/util/exec"
-	"k8s.io/kubernetes/pkg/util/flowcontrol"
-	"k8s.io/kubernetes/pkg/util/intstr"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 )
 
@@ -104,11 +105,11 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 // ipvsControllerController watches the kubernetes api and adds/removes
 // services from LVS throgh ipvsadmin.
 type ipvsControllerController struct {
-	client            *unversioned.Client
-	epController      *cache.Controller
-	svcController     *cache.Controller
-	svcLister         cache.StoreToServiceLister
-	epLister          cache.StoreToEndpointsLister
+	client            *kubernetes.Clientset
+	epController      cache.Controller
+	svcController     cache.Controller
+	svcLister         StoreToServiceLister
+	epLister          StoreToEndpointsLister
 	reloadRateLimiter flowcontrol.RateLimiter
 	keepalived        *keepalived
 	configMapName     string
@@ -200,7 +201,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 			sort.Sort(serviceByIPPort(ep))
 
 			svcs = append(svcs, vip{
-				Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
+				Name:      fmt.Sprintf("%v-%v", s.Namespace, s.Name),
 				IP:        externalIP,
 				Port:      int(servicePort.Port),
 				LVSMethod: lvsm,
@@ -217,7 +218,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 }
 
 func (ipvsc *ipvsControllerController) getConfigMap(ns, name string) (*api.ConfigMap, error) {
-	return ipvsc.client.ConfigMaps(ns).Get(name)
+	return ipvsc.client.CoreV1().ConfigMaps(ns).Get(name, meta_v1.GetOptions{})
 }
 
 // sync all services with the
@@ -284,7 +285,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string, vrid int) *ipvsControllerController {
+func newIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configMapName string, vrid int, proxyMode bool) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
@@ -298,7 +299,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		glog.Fatalf("Error getting POD information: %v", err)
 	}
 
-	pod, err := kubeClient.Pods(podInfo.PodNamespace).Get(podInfo.PodName)
+	pod, err := kubeClient.Pods(podInfo.PodNamespace).Get(podInfo.PodName, meta_v1.GetOptions{})
 	if err != nil {
 		glog.Fatalf("Error getting %v: %v", podInfo.PodName, err)
 	}
@@ -309,10 +310,6 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 	nodeInfo, err := getNetworkInfo(podInfo.NodeIP)
 	if err != nil {
 		glog.Fatalf("Error getting local IP from nodes in the cluster: %v", err)
-	}
-
-	if vrid < 0 || vrid > 255 {
-		glog.Fatalf("Error using VRID %d, only values between 0 and 255 are allowed.", vrid)
 	}
 
 	neighbors := getNodeNeighbors(nodeInfo, clusterNodes)
@@ -331,13 +328,14 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		useUnicast: useUnicast,
 		ipt:        iptInterface,
 		vrid:       vrid,
+		proxyMode:  proxyMode,
 	}
 
 	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)
 
-	err = ipvsc.keepalived.loadTemplate()
+	err = ipvsc.keepalived.loadTemplates()
 	if err != nil {
-		glog.Fatalf("Error loading keepalived template: %v", err)
+		glog.Fatalf("Error loading templates: %v", err)
 	}
 
 	eventHandlers := cache.ResourceEventHandlerFuncs{
@@ -355,16 +353,15 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 	}
 
 	ipvsc.svcLister.Indexer, ipvsc.svcController = cache.NewIndexerInformer(
-		cache.NewListWatchFromClient(
-			ipvsc.client, "services", namespace, fields.Everything()),
+		cache.NewListWatchFromClient(ipvsc.client.Core().RESTClient(), "services", namespace, fields.Everything()),
 		&api.Service{},
 		resyncPeriod,
 		eventHandlers,
-		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+	)
 
 	ipvsc.epLister.Store, ipvsc.epController = cache.NewInformer(
-		cache.NewListWatchFromClient(
-			ipvsc.client, "endpoints", namespace, fields.Everything()),
+		cache.NewListWatchFromClient(ipvsc.client.Core().RESTClient(), "endpoints", namespace, fields.Everything()),
 		&api.Endpoints{}, resyncPeriod, eventHandlers)
 
 	return &ipvsc
