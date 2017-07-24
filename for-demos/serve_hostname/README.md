@@ -1,7 +1,1 @@
-serve_hostname
-==============
-
-Util app to serve your hostname on TCP and/or UDP.  Useful for testing.
-
-
-[![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/for-demos/serve_hostname/README.md?pixel)]()
+The serve_hostname has moved to https://github.com/kubernetes/kubernetes/tree/master/test/images/serve-hostname
