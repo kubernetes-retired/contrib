@@ -42,7 +42,7 @@ var (
 	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
 	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
 	vethRegex     = regexp.MustCompile(`^veth.*`)
-	lvsRegex      = regexp.MustCompile(`NAT`)
+	lvsRegex      = regexp.MustCompile(`NAT|DR`)
 )
 
 type nodeInfo struct {
