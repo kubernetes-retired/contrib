@@ -100,7 +100,7 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 			}
 		}
 
-		if externalIP == "" && address.Type == api.NodeLegacyHostIP {
+		if externalIP == "" && address.Type == api.NodeInternalIP {
 			externalIP = address.Address
 		}
 	}
