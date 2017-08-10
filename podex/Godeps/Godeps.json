@@ -1,6 +1,7 @@
 {
 	"ImportPath": "k8s.io/contrib/podex",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.8",
+	"GodepVersion": "v79",
 	"Packages": [
 		"./..."
 	],

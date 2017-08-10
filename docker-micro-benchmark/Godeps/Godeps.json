@@ -1,14 +1,15 @@
 {
 	"ImportPath": "k8s.io/contrib/docker-micro-benchmark",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.8",
+	"GodepVersion": "v79",
 	"Packages": [
 		"./..."
 	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/Microsoft/go-winio",
-			"Comment": "v0.1.0",
-			"Rev": "8f9387ea7efabb228a981b9c381142be7667967f"
+			"Comment": "v0.4.5",
+			"Rev": "78439966b38d69bf38227fbf57ac8a6fee70f69a"
 		},
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
@@ -36,6 +37,11 @@
 			"Rev": "0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d"
 		},
 		{
+			"ImportPath": "github.com/docker/docker/pkg/term/winconsole",
+			"Comment": "v1.4.1-4831-g0f5c9d3",
+			"Rev": "0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d"
+		},
+		{
 			"ImportPath": "github.com/docker/docker/pkg/timeutils",
 			"Comment": "v1.4.1-4831-g0f5c9d3",
 			"Rev": "0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d"
@@ -51,7 +57,62 @@
 			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
 		},
 		{
+			"ImportPath": "github.com/docker/engine-api/client/transport",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/client/transport/cancellable",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
 			"ImportPath": "github.com/docker/engine-api/types",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/blkiodev",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/container",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/filters",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/network",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/reference",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/registry",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/strslice",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/time",
+			"Comment": "v0.3.1-62-g3d72d39",
+			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/versions",
 			"Comment": "v0.3.1-62-g3d72d39",
 			"Rev": "3d72d392d07bece8d7d7b2a3b6b2e57c2df376a2"
 		},
@@ -91,6 +152,10 @@
 		{
 			"ImportPath": "golang.org/x/net/proxy",
 			"Rev": "c2528b2dd8352441850638a8bb678c2ad056fd3e"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/windows",
+			"Rev": "e42485b6e20ae7d2304ec72e535b103ed350cc02"
 		}
 	]
 }
