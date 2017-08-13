@@ -59,7 +59,6 @@ foo       -                       10.4.0.3
 
 ```
 $ curl https://10.4.0.3 -H 'Host:foo.bar.com' -k
-old-mbp:contrib aledbf$ curl https://10.4.0.3 -H 'Host:foo.bar.com' -k
 CLIENT VALUES:
 client_address=10.2.48.4
 command=GET
