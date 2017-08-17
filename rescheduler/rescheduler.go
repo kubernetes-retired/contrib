@@ -81,7 +81,7 @@ var (
 		`How long should rescheduler wait for critical pod to be scheduled
 		 after evicting pods to make a spot for it.`)
 
-	listenAddress = flags.String("listen-address", "localhost:9235",
+	listenAddress = flags.String("listen-address", "127.0.0.1:9235",
 		`Address to listen on for serving prometheus metrics`)
 )
 
