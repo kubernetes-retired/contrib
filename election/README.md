@@ -31,6 +31,12 @@ To see which pod was chosen as the leader, you can access the logs of one of the
 $ kubectl logs -f ${pod_name}
 ```
 
+If your Kubernetes cluster is enable [RBAC](https://kubernetes.io/docs/admin/authorization/rbac/)，the above command does not work properly because pod dose not have permissions to create endpoint resource by default. You need to set up ServiceAccount and ClusterRole, see the deployment.yaml in current directory for more detail. You also can create leader-elector example with following command.
+
+```console
+$ kubectl apply -f ./deployment.yaml
+```
+
 Alternately, you can inspect the endpoints object directly: 
 
 ```console

@@ -1,0 +1,53 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: leader-elector
+spec:
+  replicas: 3
+  template:
+      metadata:
+        labels:
+          app: leader-elector
+      spec:
+        serviceAccountName: leader-elector-example
+        containers:
+          - name: web
+            image: gcr.io/google_containers/leader-elector:0.5
+            args:
+            - --election=example
+            - --http=0.0.0.0:4040
+            ports:
+              - name: web
+                containerPort: 80
+                protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: leader-elector-example
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: leader-elector
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - "endpoints"
+  verbs:
+  - "*"
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: leader-elector
+subjects:
+- kind: ServiceAccount
+  name: leader-elector-example
+  namespace: default
+  apiGroup: ""
+roleRef:
+  kind: ClusterRole
+  name: leader-elector
+  apiGroup: ""
