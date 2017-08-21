@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/json"
+	goflag "flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -80,13 +81,21 @@ var (
 		`How long should rescheduler wait for critical pod to be scheduled
 		 after evicting pods to make a spot for it.`)
 
-	listenAddress = flags.String("listen-address", "localhost:9235",
+	listenAddress = flags.String("listen-address", "127.0.0.1:9235",
 		`Address to listen on for serving prometheus metrics`)
 )
 
 func main() {
-	glog.Infof("Running Rescheduler")
+	flags.AddGoFlagSet(goflag.CommandLine)
+
+	// Log to stderr by default and fix usage message accordingly
+	logToStdErr := flags.Lookup("logtostderr")
+	logToStdErr.DefValue = "true"
+	flags.Set("logtostderr", "true")
+
 	flags.Parse(os.Args)
+
+	glog.Infof("Running Rescheduler")
 
 	go func() {
 		http.Handle("/metrics", prometheus.Handler())

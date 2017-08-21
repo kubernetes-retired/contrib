@@ -37,7 +37,7 @@ Here is where IPVS can help.
 
 The idea is to expose a Virtual IP (VIP) address per service, outside of the kubernetes cluster. _keepalived_ then uses VRRP to sync this "mapping" in the local network. With 2 or more instance of the pod running in the cluster is possible to provide HA using a single VIP address.
 
-##### What is the difference between _keepalived_ and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx-alpha](https://github.com/kubernetes/contrib/tree/master/Ingress/controllers/nginx-alpha)?
+##### What is the difference between _keepalived_ and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx](https://github.com/kubernetes/ingress/tree/master/controllers/nginx)?
 
 _keepalived_ should be considered a complement to, and not a replacement for HAProxy or nginx. The goal is to provide robust HA, such that no downtime is experienced if one or more nodes go offline. To be exact, _keepalived_ ensures that the VIP, which exposes a service-loadbalancer or an Ingress, is always owned by a live node. The DNS record will simply point to this single VIP (ie. sans RR) and the failover will be handled entirely by _keepalived_.
 
@@ -68,12 +68,12 @@ In the above diagram, one node assumes the role of a Master (negotiated via VRRP
 
 ## Requirements
 
-The only requirement is for [DaemonSets](https://github.com/kubernetes/kubernetes/blob/master/docs/design/daemon.md) to be enabled is the only requirement. Check this [guide](https://github.com/kubernetes/kubernetes/blob/master/docs/api.md#enabling-resources-in-the-extensions-group) to include the `kube-apiserver` flags for this to work.
+The only requirement is for [DaemonSets](https://github.com/kubernetes/kubernetes/blob/master/docs/design/daemon.md) to be enabled. Check this [guide](https://github.com/kubernetes/kubernetes/blob/master/docs/api.md#enabling-resources-in-the-extensions-group) to include the `kube-apiserver` flags for this to work.
 
 
 ## Configuration
 
-To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`. Optionally it is possible to specify forwarding method using `:` after the service name. The valid options are `NAT` and `DR`. For instance `external IP -> namespace/serviceName:DR`. By default, if the method is not specified it will use NAT.
+To expose one or more services use the flag `services-configmap`. The format of the data is: `external IP -> namespace/serviceName`. Optionally it is possible to specify forwarding method using `:` after the service name. The valid options are `NAT` and `DR`. For instance `external IP -> namespace/serviceName:DR`. By default, if the method is not specified it will use NAT. If the service name is left blank, only the VIP will be assigned and no routing will be done. This is useful e.g. if you run HAProxy in another pod on the same machines with hostnetwork in order to forward incoming smtp requests via  proxy protocol to postfix. 
 
 This IP must be routable within the LAN and must be available. By default the IP address of the pods is used to route the traffic. This means that is one pod dies or a new one is created by a scale event the keepalived configuration file will be updated and reloaded.
 

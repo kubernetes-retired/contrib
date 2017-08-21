@@ -11,10 +11,11 @@ git clone https://github.com/kubernetes/contrib.git
 
 [Install Vagrant](https://www.vagrantup.com/downloads.html) if it's not currently installed on your system.
 
-You will need a functioning [vagrant provider](https://www.vagrantup.com/docs/providers/). Currently supported providers are openstack, libvirt, and virtualbox. Vagrant comes with VirtualBox support by default. No matter what provider you choose, you need to install the OpenStack Vagrant plugin:
+You will need a functioning [vagrant provider](https://www.vagrantup.com/docs/providers/). Currently supported providers are openstack, libvirt, and virtualbox. Vagrant comes with VirtualBox support by default. No matter what provider you choose, you need to install the OpenStack and aws Vagrant plugins:
 
 ```
 vagrant plugin install vagrant-openstack-provider --plugin-version ">= 0.6.1"
+vagrant plugin install vagrant-aws --plugin-version ">= 0.7.2"
 ```
 
 Vagrant uses Ansible to automate the Kubernetes deployment. Install Ansible (Mac OSX example):

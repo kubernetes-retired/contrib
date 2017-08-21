@@ -20,8 +20,8 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
-	"math"
 	"os"
 	"path"
 	"strconv"
@@ -32,64 +32,13 @@ import (
 
 const (
 	latestBuildFile = "latest-build.txt"
-	testResultFile  = "build-log.txt"
-	kubeletLogFile  = "kubelet.log"
-)
-
-var (
-	// allTestData stores all parsed perf and time series data in memeory for each job.
-	allTestData = map[string]*TestToBuildData{}
-	// grabbedLastBuild stores the last build grabbed for each job.
-	allGrabbedLastBuild = map[string]int{}
 )
 
 // Downloader is the interface that connects to a data source.
 type Downloader interface {
 	GetLastestBuildNumber(job string) (int, error)
+	ListFilesInBuild(job string, build int, prefix string) ([]string, error)
 	GetFile(job string, buildNumber int, logFilePath string) (io.ReadCloser, error)
-}
-
-// GetData fetch as much data as possible and result the result.
-func GetData(job string, d Downloader) error {
-	fmt.Printf("Getting Data from %s... (Job: %s)\n", *datasource, job)
-	buildNr := *builds
-	testData := *allTestData[job]
-	grabbedLastBuild := allGrabbedLastBuild[job]
-
-	lastBuildNo, err := d.GetLastestBuildNumber(job)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Last build no: %v (Job: %s)\n", lastBuildNo, job)
-
-	endBuild := lastBuildNo
-	startBuild := int(math.Max(math.Max(float64(lastBuildNo-buildNr), 0), float64(grabbedLastBuild))) + 1
-
-	// Grab data from startBuild to endBuild.
-	for buildNumber := startBuild; buildNumber <= endBuild; buildNumber++ {
-		fmt.Printf("Fetching build %v... (Job: %s)\n", buildNumber, job)
-
-		file, err := d.GetFile(job, buildNumber, testResultFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error while fetching data: %v (Job: %s)\n", err, job)
-			return err
-		}
-
-		// testTime records the end time of each test, used to extract tracing events.
-		testTime := TestTime{}
-		parseTestOutput(bufio.NewScanner(file), job, buildNumber, testData, testTime)
-		file.Close()
-
-		if *tracing {
-			// Grab and convert tracing data from Kubelet log into time series data format.
-			tracingData := ParseKubeletLog(d, job, buildNumber, testTime)
-			// Parse time series data.
-			parseTracingData(bufio.NewScanner(strings.NewReader(tracingData)), job, buildNumber, testData)
-		}
-	}
-	allGrabbedLastBuild[job] = lastBuildNo
-	return nil
 }
 
 // LocalDownloader gets test data from local files.
@@ -120,6 +69,23 @@ func (d *LocalDownloader) GetLastestBuildNumber(job string) (int, error) {
 	return i, nil
 }
 
+// ListFilesInBuild returns the contents of the files with the specified prefix
+// for the test job at the given buildNumber.
+func (d *LocalDownloader) ListFilesInBuild(job string, buildNumber int, prefix string) ([]string, error) {
+	prefixDir, prefixFile := path.Split(prefix)
+	filesInDir, err := ioutil.ReadDir(path.Join(*localDataDir, fmt.Sprintf("%d", buildNumber), prefixDir))
+	if err != nil {
+		return nil, err
+	}
+	filesInBuild := []string{}
+	for _, file := range filesInDir {
+		if strings.HasPrefix(file.Name(), prefixFile) {
+			filesInBuild = append(filesInBuild, path.Join(prefixDir, file.Name()))
+		}
+	}
+	return filesInBuild, nil
+}
+
 // GetFile returns readcloser of the desired file.
 func (d *LocalDownloader) GetFile(job string, buildNumber int, filePath string) (io.ReadCloser, error) {
 	return os.Open(path.Join(*localDataDir, fmt.Sprintf("%d", buildNumber), filePath))
@@ -141,6 +107,12 @@ func NewGoogleGCSDownloader() *GoogleGCSDownloader {
 func (d *GoogleGCSDownloader) GetLastestBuildNumber(job string) (int, error) {
 	// It returns -1 if the path is not found
 	return d.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
+}
+
+// ListFilesInBuild returns the contents of the files with the specified prefix
+// for the test job at the given buildNumber.
+func (d *GoogleGCSDownloader) ListFilesInBuild(job string, buildNumber int, prefix string) ([]string, error) {
+	return d.GoogleGCSBucketUtils.ListFilesInBuild(job, buildNumber, prefix)
 }
 
 // GetFile returns readcloser of the desired file.

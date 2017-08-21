@@ -38,7 +38,7 @@
     HTTPS_PROXY: "{{ https_proxy|default('') }}"
     CLUSTER_HOSTNAME: "{{ master_cluster_hostname|default('') }}"
     CLUSTER_PUBLIC_HOSTNAME: "{{ master_cluster_public_hostname|default('') }}"
-    KUBE_CERT_KEEP_CA: "{{ kube_cert_keep_ca | default('false') | lower }}"
+    KUBE_CERT_KEEP_CA: "{{ kube_cert_keep_ca | default(false) | lower }}"
 
 - name: Verify certificate permissions
   file:
@@ -59,4 +59,4 @@
     group: "{{ kube_cert_group }}"
     owner: kube
     mode: 0440
-  when: kube_cert_keep_ca
+  when: kube_cert_keep_ca | default(false)
