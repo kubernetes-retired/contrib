@@ -723,27 +723,27 @@
 		{
 			"ImportPath": "k8s.io/kubernetes/pkg/util/dbus",
 			"Comment": "v1.7.0-alpha.4-155-g97c2b70fe3",
-			"Rev": "97c2b70fe316d1368169c193e72f201f0cc33d47"
+			"Rev": "249551461e038df9dae5e1a932334aa66a8dc701"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/pkg/util/exec",
 			"Comment": "v1.7.0-alpha.4-155-g97c2b70fe3",
-			"Rev": "97c2b70fe316d1368169c193e72f201f0cc33d47"
+			"Rev": "249551461e038df9dae5e1a932334aa66a8dc701"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/pkg/util/iptables",
 			"Comment": "v1.7.0-alpha.4-155-g97c2b70fe3",
-			"Rev": "97c2b70fe316d1368169c193e72f201f0cc33d47"
+			"Rev": "249551461e038df9dae5e1a932334aa66a8dc701"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/pkg/util/sysctl",
 			"Comment": "v1.7.0-alpha.4-155-g97c2b70fe3",
-			"Rev": "97c2b70fe316d1368169c193e72f201f0cc33d47"
+			"Rev": "249551461e038df9dae5e1a932334aa66a8dc701"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/pkg/util/version",
 			"Comment": "v1.7.0-alpha.4-155-g97c2b70fe3",
-			"Rev": "97c2b70fe316d1368169c193e72f201f0cc33d47"
+			"Rev": "249551461e038df9dae5e1a932334aa66a8dc701"
 		}
 	]
 }
