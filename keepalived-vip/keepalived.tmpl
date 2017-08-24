@@ -5,6 +5,13 @@ global_defs {
   vrrp_iptables {{ .iptablesChain }}
 }
 
+{{ if .proxyMode}}
+vrrp_script chk_haproxy {
+  script "/haproxy-check.sh"
+  interval 1
+}
+{{ end }}
+
 vrrp_instance vips {
   state BACKUP
   interface {{ $iface }}
@@ -27,8 +34,17 @@ vrrp_instance vips {
   virtual_ipaddress { {{ range .vips }}
     {{ . }}{{ end }}
   }
+
+{{ if .proxyMode}}
+  # In proxy mode there is no need to create virtual servers
+  track_script {
+    chk_haproxy weight 1
+  }
+{{ end }}
+
 }
 
+{{ if not .proxyMode }}
 {{ range $i, $svc := .svcs }}
 {{ if eq $svc.LVSMethod "VIP" }}
 # VIP Service with no pods: {{ $svc.IP }}
@@ -51,5 +67,6 @@ virtual_server {{ $svc.IP }} {{ $svc.Port }} {
   }
 {{ end }}
 }
+{{ end }}
 {{ end }}
 {{ end }}

@@ -1,8 +1,10 @@
 all: push
 
-# 0.0 shouldn't clobber any release builds, current "latest" is 0.10
-TAG = 0.10
-PREFIX = gcr.io/google_containers/kube-keepalived-vip
+# 0.0 shouldn't clobber any release builds, current "latest" is 0.11
+#TAG = 0.11
+#PREFIX = gcr.io/google_containers/kube-keepalived-vip
+TAG = 0.10.2608.4
+PREFIX = skyvtp/kube-keepalived-vip
 BUILD_IMAGE = build-keepalived
 TEMP_GOPATH = ${GOPATH}:${GOPATH}/src/k8s.io/kubernetes/staging
 
@@ -13,15 +15,15 @@ container: controller keepalived
 	docker build --pull -t $(PREFIX):$(TAG) .
 
 keepalived:
-	docker build --pull -t $(BUILD_IMAGE):$(TAG) build
+	docker build --no-cache --pull -t $(BUILD_IMAGE):$(TAG) build
 	docker create --name $(BUILD_IMAGE) $(BUILD_IMAGE):$(TAG) true
 	# docker cp semantics changed between 1.7 and 1.8, so we cp the file to cwd and rename it.
 	docker cp $(BUILD_IMAGE):/keepalived.tar.gz .
 	docker rm -f $(BUILD_IMAGE)
 
 push: container
-	gcloud docker -- push $(PREFIX):$(TAG)
-
+#	gcloud docker -- push $(PREFIX):$(TAG)
+	docker push $(PREFIX):$(TAG)
 clean:
 	rm -f kube-keepalived-vip
 
