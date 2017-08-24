@@ -2,13 +2,16 @@
 
 global_defs {
   vrrp_version 3
+  lvs_flush
   vrrp_iptables {{ .iptablesChain }}
 }
 
+{{ if .proxyMode}}
 vrrp_script chk_haproxy {
   script "/haproxy-check.sh"
   interval 1
 }
+{{ end }}
 
 vrrp_instance vips {
   state BACKUP
