@@ -5,15 +5,17 @@ global_defs {
   vrrp_iptables {{ .iptablesChain }}
 }
 
+{{ if .proxyMode}}
 vrrp_script chk_haproxy {
   script "/haproxy-check.sh"
   interval 1
 }
+{{ end }}
 
 vrrp_instance vips {
   state BACKUP
   interface {{ $iface }}
-  virtual_router_id 50
+  virtual_router_id {{ .vrid }}
   priority {{ .priority }}
   nopreempt
   advert_int 1

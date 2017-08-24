@@ -217,7 +217,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 			sort.Sort(serviceByIPPort(ep))
 
 			svcs = append(svcs, vip{
-				Name:      fmt.Sprintf("%v-%v", s.Namespace, s.Name),
+				Name:      fmt.Sprintf("%v/%v", s.Namespace, s.Name),
 				IP:        externalIP,
 				Port:      int(servicePort.Port),
 				LVSMethod: lvsm,
