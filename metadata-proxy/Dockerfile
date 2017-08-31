@@ -19,8 +19,6 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
   apt-utils && clean-install iptables nginx
 
-# Give nginx its config file.
-COPY nginx.conf /etc/nginx/nginx.conf
 # Place our wrapper script into the image.
 COPY start-proxy.sh /
 
