@@ -24,6 +24,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,14 +102,20 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 	return iPort < jPort
 }
 
+type StoreToConfigMapLister struct {
+	cache.Indexer
+}
+
 // ipvsControllerController watches the kubernetes api and adds/removes
 // services from LVS throgh ipvsadmin.
 type ipvsControllerController struct {
 	client            *unversioned.Client
 	epController      *cache.Controller
 	svcController     *cache.Controller
+	cmController      *cache.Controller
 	svcLister         cache.StoreToServiceLister
 	epLister          cache.StoreToEndpointsLister
+	cmLister          StoreToConfigMapLister
 	reloadRateLimiter flowcontrol.RateLimiter
 	keepalived        *keepalived
 	configMapName     string
@@ -124,6 +131,7 @@ type ipvsControllerController struct {
 	syncQueue *taskQueue
 	stopCh    chan struct{}
 }
+
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
 func (ipvsc *ipvsControllerController) getEndpoints(
@@ -382,6 +390,20 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		cache.NewListWatchFromClient(
 			ipvsc.client, "endpoints", namespace, fields.Everything()),
 		&api.Endpoints{}, resyncPeriod, eventHandlers)
+
+	splitConfigMapName := strings.Split(configMapName, "/")
+	if len(splitConfigMapName) == 2 {
+		ipvsc.cmLister.Indexer, ipvsc.cmController = cache.NewIndexerInformer(
+			cache.NewListWatchFromClient(
+				ipvsc.client, "configmaps", namespace,
+				fields.OneTermEqualSelector(api.ObjectNameField, splitConfigMapName[1])),
+			&api.ConfigMap{},
+			resyncPeriod,
+			eventHandlers,
+			cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	} else {
+		glog.Warningf("configmap name %s doesn't match <namespace>/<configmap>", configMapName)
+	}
 
 	return &ipvsc
 }
