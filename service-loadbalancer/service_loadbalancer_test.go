@@ -205,7 +205,7 @@ func TestGetServices(t *testing.T) {
 func TestNewStaticPageHandler(t *testing.T) {
 	defPagePath, _ := filepath.Abs("haproxy.cfg")
 	defErrorPath, _ := filepath.Abs("template.cfg")
-	defErrURL := "http://www.k8s.io"
+	defErrURL := "https://kubernetes.io"
 
 	testDefPage := "file://" + defPagePath
 	testErrorPage := "file://" + defErrorPath

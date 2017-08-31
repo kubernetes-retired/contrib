@@ -12,7 +12,7 @@ of the StatefulSet so that all peers are listed in endpoints before any peers ar
 There are several ways to bundle it with your main application.
 
 1. In an [init container](http://kubernetes.io/docs/user-guide/pods/init-container/),
-   to help your pod determine its peers when it it first started (determine the desired set of 
+   to help your pod determine its peers when it first started (determine the desired set of 
    peers from the governing service of the StatefulSet.  For this use case, the `--on-start` option
    can be used, but the `--on-change` option should not be used since the init container will no
    longer be running after the pod is started.  An example of an `--on-start` script would be to
@@ -33,7 +33,7 @@ Options 1 and 2 and 4 may be preferable since they do not require changes to the
 Option 3 is useful is signalling is necessary.
 
 The peer-finder tool is intended to help legacy applications run in containers on Kubernetes.
-If possible, it may be preferable to modify an applications to poll DNS itself to determine its peer set.
+If possible, it may be preferable to modify an application to poll its own DNS to determine its peer set.
 
 Not all StatefulSets are able to be scaled.  For unscalable StatefulSets, only the on-start message is needed, and
 so option 1 is a good choice.
