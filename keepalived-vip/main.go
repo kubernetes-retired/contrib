@@ -125,6 +125,10 @@ func main() {
 	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
+	if ipvsc.cmController != nil {
+		// Possibility the controller may not exist if configmap name is malformed
+		go ipvsc.cmController.Run(wait.NeverStop)
+	}
 
 	go ipvsc.syncQueue.run(time.Second, ipvsc.stopCh)
 
