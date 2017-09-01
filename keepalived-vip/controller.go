@@ -102,7 +102,7 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 	return iPort < jPort
 }
 
-type StoreToConfigMapLister struct {
+type storeToConfigMapLister struct {
 	cache.Indexer
 }
 
@@ -115,7 +115,7 @@ type ipvsControllerController struct {
 	cmController      *cache.Controller
 	svcLister         cache.StoreToServiceLister
 	epLister          cache.StoreToEndpointsLister
-	cmLister          StoreToConfigMapLister
+	cmLister          storeToConfigMapLister
 	reloadRateLimiter flowcontrol.RateLimiter
 	keepalived        *keepalived
 	configMapName     string
@@ -131,7 +131,6 @@ type ipvsControllerController struct {
 	syncQueue *taskQueue
 	stopCh    chan struct{}
 }
-
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
 func (ipvsc *ipvsControllerController) getEndpoints(
