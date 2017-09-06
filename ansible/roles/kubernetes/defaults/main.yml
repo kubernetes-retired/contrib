@@ -22,7 +22,7 @@ kube_script_dir: /usr/libexec/kubernetes
 kube_config_dir: /etc/kubernetes
 
 # The URL to download Kubernetes binaries from.
-kube_download_url_base: https://storage.googleapis.com/kubernetes-release/release/v{{ kube_version }}/bin/linux/{{ ansible_architecture }}
+kube_download_url_base: https://storage.googleapis.com/kubernetes-release/release/v{{ kube_version }}/bin/linux/{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}
 
 # The URL do download distribution rpms shipping kubernetes binaries from
 kube_rpm_url_base: https://kojipkgs.fedoraproject.org//packages/kubernetes/1.2.0/0.27.git4a3f9c5.fc25/x86_64

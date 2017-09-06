@@ -16,7 +16,7 @@ flannel_backend: vxlan
 
 #The default url to download the flannel tar from
 flannel_download_url_base: "https://github.com/coreos/flannel/releases/download/v{{ flannel_version }}"
-flannel_download_url: "{{ flannel_download_url_base }}/flannel-v{{ flannel_version }}-linux-{{ ansible_architecture }}.tar.gz"
+flannel_download_url: "{{ flannel_download_url_base }}/flannel-v{{ flannel_version }}-linux-{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}.tar.gz"
 
 flannel_etcd_use_certs: false
 flannel_etcd_certs_dir: "/etc/flanneld/certs"
