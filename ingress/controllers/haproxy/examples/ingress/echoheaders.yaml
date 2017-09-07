@@ -1,0 +1,18 @@
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: echoheaders
+spec:
+  rules:
+  - host: foo.stackpoint.io
+    http:
+      paths:
+      - path: /bar1
+        backend:
+          serviceName: echoheaders
+          servicePort: 80
+      - path: /bar2
+        backend:
+          serviceName: echoheaders
+          servicePort: 80

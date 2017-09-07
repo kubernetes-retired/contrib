@@ -1,0 +1,35 @@
+---
+  apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: game2048
+  labels:
+    name: game2048
+spec:
+  replicas: 2
+  selector:
+    name: game2048
+  template:
+    metadata:
+      labels:
+        name: game2048
+        version: stable
+    spec:
+      containers:
+      - name: game2048
+        image: alexwhen/docker-2048
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: game2048
+  labels:
+    name: game2048
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    name: game2048
