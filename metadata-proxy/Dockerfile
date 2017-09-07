@@ -13,7 +13,7 @@
 # limitations under the License.
 
 FROM gcr.io/google-containers/debian-base-amd64:0.1
-LABEL maintainer "qlee@google.com"
+LABEL maintainer "ihmccreery@google.com"
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
