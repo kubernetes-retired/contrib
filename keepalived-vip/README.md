@@ -33,7 +33,7 @@ Public ----(example.com = 10.4.0.3/4/5)----|-----| Host IP: 10.4.0.4 |
 
 Let's assume that Ingress-es are run on the 3 kubernetes worker nodes above `10.4.0.x`, which are exposed to the public to load-balance incoming traffic. DNS Round Robin (RR) is applied to `example.com` to rotate between the 3 nodes. If `10.4.0.3` goes down, one-third of the traffic to `example.com` is still directed to the downed node (due to DNS RR). The sysadmin has to step in and delist the faulty node from `example.com`. Since there will be intermittent downtime until the sysadmin intervenes, this isn't true High Availability (HA).
 
-Here is where IPVS can help. 
+Here is where IPVS can help.
 
 The idea is to expose a Virtual IP (VIP) address per service, outside of the kubernetes cluster. _keepalived_ then uses VRRP to sync this "mapping" in the local network. With 2 or more instance of the pod running in the cluster is possible to provide HA using a single VIP address.
 
