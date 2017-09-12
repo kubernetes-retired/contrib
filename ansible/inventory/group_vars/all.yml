@@ -88,10 +88,10 @@ flannel_host_prefix: 24
 #contiv_default_gw: 172.16.0.1
 
 # Set to false to disable logging with elasticsearch
-cluster_logging: true
+cluster_logging: false
 
 # Turn to false to disable cluster monitoring with heapster and influxdb
-cluster_monitoring: true
+cluster_monitoring: false
 
 # Turn to false to disable the kube-ui addon for this cluster
 kube_ui: false
