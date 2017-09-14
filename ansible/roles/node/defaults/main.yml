@@ -21,7 +21,7 @@ kubelet_options:
   - "--cgroup-driver=systemd"
 
 kube_proxy_options:
-  - "--kubeconfig={{ kube_config_dir }}/proxy.kubeconfig"
+  - "--kubeconfig={{ kube_config_dir }}/proxy.kubeconfig --cluster-cidr={{ kube_service_addresses }}"
 
 kubelet_additional_options: []
 #  - "--host-network-sources=*"
@@ -30,3 +30,9 @@ kubelet_additional_options: []
 kube_proxy_additional_options: []
 
 disable_swap: true
+
+kubelet_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/kubernetes-kubelet:{{ system_images_tag }}"
+
+kube_proxy_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/kubernetes-proxy:{{ system_images_tag }}"
+
+
