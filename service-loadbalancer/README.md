@@ -2,6 +2,11 @@
 
 AKA "how to set up a bank of haproxy for platforms that don't have load balancers".
 
+## Project Status:
+THIS PROJECT IS DEPRECATED AND UNMAINTAINED.
+
+[Ingress Catalog](https://github.com/kubernetes/ingress/blob/master/docs/catalog.md) lists a few 3rd party replacements for this project, including an HAProxy Ingress Controller.
+
 ## Disclaimer:
 - This is a **work in progress**.
 - A better way to achieve this will probably emerge once discussions on (#260, #561) converge.
