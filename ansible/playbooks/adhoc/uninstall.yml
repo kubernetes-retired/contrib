@@ -21,7 +21,7 @@
     - name: Determine if CoreOS
       raw: "grep '^NAME=' /etc/os-release | sed s'/NAME=//'"
       register: distro
-      always_run: yes
+      check_mode: no
 
     - name: Initialize facts
       set_fact:

@@ -4,7 +4,7 @@
   register: firewalld_check
   changed_when: false
   failed_when: false
-  always_run: yes
+  check_mode: no
 
 - name: Set the has_firewalld fact
   set_fact:
@@ -16,7 +16,7 @@
   register: iptables_check
   changed_when: false
   failed_when: false
-  always_run: yes
+  check_mode: no
 
 - name: Set the has_iptables fact
   set_fact:

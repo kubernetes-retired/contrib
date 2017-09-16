@@ -2,12 +2,12 @@
 - name: Get os_version from /etc/os-release
   raw: "grep '^VERSION_ID=' /etc/os-release | sed s'/VERSION_ID=//'"
   register: os_version
-  always_run: yes
+  check_mode: no
 
 - name: Get distro name from /etc/os-release
   raw: "grep '^NAME=' /etc/os-release | sed s'/NAME=//'"
   register: distro
-  always_run: yes
+  check_mode: no
 
 - name: Init the is_coreos fact
   set_fact:
@@ -31,7 +31,7 @@
   register: s
   changed_when: false
   failed_when: false
-  always_run: yes
+  check_mode: no
 
 - name: Set the is_atomic fact
   set_fact:
