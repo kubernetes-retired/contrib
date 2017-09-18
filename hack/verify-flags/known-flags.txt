@@ -53,6 +53,7 @@ gcm-endpoint
 gcs-bucket
 gcs-logs-dir
 generated-files-config
+grace-period
 health-check-path
 healthz-port
 history-url
