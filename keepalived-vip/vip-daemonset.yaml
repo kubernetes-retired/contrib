@@ -10,7 +10,7 @@ spec:
     spec:
       hostNetwork: true
       containers:
-        - image: gcr.io/google_containers/kube-keepalived-vip:0.9
+        - image: gcr.io/google_containers/kube-keepalived-vip:0.11
           name: kube-keepalived-vip
           imagePullPolicy: Always
           securityContext:
