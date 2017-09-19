@@ -106,7 +106,7 @@ Configure the DaemonSet in `vip-daemonset.yaml` to use the ServiceAccount. Add t
       hostNetwork: true
       serviceAccount: kube-keepalived-vip
       containers:
-        - image: gcr.io/google_containers/kube-keepalived-vip:0.9
+        - image: gcr.io/google_containers/kube-keepalived-vip:0.11
 ```
 
 Configure its ClusterRole. _keepalived_ needs to read the pods, nodes, endpoints and services.
@@ -160,7 +160,7 @@ $ kubectl create -f vip-daemonset.yaml
 daemonset "kube-keepalived-vip" created
 $ kubectl get daemonset
 NAME                  CONTAINER(S)          IMAGE(S)                         SELECTOR                        NODE-SELECTOR
-kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.9   name in (kube-keepalived-vip)   type=worker
+kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.11   name in (kube-keepalived-vip)   type=worker
 ```
 
 **Note: the DaemonSet yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**
