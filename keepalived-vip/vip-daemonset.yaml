@@ -37,6 +37,8 @@ spec:
           # unicast uses the ip of the nodes instead of multicast
           # this is useful if running in cloud providers (like AWS)
           #- --use-unicast=true
+          # vrrp version can be set to 2.  Default 3.
+          #- --vrrp-version=2
       volumes:
         - name: modules
           hostPath:

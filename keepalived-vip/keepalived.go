@@ -50,6 +50,7 @@ type keepalived struct {
 	cmd        *exec.Cmd
 	ipt        iptables.Interface
 	vrid       int
+	vrrpVersion    int
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -74,6 +75,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["priority"] = k.priority
 	conf["useUnicast"] = k.useUnicast
 	conf["vrid"] = k.vrid
+	conf["vrrpVersion"] = k.vrrpVersion
 
 	if glog.V(2) {
 		b, _ := json.Marshal(conf)
