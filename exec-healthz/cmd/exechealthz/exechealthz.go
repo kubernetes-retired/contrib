@@ -125,7 +125,7 @@ func logf(format string, args ...interface{}) {
 	}
 }
 
-// start attemtps to run the probeCmd every `period` seconds.
+// start attempts to run the probeCmd every `period` seconds.
 // Meant to be called as a goroutine.
 func (h *execWorker) start() {
 	ticker := h.clock.Tick(h.period)

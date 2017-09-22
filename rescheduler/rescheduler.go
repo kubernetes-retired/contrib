@@ -83,6 +83,10 @@ var (
 
 	listenAddress = flags.String("listen-address", "127.0.0.1:9235",
 		`Address to listen on for serving prometheus metrics`)
+
+	gracePeriod = flags.Duration("grace-period", 10*time.Second,
+		"How long to wait for rescheduled pods to terminate. If negative, the grace period specified in each pod"+
+			" will be used. If 0, pods will be immediately terminated.")
 )
 
 func main() {
@@ -346,8 +350,12 @@ func prepareNodeForPod(client kube_client.Interface, recorder kube_record.EventR
 			glog.Infof("Pod %s will be deleted in order to schedule critical pod %s.", podId(p), podId(criticalPod))
 			recorder.Eventf(p, apiv1.EventTypeNormal, "DeletedByRescheduler",
 				"Deleted by rescheduler in order to schedule critical pod %s.", podId(criticalPod))
-			// TODO(piosz): add better support of graceful deletion
-			delErr := client.CoreV1().Pods(p.Namespace).Delete(p.Name, metav1.NewDeleteOptions(10))
+			deleteOptions := metav1.DeleteOptions{}
+			gracePeriodSeconds := int64(gracePeriod.Seconds())
+			if gracePeriodSeconds >= 0 && (p.Spec.TerminationGracePeriodSeconds == nil || *p.Spec.TerminationGracePeriodSeconds > gracePeriodSeconds) {
+				deleteOptions.GracePeriodSeconds = &gracePeriodSeconds
+			}
+			delErr := client.CoreV1().Pods(p.Namespace).Delete(p.Name, &deleteOptions)
 			if delErr != nil {
 				return fmt.Errorf("Failed to delete pod %s: %v", podId(p), delErr)
 			}

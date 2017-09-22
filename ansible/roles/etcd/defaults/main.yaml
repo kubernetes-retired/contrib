@@ -55,7 +55,7 @@ etcd_listen_client_legacy_urls: "{{ etcd_url_scheme }}://0.0.0.0:{{ etcd_client_
 etcd_data_dir: /var/lib/etcd
 
 etcd_download_url_base: "https://github.com/coreos/etcd/releases/download/v{{ etcd_version }}"
-etcd_download_url: "{{ etcd_download_url_base }}/etcd-v{{ etcd_version }}-linux-{{ ansible_architecture }}.tar.gz"
+etcd_download_url: "{{ etcd_download_url_base }}/etcd-v{{ etcd_version }}-linux-{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}.tar.gz"
 
 etcd_enable: true
 

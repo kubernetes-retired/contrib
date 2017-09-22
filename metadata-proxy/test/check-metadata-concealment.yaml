@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: check-metadata-concealment
+spec:
+  template:
+    metadata:
+      name: check-metadata-concealment
+    spec:
+      containers:
+      - name: check-metadata-concealment
+        image: gcr.io/google_containers/check-metadata-concealment:v0.0.1
+        imagePullPolicy: Always
+      restartPolicy: Never
