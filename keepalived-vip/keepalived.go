@@ -37,20 +37,20 @@ const (
 var keepalivedTmpl = "keepalived.tmpl"
 
 type keepalived struct {
-	iface      string
-	ip         string
-	netmask    int
-	priority   int
-	nodes      []string
-	neighbors  []string
-	useUnicast bool
-	started    bool
-	vips       []string
-	tmpl       *template.Template
-	cmd        *exec.Cmd
-	ipt        iptables.Interface
-	vrid       int
-	vrrpVersion    int
+	iface       string
+	ip          string
+	netmask     int
+	priority    int
+	nodes       []string
+	neighbors   []string
+	useUnicast  bool
+	started     bool
+	vips        []string
+	tmpl        *template.Template
+	cmd         *exec.Cmd
+	ipt         iptables.Interface
+	vrid        int
+	vrrpVersion int
 }
 
 // WriteCfg creates a new keepalived configuration file.

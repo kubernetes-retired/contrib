@@ -342,16 +342,16 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 	iptInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
 
 	ipvsc.keepalived = &keepalived{
-		iface:      nodeInfo.iface,
-		ip:         nodeInfo.ip,
-		netmask:    nodeInfo.netmask,
-		nodes:      clusterNodes,
-		neighbors:  neighbors,
-		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
-		useUnicast: useUnicast,
-		ipt:        iptInterface,
-		vrid:       vrid,
-		vrrpVersion:  vrrpVersion,
+		iface:       nodeInfo.iface,
+		ip:          nodeInfo.ip,
+		netmask:     nodeInfo.netmask,
+		nodes:       clusterNodes,
+		neighbors:   neighbors,
+		priority:    getNodePriority(nodeInfo.ip, clusterNodes),
+		useUnicast:  useUnicast,
+		ipt:         iptInterface,
+		vrid:        vrid,
+		vrrpVersion: vrrpVersion,
 	}
 
 	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)
