@@ -425,9 +425,5 @@ func modifyConfig(configAccess clientcmd.ConfigAccess, suppliedConfig *clientcmd
 		config.Contexts[name] = &modifiedContext
 	}
 
-	if err := clientcmd.ModifyConfig(configAccess, *config, true); err != nil {
-		return err
-	}
-
-	return nil
+	return clientcmd.ModifyConfig(configAccess, *config, true)
 }
