@@ -7,5 +7,6 @@ env TOKEN_DIR={{ kube_token_dir }}
 env KUBECTL_BIN={{ bin_dir }}/kubectl
 env KUBERNETES_MASTER_NAME={{ groups['masters'][0] }}
 env TRUSTY_MASTER=true
+env KUBECTL_OPTS="--kubeconfig=/etc/kubernetes/kubectl.kubeconfig"
 
 exec {{ kube_script_dir }}/kube-addons.sh

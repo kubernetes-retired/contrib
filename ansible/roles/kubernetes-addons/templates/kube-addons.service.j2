@@ -8,6 +8,7 @@ Environment="TOKEN_DIR={{ kube_token_dir }}"
 Environment="KUBECTL_BIN={{ bin_dir }}/kubectl"
 Environment="KUBERNETES_MASTER_NAME={{ groups['masters'][0] }}"
 Environment="TRUSTY_MASTER=true"
+Environment="KUBECTL_OPTS=--kubeconfig={{ kube_config_dir }}/kubectl.kubeconfig"
 ExecStart={{ kube_script_dir }}/kube-addons.sh
 
 [Install]
