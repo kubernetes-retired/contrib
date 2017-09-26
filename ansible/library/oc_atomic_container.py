@@ -1,31 +1,18 @@
 #!/usr/bin/env python
-# pylint: disable=missing-docstring
-# flake8: noqa: T001
-#     ___ ___ _  _ ___ ___    _ _____ ___ ___
-#    / __| __| \| | __| _ \  /_\_   _| __|   \
-#   | (_ | _|| .` | _||   / / _ \| | | _|| |) |
-#    \___|___|_|\_|___|_|_\/_/_\_\_|_|___|___/_ _____
-#   |   \ / _ \  | \| |/ _ \_   _| | __|   \_ _|_   _|
-#   | |) | (_) | | .` | (_) || |   | _|| |) | |  | |
-#   |___/ \___/  |_|\_|\___/ |_|   |___|___/___| |_|
-#
-# Copyright 2016 Red Hat, Inc. and/or its affiliates
-# and other contributors as indicated by the @author tags.
+
+# Copyright 2017 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-
-# -*- -*- -*- Begin included fragment: doc/atomic_container -*- -*- -*-
 
 DOCUMENTATION = '''
 ---
