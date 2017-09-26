@@ -60,3 +60,5 @@ etcd_download_url: "{{ etcd_download_url_base }}/etcd-v{{ etcd_version }}-linux-
 etcd_enable: true
 
 etcd_is_proxy: false
+
+etcd_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/etcd:{{system_images_tag }}"

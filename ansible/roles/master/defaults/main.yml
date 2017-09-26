@@ -53,3 +53,9 @@ kube_scheduler_options:
 kube_apiserver_additional_options: []
 kube_controller_manager_additional_options: []
 kube_scheduler_additional_options: []
+
+kube_apiserver_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/kubernetes-apiserver:{{ system_images_tag }}"
+
+kube_controller_manager_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/kubernetes-controller-manager:{{ system_images_tag }}"
+
+kube_scheduler_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/kubernetes-scheduler:{{ system_images_tag }}"

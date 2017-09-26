@@ -134,3 +134,12 @@ etcd_client_port: '2379'
 # when the scheme vars above are set to "https" you need to set these to true!
 flannel_etcd_use_certs: true
 apiserver_etcd_use_certs: true
+
+kube_use_node_system_container: false
+kube_use_master_system_container: false
+kube_use_etcd_system_container: false
+kube_use_flannel_system_container: false
+
+system_images_registry: "candidate-registry.fedoraproject.org"
+system_images_registry_namespace: "f26"
+system_images_tag: "latest"
