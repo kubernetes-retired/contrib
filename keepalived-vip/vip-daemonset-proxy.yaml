@@ -1,0 +1,64 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: kube-keepalived-vip
+spec:
+  template:
+    metadata:
+      labels:
+        name: kube-keepalived-vip
+    spec:
+      hostNetwork: true
+      containers:
+        - image: aledbf/haproxy-self-reload:0.1
+          name: haproxy-self-reload
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 1936
+              scheme: HTTP
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: haproxy
+              mountPath: /etc/haproxy
+        - image: aledbf/kube-keepalived-vip:0.10
+          name: kube-keepalived-vip
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /lib/modules
+              name: modules
+              readOnly: true
+            - mountPath: /dev
+              name: dev
+            - name: haproxy
+              mountPath: /etc/haproxy
+          # use downward API
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          # to use unicast
+          args:
+          - --services-configmap=default/vip-configmap
+          - --proxy-protocol-mode=true
+          # unicast uses the ip of the nodes instead of multicast
+          # this is useful if running in cloud providers (like AWS)
+          #- --use-unicast=true
+      volumes:
+        - name: modules
+          hostPath:
+            path: /lib/modules
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: haproxy
+          emptyDir: {}
+      nodeSelector:
+        type: sub-worker
