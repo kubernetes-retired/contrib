@@ -176,6 +176,7 @@ use-unicast
 verify-unschedulable-pods
 vrid
 vrrp-password
+vrrp-version
 watch-all-namespaces
 watch-namespace
 weak-stable-jobs

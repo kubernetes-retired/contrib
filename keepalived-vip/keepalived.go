@@ -37,19 +37,20 @@ const (
 var keepalivedTmpl = "keepalived.tmpl"
 
 type keepalived struct {
-	iface      string
-	ip         string
-	netmask    int
-	priority   int
-	nodes      []string
-	neighbors  []string
-	useUnicast bool
-	started    bool
-	vips       []string
-	tmpl       *template.Template
-	cmd        *exec.Cmd
-	ipt        iptables.Interface
-	vrid       int
+	iface       string
+	ip          string
+	netmask     int
+	priority    int
+	nodes       []string
+	neighbors   []string
+	useUnicast  bool
+	started     bool
+	vips        []string
+	tmpl        *template.Template
+	cmd         *exec.Cmd
+	ipt         iptables.Interface
+	vrid        int
+	vrrpVersion int
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -74,6 +75,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["priority"] = k.priority
 	conf["useUnicast"] = k.useUnicast
 	conf["vrid"] = k.vrid
+	conf["vrrpVersion"] = k.vrrpVersion
 
 	if glog.V(2) {
 		b, _ := json.Marshal(conf)
