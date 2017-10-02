@@ -49,9 +49,9 @@ const (
 	reloadQPS                = 10.0
 	resyncPeriod             = 10 * time.Second
 	lbApiPort                = 8081
-	lbAlgorithmKey           = "serviceloadbalancer/lb.algorithm"
-	lbHostKey                = "serviceloadbalancer/lb.host"
-	lbSslTerm                = "serviceloadbalancer/lb.sslTerm"
+	lbAlgorithmKey           = "servicealancer/lb.algorithm"
+	lbHostKey                = "servicealancer/lb.host"
+	lbSslTerm                = "servicealancer/lb.sslTerm"
 	lbAclMatch               = "serviceloadbalancer/lb.aclMatch"
 	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
@@ -140,6 +140,28 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
                 default balance algorithm.`)
+
+	infobloxAPIUser = flags.String("infoblox-api-user", "", `set the user to use when querying infoblox`)
+
+	infobloxAPIPassword = flags.String("infoblox-api-password", "", `set the password to use when querying infoblox`)
+
+	infobloxAPIBaseURL = flags.String("infoblox-api-base-url", "", `base url to access infoblox api`)
+
+	lbType = flags.String("lb-type", "", `configures which load balancer type to use`)
+
+	dnsSubDomain = flags.String("dns-sub-domain", "", `configures what dns sub-domain to use when provisioning entries in Infoblox`)
+
+	subnet = flags.String("subnet", "", `configures what to search for free ip's when integrating with infoblox`)
+
+	f5Hostname = flags.String("f5-hostname", "", `configures url to f5`)
+
+	f5Username = flags.String("f5-username", "", `configures user to access f5`)
+
+	f5Password = flags.String("f5-password", "", `configures password to access f5`)
+
+	f5Insecure = flags.Bool("f5-insecure", true, `ignore certs when connecting to f5`)
+
+	f5PartitionPath = flags.String("f5-partition", "", `configures partition to use with f5`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -355,6 +377,8 @@ type loadBalancerController struct {
 	forwardServices   bool
 	tcpServices       map[string]int
 	httpPort          int
+	f5                *f5LTM
+	ibc               *infobloxController
 }
 
 // getTargetPort returns the numeric value of TargetPort
@@ -397,25 +421,42 @@ func (lbc *loadBalancerController) getEndpoints(
 	return
 }
 
-// encapsulates all the hacky convenience type name modifications for lb rules.
-// - :80 services don't need a :80 postfix
-// - default ns should be accessible without /ns/name (when we have /ns support)
-func getServiceNameForLBRule(s *api.Service, servicePort int) string {
-	if servicePort == 80 {
-		return s.Name
-	}
-	return fmt.Sprintf("%v:%v", s.Name, servicePort)
+// getService returns a service and its endpoints.
+func (lbc *loadBalancerController) getService(serviceName string) (httpSvc []service, httpsTermSvc []service, tcpSvc []service) {
+	return lbc.getServicesHelper(serviceName)
 }
 
 // getServices returns a list of services and their endpoints.
 func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSvc []service, tcpSvc []service) {
+	return lbc.getServicesHelper("")
+}
+
+// getServicesHelper returns a list of services and their endpoints.
+func (lbc *loadBalancerController) getServicesHelper(serviceName string) (httpSvc []service, httpsTermSvc []service, tcpSvc []service) {
 	ep := []string{}
 	services, _ := lbc.svcLister.List()
 	for _, s := range services.Items {
-		if s.Spec.Type == api.ServiceTypeLoadBalancer {
-			glog.Infof("Ignoring service %v, it already has a loadbalancer", s.Name)
-			continue
+
+		if serviceName != "" {
+			// Looking for a specific service
+			if s.Name != serviceName {
+				continue
+			}
 		}
+
+		if *lbType == "f5" {
+			if s.Spec.Type != api.ServiceTypeLoadBalancer {
+				continue
+			}
+		} else {
+			if s.Spec.Type == api.ServiceTypeLoadBalancer {
+				glog.Infof("Ignoring service %v, it already has a loadbalancer", s.Name)
+				continue
+			}
+		}
+
+		glog.Info("Processing service: ", s)
+
 		for _, servicePort := range s.Spec.Ports {
 			// TODO: headless services?
 			sName := s.Name
@@ -505,6 +546,16 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 	return
 }
 
+// encapsulates all the hacky convenience type name modifications for lb rules.
+// - :80 services don't need a :80 postfix
+// - default ns should be accessible without /ns/name (when we have /ns support)
+func getServiceNameForLBRule(s *api.Service, servicePort int) string {
+	if servicePort == 80 {
+		return s.Name
+	}
+	return fmt.Sprintf("%v:%v", s.Name, servicePort)
+}
+
 // sync all services with the loadbalancer.
 func (lbc *loadBalancerController) sync(dryRun bool) error {
 	if !lbc.epController.HasSynced() || !lbc.svcController.HasSynced() {
@@ -531,19 +582,22 @@ func (lbc *loadBalancerController) sync(dryRun bool) error {
 
 // worker handles the work queue.
 func (lbc *loadBalancerController) worker() {
-	for {
-		key, _ := lbc.queue.Get()
-		glog.Infof("Sync triggered by service %v", key)
-		if err := lbc.sync(false); err != nil {
-			glog.Warningf("Requeuing %v because of error: %v", key, err)
-			lbc.queue.Add(key)
+	if *lbType != "f5" {
+		for {
+			key, _ := lbc.queue.Get()
+			glog.Infof("Sync triggered by service %v", key)
+			if err := lbc.sync(false); err != nil {
+				glog.Warningf("Requeuing %v because of error: %v", key, err)
+				lbc.queue.Add(key)
+			}
+			lbc.queue.Done(key)
 		}
-		lbc.queue.Done(key)
 	}
 }
 
 // newLoadBalancerController creates a new controller from the given config.
-func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.Client, namespace string, tcpServices map[string]int) *loadBalancerController {
+func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.Client,
+	namespace string, tcpServices map[string]int) *loadBalancerController {
 	lbc := loadBalancerController{
 		cfg:    cfg,
 		client: kubeClient,
@@ -565,8 +619,55 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 		lbc.queue.Add(key)
 	}
 	eventHandlers := framework.ResourceEventHandlerFuncs{
-		AddFunc:    enqueue,
-		DeleteFunc: enqueue,
+		AddFunc: func(cur interface{}) {
+			if *lbType == "f5" {
+				switch v := cur.(type) {
+				case *api.Service:
+					if e, ok := cur.(*api.Service); ok {
+						httpSvc, httpsTermSvc, tcpSvc := lbc.getService(e.Name)
+						nodes, _ := getNodes(lbc.client)
+
+						// --Create DNS in Infoblox--
+						_, err := lbc.ibc.createHostNextIP(fmt.Sprintf("%s.%s", e.Name, e.Namespace))
+						if err != nil {
+							fmt.Println("error creating host: ", err)
+						}
+
+						// --Get IP of host in Infoblox--
+						host, err := lbc.ibc.getHost(fmt.Sprintf("%s.%s", e.Name, e.Namespace))
+						if err != nil {
+							fmt.Println("error getting host: ", err)
+						}
+
+						lbc.f5.CreateLB(httpSvc, httpsTermSvc, tcpSvc, nodes, e.Name, e.Namespace,
+							e.Spec.Ports, host[0].Ips[0].Address)
+					} else {
+						glog.Error("Could not parse object to type `api.Service`!")
+					}
+				case *api.Endpoints:
+				default:
+					fmt.Printf("unexpected lb type %T", v)
+				}
+			} else {
+				enqueue(cur)
+			}
+		},
+		DeleteFunc: func(cur interface{}) {
+			if *lbType == "f5" {
+				if e, ok := cur.(*api.Service); ok {
+					_, err := lbc.ibc.deleteHost(e.Name)
+					if err != nil {
+						glog.Error("Could not delete host from Infoblox")
+					}
+
+					lbc.f5.DeleteLB(e.Name, e.Namespace, e.Spec.Ports)
+				} else {
+					glog.Info("Could not parse deleted Service to type `*api.Service`!")
+				}
+			} else {
+				enqueue(cur)
+			}
+		},
 		UpdateFunc: func(old, cur interface{}) {
 			if !reflect.DeepEqual(old, cur) {
 				enqueue(cur)
@@ -666,6 +767,22 @@ func dryRun(lbc *loadBalancerController) {
 	}
 }
 
+// getNodes retuns a list of nodes
+func getNodes(client *unversioned.Client) (nodes []string, err error) {
+
+	nodeList, err := client.Nodes().List(api.ListOptions{})
+	if err != nil {
+		return
+	}
+	for _, node := range nodeList.Items {
+		for _, addresses := range node.Status.Addresses {
+			nodes = append(nodes, addresses.Address)
+		}
+	}
+
+	return
+}
+
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
@@ -720,6 +837,18 @@ func main() {
 
 	// TODO: Handle multiple namespaces
 	lbc := newLoadBalancerController(cfg, kubeClient, namespace, tcpSvcs)
+
+	if *infobloxAPIUser != "" {
+		// setup infoblox
+		ibc := newInfobloxController(*infobloxAPIUser, *infobloxAPIPassword, *infobloxAPIBaseURL, *dnsSubDomain, *subnet)
+		lbc.ibc = ibc
+	}
+
+	if *lbType == "f5" {
+		// Init f5 controller
+		f5Ctl := newf5LTM(*f5Hostname, *f5Username, *f5Password, *f5PartitionPath, *f5Insecure)
+		lbc.f5 = f5Ctl
+	}
 
 	go lbc.epController.Run(wait.NeverStop)
 	go lbc.svcController.Run(wait.NeverStop)
