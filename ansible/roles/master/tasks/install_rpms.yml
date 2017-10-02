@@ -9,7 +9,8 @@
   when: networking == 'opencontrail'
 
 - name: Install kubernetes distribution rpms
-  yum: name={{ kube_rpm_url_base }}/{{ item }}-{{ kube_rpm_url_sufix }}
+  yum:
+    name: "{{ kube_rpm_url_base }}/{{ item }}-{{ kube_rpm_url_sufix }}"
   with_items:
     - "{{ kube_rpms | default([]) }}"
   environment:

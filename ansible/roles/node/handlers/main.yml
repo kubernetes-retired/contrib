@@ -12,10 +12,16 @@
     - restart proxy
 
 - name: restart kubelet
-  service: name=kubelet state=restarted
+  service:
+    name: kubelet
+    state: restarted
 
 - name: restart proxy
-  service: name=kube-proxy state=restarted
+  service:
+    name: kube-proxy
+    state: restarted
 
 - name: restart iptables
-  service: name=iptables state=restarted
+  service:
+    name: iptables
+    state: restarted

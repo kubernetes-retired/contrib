@@ -17,7 +17,9 @@
   command: systemctl --system daemon-reload
 
 - name: restart contrail-vrouter-agent
-  service: name=contrail-vrouter-agent state=restarted
+  service:
+    name: contrail-vrouter-agent
+    state: restarted
 
 - name: restart contrail-control
   shell: docker ps | awk '/opencontrail\/control/ {print $1;}'

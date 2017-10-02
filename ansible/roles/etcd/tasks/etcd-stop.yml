@@ -1,7 +1,11 @@
 ---
 - name: Disable etcd
-  service: name=etcd enabled=no
+  service:
+    name: etcd
+    enabled: no
 
 - name: Stop etcd
-  service: name=etcd state=stopped
+  service:
+    name: etcd
+    state: stopped
   register: etcd_stopped

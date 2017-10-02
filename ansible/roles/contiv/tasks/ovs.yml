@@ -4,10 +4,14 @@
     - binary-update
 
 - name: OVS | Enable ovs
-  service: name=openvswitch enabled=yes
+  service:
+    name: openvswitch
+    enabled: yes
 
 - name: OVS | Start ovs
-  service: name=openvswitch state=started
+  service:
+    name: openvswitch
+    state: started
   register: ovs_started
 
 - name: OVS | Configure ovs

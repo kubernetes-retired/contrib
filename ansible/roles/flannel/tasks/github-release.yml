@@ -1,5 +1,6 @@
 ---
-- stat: path={{ flannel_releases_dir }}/flannel-{{ flannel_version }}
+- stat:
+    path: "{{ flannel_releases_dir }}/flannel-{{ flannel_version }}"
   register: st
 
 - name: Download tar file

@@ -1,6 +1,7 @@
 ---
 - name: Determine if Atomic
-  stat: path=/run/ostree-booted
+  stat:
+    path: /run/ostree-booted
   register: os_tree_check
   changed_when: false
   check_mode: no
@@ -32,13 +33,18 @@
 
 
 - name: Create the directory used to store binaries
-  file: path={{ bin_dir }} state=directory
+  file:
+    path: "{{ bin_dir }}"
+    state: directory
 
 - name: Create Ansible temp directory
-  file: path={{ ansible_temp_dir }} state=directory
+  file:
+    path: "{{ ansible_temp_dir }}"
+    state: directory
 
 - name: Determine if has rpm
-  stat: path=/usr/bin/rpm
+  stat:
+    path: /usr/bin/rpm
   register: rpm_check
   changed_when: false
   check_mode: no

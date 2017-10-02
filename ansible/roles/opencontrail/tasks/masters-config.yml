@@ -1,6 +1,8 @@
 ---
 - name: Install templates
-  copy: src="{{item}}" dest="{{ kube_manifest_dir }}"
+  copy:
+    src: "{{item}}"
+    dest: "{{ kube_manifest_dir }}"
   with_items:
     - contrail-api.manifest
     - contrail-schema.manifest
@@ -8,6 +10,8 @@
     - kube-network-manager.manifest
 
 - name: Network manager configuration
-  template: src=kube-network.conf.j2 dest={{ kube_config_dir }}/network.conf
+  template:
+    src: kube-network.conf.j2
+    dest: "{{ kube_config_dir }}/network.conf"
   notify:
     - restart kube-network-manager

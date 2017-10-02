@@ -1,4 +1,5 @@
 ---
 - name: Write the kubecfg (auth) file for kubectl
-  template: src=kubectl.kubeconfig.j2 dest={{ kube_config_dir }}/kubectl.kubeconfig
-
+  template:
+    src: kubectl.kubeconfig.j2
+    dest: "{{ kube_config_dir }}/kubectl.kubeconfig"

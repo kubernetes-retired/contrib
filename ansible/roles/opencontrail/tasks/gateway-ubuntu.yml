@@ -1,6 +1,8 @@
 ---
 - name: Interface configuration file
-  template: src=gateway.cfg.j2 dest=/etc/network/interfaces.d/{{ item }}.cfg
+  template:
+    src: gateway.cfg.j2
+    dest: "/etc/network/interfaces.d/{{ item }}.cfg"
   with_items:
     - gateway0
     - gateway1
