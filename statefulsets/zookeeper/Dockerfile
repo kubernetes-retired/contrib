@@ -1,10 +1,12 @@
-FROM ubuntu:16.04
+FROM BASEIMAGE
 
 ENV ZK_USER=zookeeper \
     ZK_DATA_DIR=/var/lib/zookeeper/data \
     ZK_DATA_LOG_DIR=/var/lib/zookeeper/log \
     ZK_LOG_DIR=/var/log/zookeeper \
-    JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+    JAVA_HOME=J_MULTI
+
+CROSS_BUILD_COPY qemu-ARCH-static /usr/bin/
 
 ARG GPG_KEY=C823E3E5B12AF29C67F81976F5CECB3CB5E9BD2D
 ARG ZK_DIST=zookeeper-3.4.10
