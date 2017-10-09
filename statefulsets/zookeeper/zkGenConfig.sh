@@ -51,7 +51,7 @@ function validate_env() {
     if [ -z $ZK_REPLICAS ]; then
         echo "ZK_REPLICAS is a mandatory environment variable"
         exit 1
-	  fi
+    fi
 
     if [[ $HOST =~ (.*)-([0-9]+)$ ]]; then
         NAME=${BASH_REMATCH[1]}
