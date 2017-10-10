@@ -40,11 +40,11 @@ RUN set -x \
     && apt-get autoremove -y wget \
     && rm -rf /var/lib/apt/lists/*
 
-#Copy configuration generator script to bin
+# Copy configuration generator script to bin
 COPY zkGenConfig.sh zkOk.sh zkMetrics.sh /opt/zookeeper/bin/
 
 # Create a user for the zookeeper process and configure file system ownership
-# for nessecary directories and symlink the distribution as a user executable
+# for necessary directories and symlink the distribution as a user executable
 RUN set -x \
     && useradd $ZK_USER \
     && [ `id -u $ZK_USER` -eq 1000 ] \
