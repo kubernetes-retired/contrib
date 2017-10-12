@@ -1,7 +1,7 @@
 {{ $iface := .iface }}{{ $netmask := .netmask }}
 
 global_defs {
-  vrrp_version 3
+  vrrp_version {{ .vrrpVersion }}
   vrrp_iptables {{ .iptablesChain }}
 }
 

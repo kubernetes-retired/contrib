@@ -43,6 +43,8 @@ var (
 	useUnicast = flags.Bool("use-unicast", false, `use unicast instead of multicast for communication
 		with other keepalived instances`)
 
+	vrrpVersion = flags.Int("vrrp-version", 3, `Which VRRP version to use (2 or 3)`)
+
 	configMapName = flags.String("services-configmap", "",
 		`Name of the ConfigMap that contains the definition of the services to expose.
 		The key in the map indicates the external IP to use. The value is the name of the
@@ -122,7 +124,7 @@ func main() {
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid, *vrrpVersion)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 

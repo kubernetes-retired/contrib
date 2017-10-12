@@ -15,7 +15,7 @@
 
 - name: Extract tar file
   unarchive:
-    src: "{{ ansible_temp_dir }}/flannel-v{{ flannel_version }}-linux-{{ ansible_architecture }}.tar.gz"
+    src: "{{ ansible_temp_dir }}/flannel-v{{ flannel_version }}-linux-{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}.tar.gz"
     dest: "{{ flannel_releases_dir }}"
     copy: no
   when: st.stat.isdir is not defined

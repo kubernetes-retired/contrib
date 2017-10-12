@@ -1,11 +1,10 @@
 ---
-- name: Open firewalld vxlan port for flanneld
-  firewalld: port=8472/udp permanent=false state=enabled
-  # in case this is also a node where firewalld turned off
-  ignore_errors: yes
-
-- name: Save firewalld vxlan port for flanneld
-  firewalld: port=8472/udp permanent=true state=enabled
+- name: Enable firewalld vxlan port for flanneld
+  firewalld:
+    immediate: true
+    port: 8472/udp
+    permanent: true
+    state: enabled
   # in case this is also a node where firewalld turned off
   ignore_errors: yes
 

@@ -58,6 +58,10 @@
         state: latest
   when: etcd_source_type == "package-manager"
 
+- name: Install Etcd system container
+  include: system_container.yml
+  when: kube_use_etcd_system_container 
+
 - name: Set the etcd_modified fact to true
   set_fact:
     etcd_modified: true

@@ -1,0 +1,10 @@
+- name: Pull flannel system container
+  command: atomic pull --storage=ostree {{ flannel_system_image }}
+  register: pull_result
+  changed_when: "'Pulling layer' in pull_result.stdout"
+
+- name: Install or Update flannel system container package
+  oc_atomic_container:
+    name: flanneld
+    image: "{{ flannel_system_image }}"
+    state: latest

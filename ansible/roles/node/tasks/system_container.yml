@@ -1,0 +1,21 @@
+- name: Pull kubernetes-kubelet system container
+  command: atomic pull --storage=ostree {{ kubelet_system_image }}
+  register: pull_result
+  changed_when: "'Pulling layer' in pull_result.stdout"
+
+- name: Pull kubernetes-proxy system container
+  command: atomic pull --storage=ostree {{ kube_proxy_system_image }}
+  register: pull_result
+  changed_when: "'Pulling layer' in pull_result.stdout"
+
+- name: Install or Update kubernetes-kubelet system container package
+  oc_atomic_container:
+    name: kubelet
+    image: "{{ kubelet_system_image }}"
+    state: latest
+
+- name: Install or Update kubernetes-proxy system container package
+  oc_atomic_container:
+    name: kube-proxy
+    image: "{{ kube_proxy_system_image }}"
+    state: latest

@@ -3,6 +3,10 @@
 - include: coreos.yml
   when: is_coreos
 
+- name: Install node system containers
+  include: system_container.yml
+  when: kube_use_node_system_container
+
 - include: ubuntu-14.04.yml
   when: ansible_distribution == 'Ubuntu' and ansible_distribution_major_version|int < 15
 

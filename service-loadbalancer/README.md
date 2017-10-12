@@ -2,6 +2,11 @@
 
 AKA "how to set up a bank of haproxy for platforms that don't have load balancers".
 
+## Project Status:
+THIS PROJECT IS DEPRECATED AND UNMAINTAINED.
+
+[Ingress Catalog](https://github.com/kubernetes/ingress/blob/master/docs/catalog.md) lists a few 3rd party replacements for this project, including an HAProxy Ingress Controller.
+
 ## Disclaimer:
 - This is a **work in progress**.
 - A better way to achieve this will probably emerge once discussions on (#260, #561) converge.
@@ -152,7 +157,7 @@ metadata:
     - name: secret-volume
       secret:
         secretName: my-secret
-       
+
 ```
 
 - Add your SSL configuration to loadbalancer pod
@@ -166,7 +171,7 @@ metadata:
 
 ##### Custom ACL
  - Adding the aclMatch annotation will allow you to serve the service on a specific path although URLs will not be rewritten back to root. The following will cause your service to be available at /test and your web service will be passed the url with /test on the front.
- 
+
 ```yaml
  metadata:
    name: myservice
@@ -375,7 +380,7 @@ Europe
   4. try kubectl logs haproxy
   5. run the service_loadbalancer with --dry
 - Check http://<node_ip>:1936 for the stats page. It requires the password used in the template file.
-- Try talking to haproxy on the stats socket directly on the container using kubectl exec, eg: echo “show info” | socat unix-connect:/tmp/haproxy stdio
+- Try talking to haproxy on the stats socket directly on the container using kubectl exec, eg: `echo "show info" | socat unix-connect:/tmp/haproxy stdio`
 - Run the service_loadbalancer with the flag --syslog to append the haproxy log as part of the pod stdout. Use kubectl logs to check the
 status of the services or stats about the traffic
 

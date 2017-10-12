@@ -33,7 +33,7 @@ Public ----(example.com = 10.4.0.3/4/5)----|-----| Host IP: 10.4.0.4 |
 
 Let's assume that Ingress-es are run on the 3 kubernetes worker nodes above `10.4.0.x`, which are exposed to the public to load-balance incoming traffic. DNS Round Robin (RR) is applied to `example.com` to rotate between the 3 nodes. If `10.4.0.3` goes down, one-third of the traffic to `example.com` is still directed to the downed node (due to DNS RR). The sysadmin has to step in and delist the faulty node from `example.com`. Since there will be intermittent downtime until the sysadmin intervenes, this isn't true High Availability (HA).
 
-Here is where IPVS can help. 
+Here is where IPVS can help.
 
 The idea is to expose a Virtual IP (VIP) address per service, outside of the kubernetes cluster. _keepalived_ then uses VRRP to sync this "mapping" in the local network. With 2 or more instance of the pod running in the cluster is possible to provide HA using a single VIP address.
 
@@ -106,7 +106,7 @@ Configure the DaemonSet in `vip-daemonset.yaml` to use the ServiceAccount. Add t
       hostNetwork: true
       serviceAccount: kube-keepalived-vip
       containers:
-        - image: gcr.io/google_containers/kube-keepalived-vip:0.9
+        - image: gcr.io/google_containers/kube-keepalived-vip:0.11
 ```
 
 Configure its ClusterRole. _keepalived_ needs to read the pods, nodes, endpoints and services.
@@ -160,7 +160,7 @@ $ kubectl create -f vip-daemonset.yaml
 daemonset "kube-keepalived-vip" created
 $ kubectl get daemonset
 NAME                  CONTAINER(S)          IMAGE(S)                         SELECTOR                        NODE-SELECTOR
-kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.9   name in (kube-keepalived-vip)   type=worker
+kube-keepalived-vip   kube-keepalived-vip   gcr.io/google_containers/kube-keepalived-vip:0.11   name in (kube-keepalived-vip)   type=worker
 ```
 
 **Note: the DaemonSet yaml file contains a node selector. This is not required, is just an example to show how is possible to limit the nodes where keepalived can run**
