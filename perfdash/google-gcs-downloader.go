@@ -55,11 +55,11 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 				artifacts, err := g.GoogleGCSBucketUtils.ListFilesInBuild(
 					job, buildNumber, fmt.Sprintf("artifacts/%v_%v", filePrefix, strings.ToLower(test)))
 				if err != nil || len(artifacts) == 0 {
-					fmt.Printf("Error while looking for data in build %v: %v", buildNumber, err)
+					fmt.Printf("Error while looking for data in build %v: %v\n", buildNumber, err)
 					continue
 				}
 				if len(artifacts) > 1 {
-					fmt.Printf("WARNING: found multiple files with data, reading only one")
+					fmt.Printf("WARNING: found multiple files with data, reading only one\n")
 				}
 				metricsFilename := artifacts[0][strings.LastIndex(artifacts[0], "/")+1:]
 				testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, fmt.Sprintf("artifacts/%v", metricsFilename))
@@ -71,7 +71,7 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 				defer testDataBody.Close()
 				data, err := ioutil.ReadAll(testDataBody)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error when reading response Body: %v", err)
+					fmt.Fprintf(os.Stderr, "Error when reading response Body: %v\n", err)
 					continue
 				}
 				parseTestOutput(data, buildNumber, job, test, result)
