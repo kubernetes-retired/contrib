@@ -55,7 +55,7 @@ PerfDashApp.prototype.labelChanged = function() {
         return;
     }
     // All the unit should be the same
-    this.options= {scaleLabel: "<%=value%> "+result[0].unit};
+    this.options = {scaleLabel: "<%=value%> "+result[0].unit};
     angular.forEach(result[0].data, function(value, name) {
         this.seriesData.push(this.getStream(result, name));
         this.series.push(name);
