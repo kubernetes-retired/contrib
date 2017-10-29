@@ -18,7 +18,7 @@
 - name: Create symlinks
   file:
     src: /usr/local/etcd-v{{ etcd_version }}-linux-{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}/{{ item }}
-    dest: /usr/bin/{{ item }}
+    dest: "{{ bin_dir }}/{{ item }}"
     state: link
   with_items:
     - etcd
