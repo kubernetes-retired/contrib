@@ -46,24 +46,24 @@ func parseResponsivenessData(data []byte, buildNumber int, job string, testName 
 	}
 }
 
-type ResourceUsagePercentiles map[string][]ResourceUsages
+type resourceUsagePercentiles map[string][]resourceUsages
 
-type ResourceUsages struct {
+type resourceUsages struct {
 	Name   string  `json:"Name"`
 	Cpu    float64 `json:"Cpu"`
 	Memory int     `json:"Mem"`
 }
 
-type ResourceUsage struct {
+type resourceUsage struct {
 	Cpu    float64
 	Memory float64
 }
-type UsageAtPercentiles map[string]ResourceUsage
-type PodNameToUsage map[string]UsageAtPercentiles
+type usageAtPercentiles map[string]resourceUsage
+type podNameToUsage map[string]usageAtPercentiles
 
 func parseResourceUsageData(data []byte, buildNumber int, job string, testName string, result TestToBuildData) {
 	build := fmt.Sprintf("%d", buildNumber)
-	var obj ResourceUsagePercentiles
+	var obj resourceUsagePercentiles
 	if err := json.Unmarshal(data, &obj); err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, string(data))
 		return
@@ -71,14 +71,14 @@ func parseResourceUsageData(data []byte, buildNumber int, job string, testName s
 	if _, found := result[testName]; !found {
 		result[testName] = BuildData{Job: job, Version: "v1", Builds: map[string][]perftype.DataItem{}}
 	}
-	usage := make(PodNameToUsage)
+	usage := make(podNameToUsage)
 	for percentile, items := range obj {
 		for _, item := range items {
 			name := RemoveDisambiguationInfixes(item.Name)
 			if _, ok := usage[name]; !ok {
-				usage[name] = make(UsageAtPercentiles)
+				usage[name] = make(usageAtPercentiles)
 			} // TODO(porridge): keep max usage?
-			usage[name][percentile] = ResourceUsage{float64(item.Cpu), float64(item.Memory)}
+			usage[name][percentile] = resourceUsage{float64(item.Cpu), float64(item.Memory)}
 		}
 	}
 	for podName, usageAtPercentiles := range usage {
