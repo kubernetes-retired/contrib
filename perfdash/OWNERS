@@ -1,8 +1,10 @@
 approvers:
 - Random-Liu
-- brendandburns
 - gmarek
+- porridge
+- shyamjvs
 reviewers:
 - Random-Liu
-- brendandburns
 - gmarek
+- porridge
+- shyamjvs
