@@ -1,5 +1,7 @@
 # Kubernetes Ansible
 
+**DEPRECATED**: See repo https://github.com/kubernetes-incubator/kubespray
+
 This playbook and set of roles set up a Kubernetes cluster onto machines. They
 can be real hardware, VMs, things in a public cloud, etc. Anything that you can connect to via SSH.
 
