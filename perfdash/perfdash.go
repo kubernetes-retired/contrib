@@ -77,6 +77,7 @@ func main() {
 				time.Sleep(errorDelay)
 				continue
 			}
+			fmt.Printf("Data fetched, sleeping %v...\n", pollDuration)
 			time.Sleep(pollDuration)
 		}
 	}()
