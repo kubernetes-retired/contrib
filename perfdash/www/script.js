@@ -55,8 +55,14 @@ PerfDashApp.prototype.labelChanged = function() {
         return;
     }
     // All the unit should be the same
-    this.options= {scaleLabel: "<%=value%> "+result[0].unit};
-    angular.forEach(result[0].data, function(value, name) {
+    this.options = {scaleLabel: "<%=value%> "+result[0].unit};
+    // Start with higher percentiles, since their values are usually strictly higher
+    // than lower percentiles, which avoids obscuring graph data. It also orders data
+    // in the onHover labels more naturally.
+    var seriesLabels = Object.keys(result[0].data);
+    seriesLabels.sort();
+    seriesLabels.reverse();
+    angular.forEach(seriesLabels, function(name) {
         this.seriesData.push(this.getStream(result, name));
         this.series.push(name);
     }, this);
