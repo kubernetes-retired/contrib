@@ -22,6 +22,7 @@ import (
 	"os"
 
 	"k8s.io/kubernetes/test/e2e/perftype"
+	"math"
 )
 
 func stripCount(data *perftype.DataItem) {
@@ -77,8 +78,16 @@ func parseResourceUsageData(data []byte, buildNumber int, job string, testName s
 			name := RemoveDisambiguationInfixes(item.Name)
 			if _, ok := usage[name]; !ok {
 				usage[name] = make(usageAtPercentiles)
-			} // TODO(porridge): keep max usage?
-			usage[name][percentile] = resourceUsage{float64(item.Cpu), float64(item.Memory)}
+			}
+			cpu, memory := float64(item.Cpu), float64(item.Memory)
+			if otherUsage, ok := usage[name][percentile]; ok {
+				// Note that we take max of each resource separately, potentially manufacturing a
+				// "franken-sample" which was never seen in the wild. We do this hoping that such result
+				// will be more stable across runs.
+				cpu = math.Max(cpu, otherUsage.Cpu)
+				memory = math.Max(memory, otherUsage.Memory)
+			}
+			usage[name][percentile] = resourceUsage{cpu, memory}
 		}
 	}
 	for podName, usageAtPercentiles := range usage {
