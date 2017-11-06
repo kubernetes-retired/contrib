@@ -44,37 +44,42 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 	fmt.Print("Getting Data from GCS...\n")
 	result := make(TestToBuildData)
 	for job, tests := range TestConfig[utils.KubekinsBucket] {
+		if tests.Prefix == "" {
+			return result, fmt.Errorf("Invalid empty Prefix for job %s", job)
+		}
 		lastBuildNo, err := g.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
 		if err != nil {
 			return result, err
 		}
 		fmt.Printf("Last build no for %v: %v\n", job, lastBuildNo)
 		for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
-			fmt.Printf("Fetching build %v...\n", buildNumber)
-			for testLabel, testDescription := range tests {
-				artifacts, err := g.GoogleGCSBucketUtils.ListFilesInBuild(
-					job, buildNumber, fmt.Sprintf("artifacts/%v_%v", testDescription.OutputFilePrefix, testDescription.Name))
+			fmt.Printf("Fetching %s build %v...\n", job, buildNumber)
+			for testLabel, testDescription := range tests.Descriptions {
+				fileStem := fmt.Sprintf("artifacts/%v_%v", testDescription.OutputFilePrefix, testDescription.Name)
+				artifacts, err := g.GoogleGCSBucketUtils.ListFilesInBuild(job, buildNumber, fileStem)
 				if err != nil || len(artifacts) == 0 {
-					fmt.Printf("Error while looking for data in build %v: %v\n", buildNumber, err)
+					fmt.Printf("Error while looking for %s* in build %v: %v\n", fileStem, buildNumber, err)
 					continue
 				}
-				if len(artifacts) > 1 {
-					fmt.Printf("WARNING: found multiple files with data, reading only one\n")
-				}
 				metricsFilename := artifacts[0][strings.LastIndex(artifacts[0], "/")+1:]
+				if len(artifacts) > 1 {
+					fmt.Printf("WARNING: found multiple %s files with data, reading only one: %s\n", fileStem, metricsFilename)
+				}
 				testDataResponse, err := g.GoogleGCSBucketUtils.GetFileFromJenkinsGoogleBucket(job, buildNumber, fmt.Sprintf("artifacts/%v", metricsFilename))
 				if err != nil {
 					panic(err)
 				}
 
-				testDataBody := testDataResponse.Body
-				defer testDataBody.Close()
-				data, err := ioutil.ReadAll(testDataBody)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error when reading response Body: %v\n", err)
-					continue
-				}
-				testDescription.Parser(data, buildNumber, job, testLabel, result)
+				func() {
+					testDataBody := testDataResponse.Body
+					defer testDataBody.Close()
+					data, err := ioutil.ReadAll(testDataBody)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Error when reading response Body: %v\n", err)
+						return
+					}
+					testDescription.Parser(data, buildNumber, job, tests.Prefix + "-" + testLabel, result)
+				}()
 			}
 		}
 	}
