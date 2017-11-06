@@ -234,7 +234,7 @@
           var activePoints = atEvent.call(chart, evt);
           if (triggerOnlyOnChange === false || angular.equals(lastState, activePoints) === false) {
             lastState = activePoints;
-            scope[action](activePoints, evt);
+            scope[action](activePoints, evt, chart);
             scope.$apply();
           }
         }
