@@ -28,7 +28,7 @@ PerfDashApp.prototype.onClickInternal_ = function(data) {
     // Get location
     // TODO(random-liu): Make the URL configurable if we want to support more
     // buckets in the future.
-    window.location = "https://k8s-gubernator.appspot.com/build/kubernetes-jenkins/logs/" + this.job + "/" + data[0].label + "/";
+    window.open("https://k8s-gubernator.appspot.com/build/kubernetes-jenkins/logs/" + this.job + "/" + data[0].label + "/", "_blank");
 };
 
 // Fetch data from the server and update the data to display
