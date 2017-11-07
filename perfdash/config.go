@@ -25,8 +25,15 @@ import (
 //   and print the PerfData in e2e test log.
 //   2) Add corresponding bucket, job and test into *TestConfig*.
 
-// Tests is a map from test name to test output file prefix.
-type Tests map[string]string
+// TestDescription contains test name, output file prefix and parser function.
+type TestDescription struct {
+	Name             string
+	OutputFilePrefix string
+	Parser           func(data []byte, buildNumber int, job string, testName string, result TestToBuildData)
+}
+
+// Tests is a map from test label to test description.
+type Tests map[string]TestDescription
 
 // Jobs is a map from job name to all supported tests in the job.
 type Jobs map[string]Tests
@@ -41,12 +48,26 @@ var (
 	TestConfig = Buckets{
 		utils.KubekinsBucket: Jobs{
 			"ci-kubernetes-e2e-gci-gce-scalability": Tests{
-				"Density": "APIResponsiveness",
-				"Load":    "APIResponsiveness",
-			},
-			"ci-kubernetes-e2e-gci-gce-serial": Tests{
-				"Kubelet Perf 35":  "TBD",
-				"Kubelet Perf 100": "TBD",
+				"DensityResponsiveness": TestDescription{
+					Name:             "density",
+					OutputFilePrefix: "APIResponsiveness",
+					Parser:           parseResponsivenessData,
+				},
+				"LoadResponsiveness": TestDescription{
+					Name:             "load",
+					OutputFilePrefix: "APIResponsiveness",
+					Parser:           parseResponsivenessData,
+				},
+				"DensityResources": TestDescription{
+					Name:             "density",
+					OutputFilePrefix: "ResourceUsageSummary",
+					Parser:           parseResourceUsageData,
+				},
+				"LoadResources": TestDescription{
+					Name:             "load",
+					OutputFilePrefix: "ResourceUsageSummary",
+					Parser:           parseResourceUsageData,
+				},
 			},
 		},
 	}

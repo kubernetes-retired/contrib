@@ -51,9 +51,9 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 		fmt.Printf("Last build no for %v: %v\n", job, lastBuildNo)
 		for buildNumber := lastBuildNo; buildNumber > lastBuildNo-g.Builds && buildNumber > 0; buildNumber-- {
 			fmt.Printf("Fetching build %v...\n", buildNumber)
-			for test, filePrefix := range tests {
+			for testLabel, testDescription := range tests {
 				artifacts, err := g.GoogleGCSBucketUtils.ListFilesInBuild(
-					job, buildNumber, fmt.Sprintf("artifacts/%v_%v", filePrefix, strings.ToLower(test)))
+					job, buildNumber, fmt.Sprintf("artifacts/%v_%v", testDescription.OutputFilePrefix, testDescription.Name))
 				if err != nil || len(artifacts) == 0 {
 					fmt.Printf("Error while looking for data in build %v: %v\n", buildNumber, err)
 					continue
@@ -74,7 +74,7 @@ func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
 					fmt.Fprintf(os.Stderr, "Error when reading response Body: %v\n", err)
 					continue
 				}
-				parseTestOutput(data, buildNumber, job, test, result)
+				testDescription.Parser(data, buildNumber, job, testLabel, result)
 			}
 		}
 	}
