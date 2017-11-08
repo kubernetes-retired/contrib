@@ -21,10 +21,18 @@ var PerfDashApp = function(http, scope) {
     this.scope = scope;
     this.testNames = [];
     this.onClick = this.onClickInternal_.bind(this);
+    this.cap = 0;
 };
 
-PerfDashApp.prototype.onClickInternal_ = function(data) {
-    console.log(data);
+
+PerfDashApp.prototype.onClickInternal_ = function(data, evt, chart) {
+    console.log(this, data, evt, chart);
+    if (evt.ctrlKey) {
+      this.cap = (chart.scale.min + chart.scale.max) / 2;
+      this.labelChanged();
+      return;
+    }
+
     // Get location
     // TODO(random-liu): Make the URL configurable if we want to support more
     // buckets in the future.
@@ -66,6 +74,7 @@ PerfDashApp.prototype.labelChanged = function() {
         this.seriesData.push(this.getStream(result, name));
         this.series.push(name);
     }, this);
+    this.cap = 0;
 };
 
 // Update the data to graph, using the selected testName
@@ -135,8 +144,12 @@ PerfDashApp.prototype.getData = function(labels) {
 PerfDashApp.prototype.getStream = function(data, stream) {
     var result = [];
     angular.forEach(data, function(value) {
-        result.push(value.data[stream]);
-    });
+        var x = value.data[stream];
+        if (this.cap != 0 && x > this.cap) {
+          x = this.cap;
+        }
+        result.push(x);
+    }, this);
     return result;
 };
 
