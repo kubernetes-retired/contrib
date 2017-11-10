@@ -29,7 +29,7 @@ import (
 type TestDescription struct {
 	Name             string
 	OutputFilePrefix string
-	Parser           func(data []byte, buildNumber int, job string, testName string, result TestToBuildData)
+	Parser           func(data []byte, buildNumber int, testResult *BuildData)
 }
 
 // Tests is a map from test label to test description.
