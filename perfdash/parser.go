@@ -29,20 +29,20 @@ func stripCount(data *perftype.DataItem) {
 	delete(data.Labels, "Count")
 }
 
-func parseResponsivenessData(data []byte, buildNumber int, job string, testName string, result TestToBuildData) {
+func parseResponsivenessData(data []byte, buildNumber int, testResult *BuildData) {
 	build := fmt.Sprintf("%d", buildNumber)
 	obj := perftype.PerfData{}
 	if err := json.Unmarshal(data, &obj); err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, string(data))
 		return
 	}
-	if _, found := result[testName]; !found {
-		result[testName] = BuildData{Job: job, Version: obj.Version, Builds: map[string][]perftype.DataItem{}}
+	if testResult.Version == "" {
+		testResult.Version = obj.Version
 	}
-	if result[testName].Version == obj.Version {
+	if testResult.Version == obj.Version {
 		for i := range obj.DataItems {
 			stripCount(&obj.DataItems[i])
-			result[testName].Builds[build] = append(result[testName].Builds[build], obj.DataItems[i])
+			testResult.Builds[build] = append(testResult.Builds[build], obj.DataItems[i])
 		}
 	}
 }
@@ -62,15 +62,13 @@ type resourceUsage struct {
 type usageAtPercentiles map[string]resourceUsage
 type podNameToUsage map[string]usageAtPercentiles
 
-func parseResourceUsageData(data []byte, buildNumber int, job string, testName string, result TestToBuildData) {
+func parseResourceUsageData(data []byte, buildNumber int, testResult *BuildData) {
+	testResult.Version = "v1"
 	build := fmt.Sprintf("%d", buildNumber)
 	var obj resourceUsagePercentiles
 	if err := json.Unmarshal(data, &obj); err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, string(data))
 		return
-	}
-	if _, found := result[testName]; !found {
-		result[testName] = BuildData{Job: job, Version: "v1", Builds: map[string][]perftype.DataItem{}}
 	}
 	usage := make(podNameToUsage)
 	for percentile, items := range obj {
@@ -97,7 +95,7 @@ func parseResourceUsageData(data []byte, buildNumber int, job string, testName s
 			cpu.Data[percentile] = usage.Cpu
 			memory.Data[percentile] = usage.Memory / (1024 * 1024)
 		}
-		result[testName].Builds[build] = append(result[testName].Builds[build], cpu)
-		result[testName].Builds[build] = append(result[testName].Builds[build], memory)
+		testResult.Builds[build] = append(testResult.Builds[build], cpu)
+		testResult.Builds[build] = append(testResult.Builds[build], memory)
 	}
 }
