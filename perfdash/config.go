@@ -29,11 +29,14 @@ import (
 type TestDescription struct {
 	Name             string
 	OutputFilePrefix string
-	Parser           func(data []byte, buildNumber int, job string, testName string, result TestToBuildData)
+	Parser           func(data []byte, buildNumber int, testResult *BuildData)
 }
 
 // Tests is a map from test label to test description.
-type Tests map[string]TestDescription
+type Tests struct {
+	Prefix       string
+	Descriptions map[string]TestDescription
+}
 
 // Jobs is a map from job name to all supported tests in the job.
 type Jobs map[string]Tests
@@ -42,36 +45,85 @@ type Jobs map[string]Tests
 type Buckets map[string]Jobs
 
 var (
+	// performanceDescriptions contains metrics exported by a --ginko.focus=[Feature:Performance]
+	// e2e test
+	performanceDescriptions = map[string]TestDescription{
+		"DensityResponsiveness": {
+			Name:             "density",
+			OutputFilePrefix: "APIResponsiveness",
+			Parser:           parseResponsivenessData,
+		},
+		"DensityResources": {
+			Name:             "density",
+			OutputFilePrefix: "ResourceUsageSummary",
+			Parser:           parseResourceUsageData,
+		},
+		"DensityPodStartup": {
+			Name:             "density",
+			OutputFilePrefix: "PodStartupLatency",
+			Parser:           parseResponsivenessData,
+		},
+		"LoadResponsiveness": {
+			Name:             "load",
+			OutputFilePrefix: "APIResponsiveness",
+			Parser:           parseResponsivenessData,
+		},
+		"LoadResources": {
+			Name:             "load",
+			OutputFilePrefix: "ResourceUsageSummary",
+			Parser:           parseResourceUsageData,
+		},
+	}
+
 	// TestConfig contains all the test PerfDash supports now. Downloader will download and
 	// analyze build log from all these Jobs, and parse the data from all these Test.
 	// Notice that all the tests should have different name for now.
 	TestConfig = Buckets{
 		utils.KubekinsBucket: Jobs{
 			"ci-kubernetes-e2e-gci-gce-scalability": Tests{
-				"DensityResponsiveness": TestDescription{
-					Name:             "density",
-					OutputFilePrefix: "APIResponsiveness",
-					Parser:           parseResponsivenessData,
-				},
-				"LoadResponsiveness": TestDescription{
-					Name:             "load",
-					OutputFilePrefix: "APIResponsiveness",
-					Parser:           parseResponsivenessData,
-				},
-				"DensityResources": TestDescription{
-					Name:             "density",
-					OutputFilePrefix: "ResourceUsageSummary",
-					Parser:           parseResourceUsageData,
-				},
-				"LoadResources": TestDescription{
-					Name:             "load",
-					OutputFilePrefix: "ResourceUsageSummary",
-					Parser:           parseResourceUsageData,
-				},
+				Prefix:       "gce-100Nodes-master",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-e2e-gci-gce-scalability-stable1": Tests{
+				Prefix:       "gce-100Nodes-1.8",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-e2e-gci-gce-scalability-release-1-7": Tests{
+				Prefix:       "gce-100Nodes-1.7-gci",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-e2e-gce-scalability-release-1-7": Tests{
+				Prefix:       "gce-100Nodes-1.7-cvm",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-e2e-gce-large-performance": Tests{
+				Prefix:       "gce-2kNodes-master",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-e2e-gce-scale-performance": Tests{
+				Prefix:       "gce-5kNodes-master",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-e2e-gke-large-performance": Tests{
+				Prefix:       "gke-2kNodes-master",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-kubemark-100-gce": Tests{
+				Prefix:       "kubemark-100Nodes-master",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-kubemark-high-density-100-gce": Tests{
+				Prefix:       "kubemark-100Nodes-master-hd",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-kubemark-500-gce": Tests{
+				Prefix:       "kubemark-500Nodes-master",
+				Descriptions: performanceDescriptions,
+			},
+			"ci-kubernetes-kubemark-gce-scale": Tests{
+				Prefix:       "kubemark-5kNodes-master",
+				Descriptions: performanceDescriptions,
 			},
 		},
 	}
-
-	// TestNameSeparator is the prefix of time name.
-	TestNameSeparator = "[It] "
 )
