@@ -5,7 +5,7 @@ metadata:
   namespace: default
   labels:
     app: perfdash
-    version: "0.7"
+    version: "0.8"
 spec:
   selector:
     matchLabels:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: perfdash
-        image: gcr.io/google_containers/perfdash:0.7
+        image: gcr.io/google_containers/perfdash:0.8
         command:
           - /perfdash
           -   --www=true
@@ -30,15 +30,15 @@ spec:
           containerPort: 8080
         livenessProbe:
           httpGet:
-            path: /api
+            path: /
             port: 8080
           initialDelaySeconds: 10
           timeoutSeconds: 1
         resources:
           requests:
-            cpu: 300m
-            memory: 300Mi
+            cpu: 600m
+            memory: 1200Mi
           limits:
-            cpu: 300m
-            memory: 300Mi
+            cpu: 600m
+            memory: 1200Mi
       restartPolicy: Always
