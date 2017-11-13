@@ -63,6 +63,11 @@ var (
 			OutputFilePrefix: "PodStartupLatency",
 			Parser:           parseResponsivenessData,
 		},
+		"DensityTestPhaseTimer": {
+			Name:             "density",
+			OutputFilePrefix: "TestPhaseTimer",
+			Parser:           parseResponsivenessData,
+		},
 		"LoadResponsiveness": {
 			Name:             "load",
 			OutputFilePrefix: "APIResponsiveness",
@@ -73,11 +78,17 @@ var (
 			OutputFilePrefix: "ResourceUsageSummary",
 			Parser:           parseResourceUsageData,
 		},
+		"LoadTestPhaseTimer": {
+			Name:             "load",
+			OutputFilePrefix: "TestPhaseTimer",
+			Parser:           parseResponsivenessData,
+		},
 	}
 
 	// TestConfig contains all the test PerfDash supports now. Downloader will download and
 	// analyze build log from all these Jobs, and parse the data from all these Test.
 	// Notice that all the tests should have different name for now.
+	// TODO(porridge): automate fetching the list of job list
 	TestConfig = Buckets{
 		utils.KubekinsBucket: Jobs{
 			"ci-kubernetes-e2e-gci-gce-scalability": Tests{
