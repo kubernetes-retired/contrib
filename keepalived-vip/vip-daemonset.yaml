@@ -9,6 +9,24 @@ spec:
         name: kube-keepalived-vip
     spec:
       hostNetwork: true
+      # kube-keepalived-vip use a `modprobe ip_vs`, see
+      # https://github.com/kubernetes/contrib/blob/8be3a141fd0d753ddcd8cbc23b74cbdd430394ba/keepalived-vip/utils.go#L232
+      # which might not work on non-ubuntu system. When running this on CentOS,
+      # use the following initContainer as workaround.
+      # initContainers:
+      #   - image: centos:7
+      #     name: kube-keepalived-vip-modprobe
+      #     imagePullPolicy: Always
+      #     securityContext:
+      #       privileged: true
+      #     volumeMounts:
+      #       - mountPath: /lib/modules
+      #         name: modules
+      #         readOnly: true
+      #       - mountPath: /dev
+      #         name: dev
+      #     command: ['modprobe']
+      #     args: ['ip_vs']
       containers:
         - image: k8s.gcr.io/kube-keepalived-vip:0.11
           name: kube-keepalived-vip
