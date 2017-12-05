@@ -43,7 +43,7 @@ func main() {
 	flag.Parse()
 
 	if *builds > maxBuilds || *builds < 0 {
-		fmt.Printf("Invalid builds number: %d", *builds)
+		fmt.Printf("Invalid number of builds: %d, setting to %d\n", *builds, maxBuilds)
 		*builds = maxBuilds
 	}
 
@@ -64,7 +64,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error formating data: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Result: %v", string(prettyResult))
+		fmt.Printf("Result: %v\n", string(prettyResult))
 		return
 	}
 
@@ -77,6 +77,7 @@ func main() {
 				time.Sleep(errorDelay)
 				continue
 			}
+			fmt.Printf("Data fetched, sleeping %v...\n", pollDuration)
 			time.Sleep(pollDuration)
 		}
 	}()

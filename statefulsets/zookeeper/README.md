@@ -4,14 +4,14 @@ This project contains a Docker image meant to facilitate the deployment of
 [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/). 
 ## Limitations
 1. Scaling is not currently supported. An ensemble's membership can not be updated in a safe way 
-in ZooKeeper 3.4.9 (The current stable release).
+in ZooKeeper 3.4.10 (The current stable release).
 2. Observers are currently not supported. Contributions are welcome.
 3. Persistent Volumes must be used. emptyDirs will likely result in a loss of data.
 
 ## Docker Image
 The docker image contained in this repository is comprised of a base Ubuntu 16.04 image using the latest
 release of the OpenJDK JRE based on the 1.8 JVM (JDK 8u111) and the latest stable release of 
-ZooKeeper, 3.4.9. Ubuntu is a much larger image than BusyBox or Alpine, but these images contain 
+ZooKeeper, 3.4.10. Ubuntu is a much larger image than BusyBox or Alpine, but these images contain
 mucl or ulibc. This requires a custom version of OpenJDK to be built against a libc runtime other 
 than glibc. No vendor of the ZooKeeper software supplies or verifies the software against such a 
 JVM, and, while Alpine or BusyBox would provide smaller images, we have prioritized a well known 
@@ -74,7 +74,7 @@ configuration below.
 containers:
       - name: k8szk
         imagePullPolicy: Always
-        image: gcr.io/google_samples/k8szk:v1
+        image: gcr.io/google_samples/k8szk:v3
         ports:
         - containerPort: 2181
           name: client

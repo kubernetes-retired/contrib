@@ -36,9 +36,9 @@ type BuildData struct {
 	Version string                         `json:"version"`
 }
 
-// TestToBuildData is a map from test name to BuildData
+// TestToBuildData is a map from test name to BuildData pointer
 // TODO(random-liu): Use a more complex data structure if we need to support more test in the future.
-type TestToBuildData map[string]BuildData
+type TestToBuildData map[string]*BuildData
 
 func (b *TestToBuildData) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	data, err := json.Marshal(b)

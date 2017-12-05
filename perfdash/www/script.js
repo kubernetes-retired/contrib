@@ -21,14 +21,22 @@ var PerfDashApp = function(http, scope) {
     this.scope = scope;
     this.testNames = [];
     this.onClick = this.onClickInternal_.bind(this);
+    this.cap = 0;
 };
 
-PerfDashApp.prototype.onClickInternal_ = function(data) {
-    console.log(data);
+
+PerfDashApp.prototype.onClickInternal_ = function(data, evt, chart) {
+    console.log(this, data, evt, chart);
+    if (evt.ctrlKey) {
+      this.cap = (chart.scale.min + chart.scale.max) / 2;
+      this.labelChanged();
+      return;
+    }
+
     // Get location
     // TODO(random-liu): Make the URL configurable if we want to support more
     // buckets in the future.
-    window.location = "http://kubekins.dls.corp.google.com/job/" + this.job + "/" + data[0].label + "/";
+    window.open("https://k8s-gubernator.appspot.com/build/kubernetes-jenkins/logs/" + this.job + "/" + data[0].label + "/", "_blank");
 };
 
 // Fetch data from the server and update the data to display
@@ -55,11 +63,18 @@ PerfDashApp.prototype.labelChanged = function() {
         return;
     }
     // All the unit should be the same
-    this.options= {scaleLabel: "<%=value%> "+result[0].unit};
-    angular.forEach(result[0].data, function(value, name) {
+    this.options = {scaleLabel: "<%=value%> "+result[0].unit};
+    // Start with higher percentiles, since their values are usually strictly higher
+    // than lower percentiles, which avoids obscuring graph data. It also orders data
+    // in the onHover labels more naturally.
+    var seriesLabels = Object.keys(result[0].data);
+    seriesLabels.sort();
+    seriesLabels.reverse();
+    angular.forEach(seriesLabels, function(name) {
         this.seriesData.push(this.getStream(result, name));
         this.series.push(name);
     }, this);
+    this.cap = 0;
 };
 
 // Update the data to graph, using the selected testName
@@ -129,8 +144,12 @@ PerfDashApp.prototype.getData = function(labels) {
 PerfDashApp.prototype.getStream = function(data, stream) {
     var result = [];
     angular.forEach(data, function(value) {
-        result.push(value.data[stream]);
-    });
+        var x = value.data[stream];
+        if (this.cap != 0 && x > this.cap) {
+          x = this.cap;
+        }
+        result.push(x);
+    }, this);
     return result;
 };
 
