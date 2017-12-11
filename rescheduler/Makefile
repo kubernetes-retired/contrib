@@ -54,10 +54,10 @@ container: .container-$(ARCH)
 	cd $(TEMP_DIR) && sed -i 's|BASEIMAGE|$(BASEIMAGE)|g' Dockerfile
 	docker build --pull -t ${MULTI_ARCH_IMG}:$(TAG) $(TEMP_DIR)
 
-push: .psuh-$(ARCH)
+push: .push-$(ARCH)
 .push-$(ARCH): .container-$(ARCH)
 	gcloud docker -- push $(MULTI_ARCH_IMG):$(TAG)
-ifeq ($(ARCH), amd64)
+ifeq ($(ARCH),amd64)
 	gcloud docker -- push $(IMAGE):$(TAG)
 endif
 
