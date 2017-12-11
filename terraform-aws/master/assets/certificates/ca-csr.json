@@ -1,0 +1,17 @@
+{
+  "CN": "Kubernetes CA",
+  "hosts": [
+    "staging.muzhack.com"
+  ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "Germany",
+      "L": "Berlin",
+      "O": "MuzHack"
+    }
+  ]
+}
