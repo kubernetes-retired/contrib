@@ -77,6 +77,49 @@ To expose one or more services use the flag `services-configmap`. The format of 
 
 This IP must be routable within the LAN and must be available. By default the IP address of the pods is used to route the traffic. This means that is one pod dies or a new one is created by a scale event the keepalived configuration file will be updated and reloaded.
 
+**Note: By default only the DaemonSet's own namespace is used. If you want to watch for services in all namespaces you have to pass `--watch-all-namespaces` as an argument.**
+
+## Parameters
+
+To see all available parameters execute `./kube-keepalived-vip  -h`.
+
+```
+Usage of :
+      --alsologtostderr                  log to standard error as well as files
+      --as string                        Username to impersonate for the operation
+      --certificate-authority string     Path to a cert. file for the certificate authority
+      --client-certificate string        Path to a client certificate file for TLS
+      --client-key string                Path to a client key file for TLS
+      --cluster string                   The name of the kubeconfig cluster to use
+      --context string                   The name of the kubeconfig context to use
+      --insecure-skip-tls-verify         If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure
+      --kubeconfig string                Path to the kubeconfig file to use for CLI requests.
+      --log_backtrace_at traceLocation   when logging hits line file:N, emit a stack trace (default :0)
+      --log_dir string                   If non-empty, write log files in this directory
+      --logtostderr                      log to standard error instead of files
+  -n, --namespace string                 If present, the namespace scope for this CLI request
+      --password string                  Password for basic authentication to the API server
+  -s, --server string                    The address and port of the Kubernetes API server
+      --services-configmap string        Name of the ConfigMap that contains the definition of the services to expose.
+		The key in the map indicates the external IP to use. The value is the name of the
+		service with the format namespace/serviceName and the port of the service could be a number or the
+		name of the port.
+      --stderrthreshold severity         logs at or above this threshold go to stderr (default 2)
+      --token string                     Bearer token for authentication to the API server
+      --use-kubernetes-cluster-service   If true, use the built in kubernetes
+        cluster for creating the client (default true)
+      --use-unicast                      use unicast instead of multicast for communication
+		with other keepalived instances
+      --user string                      The name of the kubeconfig user to use
+      --username string                  Username for basic authentication to the API server
+  -v, --v Level                          log level for V logs
+      --vmodule moduleSpec               comma-separated list of pattern=N settings for file-filtered logging
+      --vrid int                         The keepalived VRID (Virtual Router Identifier, between 0 and 255 as per
+			RFC-5798), which must be different for every Virtual Router (ie. every
+			keepalived sets) running on the same network. (default 50)
+      --watch-all-namespaces             If true, watch for services in all the namespaces
+```
+
 ## Example
 
 ### Launch the sample app "echoheaders"
