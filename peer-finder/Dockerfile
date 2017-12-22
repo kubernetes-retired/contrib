@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM gcr.io/google_containers/ubuntu-slim:0.2
+FROM k8s.gcr.io/ubuntu-slim:0.2
 MAINTAINER Prashanth.B <beeps@google.com>
 
 RUN apt-get update && apt-get install -y wget bash dnsutils

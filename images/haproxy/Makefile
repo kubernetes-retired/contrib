@@ -2,7 +2,7 @@ all: push
 
 # 0.0.0 shouldn't clobber any released builds
 TAG = 0.5
-PREFIX = gcr.io/google_containers/haproxy
+PREFIX = k8s.gcr.io/haproxy
 HAPROXY_IMAGE = haproxy
 
 container:

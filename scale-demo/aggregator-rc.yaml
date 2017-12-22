@@ -11,7 +11,7 @@ spec:
     spec:
       containers:
       - name: aggregator
-        image: gcr.io/google_containers/aggregator:2015-11-10-34b976a
+        image: k8s.gcr.io/aggregator:2015-11-10-34b976a
         command:
         - /aggregator
         - -selector=run=vegeta

@@ -17,7 +17,7 @@
 
 desc "Run some pods under a replication controller"
 run "kubectl --namespace=demos run hostnames \\
-    --image=gcr.io/google_containers/serve_hostname:1.1 \\
+    --image=k8s.gcr.io/serve_hostname:1.1 \\
     --replicas=5 \\
     -o name"
 WHAT_WAS_RUN="$DEMO_RUN_STDOUT"

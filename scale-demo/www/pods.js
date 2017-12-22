@@ -22,7 +22,7 @@ var PodsApp = function(http, scope, q) {
     this.q = q;
 };
 
-var image = "gcr.io/google_containers/nginx-scale";
+var image = "k8s.gcr.io/nginx-scale";
 
 PodsApp.prototype.getServers = function(version) {
     if (!this.servers || !this.servers.items) {
