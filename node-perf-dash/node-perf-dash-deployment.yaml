@@ -13,7 +13,7 @@ spec:
         app: node-perf-dash
     spec:
       containers:
-      - image: gcr.io/google_containers/node-perf-dash:v0.3
+      - image: k8s.gcr.io/node-perf-dash:v0.3
         command:
           - /node-perf-dash
           -   --www=true

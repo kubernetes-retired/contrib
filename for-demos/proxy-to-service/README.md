@@ -7,7 +7,7 @@ also can not choose to expose it on some nodes but not others.  These things
 will be fixed in the future, but until then, here is a stop-gap measure you can
 use.
 
-The container image `gcr.io/google_containers/proxy-to-service:v2` is a very
+The container image `k8s.gcr.io/proxy-to-service:v2` is a very
 small container that will do port-forwarding for you.  You can use it to
 forward a pod port or a host port to a service.  Pods can choose any port or
 host port, and are not limited in the same way Services are.
@@ -23,7 +23,7 @@ metadata:
 spec:
   containers:
   - name: proxy-udp
-    image: gcr.io/google_containers/proxy-to-service:v2
+    image: k8s.gcr.io/proxy-to-service:v2
     args: [ "udp", "53", "kube-dns.default", "1" ]
     ports:
     - name: udp
@@ -31,7 +31,7 @@ spec:
       containerPort: 53
       hostPort: 53
   - name: proxy-tcp
-    image: gcr.io/google_containers/proxy-to-service:v2
+    image: k8s.gcr.io/proxy-to-service:v2
     args: [ "tcp", "53", "kube-dns.default" ]
     ports:
     - name: tcp

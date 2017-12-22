@@ -3,10 +3,10 @@ all: push
 # 0.0 shouldn't clobber any released builds
 # current latest is 0.5
 TAG = 0.0
-PREFIX = gcr.io/google_containers/leader-elector
+PREFIX = k8s.gcr.io/leader-elector
 
 NODEJS_TAG = 0.1
-NODEJS_PREFIX = gcr.io/google_containers/nodejs-election-client
+NODEJS_PREFIX = k8s.gcr.io/nodejs-election-client
 
 server:
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' -o server example/main.go

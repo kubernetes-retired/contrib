@@ -2,7 +2,7 @@ all: push
 
 # 0.0 shouldn't clobber any released builds
 TAG ?= 0.4
-PREFIX ?= gcr.io/google_containers/servicelb
+PREFIX ?= k8s.gcr.io/servicelb
 GCLOUD ?= gcloud
 HAPROXY_IMAGE = contrib-haproxy
 SRC = service_loadbalancer.go loadbalancer_log.go

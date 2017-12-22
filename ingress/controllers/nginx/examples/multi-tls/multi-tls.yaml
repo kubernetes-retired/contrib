@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: gcr.io/google_containers/nginx
+        image: k8s.gcr.io/nginx
         ports:
         - containerPort: 80
 ---
@@ -58,7 +58,7 @@ spec:
     spec:
       containers:
       - name: echoheaders
-        image: gcr.io/google_containers/echoserver:1.4
+        image: k8s.gcr.io/echoserver:1.4
         ports:
         - containerPort: 8080
 ---

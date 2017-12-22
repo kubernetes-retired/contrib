@@ -37,7 +37,7 @@ metadata:
 spec:
   containers:
     - name:    pause
-      image: gcr.io/google_containers/pause
+      image: k8s.gcr.io/pause
 EOF
 
 pod "pause" created

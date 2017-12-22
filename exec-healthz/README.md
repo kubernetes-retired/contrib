@@ -12,19 +12,19 @@ How to build and push all images:
 # Build for linux/amd64 (default)
 $ make push TAG=1.0
 $ make push TAG=1.0 ARCH=amd64
-# ---> gcr.io/google_containers/exechealthz-amd64:1.0
+# ---> k8s.gcr.io/exechealthz-amd64:1.0
 
 $ make push-legacy TAG=1.0 ARCH=amd64
-# ---> gcr.io/google_containers/exechealthz:1.0 (image with backwards compatible naming)
+# ---> k8s.gcr.io/exechealthz:1.0 (image with backwards compatible naming)
 
 $ make push TAG=1.0 ARCH=arm
-# ---> gcr.io/google_containers/exechealthz-arm:1.0
+# ---> k8s.gcr.io/exechealthz-arm:1.0
 
 $ make push TAG=1.0 ARCH=arm64
-# ---> gcr.io/google_containers/exechealthz-arm64:1.0
+# ---> k8s.gcr.io/exechealthz-arm64:1.0
 
 $ make push TAG=1.0 ARCH=ppc64le
-# ---> gcr.io/google_containers/exechealthz-ppc64le:1.0
+# ---> k8s.gcr.io/exechealthz-ppc64le:1.0
 ```
 Of course, if you don't want to push the images, just run `make` or `make container`
 
@@ -84,7 +84,7 @@ Create a pod.json that looks like:
     "containers": [
       {
         "name": "healthz",
-        "image": "gcr.io/google_containers/exechealthz:1.0",
+        "image": "k8s.gcr.io/exechealthz:1.0",
         "args": [
           "-cmd=nslookup localhost"
         ],

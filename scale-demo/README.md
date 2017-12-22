@@ -85,7 +85,7 @@ kubectl scale rc vegeta --replicas=1000
 Once you have reached one million requests per second, you can perform a rolling update:
 
 ```shell
-kubectl rolling-update nginx --image=gcr.io/google_containers/nginx-scale:0.3
+kubectl rolling-update nginx --image=k8s.gcr.io/nginx-scale:0.3
 ```
 
 The rolling update takes quite a while to complete.  If you want to run it faster (though slightly

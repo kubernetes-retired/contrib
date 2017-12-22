@@ -21,7 +21,7 @@ Mount your network configuration into the pod. Example configuration:
 
 Pass the appropriate command line arguments to the flannel-server-helper, for example the rc in this directory has:
 ```yaml
-      - image: gcr.io/google_containers/flannel-server-helper:0.1
+      - image: k8s.gcr.io/flannel-server-helper:0.1
         args:
         - --network-config /network.json
         - --etcd-prefix /kubernetes.io/network

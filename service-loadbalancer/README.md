@@ -308,7 +308,7 @@ spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: gcr.io/google_containers/servicelb:0.4
+      - image: k8s.gcr.io/servicelb:0.4
         imagePullPolicy: Always
         livenessProbe:
           httpGet:

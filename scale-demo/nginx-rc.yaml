@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: gcr.io/google_containers/nginx-scale:0.2
+        image: k8s.gcr.io/nginx-scale:0.2
         resources:
           requests:
             cpu: 1000m
