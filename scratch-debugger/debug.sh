@@ -113,7 +113,7 @@ case ${ARCH} in
     exit 1
 esac
 
-DOCKERCMD="/mnt/rootfs/usr/bin/docker -H unix:///run/docker.sock"
+DOCKERCMD="/mnt/rootfs/usr/bin/docker -H unix:///mnt/rootfs/run/docker.sock"
 
 # Command for installing busybox image from the debugger container into the target container.
 INSTALLCMD="set -x;" # Print commands, for debugging.
