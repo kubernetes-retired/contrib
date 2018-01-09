@@ -179,7 +179,7 @@ while [[ ! ${PHASE} =~ (Succeeded|Failed) ]]; do
   PHASE=$(${KUBECTL} get pod -a ${DEBUGGER_NAME} -o jsonpath='{.status.phase}')
 done
 if [[ ${PHASE} == "Failed" ]]; then
-  echo 2> "Pod failed:"
+  echo >&2 "Pod failed:"
   ${KUBECTL} logs ${DEBUGGER_NAME}
   exit 1
 fi
