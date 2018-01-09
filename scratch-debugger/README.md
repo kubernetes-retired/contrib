@@ -22,6 +22,8 @@ Additionally, the following environment variables can be set:
 - `KUBECONTEXT` - The kubectl context to use (defaults to current context).
 - `DEBUGGER_NAME` - The name to use for the debug pod (defaults to `debugger`).
 - `ARCH` - The architecture Kubernetes is running on (defaults to `amd64`).
+- `DOCKER_DOWNLOAD_URL` - URL for downloading the docker release `.tgz` file
+  (see `debug.sh` for the default value).
 
 ## Example
 
