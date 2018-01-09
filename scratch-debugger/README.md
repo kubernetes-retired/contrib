@@ -22,6 +22,7 @@ Additionally, the following environment variables can be set:
 - `KUBECONTEXT` - The kubectl context to use (defaults to current context).
 - `DEBUGGER_NAME` - The name to use for the debug pod (defaults to `debugger`).
 - `ARCH` - The architecture Kubernetes is running on (defaults to `amd64`).
+- `HOST_DOCKERPATH` - Path to the `docker` CLI binary on the host (defaults to `/usr/bin/docker`).
 
 ## Example
 

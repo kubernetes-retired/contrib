@@ -22,6 +22,7 @@ set -o pipefail
 TMP_SUBDIR="${TMP_SUBDIR:-debug-tools}"
 CONTEXT="${KUBECONTEXT:-}"
 ARCH="${ARCH:-amd64}"
+HOST_DOCKERPATH="${HOST_DOCKERPATH:-/usr/bin/docker}"
 
 # Parse arguments & flags
 while [[ $# -gt 0 ]]; do
@@ -113,7 +114,7 @@ case ${ARCH} in
     exit 1
 esac
 
-DOCKERCMD="/mnt/rootfs/usr/bin/docker -H unix:///run/docker.sock"
+DOCKERCMD="/mnt/rootfs/${HOST_DOCKERPATH#/} -H unix:///run/docker.sock"
 
 # Command for installing busybox image from the debugger container into the target container.
 INSTALLCMD="set -x;" # Print commands, for debugging.
