@@ -1,6 +1,7 @@
 {
 	"ImportPath": "k8s.io/contrib/release-notes",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.8",
+	"GodepVersion": "v79",
 	"Packages": [
 		"./..."
 	],
@@ -23,6 +24,10 @@
 		},
 		{
 			"ImportPath": "golang.org/x/oauth2",
+			"Rev": "b5adcc2dcdf009d0391547edc6ecbaff889f5bb9"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/internal",
 			"Rev": "b5adcc2dcdf009d0391547edc6ecbaff889f5bb9"
 		}
 	]

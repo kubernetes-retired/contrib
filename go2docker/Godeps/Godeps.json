@@ -1,8 +1,6 @@
 {
 	"ImportPath": "k8s.io/contrib/go2docker",
-	"GoVersion": "go1.5",
-	"Packages": [
-		"./..."
-	],
+	"GoVersion": "go1.8",
+	"GodepVersion": "v79",
 	"Deps": []
 }
