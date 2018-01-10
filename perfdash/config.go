@@ -17,7 +17,14 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
+	"io"
+	"io/ioutil"
 	"k8s.io/contrib/test-utils/utils"
+	prowconfig "k8s.io/test-infra/prow/config"
+	"net/http"
+	"os"
+	"strings"
 )
 
 // To add new e2e test support, you need to:
@@ -88,53 +95,50 @@ var (
 	// TestConfig contains all the test PerfDash supports now. Downloader will download and
 	// analyze build log from all these Jobs, and parse the data from all these Test.
 	// Notice that all the tests should have different name for now.
-	// TODO(porridge): automate fetching the list of job list
-	TestConfig = Buckets{
-		utils.KubekinsBucket: Jobs{
-			"ci-kubernetes-e2e-gci-gce-scalability": Tests{
-				Prefix:       "gce-100Nodes-master",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-e2e-gci-gce-scalability-stable1": Tests{
-				Prefix:       "gce-100Nodes-1.8",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-e2e-gci-gce-scalability-release-1-7": Tests{
-				Prefix:       "gce-100Nodes-1.7-gci",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-e2e-gce-scalability-release-1-7": Tests{
-				Prefix:       "gce-100Nodes-1.7-cvm",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-e2e-gce-large-performance": Tests{
-				Prefix:       "gce-2kNodes-master",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-e2e-gce-scale-performance": Tests{
-				Prefix:       "gce-5kNodes-master",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-e2e-gke-large-performance": Tests{
-				Prefix:       "gke-2kNodes-master",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-kubemark-100-gce": Tests{
-				Prefix:       "kubemark-100Nodes-master",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-kubemark-high-density-100-gce": Tests{
-				Prefix:       "kubemark-100Nodes-master-hd",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-kubemark-500-gce": Tests{
-				Prefix:       "kubemark-500Nodes-master",
-				Descriptions: performanceDescriptions,
-			},
-			"ci-kubernetes-kubemark-gce-scale": Tests{
-				Prefix:       "kubemark-5kNodes-master",
-				Descriptions: performanceDescriptions,
-			},
-		},
-	}
+	TestConfig = Buckets{utils.KubekinsBucket: getProwConfigOrDie()}
 )
+
+func getProwConfigOrDie() Jobs {
+	jobs, err := getProwConfig()
+	if err != nil {
+		panic(err)
+	}
+	return jobs
+}
+
+func getProwConfig() (Jobs, error) {
+	fmt.Fprintf(os.Stderr, "Fetching prow config from GitHub...\n")
+	confFile, err := ioutil.TempFile("", "prow-config")
+	if err != nil {
+		return nil, fmt.Errorf("error creating a temporary file: %v", err)
+	}
+	defer confFile.Close()
+	resp, err := http.Get("https://raw.githubusercontent.com/kubernetes/test-infra/master/prow/config.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("error fetching prow config from GitHub: %v", err)
+	}
+	defer resp.Body.Close()
+	_, err = io.Copy(confFile, resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading prow config from GitHub: %v", err)
+	}
+	config, err := prowconfig.Load(confFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("error loading prow config: %v", err)
+	}
+	jobs := Jobs{}
+	for _, periodic := range config.Periodics {
+		for _, tag := range periodic.Tags {
+			if strings.HasPrefix(tag, "perfDashPrefix:") {
+				split := strings.SplitN(tag, ":", 2)
+				jobs[periodic.Name] = Tests{
+					Prefix:       strings.TrimSpace(split[1]),
+					Descriptions: performanceDescriptions,
+				}
+				break
+			}
+		}
+	}
+	fmt.Printf("Read config with %d jobs\n", len(jobs))
+	return jobs, nil
+}
