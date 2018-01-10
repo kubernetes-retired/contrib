@@ -1,6 +1,6 @@
 {
 	"ImportPath": "k8s.io/contrib/perfdash",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.9",
 	"GodepVersion": "v79",
 	"Deps": [
 		{
