@@ -22,7 +22,7 @@ set -o pipefail
 TMP_SUBDIR="${TMP_SUBDIR:-debug-tools}"
 CONTEXT="${KUBECONTEXT:-}"
 ARCH="${ARCH:-amd64}"
-DOCKER_DOWNLOAD_URL="${DOCKER_DOWNLOAD_URL-https://download.docker.com/linux/static/stable/x86_64/docker-17.12.0-ce.tgz}"
+DOCKER_DOWNLOAD_URL="${DOCKER_DOWNLOAD_URL:-https://download.docker.com/linux/static/stable/x86_64/docker-17.12.0-ce.tgz}"
 
 # Parse arguments & flags
 while [[ $# -gt 0 ]]; do
@@ -114,14 +114,14 @@ case ${ARCH} in
     exit 1
 esac
 
-DOCKERCMD="/tmp/docker/docker -H unix:///mnt/docker.sock"
+DOCKERCMD="/docker-cli/docker/docker -H unix:///mnt/docker.sock"
 
 # Command for installing busybox image from the debugger container into the target container.
 INSTALLCMD="set -x;" # Print commands, for debugging.
 # Download docker client
-INSTALLCMD="${INSTALLCMD} wget -qO/tmp/docker.tgz ${DOCKER_DOWNLOAD_URL}"
+INSTALLCMD="${INSTALLCMD} wget -qO/docker-cli/docker.tgz ${DOCKER_DOWNLOAD_URL}"
 # Extract docker client
-INSTALLCMD="${INSTALLCMD} && tar zxvf /tmp/docker.tgz -C /tmp"
+INSTALLCMD="${INSTALLCMD} && tar zxvf /docker-cli/docker.tgz -C /docker-cli"
 # Create the directory structure for the install.
 INSTALLCMD="${INSTALLCMD} && mkdir -p ${INSTALL_DIR}"
 # Copy the directory structure into the target container.
