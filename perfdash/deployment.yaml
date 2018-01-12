@@ -5,7 +5,7 @@ metadata:
   namespace: default
   labels:
     app: perfdash
-    version: "0.8"
+    version: "0.9"
 spec:
   selector:
     matchLabels:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: perfdash
-        image: gcr.io/google_containers/perfdash:0.8
+        image: gcr.io/google_containers/perfdash:0.9
         command:
           - /perfdash
           -   --www=true
