@@ -1,7 +1,7 @@
 all: push
 
 # See pod.yaml for the version currently running-- bump this ahead before rebuilding!
-TAG = 0.8
+TAG = 0.9
 
 PROJ = google_containers
 
