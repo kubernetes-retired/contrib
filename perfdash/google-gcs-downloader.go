@@ -43,6 +43,12 @@ func NewGoogleGCSDownloader(builds int) *GoogleGCSDownloader {
 
 // TODO(random-liu): Only download and update new data each time.
 func (g *GoogleGCSDownloader) getData() (TestToBuildData, error) {
+	newJobs, err := getProwConfig()
+	if err == nil {
+		TestConfig[utils.KubekinsBucket] = newJobs
+	} else {
+		fmt.Fprintf(os.Stderr, "Failed to refresh config: %v", err)
+	}
 	fmt.Print("Getting Data from GCS...\n")
 	result := make(TestToBuildData)
 	var resultLock sync.Mutex
