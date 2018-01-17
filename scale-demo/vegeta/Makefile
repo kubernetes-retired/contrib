@@ -7,10 +7,10 @@ loader: loader.go
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 godep go build -a -installsuffix cgo -ldflags '-w' -o loader
 
 container: loader
-	docker build --pull -t k8s.gcr.io/loader:$(TAG) .
+	docker build --pull -t staging-k8s.gcr.io/loader:$(TAG) .
 
 push: container
-	gcloud docker -- push k8s.gcr.io/loader:$(TAG)
+	gcloud docker -- push staging-k8s.gcr.io/loader:$(TAG)
 
 clean:
 	rm -f loader

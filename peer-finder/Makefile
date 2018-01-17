@@ -15,7 +15,7 @@
 all: push
 
 TAG = 0.1
-PREFIX = k8s.gcr.io/peer-finder
+PREFIX = staging-k8s.gcr.io/peer-finder
 
 server: peer-finder.go
 	CGO_ENABLED=0 go build -a -installsuffix cgo --ldflags '-w' ./peer-finder.go

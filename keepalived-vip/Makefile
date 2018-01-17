@@ -2,7 +2,7 @@ all: push
 
 # 0.0 shouldn't clobber any release builds, current "latest" is 0.11
 TAG = 0.11
-PREFIX = k8s.gcr.io/kube-keepalived-vip
+PREFIX = staging-k8s.gcr.io/kube-keepalived-vip
 BUILD_IMAGE = build-keepalived
 TEMP_GOPATH = ${GOPATH}:${GOPATH}/src/k8s.io/kubernetes/staging
 

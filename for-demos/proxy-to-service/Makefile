@@ -5,7 +5,7 @@
 .PHONY: all container push
 
 TAG = v2
-PREFIX = k8s.gcr.io
+PREFIX = staging-k8s.gcr.io
 NAME = proxy-to-service
 
 all: container

@@ -12,19 +12,19 @@ How to build and push all images:
 # Build for linux/amd64 (default)
 $ make push TAG=1.0
 $ make push TAG=1.0 ARCH=amd64
-# ---> k8s.gcr.io/exechealthz-amd64:1.0
+# ---> staging-k8s.gcr.io/exechealthz-amd64:1.0
 
 $ make push-legacy TAG=1.0 ARCH=amd64
-# ---> k8s.gcr.io/exechealthz:1.0 (image with backwards compatible naming)
+# ---> staging-k8s.gcr.io/exechealthz:1.0 (image with backwards compatible naming)
 
 $ make push TAG=1.0 ARCH=arm
-# ---> k8s.gcr.io/exechealthz-arm:1.0
+# ---> staging-k8s.gcr.io/exechealthz-arm:1.0
 
 $ make push TAG=1.0 ARCH=arm64
-# ---> k8s.gcr.io/exechealthz-arm64:1.0
+# ---> staging-k8s.gcr.io/exechealthz-arm64:1.0
 
 $ make push TAG=1.0 ARCH=ppc64le
-# ---> k8s.gcr.io/exechealthz-ppc64le:1.0
+# ---> staging-k8s.gcr.io/exechealthz-ppc64le:1.0
 ```
 Of course, if you don't want to push the images, just run `make` or `make container`
 
