@@ -246,7 +246,7 @@ vrrp_instance vips {
 
 
   virtual_ipaddress {
-    172.17.4.90
+    10.4.0.50
   }
 }
 
@@ -340,7 +340,7 @@ vrrp_instance vips {
 
 
   virtual_ipaddress {
-    172.17.4.90
+    10.4.0.50
   }
 }
 
