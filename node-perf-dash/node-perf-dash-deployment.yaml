@@ -22,7 +22,7 @@ spec:
           -   --builds=30
           -   --datasource=google-gcs
           -   --tracing=true
-          -   --jenkins-job=ci-kubernetes-node-kubelet-benchmark,ci-kubernetes-node-docker-benchmark
+          -   --jenkins-job=ci-kubernetes-node-kubelet-benchmark,ci-kubernetes-node-docker-benchmark,ci-cri-containerd-node-e2e-benchmark
         imagePullPolicy: Always
         name: node-perf-dash
         ports:
