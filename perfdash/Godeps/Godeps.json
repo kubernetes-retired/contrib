@@ -4,10 +4,6 @@
 	"GodepVersion": "v79",
 	"Deps": [
 		{
-			"ImportPath": "github.com/beorn7/perks/quantile",
-			"Rev": "3ac7bf7a47d159a033b107610db8a1b6575507a4"
-		},
-		{
 			"ImportPath": "github.com/ghodss/yaml",
 			"Rev": "73d445a93680fa1a78ae23a5839bad48f32ba1ee"
 		},
@@ -16,131 +12,13 @@
 			"Rev": "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
 		},
 		{
-			"ImportPath": "github.com/golang/protobuf/proto",
-			"Rev": "4bd1920723d7b7c925de087aa32e2187708897f7"
-		},
-		{
-			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
-			"Rev": "fc2b8d3a73c4867e51861bbdd5ae3c1f0869dd6a"
-		},
-		{
-			"ImportPath": "github.com/prometheus/client_golang/prometheus",
-			"Comment": "v0.8.0-83-ge7e9030",
-			"Rev": "e7e903064f5e9eb5da98208bae10b475d4db0f8c"
-		},
-		{
-			"ImportPath": "github.com/prometheus/client_model/go",
-			"Comment": "model-0.0.2-12-gfa8ad6f",
-			"Rev": "fa8ad6fec33561be4280a8f0514318c79d7f6cb6"
-		},
-		{
-			"ImportPath": "github.com/prometheus/common/expfmt",
-			"Rev": "13ba4ddd0caa9c28ca7b7bffe1dfa9ed8d5ef207"
-		},
-		{
-			"ImportPath": "github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg",
-			"Rev": "13ba4ddd0caa9c28ca7b7bffe1dfa9ed8d5ef207"
-		},
-		{
-			"ImportPath": "github.com/prometheus/common/model",
-			"Rev": "13ba4ddd0caa9c28ca7b7bffe1dfa9ed8d5ef207"
-		},
-		{
-			"ImportPath": "github.com/prometheus/procfs",
-			"Rev": "65c1f6f8f0fc1e2185eb9863a3bc751496404259"
-		},
-		{
-			"ImportPath": "github.com/prometheus/procfs/xfs",
-			"Rev": "65c1f6f8f0fc1e2185eb9863a3bc751496404259"
-		},
-		{
-			"ImportPath": "github.com/shurcooL/githubql",
-			"Rev": "64ccad5b650f61172b48822ba7ce345127ccce5e"
-		},
-		{
-			"ImportPath": "github.com/shurcooL/go/ctxhttp",
-			"Rev": "004faa6b0118cf52635363b72b51cdcc297800a2"
-		},
-		{
-			"ImportPath": "github.com/shurcooL/graphql",
-			"Rev": "d0549edd16dceb6939e538fdb1b4f2ec7ee816cc"
-		},
-		{
-			"ImportPath": "github.com/shurcooL/graphql/ident",
-			"Rev": "d0549edd16dceb6939e538fdb1b4f2ec7ee816cc"
-		},
-		{
-			"ImportPath": "github.com/shurcooL/graphql/internal/jsonutil",
-			"Rev": "d0549edd16dceb6939e538fdb1b4f2ec7ee816cc"
-		},
-		{
-			"ImportPath": "github.com/sirupsen/logrus",
-			"Comment": "v1.0.3-11-g89742ae",
-			"Rev": "89742aefa4b206dcf400792f3bd35b542998eb3b"
-		},
-		{
-			"ImportPath": "golang.org/x/crypto/ssh/terminal",
-			"Rev": "81e90905daefcd6fd217b62423c0908922eadb30"
-		},
-		{
-			"ImportPath": "golang.org/x/net/context",
-			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
-		},
-		{
-			"ImportPath": "golang.org/x/oauth2",
-			"Rev": "a6bd8cefa1811bd24b86f8902872e4e8225f74c4"
-		},
-		{
-			"ImportPath": "golang.org/x/oauth2/internal",
-			"Rev": "a6bd8cefa1811bd24b86f8902872e4e8225f74c4"
-		},
-		{
-			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "7ddbeae9ae08c6a06a59597f0c9edbc5ff2444ce"
-		},
-		{
-			"ImportPath": "golang.org/x/sys/windows",
-			"Rev": "7ddbeae9ae08c6a06a59597f0c9edbc5ff2444ce"
-		},
-		{
-			"ImportPath": "gopkg.in/robfig/cron.v2",
-			"Comment": "v1-11-gbe2e0b0",
-			"Rev": "be2e0b0deed5a68ffee390b4583a13aff8321535"
-		},
-		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "53feefa2559fb8dfa8d81baad31be332c97d6c77"
-		},
-		{
-			"ImportPath": "k8s.io/apimachinery/pkg/util/sets",
-			"Comment": "kubernetes-1.9.0-alpha.1-65-g18a564b",
-			"Rev": "18a564baac720819100827c16fdebcadb05b2d0d"
-		},
-		{
-			"ImportPath": "k8s.io/contrib/test-utils/utils",
-			"Comment": "cluster-autoscaler-0.5.1-326-g02904773",
-			"Rev": "0290477399c8ccc66d2e3fc2c7dcb79abb6b81a3"
 		},
 		{
 			"ImportPath": "k8s.io/kubernetes/test/e2e/perftype",
 			"Comment": "v1.3.0-alpha.3-580-g6f288b3",
 			"Rev": "6f288b31cff234db607c0038ef9afe1571021b48"
-		},
-		{
-			"ImportPath": "k8s.io/test-infra/prow/config",
-			"Rev": "0a992fd86d534495b556a9c5ec6972184c31d582"
-		},
-		{
-			"ImportPath": "k8s.io/test-infra/prow/github",
-			"Rev": "0a992fd86d534495b556a9c5ec6972184c31d582"
-		},
-		{
-			"ImportPath": "k8s.io/test-infra/prow/kube",
-			"Rev": "0a992fd86d534495b556a9c5ec6972184c31d582"
-		},
-		{
-			"ImportPath": "k8s.io/test-infra/prow/kube/labels",
-			"Rev": "0a992fd86d534495b556a9c5ec6972184c31d582"
 		}
 	]
 }
