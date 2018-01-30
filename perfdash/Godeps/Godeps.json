@@ -117,11 +117,6 @@
 			"Rev": "18a564baac720819100827c16fdebcadb05b2d0d"
 		},
 		{
-			"ImportPath": "k8s.io/contrib/test-utils/utils",
-			"Comment": "cluster-autoscaler-0.5.1-326-g02904773",
-			"Rev": "0290477399c8ccc66d2e3fc2c7dcb79abb6b81a3"
-		},
-		{
 			"ImportPath": "k8s.io/kubernetes/test/e2e/perftype",
 			"Comment": "v1.3.0-alpha.3-580-g6f288b3",
 			"Rev": "6f288b31cff234db607c0038ef9afe1571021b48"
