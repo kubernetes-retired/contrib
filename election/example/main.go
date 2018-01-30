@@ -80,6 +80,23 @@ func webHandler(res http.ResponseWriter, _ *http.Request) {
 	res.Write(data)
 }
 
+func isLeaderWebHandler(res http.ResponseWriter, _ *http.Request) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		res.WriteHeader(http.StatusInternalServerError)
+		res.Write([]byte(err.Error()))
+		return
+	}
+
+	if leader.Name == hostname {
+		res.WriteHeader(http.StatusOK)
+		res.Write([]byte("{\"isLeader\": true}"))
+		return
+	}
+	res.WriteHeader(http.StatusOK)
+	res.Write([]byte("{\"isLeader\": false}"))
+}
+
 func validateFlags() {
 	if len(*id) == 0 {
 		glog.Fatal("--id cannot be empty")
@@ -110,6 +127,7 @@ func main() {
 	go election.RunElection(e)
 
 	if len(*addr) > 0 {
+		http.HandleFunc("/isLeader", isLeaderWebHandler)
 		http.HandleFunc("/", webHandler)
 		http.ListenAndServe(*addr, nil)
 	} else {
