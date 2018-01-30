@@ -30,7 +30,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
-	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	kubectlUtil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
 var (
@@ -56,7 +56,7 @@ func makeClient() (*client.Client, error) {
 			return nil, err
 		}
 	} else {
-		clientConfig := kubectl_util.DefaultClientConfig(flags)
+		clientConfig := kubectlUtil.DefaultClientConfig(flags)
 		if cfg, err = clientConfig.ClientConfig(); err != nil {
 			return nil, err
 		}
@@ -69,7 +69,7 @@ type LeaderData struct {
 	Name string `json:"name"`
 }
 
-func webHandler(res http.ResponseWriter, req *http.Request) {
+func webHandler(res http.ResponseWriter, _ *http.Request) {
 	data, err := json.Marshal(leader)
 	if err != nil {
 		res.WriteHeader(http.StatusInternalServerError)
