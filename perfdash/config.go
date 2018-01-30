@@ -18,10 +18,9 @@ package main
 
 import (
 	"fmt"
-	"io"
+	"github.com/ghodss/yaml"
 	"io/ioutil"
 	"k8s.io/contrib/test-utils/utils"
-	prowconfig "k8s.io/test-infra/prow/config"
 	"net/http"
 	"os"
 	"strings"
@@ -106,28 +105,32 @@ func getProwConfigOrDie() Jobs {
 	return jobs
 }
 
+// Minimal subset of the prow config definition at k8s.io/test-infra/prow/config
+type config struct {
+	Periodics []periodic `json:"periodics"`
+}
+type periodic struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
+}
+
 func getProwConfig() (Jobs, error) {
 	fmt.Fprintf(os.Stderr, "Fetching prow config from GitHub...\n")
-	confFile, err := ioutil.TempFile("", "prow-config")
-	if err != nil {
-		return nil, fmt.Errorf("error creating a temporary file: %v", err)
-	}
-	defer confFile.Close()
 	resp, err := http.Get("https://raw.githubusercontent.com/kubernetes/test-infra/master/prow/config.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("error fetching prow config from GitHub: %v", err)
 	}
 	defer resp.Body.Close()
-	_, err = io.Copy(confFile, resp.Body)
+	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading prow config from GitHub: %v", err)
 	}
-	config, err := prowconfig.Load(confFile.Name())
-	if err != nil {
-		return nil, fmt.Errorf("error loading prow config: %v", err)
+	conf := &config{}
+	if err := yaml.Unmarshal(b, conf); err != nil {
+		return nil, fmt.Errorf("error unmarshaling prow config from GitHub: %v", err)
 	}
 	jobs := Jobs{}
-	for _, periodic := range config.Periodics {
+	for _, periodic := range conf.Periodics {
 		for _, tag := range periodic.Tags {
 			if strings.HasPrefix(tag, "perfDashPrefix:") {
 				split := strings.SplitN(tag, ":", 2)
