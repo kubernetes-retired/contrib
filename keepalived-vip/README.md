@@ -52,14 +52,14 @@ _keepalived_ should be considered a complement to, and not a replacement for HAP
                                         |      ___________________
                                         |     |                   |
                                         |     | VIP: Unassigned   |
-Public ----(example.com = 10.4.0.50)----|-----| Host IP: 10.4.0.3 |
+Public ----(example.com = 10.4.0.50)----|-----| Host IP: 10.4.0.4 |
                                         |     | Role: Slave       |
                                         |     |___________________|
                                         |
                                         |      ___________________
                                         |     |                   |
                                         |     | VIP: Unassigned   |
-                                        |-----| Host IP: 10.4.0.3 |
+                                        |-----| Host IP: 10.4.0.5 |
                                               | Role: Slave       |
                                               |___________________|
 ```
