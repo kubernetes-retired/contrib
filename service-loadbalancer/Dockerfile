@@ -14,7 +14,12 @@
 
 
 FROM gcr.io/google_containers/haproxy:0.3
+#should not call itself: should call alpine:edge
+
 MAINTAINER Prashanth B <beeps@google.com>
+
+#REMOVE when the image no more call itself: at least this removes openssl vulnerability
+RUN apk upgrade openssl
 
 RUN mkdir -p /etc/haproxy/errors /var/state/haproxy
 RUN for ERROR_CODE in 400 403 404 408 500 502 503 504;do curl -sSL -o /etc/haproxy/errors/$ERROR_CODE.http \
