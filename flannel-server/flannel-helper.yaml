@@ -53,7 +53,7 @@ spec:
           initialDelaySeconds: 30
           timeoutSeconds: 5
       # Etcd stores flannel network/subnet configuration
-      - image: gcr.io/google_containers/etcd:2.2.1
+      - image: k8s.gcr.io/etcd:2.2.1
         command:
         - /bin/sh
         - -c

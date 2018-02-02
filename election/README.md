@@ -11,7 +11,7 @@ Annotations - Every API object can be annotated with arbitrary key/value pairs t
 Given these primitives, the code to use master election is relatively straightforward, and you can find it here. Let’s run it ourselves. 
 
 ```console
-$ kubectl run leader-elector --image=gcr.io/google_containers/leader-elector:0.5 --replicas=3 -- --election=example
+$ kubectl run leader-elector --image=k8s.gcr.io/leader-elector:0.5 --replicas=3 -- --election=example
 ```
 
 This creates a leader election set with 3 replicas:
@@ -53,7 +53,7 @@ The leader-election container provides a simple webserver that can serve on any 
 $ kubectl delete rc leader-elector
 
 # create the new group, note the --http=localhost:4040 flag
-$ kubectl run leader-elector --image=gcr.io/google_containers/leader-elector:0.5 --replicas=3 -- --election=example --http=0.0.0.0:4040
+$ kubectl run leader-elector --image=k8s.gcr.io/leader-elector:0.5 --replicas=3 -- --election=example --http=0.0.0.0:4040
 
 # create a proxy to your Kubernetes api server
 $ kubectl proxy

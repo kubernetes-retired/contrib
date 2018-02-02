@@ -13,4 +13,4 @@ spec:
         color: red
       containers:
       - name: hostname
-        image: gcr.io/google_containers/serve_hostname:1.1
+        image: k8s.gcr.io/serve_hostname:1.1

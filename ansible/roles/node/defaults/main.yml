@@ -25,7 +25,7 @@ kube_proxy_options:
 
 kubelet_additional_options: []
 #  - "--host-network-sources=*"
-#  - "--pod-infra-container-image=gcr.io/google_containers/pause:2.0"
+#  - "--pod-infra-container-image=k8s.gcr.io/pause:2.0"
 
 kube_proxy_additional_options: []
 
