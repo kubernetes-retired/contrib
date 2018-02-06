@@ -133,7 +133,7 @@ spec:
           --override fetch.purgatory.purge.interval.requests=1000 \
           --override group.max.session.timeout.ms=300000 \
           --override group.min.session.timeout.ms=6000 \
-          --override inter.broker.protocol.version=0.10.2-IV0 \
+          --override inter.broker.protocol.version=1.0 \
           --override log.cleaner.backoff.ms=15000 \
           --override log.cleaner.dedupe.buffer.size=134217728 \
           --override log.cleaner.delete.retention.ms=86400000 \
