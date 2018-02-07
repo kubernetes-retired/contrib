@@ -47,7 +47,7 @@ var (
 )
 
 var (
-	// allTestData stores all parsed perf and time series data in memeory
+	// allTestData stores all parsed perf and time series data in memory
 	// for each job.
 	allTestData = map[string]TestToBuildData{}
 
