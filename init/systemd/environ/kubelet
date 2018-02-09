@@ -11,4 +11,4 @@ KUBELET_ADDRESS="--address=127.0.0.1"
 KUBELET_HOSTNAME="--hostname-override=127.0.0.1"
 
 # Add your own!
-KUBELET_ARGS="--cgroup-driver=systemd"
+KUBELET_ARGS="--cgroup-driver=systemd --fail-swap-on=false"
