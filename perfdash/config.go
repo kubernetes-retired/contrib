@@ -91,6 +91,20 @@ var (
 		},
 	}
 
+	// benchmarkDescriptions contains metrics exported by test/integration/scheduler_perf
+	benchmarkDescriptions = map[string]TestDescription{
+		"BenchmarkResults": {
+			Name:             "benchmark",
+			OutputFilePrefix: "BenchmarkResults",
+			Parser:           parseResponsivenessData,
+		},
+	}
+
+	jobTypeToDescriptions = map[string]map[string]TestDescription{
+		"performance": performanceDescriptions,
+		"benchmark":   benchmarkDescriptions,
+	}
+
 	// TestConfig contains all the test PerfDash supports now. Downloader will download and
 	// analyze build log from all these Jobs, and parse the data from all these Test.
 	// Notice that all the tests should have different name for now.
@@ -131,16 +145,30 @@ func getProwConfig() (Jobs, error) {
 	}
 	jobs := Jobs{}
 	for _, periodic := range conf.Periodics {
+		var thisPeriodicConfig Tests
 		for _, tag := range periodic.Tags {
 			if strings.HasPrefix(tag, "perfDashPrefix:") {
 				split := strings.SplitN(tag, ":", 2)
-				jobs[periodic.Name] = Tests{
-					Prefix:       strings.TrimSpace(split[1]),
-					Descriptions: performanceDescriptions,
-				}
-				break
+				thisPeriodicConfig.Prefix = strings.TrimSpace(split[1])
+				continue
+			}
+			if strings.HasPrefix(tag, "perfDashJobType:") {
+				split := strings.SplitN(tag, ":", 2)
+				jobType := strings.TrimSpace(split[1])
+				thisPeriodicConfig.Descriptions = jobTypeToDescriptions[jobType]
+				continue
+			}
+			if strings.HasPrefix(tag, "perfDash") {
+				fmt.Fprintf(os.Stderr, "warning: unknown perfdash tag name: %q\n", tag)
 			}
 		}
+		if thisPeriodicConfig.Prefix == "" && thisPeriodicConfig.Descriptions == nil {
+			continue
+		}
+		if thisPeriodicConfig.Prefix == "" || thisPeriodicConfig.Descriptions == nil {
+			return nil, fmt.Errorf("invalid perfdash config of periodic %q: none or both of prefix and job type must be specified", periodic.Name)
+		}
+		jobs[periodic.Name] = thisPeriodicConfig
 	}
 	fmt.Printf("Read config with %d jobs\n", len(jobs))
 	return jobs, nil
