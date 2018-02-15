@@ -39,7 +39,14 @@ var (
 )
 
 func main() {
-	fmt.Print("Starting perfdash...\n")
+	fmt.Println("Starting perfdash...")
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	flag.Parse()
 
 	if *builds > maxBuilds || *builds < 0 {
@@ -56,16 +63,14 @@ func main() {
 	if !*www {
 		result, err = downloader.getData()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching data: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("fetching data failed: %v", err)
 		}
 		prettyResult, err := json.MarshalIndent(result, "", " ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error formating data: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("formating data failed: %v", err)
 		}
 		fmt.Printf("Result: %v\n", string(prettyResult))
-		return
+		return nil
 	}
 
 	go func() {
@@ -82,7 +87,8 @@ func main() {
 		}
 	}()
 
+	fmt.Println("Starting server")
 	http.Handle("/api", &result)
 	http.Handle("/", http.FileServer(http.Dir(*wwwDir)))
-	http.ListenAndServe(*addr, nil)
+	return http.ListenAndServe(*addr, nil)
 }
