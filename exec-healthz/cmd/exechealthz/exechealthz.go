@@ -48,6 +48,7 @@ var (
 	period     = flag.Duration("period", 2*time.Second, "Period to run the given cmd in an async worker.")
 	maxLatency = flag.Duration("latency", 30*time.Second, "If the async worker hasn't updated the probe command output in this long, return a 503.")
 	quiet      = flag.Bool("quiet", false, "Run in quiet mode by only logging errors.")
+	showOutput = flag.Bool("output", false, "Return command output instead of ok.")
 	printVer   = flag.Bool("version", false, "Print the version and exit.")
 	// probers are the async workers running the cmds, the output of which is used to service /healthz or others customized pathes.
 	probers = make(map[string]*execWorker)
@@ -225,6 +226,10 @@ func healthzHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf(msg)
 		http.Error(w, msg, http.StatusServiceUnavailable)
 	} else {
-		fmt.Fprintf(w, "ok")
+		if *showOutput {
+			fmt.Fprintf(w, string(result.output))
+		} else {
+			fmt.Fprintf(w, "ok")
+		}
 	}
 }
