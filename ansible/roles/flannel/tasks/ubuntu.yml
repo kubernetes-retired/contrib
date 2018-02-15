@@ -13,3 +13,16 @@
   when: ansible_distribution_major_version|int < 15
   notify:
     - restart flannel
+
+- name: Ubuntu | Configure Docker / Flannel upstart dependency
+  lineinfile:
+       dest: "/etc/init/docker.conf"
+       state: "{{ item.state }}"
+       line: "{{ item.line }}"
+       regexp: "{{ item.regexp }}"
+  with_items:
+    - { line: 'start on (filesystem and net-device-up IFACE!=lo and started flanneld)', regexp: '^start on ' , state: 'present'}
+    - { line: 'post-stop exec sleep 5', regexp: 'post-stop exec sleep 5' , state: 'present'}
+  when: ansible_distribution_major_version|int < 15
+  notify:
+    - restart docker
