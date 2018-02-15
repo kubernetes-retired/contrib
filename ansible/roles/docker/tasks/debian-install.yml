@@ -7,4 +7,4 @@
   action: "{{ ansible_pkg_mgr }}"
   args:
     name: docker.io
-    state: latest
+    state: present

@@ -3,5 +3,5 @@
   action: "{{ ansible_pkg_mgr }}"
   args:
     name: "{{ docker_package_name }}"
-    state: latest
+    state: present
   when: not is_atomic
