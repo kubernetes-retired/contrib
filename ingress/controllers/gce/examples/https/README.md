@@ -1,5 +1,5 @@
 **The Ingress controller examples have moved to the
-[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+[kubernetes/ingress-gce](https://github.com/kubernetes/ingress-gce) repository.**
 
 # Simple TLS example
 
