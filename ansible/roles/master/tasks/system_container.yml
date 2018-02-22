@@ -1,0 +1,32 @@
+- name: Pull kubernetes-apiserver system container
+  command: atomic pull --storage=ostree {{ kube_apiserver_system_image }}
+  register: pull_result
+  changed_when: "'Pulling layer' in pull_result.stdout"
+
+- name: Pull kubernetes-controller-manager system container
+  command: atomic pull --storage=ostree {{ kube_controller_manager_system_image }}
+  register: pull_result
+  changed_when: "'Pulling layer' in pull_result.stdout"
+
+- name: Pull kubernetes-scheduler system container
+  command: atomic pull --storage=ostree {{ kube_scheduler_system_image }}
+  register: pull_result
+  changed_when: "'Pulling layer' in pull_result.stdout"
+
+- name: Install or Update kubernetes-apiserver system container package
+  oc_atomic_container:
+    name: kube-apiserver
+    image: "{{ kube_apiserver_system_image }}"
+    state: latest
+
+- name: Install or Update kubernetes-controller-manager system container package
+  oc_atomic_container:
+    name: kube-controller-manager
+    image: "{{ kube_controller_manager_system_image }}"
+    state: latest
+
+- name: Install or Update kubernetes-scheduler system container package
+  oc_atomic_container:
+    name: kube-scheduler
+    image: "{{ kube_scheduler_system_image }}"
+    state: latest

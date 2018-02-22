@@ -2,11 +2,14 @@
 - name: MONITORING | Assures {{ kube_config_dir }}/addons/cluster-monitoring dir exists
   file: path={{ kube_addons_dir }}/cluster-monitoring state=directory
 
-- name: MONITORING | Download monitoring files from Kubernetes repo
-  get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/cluster-monitoring/influxdb/{{ item }}
-    dest="{{ kube_addons_dir }}/cluster-monitoring/"
-    force=yes
+- name: MONITORING | Install heapster template
+  template:
+  args:
+    src: "cluster-monitoring/{{ item }}.j2"
+    dest: "{{ kube_addons_dir }}/cluster-monitoring/{{ item }}"
+    mode: 0644
+    owner: root
+    group: root
   with_items:
     - grafana-service.yaml
     - heapster-controller.yaml

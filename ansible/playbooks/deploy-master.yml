@@ -1,0 +1,9 @@
+---
+- name: Deploy master
+  hosts: masters
+  become: yes
+  roles:
+    - { role: etcd-certs, when: apiserver_etcd_use_certs|default(false) }
+    - master
+  tags:
+    - masters

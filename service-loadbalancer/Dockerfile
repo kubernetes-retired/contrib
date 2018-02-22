@@ -13,15 +13,18 @@
 # limitations under the License.
 
 
-FROM alpine:3.2
+FROM k8s.gcr.io/haproxy:0.3
 MAINTAINER Prashanth B <beeps@google.com>
 
-RUN apk add -U haproxy bash curl && \
-  rm -rf /var/cache/apk/*
-
-RUN mkdir /etc/haproxy/errors 
+RUN mkdir -p /etc/haproxy/errors /var/state/haproxy
 RUN for ERROR_CODE in 400 403 404 408 500 502 503 504;do curl -sSL -o /etc/haproxy/errors/$ERROR_CODE.http \
 	https://raw.githubusercontent.com/haproxy/haproxy-1.5/master/examples/errorfiles/$ERROR_CODE.http;done
+
+# https://blog.phusion.nl/2015/01/20/docker-and-the-pid-1-zombie-reaping-problem
+RUN curl -o /sbin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.0.0/dumb-init_1.0.0_amd64 && \
+  chmod +x /sbin/dumb-init
+
+ENTRYPOINT ["dumb-init", "/service_loadbalancer"]
 
 ADD haproxy.cfg /etc/haproxy/haproxy.cfg
 ADD service_loadbalancer service_loadbalancer
@@ -30,4 +33,5 @@ ADD template.cfg template.cfg
 ADD loadbalancer.json loadbalancer.json
 ADD haproxy_reload haproxy_reload
 ADD README.md README.md
-ENTRYPOINT ["/service_loadbalancer"]
+
+RUN touch /var/run/haproxy.pid

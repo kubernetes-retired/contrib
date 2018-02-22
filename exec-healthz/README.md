@@ -2,13 +2,39 @@
 
 The exec healthz server is a sidecar container meant to serve as a liveness-exec-over-http bridge. It isolates pods from the idiosyncrasies of container runtime exec implementations.
 
+## How to release:
+
+The `exechealthz` Makefile supports multiple architecures, which means it may cross-compile and build an docker image easily.
+If you are releasing a new version, please bump the `TAG` value in the `Makefile` before building the images.
+
+How to build and push all images:
+```
+# Build for linux/amd64 (default)
+$ make push TAG=1.0
+$ make push TAG=1.0 ARCH=amd64
+# ---> staging-k8s.gcr.io/exechealthz-amd64:1.0
+
+$ make push-legacy TAG=1.0 ARCH=amd64
+# ---> staging-k8s.gcr.io/exechealthz:1.0 (image with backwards compatible naming)
+
+$ make push TAG=1.0 ARCH=arm
+# ---> staging-k8s.gcr.io/exechealthz-arm:1.0
+
+$ make push TAG=1.0 ARCH=arm64
+# ---> staging-k8s.gcr.io/exechealthz-arm64:1.0
+
+$ make push TAG=1.0 ARCH=ppc64le
+# ---> staging-k8s.gcr.io/exechealthz-ppc64le:1.0
+```
+Of course, if you don't want to push the images, just run `make` or `make container`
+
 ## Examples:
 
 ### Run the healthz server directly on localhost:
 
 ```sh
 $ make server
-$ ./exechealthz -cmd "ls /tmp/test"
+$ ./exechealthz --cmd "ls /tmp/test"
 $ curl http://localhost:8080/healthz
 Healthz probe error: Result of last exec: ls: cannot access /tmp/test: No such file or directory
 , at 2015-07-08 17:59:45.698036238 -0700 PDT, error exit status 2
@@ -16,6 +42,14 @@ $ touch /tmp/test
 $ curl http://localhost:8080/healthz
 ok
 ```
+
+### Commands for running healthz server on multiple URLs and commands:
+
+```
+$ ./exechealthz --cmd="ls /tmp/test1" --url="/healthz1" --cmd="ls /tmp/test2" --url="/healthz2"
+```
+The `--url` flag indicates the path healthz server needs to serve on.
+Notes: Number of commands and URLs have to be the same (if more than one). URL need to start with "/". URLs and cmds match up based on their orders (first URL to first cmd).
 
 ### Run the healthz server in a docker container:
 
@@ -50,7 +84,7 @@ Create a pod.json that looks like:
     "containers": [
       {
         "name": "healthz",
-        "image": "gcr.io/google_containers/exechealthz:1.0",
+        "image": "k8s.gcr.io/exechealthz:1.0",
         "args": [
           "-cmd=nslookup localhost"
         ],
@@ -89,6 +123,21 @@ Create a pod.json with 2 containers, one of which is the healthz probe and the o
 pod.json example file in this directory does exactly that. If you create the pod the same way you created the pod in the previous
 example, the kubelet on the node will periodically perform a health check similar to what you did manually and restart the container
 when it fails. Explore [liveness probes](../../examples/liveness/README.md).
+
+## Debugging
+
+You can run exechealthz locally, to poke and prod at it:
+```console
+$ go build exechealthz.go
+$ ./exechealthz -cmd="nslookup google.com > /dev/null" -period=10ms
+```
+
+The container exposes pprof handlers on the same port it exposes /healthz (8080 by default). You can get runtime stats as [documented here](https://golang.org/pkg/net/http/pprof/), i.e curl the various pprof handlers:
+```console
+$ curl http://localhost:8080/debug/pprof/
+$ http://localhost:8080/debug/pprof/goroutine?debug=1
+$ http://localhost:8080/debug/pprof/heap?debug=1
+```
 
 ## Limitations:
 * Doesn't handle sigterm, which means docker stop on this container can take longer than it needs to.

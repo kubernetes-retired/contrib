@@ -1,0 +1,30 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: node-perf-dash
+  labels:
+    app: node-perf-dash
+    version: "0.3"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: node-perf-dash
+    spec:
+      containers:
+      - image: k8s.gcr.io/node-perf-dash:v0.3
+        command:
+          - /node-perf-dash
+          -   --www=true
+          -   --dir=/www
+          -   --address=0.0.0.0:8080
+          -   --builds=30
+          -   --datasource=google-gcs
+          -   --tracing=true
+          -   --jenkins-job=ci-kubernetes-node-kubelet-benchmark,ci-kubernetes-node-docker-benchmark,ci-cri-containerd-node-e2e-benchmark
+        imagePullPolicy: Always
+        name: node-perf-dash
+        ports:
+        - name: status
+          containerPort: 8080

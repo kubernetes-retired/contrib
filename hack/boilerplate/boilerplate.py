@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2015 The Kubernetes Authors All rights reserved.
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,23 +17,43 @@
 from __future__ import print_function
 
 import argparse
+import difflib
 import glob
 import json
 import mmap
 import os
 import re
 import sys
+from datetime import date
 
 parser = argparse.ArgumentParser()
-parser.add_argument("filenames", help="list of files to check, all files if unspecified", nargs='*')
-args = parser.parse_args()
+parser.add_argument(
+    "filenames",
+    help="list of files to check, all files if unspecified",
+    nargs='*')
 
 rootdir = os.path.dirname(__file__) + "/../../"
 rootdir = os.path.abspath(rootdir)
+parser.add_argument(
+    "--rootdir", default=rootdir, help="root directory to examine")
+
+default_boilerplate_dir = os.path.join(rootdir, "hack/boilerplate")
+parser.add_argument(
+    "--boilerplate-dir", default=default_boilerplate_dir)
+
+parser.add_argument(
+    "-v", "--verbose",
+    help="give verbose output regarding why a file does not pass",
+    action="store_true")
+
+args = parser.parse_args()
+
+verbose_out = sys.stderr if args.verbose else open("/dev/null", "w")
 
 def get_refs():
     refs = {}
-    for path in glob.glob(os.path.join(rootdir, "hack/boilerplate/boilerplate.*.txt")):
+
+    for path in glob.glob(os.path.join(args.boilerplate_dir, "boilerplate.*.txt")):
         extension = os.path.basename(path).split(".")[1]
 
         ref_file = open(path, 'r')
@@ -46,14 +66,19 @@ def get_refs():
 def file_passes(filename, refs, regexs):
     try:
         f = open(filename, 'r')
-    except:
+    except Exception as exc:
+        print("Unable to open %s: %s" % (filename, exc), file=verbose_out)
         return False
 
     data = f.read()
     f.close()
 
+    basename = os.path.basename(filename)
     extension = file_extension(filename)
-    ref = refs[extension]
+    if extension != "":
+        ref = refs[extension]
+    else:
+        ref = refs[basename]
 
     # remove build tags from the top of Go files
     if extension == "go":
@@ -69,6 +94,9 @@ def file_passes(filename, refs, regexs):
 
     # if our test file is smaller than the reference it surely fails!
     if len(ref) > len(data):
+        print('File %s smaller than reference (%d < %d)' %
+              (filename, len(data), len(ref)),
+              file=verbose_out)
         return False
 
     # trim our file to the same number of lines as the reference file
@@ -77,9 +105,10 @@ def file_passes(filename, refs, regexs):
     p = regexs["year"]
     for d in data:
         if p.search(d):
+            print('File %s is missing the year' % filename, file=verbose_out)
             return False
 
-    # Replace all occurrences of the regex "2015|2014" with "YEAR"
+    # Replace all occurrences of the regex "CURRENT_YEAR|...|2016|2015|2014" with "YEAR"
     p = regexs["date"]
     for i, d in enumerate(data):
         (data[i], found) = p.subn('YEAR', d)
@@ -88,6 +117,12 @@ def file_passes(filename, refs, regexs):
 
     # if we don't match the reference at this point, fail
     if ref != data:
+        print("Header in %s does not match reference, diff:" % filename, file=verbose_out)
+        if args.verbose:
+            print(file=verbose_out)
+            for line in difflib.unified_diff(ref, data, 'reference', filename, lineterm=''):
+                print(line, file=verbose_out)
+            print(file=verbose_out)
         return False
 
     return True
@@ -95,7 +130,9 @@ def file_passes(filename, refs, regexs):
 def file_extension(filename):
     return os.path.splitext(filename)[1].split(".")[-1].lower()
 
-skipped_dirs = ['Godeps', 'third_party', '_output', '.git']
+skipped_dirs = ['Godeps', 'third_party', '_gopath', '_output', '.git', 'cluster/env.sh',
+                "vendor", "test/e2e/generated/bindata.go", "hack/boilerplate/test"]
+
 def normalize_files(files):
     newfiles = []
     for pathname in files:
@@ -104,7 +141,7 @@ def normalize_files(files):
         newfiles.append(pathname)
     for i, pathname in enumerate(newfiles):
         if not os.path.isabs(pathname):
-            newfiles[i] = os.path.join(rootdir, pathname)
+            newfiles[i] = os.path.join(args.rootdir, pathname)
     return newfiles
 
 def get_files(extensions):
@@ -112,7 +149,7 @@ def get_files(extensions):
     if len(args.filenames) > 0:
         files = args.filenames
     else:
-        for root, dirs, walkfiles in os.walk(rootdir):
+        for root, dirs, walkfiles in os.walk(args.rootdir):
             # don't visit certain dirs. This is just a performance improvement
             # as we would prune these later in normalize_files(). But doing it
             # cuts down the amount of filesystem walking we do and cuts down
@@ -128,8 +165,9 @@ def get_files(extensions):
     files = normalize_files(files)
     outfiles = []
     for pathname in files:
+        basename = os.path.basename(pathname)
         extension = file_extension(pathname)
-        if extension in extensions:
+        if extension in extensions or basename in extensions:
             outfiles.append(pathname)
     return outfiles
 
@@ -137,8 +175,9 @@ def get_regexs():
     regexs = {}
     # Search for "YEAR" which exists in the boilerplate, but shouldn't in the real thing
     regexs["year"] = re.compile( 'YEAR' )
-    # dates can be 2014 or 2015, company holder names can be anything
-    regexs["date"] = re.compile( '(2014|2015)' )
+    # dates can be 2014, 2015, 2016, ..., CURRENT_YEAR, company holder names can be anything
+    years = range(2014, date.today().year + 1)
+    regexs["date"] = re.compile( '(%s)' % "|".join(map(lambda l: str(l), years)) )
     # strip // +build \n\n build constraints
     regexs["go_build_constraints"] = re.compile(r"^(// \+build.*\n)+\n", re.MULTILINE)
     # strip #!.* from shell scripts
@@ -153,6 +192,8 @@ def main():
     for filename in filenames:
         if not file_passes(filename, refs, regexs):
             print(filename, file=sys.stdout)
+
+    return 0
 
 if __name__ == "__main__":
   sys.exit(main())

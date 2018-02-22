@@ -1,3 +1,10 @@
+# Version of Kubernetes binaries
+kube_version: 1.5.2
+
+# Set source of kubernetes binaries
+# Available: packageManager, localBuild, github-release, distribution-rpm
+kube_source_type: packageManager
+
 # The port that the Kubernetes apiserver component listens on.
 kube_master_api_port: 443
 
@@ -14,11 +21,22 @@ kube_script_dir: /usr/libexec/kubernetes
 # look in here. Don't do it.
 kube_config_dir: /etc/kubernetes
 
+# The URL to download Kubernetes binaries from.
+kube_download_url_base: https://storage.googleapis.com/kubernetes-release/release/v{{ kube_version }}/bin/linux/{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}
+
+# The URL do download distribution rpms shipping kubernetes binaries from
+kube_rpm_url_base: https://kojipkgs.fedoraproject.org//packages/kubernetes/1.2.0/0.27.git4a3f9c5.fc25/x86_64
+kube_rpm_url_sufix: 1.2.0-0.27.git4a3f9c5.fc25.x86_64.rpm
+
+# Directory to store downloaded Kubernetes releases
+kube_releases_directory: /opt/kubernetes
+kube_current_release_directory: "{{ kube_releases_directory }}/{{ kube_version }}"
+
 # This is where all the cert scripts and certs will be located
 kube_cert_dir: "{{ kube_config_dir }}/certs"
 
 # The IP(s) for which the certificate will be valid
-kube_cert_ip: "{{ hostvars[inventory_hostname]['ansible_all_ipv4_addresses'] | join (',IP:') }}"
+kube_cert_ip: "{{ hostvars[inventory_hostname]['ansible_all_ipv4_addresses']|join (',') }}"
 
 # This is where all of the bearer tokens will be stored
 kube_token_dir: "{{ kube_config_dir }}/tokens"
@@ -43,3 +61,7 @@ dns_domain: "{{ cluster_name }}"
 # the range specified as kube_service_addresses. This magic will actually
 # pick the 10th ip address in the kube_service_addresses range and use that.
 dns_server: "{{ kube_service_addresses|ipaddr('net')|ipaddr(10)|ipaddr('address') }}"
+
+cluster_hostname: "{{ master_cluster_hostname | default('') }}"
+
+cluster_port: "{{ master_cluster_port | default('443') }}"

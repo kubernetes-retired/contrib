@@ -1,55 +1,56 @@
 ---
 - name: Determine if Atomic
   stat: path=/run/ostree-booted
-  register: s
+  register: os_tree_check
   changed_when: false
-
-- name: Init the is_atomic fact
-  set_fact:
-    is_atomic: false
+  check_mode: no
 
 - name: Set the is_atomic fact
   set_fact:
     is_atomic: true
-  when: s.stat.exists
+  when: os_tree_check.stat.exists
 
-- name: Set docker config file directory
-  set_fact:
-    docker_config_dir: "/etc/sysconfig"
+- name: Determine if CoreOS
+  raw: "grep '^NAME=' /etc/os-release | sed s'/NAME=//'"
+  register: distro
+  check_mode: no
 
-- name: Override docker config file directory for Debian
+- name: Set the is_coreos fact
   set_fact:
-    docker_config_dir: "/etc/default"
-  when: ansible_distribution == "Debian"
+    is_coreos: true
+  when: "'CoreOS' in distro.stdout"
+
+- name: Set the bin directory path for CoreOS
+  set_fact:
+    bin_dir: "/opt/bin"
+  when: is_coreos
+
+- name: Set the bin directory path for system containers
+  set_fact:
+    bin_dir: "/usr/local/bin"
+  when: kube_use_master_system_container or kube_use_etcd_system_container
+
+
+- name: Create the directory used to store binaries
+  file: path={{ bin_dir }} state=directory
+
+- name: Create Ansible temp directory
+  file: path={{ ansible_temp_dir }} state=directory
 
 - name: Determine if has rpm
   stat: path=/usr/bin/rpm
-  register: s
+  register: rpm_check
   changed_when: false
-
-- name: Init the has_rpm fact
-  set_fact:
-    has_rpm: false
+  check_mode: no
 
 - name: Set the has_rpm fact
   set_fact:
     has_rpm: true
-  when: s.stat.exists
-
-- name: Init the has_firewalld fact
-  set_fact:
-    has_firewalld: false
-
-- name: Init the has_iptables fact
-  set_fact:
-    has_iptables: false
+  when: rpm_check.stat.exists
 
 # collect information about what packages are installed
 - include: rpm.yml
   when: has_rpm
-
-- include: centos.yml
-  when: ansible_distribution == "CentOS"
 
 - include: fedora-install.yml
   when: not is_atomic and ansible_distribution == "Fedora"

@@ -5,13 +5,13 @@
 .PHONY: all container push
 
 TAG = v2
-PREFIX = gcr.io/google_containers
+PREFIX = staging-k8s.gcr.io
 NAME = proxy-to-service
 
 all: container
 
 container:
-	docker build -t $(PREFIX)/$(NAME):$(TAG) .
+	docker build --pull -t $(PREFIX)/$(NAME):$(TAG) .
 
 push:
-	gcloud docker push $(PREFIX)/$(NAME):$(TAG)
+	gcloud docker -- push $(PREFIX)/$(NAME):$(TAG)

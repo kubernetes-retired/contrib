@@ -73,7 +73,7 @@ Next we need a Hipache instance and a config file. In our case, we just rolled o
 ```
 
 We need to build the docker container and set up the systemd service for our Hipache container.
-`docker build -t kube-hipache .`
+`docker build --pull -t kube-hipache .`
 
 `/etc/systemd/system/kube-hipache.service`
 ```

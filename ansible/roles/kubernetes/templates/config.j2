@@ -13,11 +13,15 @@
 # logging to stderr means we get it in the systemd journal
 KUBE_LOGTOSTDERR="--logtostderr=true"
 
-# journal message level, 0 is debug
+# journal verbosity level, the higher is the more verbose
 KUBE_LOG_LEVEL="--v=0"
 
 # Should this cluster be allowed to run privileged docker containers
 KUBE_ALLOW_PRIV="--allow-privileged=true"
 
-# How the replication controller, scheduler, and proxy
+# How the controller-manager, scheduler, and proxy find the apiserver
+{% if cluster_hostname | default("") != "" %}
+KUBE_MASTER="--master=https://{{ cluster_hostname }}:{{ cluster_port }}"
+{% else %}
 KUBE_MASTER="--master=https://{{ groups['masters'][0] }}:{{ kube_master_api_port }}"
+{% endif %}

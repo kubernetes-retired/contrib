@@ -1,0 +1,10 @@
+- name: Pull etcd system container
+  command: atomic pull --storage=ostree {{ etcd_system_image }}
+  register: pull_result
+  changed_when: "'Pulling layer' in pull_result.stdout"
+
+- name: Install or Update Etcd system container package
+  oc_atomic_container:
+    name: etcd
+    image: "{{ etcd_system_image }}"
+    state: latest

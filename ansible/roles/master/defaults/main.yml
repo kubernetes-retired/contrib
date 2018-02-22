@@ -1,0 +1,61 @@
+kube_master_insecure_port: 8080
+
+localBuildOutput: ../../../_output/local/go/bin
+
+admission_controllers: NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota
+
+kube_apiserver_bind_address: "0.0.0.0"
+kube_apiserver_insecure_bind_address: "127.0.0.1"
+
+# etcd certificate configuration
+apiserver_etcd_use_certs: false
+kube_etcd_certs_dir: "{{ kube_cert_dir }}/etcd"
+apiserver_etcd_ca_file: "{{ kube_etcd_certs_dir }}/ca.crt"
+apiserver_etcd_cert_file: "{{ kube_etcd_certs_dir }}/client.crt"
+apiserver_etcd_key_file: "{{ kube_etcd_certs_dir }}/client.key"
+
+services_enabled: true
+apiserver_modified: false
+controller_manager_modified: false
+scheduler_modified: false
+kubelet_modified: false
+
+# List of Kubernetes binaries to download and install.
+kube_master_binaries:
+  - kube-apiserver
+  - kube-controller-manager
+  - kube-scheduler
+  - kubectl
+
+kube_master_rpms:
+  - kubernetes-client
+  - kubernetes-master
+
+etcd_client_port: '2379'
+
+kube_apiserver_options:
+  - "--tls-cert-file={{ kube_cert_dir }}/server.crt"
+  - "--tls-private-key-file={{ kube_cert_dir }}/server.key"
+  - "--client-ca-file={{ kube_cert_dir }}/ca.crt"
+  - "--token-auth-file={{ kube_token_dir }}/known_tokens.csv"
+  - "--service-account-key-file={{ kube_cert_dir }}/server.crt"
+  - "--bind-address={{ kube_apiserver_bind_address }}"
+  - "--apiserver-count={{ groups['masters']|length }}"
+
+kube_controller_manager_options:
+  - "--kubeconfig={{ kube_config_dir }}/controller-manager.kubeconfig"
+  - "--service-account-private-key-file={{ kube_cert_dir }}/server.key"
+  - "--root-ca-file={{ kube_cert_dir }}/ca.crt"
+
+kube_scheduler_options:
+  - "--kubeconfig={{ kube_config_dir }}/scheduler.kubeconfig"
+
+kube_apiserver_additional_options: []
+kube_controller_manager_additional_options: []
+kube_scheduler_additional_options: []
+
+kube_apiserver_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/kubernetes-apiserver:{{ system_images_tag }}"
+
+kube_controller_manager_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/kubernetes-controller-manager:{{ system_images_tag }}"
+
+kube_scheduler_system_image: "{{ system_images_registry }}/{{ system_images_registry_namespace }}/kubernetes-scheduler:{{ system_images_tag }}"

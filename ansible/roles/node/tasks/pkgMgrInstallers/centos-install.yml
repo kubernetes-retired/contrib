@@ -3,6 +3,9 @@
   yum:
     pkg=kubernetes-node
     state=latest
-    enablerepo=virt7-docker-common-candidate
   notify:
     - restart daemons
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"

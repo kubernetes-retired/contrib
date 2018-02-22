@@ -3,6 +3,7 @@
   command: systemctl --system daemon-reload
   notify:
     - restart daemons
+  when: not (ansible_distribution == "Ubuntu" and ansible_distribution_major_version|int < 15) or (is_coreos)
 
 - name: restart daemons
   command: /bin/true
@@ -22,3 +23,6 @@
 
 - name: restart iptables
   service: name=iptables state=restarted
+
+- name: restart kubelet
+  service: name=kubelet state=restarted

@@ -1,0 +1,27 @@
+---
+- name: Make sure etcd certificate vars are set
+  fail:
+    msg: "etcd certificates weren't slurped. Aborting ..."
+  when: etcd_ca_cert is not defined or etcd_client_cert is not defined or etcd_client_key is not defined
+
+- name: Make sure Flanneld etcd certs dir exists
+  file:
+   state: directory
+   path: "{{ flannel_etcd_certs_dir }}"
+   mode: "o-rwx"
+   owner: root
+   group: root
+
+- name: Copy etcd certificates to nodes
+  copy:
+    content: "{{ item[1] }}"
+    dest: "{{ item[0] }}"
+    group: root
+    owner: root
+    mode: "0440"
+  with_together:
+    - [ "{{ flannel_etcd_cert_file }}", "{{ flannel_etcd_ca_file }}", "{{ flannel_etcd_key_file }}" ]
+    - [ "{{ etcd_client_cert }}", "{{ etcd_ca_cert }}", "{{ etcd_client_key }}" ]
+
+- set_fact:
+    flannel_options: "-etcd-cafile {{ flannel_etcd_ca_file }} -etcd-certfile {{ flannel_etcd_cert_file }} -etcd-keyfile {{ flannel_etcd_key_file }}"

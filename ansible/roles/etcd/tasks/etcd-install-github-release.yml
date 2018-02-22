@@ -1,0 +1,25 @@
+---
+- name: Download tar file
+  get_url:
+    url: "{{ etcd_download_url }}"
+    dest: "{{ ansible_temp_dir }}"
+    validate_certs: False
+  environment:
+    http_proxy: "{{ http_proxy|default('') }}"
+    https_proxy: "{{ https_proxy|default('') }}"
+    no_proxy: "{{ no_proxy|default('') }}"
+
+- name: Extract tar file
+  unarchive:
+    src: "{{ ansible_temp_dir }}/etcd-v{{ etcd_version }}-linux-{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}.tar.gz"
+    dest: /usr/local
+    copy: no
+
+- name: Create symlinks
+  file:
+    src: /usr/local/etcd-v{{ etcd_version }}-linux-{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}/{{ item }}
+    dest: "{{ bin_dir }}/{{ item }}"
+    state: link
+  with_items:
+    - etcd
+    - etcdctl

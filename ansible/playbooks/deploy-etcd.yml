@@ -1,0 +1,9 @@
+---
+- name: Deploy etcd
+  hosts: etcd
+  become: yes
+  roles:
+    - etcd
+  tags:
+    - etcd
+

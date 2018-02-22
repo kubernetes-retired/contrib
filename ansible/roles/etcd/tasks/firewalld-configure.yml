@@ -1,0 +1,25 @@
+---
+- name: Enable firewalld port for etcd
+  firewalld:
+    immediate: true
+    port: "{{ item }}/tcp"
+    permanent: true
+    state: enabled
+  # in case this is also a node where firewalld turned off
+  ignore_errors: yes
+  with_items:
+    - "{{ etcd_client_port }}"
+    - "{{ etcd_peer_port }}"
+
+- name: Enable firewalld port for etcd legacy ports
+  firewalld:
+    immediate: true
+    port: "{{ item }}/tcp"
+    permanent: true
+    state: enabled
+  # in case this is also a node where firewalld turned off
+  ignore_errors: yes
+  when: networking == 'contiv'
+  with_items:
+    - "{{ etcd_client_legacy_port }}"
+    - "{{ etcd_peer_legacy_port }}"

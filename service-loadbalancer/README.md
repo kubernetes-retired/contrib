@@ -2,6 +2,11 @@
 
 AKA "how to set up a bank of haproxy for platforms that don't have load balancers".
 
+## Project Status:
+THIS PROJECT IS DEPRECATED AND UNMAINTAINED.
+
+[Ingress Catalog](https://github.com/kubernetes/ingress/blob/master/docs/catalog.md) lists a few 3rd party replacements for this project, including an HAProxy Ingress Controller.
+
 ## Disclaimer:
 - This is a **work in progress**.
 - A better way to achieve this will probably emerge once discussions on (#260, #561) converge.
@@ -51,7 +56,7 @@ $ kubectl get svc --all-namespaces -o yaml  | grep -i "selfLink"
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-heapster
     selfLink: /api/v1/namespaces/kube-system/services/monitoring-influxdb
 ```
-These are all the [cluster addon](../../cluster/addons) services in `namespace=kube-system`.
+These are all the [cluster addon](https://github.com/kubernetes/kubernetes/tree/master/cluster/addons) services in all namespaces `--all-namespaces`.
 
 #### Create a loadbalancer
 * Loadbalancers are created via a ReplicationController.
@@ -76,16 +81,11 @@ NAME                         LABELS                                             
 e2e-test-beeps-minion-c9up   kubernetes.io/hostname=e2e-test-beeps-minion-c9up,role=loadbalancer   Ready
 ```
 #### Expose services
-Your kube-ui should be publicly accessible once the loadbalancer created in the previous step is in `Running` (if you're on a cloud provider, you need to create firewall-rules for :80)
-```console
-$ kubectl get nodes e2e-test-beeps-minion-c9up -o json | grep -i externalip -A 1
-                "type": "ExternalIP",
-                "address": "104.197.63.17"
-$ curl http://104.197.63.17/kube-ui
-```
+
+Let's create 3 services (HTTP, HTTPS and TCP) to test the loadbalancer.
 
 #### HTTP
-You can use the [https-nginx](../../examples/https-nginx) example to create some new HTTP/HTTPS services.
+You can use the [https-nginx](https://github.com/kubernetes/kubernetes/tree/master/examples/https-nginx) example to create some new HTTP/HTTPS services.
 
 ```console
 $ cd ../../examples/https-nginx
@@ -120,6 +120,66 @@ A couple of points to note:
 - The https service is accessible directly on the specified port, which matches the *service port*.
 - You need to take care of ensuring there is no collision between these service ports on the node.
 
+#### SSL Termination
+To terminate SSL for a service you just need to annotate the service with ``` serviceloadbalancer/lb.sslTerm: "true" ``` as seen below. This will cause your service to be served behind /{service-name} or /{service-name}:{port} if not running on port 80. This mimics the standard http functionality.
+
+```yaml
+metadata:
+  name: myservice
+  annotations:
+    serviceloadbalancer/lb.sslTerm: "true"
+  labels:
+```
+
+- Create a secret with one of your favorite tool
+
+- Add secrets to your loadbalancer pod
+
+```yaml
+        ports:
+        # All http services
+        - containerPort: 80
+          hostPort: 80
+          protocol: TCP
+        # ssl term
+        - containerPort: 443
+          hostPort: 443
+          protocol: TCP
+        # haproxy stats
+        - containerPort: 1936
+          hostPort: 1936
+          protocol: TCP
+        resources: {}
+        volumeMounts:
+        - mountPath: "/ssl"
+          name: secret-volume
+    volumes:
+    - name: secret-volume
+      secret:
+        secretName: my-secret
+
+```
+
+- Add your SSL configuration to loadbalancer pod
+
+```yaml
+      args:
+      - --ssl-cert=/ssl/crt.pem
+      - --ssl-ca-cert=/ssl/ca.crt
+      - --namespace=default
+```
+
+##### Custom ACL
+ - Adding the aclMatch annotation will allow you to serve the service on a specific path although URLs will not be rewritten back to root. The following will cause your service to be available at /test and your web service will be passed the url with /test on the front.
+
+```yaml
+ metadata:
+   name: myservice
+   annotations:
+     serviceloadbalancer/lb.sslTerm: "true"
+     serviceloadbalancer/lb.aclMatch: "-i /test"
+   labels:
+```
 #### TCP
 
 ```yaml
@@ -186,10 +246,39 @@ $ mysql -u root -ppassword --host 104.197.63.17 --port 3306 -e 'show databases;'
 +--------------------+
 ```
 
+#### Cross-namespace loadbalancing
+
+By default, the loadbalancer only listens for services in the `default` namespace. You can list available namespaces via:
+```
+$ kubectl get namespaces
+NAME          LABELS    STATUS    AGE
+default       <none>    Active    1d
+kube-system   <none>    Active    1d
+```
+
+You can tell it to expose services on a different namespace through a command line argument. Currently, each namespace needs a different loadbalancer (see [wishlist](#wishlist)). Modify the rc.yaml file to supply the namespace argument by adding the following lines to the bottom of the loadbalancer spec:
+```yaml
+args:
+  - --tcp-services=mysql:3306,nginxsvc:443
+  - --namespace=kube-system
+```
+
+Though the loadbalancer can watch services across namespaces you can't start 2 loadbalancers with the same name in a single namespace. So if you already have a loadbalancer running, either change the name of the rc, or change the namespace in rc.yaml:
+```console
+$ kubectl create -f rc.yaml
+$ kubectl get pods -o wide
+NAME                         READY     STATUS    RESTARTS   AGE       NODE
+service-loadbalancer-yofyv   1/1       Running   0          1m        e2e-test-beeps-minion-c9up
+
+$ kubectl get nodes e2e-test-beeps-minion-c9up -o json | grep -i externalip -A 1
+                "type": "ExternalIP",
+                "address": "104.197.63.17"
+$ curl http://104.197.63.17/kube-ui
+```
 
 #### Cross-cluster loadbalancing
 
-First setup your 2 clusters, and a kubeconfig secret as described in the [sharing clusters example] (../../examples/sharing-clusters/README.md). We will create a loadbalancer in our first cluster (US) and have it publish the services from the second cluster (EU). This is the entire modified loadbalancer manifest:
+First setup your 2 clusters, and a kubeconfig secret as described in the [sharing clusters example] (https://github.com/kubernetes/kubernetes/blob/master/examples/sharing-clusters/README.md). We will create a loadbalancer in our first cluster (US) and have it publish the services from the second cluster (EU). This is the entire modified loadbalancer manifest:
 
 ```yaml
 apiVersion: v1
@@ -219,7 +308,7 @@ spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: gcr.io/google_containers/servicelb:0.1
+      - image: k8s.gcr.io/servicelb:0.4
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -275,6 +364,12 @@ $ curl http://104.197.81.116/nginxsvc
 Europe
 ```
 
+#### Advanced features
+
+* __Sticky sessions__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L188).
+* __Name based virtual hosting__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L148).
+* __Configurable algorithms__: Currently undocumented but [possible via annotations](https://github.com/kubernetes/contrib/blob/master/service-loadbalancer/service_loadbalancer.go#L153).
+
 ### Troubleshooting:
 - If you can curl or netcat the endpoint from the pod (with kubectl exec) and not from the node, you have not specified hostport and containerport.
 - If you can hit the ips from the node but not from your machine outside the cluster, you have not opened firewall rules for the right network.
@@ -285,8 +380,8 @@ Europe
   4. try kubectl logs haproxy
   5. run the service_loadbalancer with --dry
 - Check http://<node_ip>:1936 for the stats page. It requires the password used in the template file.
-- Try talking to haproxy on the stats socket directly on the container using kubectl exec, eg: echo “show info” | socat unix-connect:/tmp/haproxy stdio
-- Run the service_loadbalancer with the flag --syslog to append the haproxy log as part of the pod stdout. Use kubectl logs to check the 
+- Try talking to haproxy on the stats socket directly on the container using kubectl exec, eg: `echo "show info" | socat unix-connect:/tmp/haproxy stdio`
+- Run the service_loadbalancer with the flag --syslog to append the haproxy log as part of the pod stdout. Use kubectl logs to check the
 status of the services or stats about the traffic
 
 ### Wishlist:
@@ -295,9 +390,8 @@ status of the services or stats about the traffic
 - Scrape :1926 and scale replica count of the loadbalancer rc from a helper pod (this is basically ELB)
 - Scrape :1936/;csv and autoscale services
 - Better https support. 3 options to handle ssl:
-  1. __Termination__: certificate lives on load balancer. All traffic to load balancer is encrypted, traffic from load balancer to service is not.
-  2. __Pass Through__: Load balancer drops down to L4 balancing and forwards TCP encrypted packets to destination.
-  3. __Redirect__: All traffic is https. HTTP connections are encrypted using load balancer certs.
+  1. __Pass Through__: Load balancer drops down to L4 balancing and forwards TCP encrypted packets to destination.
+  2. __Redirect__: All traffic is https. HTTP connections are encrypted using load balancer certs.
 
   Currently you need to trigger TCP loadbalancing for your https service by specifying it in loadbalancer.json. Support for the other 2 would be nice.
 - Multinamespace support: Currently the controller only watches a single namespace for services.

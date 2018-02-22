@@ -2,11 +2,14 @@
 - name: KUBE-UI | Assures {{ kube_addons_dir }}/kube-ui dir exists
   file: path={{ kube_addons_dir }}/kube-ui state=directory
 
-- name: KUBE-UI | Download kube-ui files from Kubernetes repo
-  get_url:
-    url=https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes/master/cluster/addons/kube-ui/{{ item }}
-    dest="{{ kube_addons_dir }}/kube-ui/"
-    force=yes
+- name: KUBE-UI | Copy kube-ui manifests to master
+  template:
+  args:
+    src: "kube-ui/{{ item }}.j2"
+    dest: "{{ kube_addons_dir }}/kube-ui/{{ item }}"
+    mode: 0644
+    owner: root
+    group: root
   with_items:
-    - kube-ui-rc.yaml
-    - kube-ui-svc.yaml
+    - dashboard-controller.yaml
+    - dashboard-service.yaml

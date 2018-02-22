@@ -1,0 +1,11 @@
+kubelet-to-gcm/monitor/controller/translator.go:		"namespace_id":   "",
+kubelet-to-gcm/monitor/controller/translator.go:		"pod_id":         "machine",
+kubelet-to-gcm/monitor/kubelet/translate.go:				"namespace_id":   namespace,
+kubelet-to-gcm/monitor/kubelet/translate.go:				"pod_id":         podID,
+kubelet-to-gcm/monitor/kubelet/translate.go:		"namespace_id":   "",
+kubelet-to-gcm/monitor/kubelet/translate.go:		"pod_id":         "machine",
+prometheus-to-sd/translator/translator.go:		"namespace_id":   config.PodConfig.NamespaceId,
+prometheus-to-sd/translator/translator.go:		"pod_id":         config.PodConfig.PodId,
+keepalived-vip/README.md:  vrrp_version 3
+keepalived-vip/README.md:  vrrp_version 3
+keepalived-vip/keepalived.tmpl:  vrrp_version {{ .vrrpVersion }}

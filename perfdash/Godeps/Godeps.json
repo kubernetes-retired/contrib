@@ -1,0 +1,24 @@
+{
+	"ImportPath": "k8s.io/contrib/perfdash",
+	"GoVersion": "go1.9",
+	"GodepVersion": "v79",
+	"Deps": [
+		{
+			"ImportPath": "github.com/ghodss/yaml",
+			"Rev": "73d445a93680fa1a78ae23a5839bad48f32ba1ee"
+		},
+		{
+			"ImportPath": "github.com/golang/glog",
+			"Rev": "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
+		},
+		{
+			"ImportPath": "gopkg.in/yaml.v2",
+			"Rev": "53feefa2559fb8dfa8d81baad31be332c97d6c77"
+		},
+		{
+			"ImportPath": "k8s.io/kubernetes/test/e2e/perftype",
+			"Comment": "v1.3.0-alpha.3-580-g6f288b3",
+			"Rev": "6f288b31cff234db607c0038ef9afe1571021b48"
+		}
+	]
+}
