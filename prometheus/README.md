@@ -1,84 +1,55 @@
 # Prometheus in Kubernetes
 
-This is an experimental [Prometheus](http://prometheus.io/) setup for monitoring
-Kubernetes services that expose prometheus-friendly metrics through address
-http://service_address:service_port/metrics.
+There are two maintained ways to run Prometheus in Kubernetes:
 
-# Purpose
-The purpose of the setup is to gather performance-related metrics during load
-tests and analyze them to find and fix bottlenecks.
+* [The Prometheus Operator](#the-prometheus-operator)
+* [The Prometheus Helm Chart](#the-prometheus-helm-chart)
 
-# Quick start
+## Prometheus basics
 
-## Promdash/Prometheus
+Prometheus installations in kubernetes need to be able to discover and poll nodes, while also
+ensuring that the master itself doesn't go down due to large metric volumes.
 
-1. Pick a local directory for promdash.  It can be any directory, preferably one which is stable and which you don't mind keeping around.  Then (in our case, we use */mnt/promdash*, just run this docker command `docker run -v /mnt/promdash:/mnt/promdash -e DATABASE_URL=sqlite3:/mnt/promdash/file.sqlite3 prom/promdash ./bin/rake db:migrate`.  In the future, we might use mysql as the promdash database, however, in any case, this 1 time db setup step is required.
+Additionally, prometheus needs to find services it cares about, and this is normally done via injection of 
+a config map.
 
-Now quickly confirm that /mnt/promdash/file.sqlite3 exists, and has a non-zero size, and make sure its permissions are open so that containers can read from it.  For example:
-```
-    [jay@rhbd kubernetes]$ ls -altrh /mnt/promdash/
-    total 20K
-    drwxr-xr-x. 6 root root 4.0K May  6 23:12 ..
-    -rwxrwxrwx  1 root root  12K May  6 23:33 file.sqlite3
-```
-Looks open enough :).  
+Both the prometheus operator and the prometheus helm chart solve these problems by allowing
+users to declaratively map services into the prometheus configuration (operator) / allowing users
+to specify a configmap at installation time (i.e. the `server.configMapOverrideName` parameter, in 
+the prometheus helm chart).
 
-1. Now, you can start this pod, like so `kubectl create -f contrib/prometheus/prometheus-all.json`.  This ReplicationController will maintain both prometheus, the server, as well as promdash, the visualization tool.  You can then configure promdash, and next time you restart the pod - you're configuration will be remain (since the promdash directory was mounted as a local docker volume).
+To manually setup prometheus, without the use of either the operator or helm chart, you can
+directly run prometheus containers as pods, in the same way that you would run any other containerized
+service.  The topology would be simply:
 
-1. Finally, you can simply access localhost:3000, which will have promdash running.  Then, add the prometheus server (localhost:9090)to as a promdash server, and create a dashboard according to the promdash directions.
+Before adopting a 'canned' prometheus implementation ~ make sure you differentiate wether prometheus is being used
+at the cluster level, or the application level.
 
-## Prometheus 
+At the cluster level:
 
-You can launch prometheus, promdash, and pushgateway easily, by simply running.
+- Running a prometheus master in a gloabl namespace (i.e. system or default).
+- Running a prometheus nodes in a daemonSet of prometheus nodes that are privileged, having the
+master scrape from the nodes.
 
-`kubectl create -f contrib/prometheus/prometheus-all.json`
+At the application level: 
 
-This will launch the pushgateway such that prometheus is collecting metrics from it automatically.
+- Running a prometheus master in your apps namespace
+- Having it scrape specifically from services which you care about in your app.
 
-NOTE: If you plan to use the push gateway to push metrics (for example, we use it in e2e tests) 
+### The Prometheus Operator
 
-you will want to have a stable IP that you can provide the push gateway from, and you may need to modify the NodePort stuff for your cloud provider.   
+The [Prometheus Operator](https://github.com/coreos/prometheus-operator)
+provides managed Prometheus and Alertmanager on top of Kubernetes. See the
+[README](https://github.com/coreos/prometheus-operator/blob/master/README.md)
+for a list of functionalities it provides as well as instructions and guides on
+how to use it.
 
-And then, create corresponding services, like this.. note that the pushgateway service may/may not be functional, but we leave it in for good measure.
+As an introduction there is a [blog
+post](https://coreos.com/blog/the-prometheus-operator.html) about it.
 
-`kubectl create -f contrib/prometheus/prometheus-service.json ; kubectl create -f contrib/prometheus/pushgateway-service.json`
+### The Prometheus Helm Chart
 
-Now, you can access the service `wget 10.0.1.89:9090`, and build graphs.
-
-
-## How it works
-
-This is a v1 api based, containerized prometheus ReplicationController, which scrapes endpoints which are readable on the KUBERNETES service (the internal kubernetes service running in the default namespace, which is visible to all pods).
-
-1. Use kubectl to handle auth & proxy the kubernetes API locally, emulating the old KUBERNETES_RO service.
-
-1. The list of services to be monitored is passed as a command line arguments in
-the yaml file.
-
-1. The startup scripts assumes that each service T will have
-2 environment variables set ```T_SERVICE_HOST``` and ```T_SERVICE_PORT``` 
-
-1. Each can be configured manually in yaml file if you want to monitor something
-that is not a regular Kubernetes service.  For example, you can add comma delimited
-endpoints which can be scraped like so...
-```
-- -t
-- KUBERNETES_RO,MY_OTHER_METRIC_SERVICE
-```
-
-# Other notes
-
-For regular Kubernetes services the env variables are set up automatically and injected at runtime. 
-
-By default the metrics are written to a temporary location (that can be changed
-in the the volumes section of the yaml file). Prometheus' UI is available 
-at port 9090.
-
-# TODO
-
-- We should publish this image into the kube/ namespace.
-- Possibly use Postgres or mysql as a promdash database.
-- stop using kubectl to make a local proxy faking the old RO port and build in
-  real auth capabilities.
-
-[![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/contrib/prometheus/README.md?pixel)]()
+The [Prometheus Helm
+Chart](https://github.com/kubernetes/charts/tree/master/stable/prometheus) is a
+community maintained helm chart to customize and run Prometheus based on your
+needs.
