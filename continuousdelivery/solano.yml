@@ -14,6 +14,10 @@ environment:
   KUBEDEPLOYMENTDIR: ./kubeyaml
   BUILD: ${TDDIUM_TEST_EXEC_ID}
   #BUILD is set to the following value in deploy-service.sh: ${TDDIUM_TEST_EXEC_ID}
+
+  # the namespace to which the service should be deployed
+  KUBENAMESPACE: default
+
   # used for interpod and interservice communication
   # Must be lowercase and <= 24 characters
   
@@ -49,6 +53,7 @@ tests:
   - |
     set -e
     eval BUILD=$BUILD
+    eval KUBENAMESPACE=$KUBENAMESPACE
     eval SERVICENAME=$SERVICENAME
     eval CONTAINER1=$CONTAINER1
     sudo docker run -p 3000 --label ${CONTAINER1} ${DOCKER_REGISTRY}/${CONTAINER1} bash -c "npm test"
@@ -56,4 +61,4 @@ tests:
     sudo docker push ${DOCKER_REGISTRY}/${CONTAINER1}:build${TDDIUM_TEST_EXEC_ID}
     sudo docker push ${DOCKER_REGISTRY}/${CONTAINER1}:latest
     chmod +x ./deploy/deploy-service.sh
-    ./deploy/deploy-service.sh ${KUBECONTEXTQA} ${KUBEDEPLOYMENTDIR}
+    ./deploy/deploy-service.sh ${KUBECONTEXTQA} ${KUBEDEPLOYMENTDIR} ${KUBENAMESPACE}
