@@ -42,6 +42,8 @@ var (
 	debug        bool
 	logger       *log.Logger
 	deletePods   bool
+	serverNode   string
+	clientNode   string
 )
 
 func init() {
@@ -51,6 +53,8 @@ func init() {
 	flag.BoolVar(&printResults, "print", true, "print results to standard out")
 	flag.BoolVar(&debug, "debug", true, "print debug to log")
 	flag.BoolVar(&deletePods, "cleanup", false, "delete test pods when done")
+	flag.StringVar(&serverNode, "serverNode", "", "kubernetes.io/hostname label value for nodeSelector for Server")
+	flag.StringVar(&clientNode, "clientNode", "", "kubernetes.io/hostname label value for nodeSelector for Client")
 }
 
 func main() {
@@ -103,13 +107,21 @@ func runCommandInShell(command string, args []string) error {
 
 func addServices() {
 	// setup pod with server to access from test pod
-	addService("netperf-tester-host", "paultiplady/netserver:ubuntu.2", 12865)
+	addService("netperf-tester-host", "paultiplady/netserver:ubuntu.2", 12865, serverNode)
 	// setup test pod
-	addService("netperf-tester-client", "paultiplady/netserver:ubuntu.2", 12865)
+	addService("netperf-tester-client", "paultiplady/netserver:ubuntu.2", 12865, clientNode)
 }
 
-func addService(serviceName, image string, port int) {
-	args := []string{"run", serviceName, "--image=" + image, fmt.Sprintf("--port=%d", port), "--hostport=65530"}
+func addService(serviceName, image string, port int, node string) {
+
+	var args []string
+
+	if node != "" {
+		args = []string{"run", serviceName, "--image=" + image, fmt.Sprintf("--port=%d", port), "--hostport=65530", fmt.Sprintf("--overrides={\"apiVersion\":\"extensions/v1beta1\",\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"%s\"}}}", node)}
+	} else {
+		args = []string{"run", serviceName, "--image=" + image, fmt.Sprintf("--port=%d", port), "--hostport=65530"}
+	}
+
 	logger.Printf("Running %s with args := %v\n", kubectl, args)
 	bytes, err := exec.Command(kubectl, args...).CombinedOutput()
 	if err != nil {
