@@ -248,7 +248,7 @@ $ mysql -u root -ppassword --host 104.197.63.17 --port 3306 -e 'show databases;'
 
 #### Cross-namespace loadbalancing
 
-By default, the loadbalancer only listens for services in the `default` namespace. You can list available namespaces via:
+By default, the loadbalancer will listen for services in all namespaces. You can list available namespaces via:
 ```
 $ kubectl get namespaces
 NAME          LABELS    STATUS    AGE
@@ -256,7 +256,7 @@ default       <none>    Active    1d
 kube-system   <none>    Active    1d
 ```
 
-You can tell it to expose services on a different namespace through a command line argument. Currently, each namespace needs a different loadbalancer (see [wishlist](#wishlist)). Modify the rc.yaml file to supply the namespace argument by adding the following lines to the bottom of the loadbalancer spec:
+You can tell it to expose services only from a specific namespace through a command line argument. Modify the rc.yaml file to supply the namespace argument by adding the following lines to the bottom of the loadbalancer spec:
 ```yaml
 args:
   - --tcp-services=mysql:3306,nginxsvc:443
@@ -394,7 +394,6 @@ status of the services or stats about the traffic
   2. __Redirect__: All traffic is https. HTTP connections are encrypted using load balancer certs.
 
   Currently you need to trigger TCP loadbalancing for your https service by specifying it in loadbalancer.json. Support for the other 2 would be nice.
-- Multinamespace support: Currently the controller only watches a single namespace for services.
 - Support for external services (eg: amazon rds)
 - Dynamically modify loadbalancer.json. Will become unnecessary when we have a loadbalancer resource.
 - Headless services: I just didn't think people would care enough about this.
