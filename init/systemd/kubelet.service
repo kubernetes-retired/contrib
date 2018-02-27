@@ -1,6 +1,6 @@
 [Unit]
 Description=Kubernetes Kubelet Server
-Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+Documentation=https://kubernetes.io/docs/concepts/overview/components/#kubelet https://kubernetes.io/docs/reference/generated/kubelet/
 After=docker.service
 Requires=docker.service
 

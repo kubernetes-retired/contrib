@@ -1,6 +1,6 @@
 [Unit]
 Description=Kubernetes API Server
-Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+Documentation=https://kubernetes.io/docs/concepts/overview/components/#kube-apiserver https://kubernetes.io/docs/reference/generated/kube-apiserver/
 After=network.target
 After=etcd.service
 
