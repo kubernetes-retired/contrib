@@ -17,13 +17,13 @@ all: push
 TAG = 0.1
 PREFIX = staging-k8s.gcr.io/peer-finder
 
-server: peer-finder.go
+peer-finder: peer-finder.go
 	CGO_ENABLED=0 go build -a -installsuffix cgo --ldflags '-w' ./peer-finder.go
 
-release: server
+release: peer-finder
 	gsutil cp peer-finder gs://kubernetes-release/pets/peer-finder
 
-container: server
+container: peer-finder
 	docker build --pull -t $(PREFIX):$(TAG) .
 
 push: container
