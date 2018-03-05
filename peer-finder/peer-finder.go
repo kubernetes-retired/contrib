@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"bufio"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -62,11 +63,22 @@ func lookup(svcName string) (sets.String, error) {
 func shellOut(sendStdin, script string) {
 	log.Printf("execing: %v with stdin: %v", script, sendStdin)
 	// TODO: Switch to sending stdin from go
-	out, err := exec.Command("bash", "-c", fmt.Sprintf("echo -e '%v' | %v", sendStdin, script)).CombinedOutput()
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo -e '%v' | %v", sendStdin, script))
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		log.Fatalf("Failed to execute %v: %v, err: %v", script, string(out), err)
+		log.Fatalf("Failed to execute %v, err: %v", script, err)
 	}
-	log.Print(string(out))
+
+	in := bufio.NewReader(stdout)
+	cmd.Start()
+	for true {
+		input, _, err := in.ReadLine()
+		fmt.Println(string(input))
+		if err != nil {
+			break
+		}
+	}
 }
 
 func main() {
