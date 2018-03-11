@@ -1,5 +1,4 @@
 FROM alpine
-RUN apk update && \
-   apk add bash util-linux
+RUN apk add --no-cache bash util-linux
 ADD manage-startup-script.sh /
 CMD /manage-startup-script.sh
