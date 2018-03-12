@@ -26,7 +26,7 @@ cd contrib
 
 Godeps in contrib/ has a different layout than in kubernetes/ proper. This is because
 contrib contains multiple tiny projects, each with their own dependencies. Each
-in contrib/ has it's own Godeps.json. For example the Godeps.json for Ingress
+in contrib/ has its own Godeps.json. For example the Godeps.json for Ingress
 is Ingress/Godeps/Godeps.json. This means that godeps commands like `godep restore`
 or `godep test` do not work in the root directory. They should be run from inside the
 subproject directory you want to test.
@@ -58,7 +58,7 @@ $ go build -o godep *.go
 ## Updating Godeps
 
 The most common dep to update is obviously going to be kubernetes proper. Updating
-kubernetes and it's dependancies in the Ingress subproject for example can be done
+kubernetes and its dependancies in the Ingress subproject for example can be done
 as follows (the example assumes your Kubernetes repo is rooted at `$GOPATH/src/github.com/kubernetes`, `s/github.com\/kubernetes/k8s.io/` as required):
 ```shell
 cd $GOPATH/src/github.com/kubernetes/contrib/ingress
