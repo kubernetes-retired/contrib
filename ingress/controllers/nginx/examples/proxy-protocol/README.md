@@ -1,5 +1,5 @@
 **The Ingress controller examples have moved to the
-[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+[kubernetes/ingress](https://github.com/kubernetes/ingress-nginx) repository.**
 
 # Nginx ingress controller using Proxy Protocol
 

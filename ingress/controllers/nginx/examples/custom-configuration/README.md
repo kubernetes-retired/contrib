@@ -1,5 +1,5 @@
 **The Ingress controller examples have moved to the
-[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+[kubernetes/ingress](https://github.com/kubernetes/ingress-nginx) repository.**
 
 The next command shows the defaults:
 ```
@@ -57,4 +57,4 @@ $ kubectl create -f nginx-load-balancer-conf.yaml
 
 Please check the example `rc-custom-configuration.yaml`
 
-If the Configmap it is updated, NGINX will be reloaded with the new configuration
+If the ConfigMap it is updated, NGINX will be reloaded with the new configuration

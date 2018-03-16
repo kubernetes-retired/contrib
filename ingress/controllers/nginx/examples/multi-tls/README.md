@@ -1,5 +1,5 @@
 **The Ingress controller examples have moved to the
-[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+[kubernetes/ingress](https://github.com/kubernetes/ingress-nginx) repository.**
 
 # Multi TLS certificate termination
 
@@ -10,7 +10,7 @@ This examples uses 2 different certificates to terminate SSL for 2 hostnames.
 3. Create multi-tls.yaml
 
 This should generate a segment like:
-```console
+```shell
 $ kubectl exec -it nginx-ingress-controller-6vwd1 -- cat /etc/nginx/nginx.conf | grep "foo.bar.com" -B 7 -A 35
     server {
         listen 80;
@@ -56,7 +56,7 @@ $ kubectl exec -it nginx-ingress-controller-6vwd1 -- cat /etc/nginx/nginx.conf |
 ```
 
 And you should be able to reach your nginx service or echoheaders service using a hostname switch:
-```console
+```shell
 $  kubectl get ing
 NAME      RULE          BACKEND   ADDRESS                         AGE
 foo-tls   -                       104.154.30.67                   13m
