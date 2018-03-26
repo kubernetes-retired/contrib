@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends bash
 
 COPY build.sh /build.sh
 
-ENV VERSION 1.2.24
-ENV SHA256 b508d4591c1c0173f1bf1274d69eed139fa875ff51f5429f4f714e5c72cf06b4
+ENV VERSION 1.4.2
+ENV SHA256 84d35d4bbc95bf86c476f892e68bd0b14119e8b66127a985ecda48cb1859ffc6
 
 RUN /build.sh
