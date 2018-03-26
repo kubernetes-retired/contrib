@@ -18,6 +18,7 @@ limitations under the License.
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -29,7 +30,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"bufio"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 )
