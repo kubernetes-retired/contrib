@@ -76,29 +76,29 @@ spec:
         - containerPort: 3888
           name: leader-election
         env:
-        - name : ZK_REPLICAS
+        - name: ZK_REPLICAS
           value: "3"
-        - name : ZK_HEAP_SIZE
+        - name: ZK_HEAP_SIZE
           valueFrom:
             configMapKeyRef:
                 name: zk-cm
                 key: jvm.heap
-        - name : ZK_TICK_TIME
+        - name: ZK_TICK_TIME
           valueFrom:
             configMapKeyRef:
                 name: zk-cm
                 key: tick
-        - name : ZK_INIT_LIMIT
+        - name: ZK_INIT_LIMIT
           valueFrom:
             configMapKeyRef:
                 name: zk-cm
                 key: init
-        - name : ZK_SYNC_LIMIT
+        - name: ZK_SYNC_LIMIT
           valueFrom:
             configMapKeyRef:
                 name: zk-cm
                 key: tick
-        - name : ZK_MAX_CLIENT_CNXNS
+        - name: ZK_MAX_CLIENT_CNXNS
           valueFrom:
             configMapKeyRef:
                 name: zk-cm
