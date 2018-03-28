@@ -236,7 +236,7 @@ nginxsvc     app=nginx                                 app=nginx   10.0.79.131  
                                                                                  443/TCP
 mysql        app=mysql                                 app=mysql   10.0.63.72    3306/TCP
 
-$ mysql -u root -ppassword --host 104.197.63.17 --port 3306 -e 'show databases;'
+$ mysql -u root -p password --host 104.197.63.17 --port 3306 -e 'show databases;'
 +--------------------+
 | Database           |
 +--------------------+
