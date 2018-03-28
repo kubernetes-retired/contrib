@@ -263,7 +263,7 @@ and a Pod Anti-Affinity rule.
 
 The Pod Anti-Affinity rule ensures that two Kafka Broker's will never be 
 launched on the same Node. This isn't strictly necessary, but it helps provide 
-stronger availability garauntees in the presence of Node failure, and it helps 
+stronger availability guarantees in the presence of Node failure, and it helps 
 alleviate [disk throughput](#disk) bottlenecks.
 The Pod Affinity rule attempts to collocate Kafka and ZooKeeper on the same 
 Nodes. You will likely have more Kafka brokers than ZooKeeper servers, but the 
