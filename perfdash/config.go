@@ -74,6 +74,11 @@ var (
 			OutputFilePrefix: "TestPhaseTimer",
 			Parser:           parseResponsivenessData,
 		},
+		"DensityRequestCount": {
+			Name:             "density",
+			OutputFilePrefix: "APIResponsiveness",
+			Parser:           parseRequestCountData,
+		},
 		"LoadResponsiveness": {
 			Name:             "load",
 			OutputFilePrefix: "APIResponsiveness",
@@ -88,6 +93,11 @@ var (
 			Name:             "load",
 			OutputFilePrefix: "TestPhaseTimer",
 			Parser:           parseResponsivenessData,
+		},
+		"LoadRequestCount": {
+			Name:             "load",
+			OutputFilePrefix: "APIResponsiveness",
+			Parser:           parseRequestCountData,
 		},
 	}
 
