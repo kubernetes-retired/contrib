@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 
 	"k8s.io/kubernetes/test/e2e/perftype"
 	"math"
@@ -27,6 +28,21 @@ import (
 
 func stripCount(data *perftype.DataItem) {
 	delete(data.Labels, "Count")
+}
+
+func createRequestCountData(data *perftype.DataItem) error {
+	data.Unit = ""
+	data.Data = make(map[string]float64)
+	requestCountString, ok := data.Labels["Count"]
+	if !ok {
+		return fmt.Errorf("no 'Count' label")
+	}
+	requestCount, err := strconv.ParseFloat(requestCountString, 64)
+	if err != nil {
+		return fmt.Errorf("couldn't parse count: %v", err)
+	}
+	data.Data["RequestCount"] = requestCount
+	return nil
 }
 
 func parseResponsivenessData(data []byte, buildNumber int, testResult *BuildData) {
@@ -97,5 +113,27 @@ func parseResourceUsageData(data []byte, buildNumber int, testResult *BuildData)
 		}
 		testResult.Builds[build] = append(testResult.Builds[build], cpu)
 		testResult.Builds[build] = append(testResult.Builds[build], memory)
+	}
+}
+
+func parseRequestCountData(data []byte, buildNumber int, testResult *BuildData) {
+	build := fmt.Sprintf("%d", buildNumber)
+	obj := perftype.PerfData{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, string(data))
+		return
+	}
+	if testResult.Version == "" {
+		testResult.Version = obj.Version
+	}
+	if testResult.Version == obj.Version {
+		for i := range obj.DataItems {
+			if err := createRequestCountData(&obj.DataItems[i]); err != nil {
+				fmt.Fprintf(os.Stderr, "error creating request count data in build %d dataItem %d: %v\n", buildNumber, i, err)
+				continue
+			}
+			stripCount(&obj.DataItems[i])
+			testResult.Builds[build] = append(testResult.Builds[build], obj.DataItems[i])
+		}
 	}
 }

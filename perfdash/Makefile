@@ -1,7 +1,7 @@
 all: push
 
 # See pod.yaml for the version currently running-- bump this ahead before rebuilding!
-TAG = 0.12
+TAG = 0.13
 
 REPO = k8s.gcr.io
 
