@@ -137,3 +137,59 @@ func parseRequestCountData(data []byte, buildNumber int, testResult *BuildData) 
 		}
 	}
 }
+
+//TODO: replace this strucure with proper structure from k8s.io/kubernetes/test/e2e/framework/metrics:MetricsCollection.
+type metricValue struct {
+	Metric map[string]string `json: metric`
+	Value  []interface{}     `json: value`
+}
+
+type e2eMeteric []metricValue
+
+type e2eMetrics struct {
+	ApiServerMetrics map[string]e2eMeteric `ApiServerMetrics`
+}
+
+func createApiserverRequestCountData(data *perftype.DataItem, metric *metricValue) error {
+	data.Unit = ""
+	data.Data = make(map[string]float64)
+	data.Labels = metric.Metric
+	delete(data.Labels, "__name__")
+	delete(data.Labels, "contentType")
+	if len(metric.Value) < 2 {
+		return fmt.Errorf("no request count value")
+	}
+	requestCount, err := strconv.ParseFloat(metric.Value[1].(string), 64)
+	if err != nil {
+		return fmt.Errorf("couldn't parse request count: %v", err)
+	}
+	data.Data["RequestCount"] = requestCount
+	return nil
+}
+
+func parseApiserverRequestCount(data []byte, buildNumber int, testResult *BuildData) {
+	testResult.Version = "v1"
+	build := fmt.Sprintf("%d", buildNumber)
+	var obj e2eMetrics
+	if err := json.Unmarshal(data, &obj); err != nil {
+		fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, string(data))
+		return
+	}
+	if obj.ApiServerMetrics == nil {
+		fmt.Fprintf(os.Stderr, "no ApiServerMetrics data in build %d", buildNumber)
+		return
+	}
+	metric, ok := obj.ApiServerMetrics["apiserver_request_count"]
+	if !ok {
+		fmt.Fprintf(os.Stderr, "no apiserver_request_count metric data in build %d", buildNumber)
+		return
+	}
+	for i := range metric {
+		perfData := perftype.DataItem{}
+		if err := createApiserverRequestCountData(&perfData, &metric[i]); err != nil {
+			fmt.Fprintf(os.Stderr, "error creating apiserver request count data in build %d dataItem %d: %v\n", buildNumber, i, err)
+			continue
+		}
+		testResult.Builds[build] = append(testResult.Builds[build], perfData)
+	}
+}
