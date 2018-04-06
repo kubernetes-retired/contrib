@@ -104,7 +104,7 @@ var (
 			OutputFilePrefix: "APIResponsiveness",
 			Parser:           parseRequestCountData,
 		},
-		"LoadRequestCountByClient:": {
+		"LoadRequestCountByClient": {
 			Name:             "load",
 			OutputFilePrefix: "MetricsForE2E",
 			Parser:           parseApiserverRequestCount,

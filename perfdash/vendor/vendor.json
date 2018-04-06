@@ -1,0 +1,37 @@
+{
+	"comment": "",
+	"ignore": "",
+	"package": [
+		{
+			"checksumSHA1": "C9IDhSvd4oYgzjMKLRpY7Ufremo=",
+			"path": "github.com/ghodss/yaml",
+			"revision": "73d445a93680fa1a78ae23a5839bad48f32ba1ee",
+			"revisionTime": "2015-09-09T03:16:57Z"
+		},
+		{
+			"checksumSHA1": "yUc84k7cfnRi9AlPFuRo77Y18Og=",
+			"path": "github.com/golang/glog",
+			"revision": "23def4e6c14b4da8ac2ed8007337bc5eb5007998",
+			"revisionTime": "2016-01-25T20:49:56Z"
+		},
+		{
+			"checksumSHA1": "sF5bu/v3YnR6loYe+R7bAVNKSBc=",
+			"path": "gopkg.in/yaml.v2",
+			"revision": "53feefa2559fb8dfa8d81baad31be332c97d6c77",
+			"revisionTime": "2015-09-24T14:23:14Z"
+		},
+		{
+			"checksumSHA1": "jo9G97/M5Lrliu78SXseLX+jnFw=",
+			"path": "k8s.io/kubernetes/test/e2e/framework/metrics",
+			"revision": "80bd7510df14e8d6042fdad9ff2d54f331e3f487",
+			"revisionTime": "2018-04-06T10:26:28Z"
+		},
+		{
+			"checksumSHA1": "aqxUxqQlqKmA5rIq86AA2B47Oso=",
+			"path": "k8s.io/kubernetes/test/e2e/perftype",
+			"revision": "80bd7510df14e8d6042fdad9ff2d54f331e3f487",
+			"revisionTime": "2018-04-06T10:26:28Z"
+		}
+	],
+	"rootPath": "k8s.io/contrib/perfdash"
+}

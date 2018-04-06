@@ -19,11 +19,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"strconv"
-
+	"k8s.io/kubernetes/test/e2e/framework/metrics"
 	"k8s.io/kubernetes/test/e2e/perftype"
 	"math"
+	"os"
+	"strconv"
 )
 
 func stripCount(data *perftype.DataItem) {
@@ -138,39 +138,10 @@ func parseRequestCountData(data []byte, buildNumber int, testResult *BuildData) 
 	}
 }
 
-//TODO: replace this strucure with proper structure from k8s.io/kubernetes/test/e2e/framework/metrics:MetricsCollection.
-type metricValue struct {
-	Metric map[string]string `json: metric`
-	Value  []interface{}     `json: value`
-}
-
-type e2eMeteric []metricValue
-
-type e2eMetrics struct {
-	ApiServerMetrics map[string]e2eMeteric `ApiServerMetrics`
-}
-
-func createApiserverRequestCountData(data *perftype.DataItem, metric *metricValue) error {
-	data.Unit = ""
-	data.Data = make(map[string]float64)
-	data.Labels = metric.Metric
-	delete(data.Labels, "__name__")
-	delete(data.Labels, "contentType")
-	if len(metric.Value) < 2 {
-		return fmt.Errorf("no request count value")
-	}
-	requestCount, err := strconv.ParseFloat(metric.Value[1].(string), 64)
-	if err != nil {
-		return fmt.Errorf("couldn't parse request count: %v", err)
-	}
-	data.Data["RequestCount"] = requestCount
-	return nil
-}
-
 func parseApiserverRequestCount(data []byte, buildNumber int, testResult *BuildData) {
 	testResult.Version = "v1"
 	build := fmt.Sprintf("%d", buildNumber)
-	var obj e2eMetrics
+	var obj metrics.MetricsCollection
 	if err := json.Unmarshal(data, &obj); err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing JSON in build %d: %v %s\n", buildNumber, err, string(data))
 		return
@@ -185,11 +156,13 @@ func parseApiserverRequestCount(data []byte, buildNumber int, testResult *BuildD
 		return
 	}
 	for i := range metric {
-		perfData := perftype.DataItem{}
-		if err := createApiserverRequestCountData(&perfData, &metric[i]); err != nil {
-			fmt.Fprintf(os.Stderr, "error creating apiserver request count data in build %d dataItem %d: %v\n", buildNumber, i, err)
-			continue
+		perfData := perftype.DataItem{Unit: "", Data: make(map[string]float64), Labels: make(map[string]string)}
+		for k, v := range metric[i].Metric {
+			perfData.Labels[string(k)] = string(v)
 		}
+		delete(perfData.Labels, "__name__")
+		delete(perfData.Labels, "contentType")
+		perfData.Data["RequestCount"] = float64(metric[i].Value)
 		testResult.Builds[build] = append(testResult.Builds[build], perfData)
 	}
 }
