@@ -30,7 +30,7 @@ the /opt/kafka/bin directory is added to the PATH environment variable.
 
 ## ZooKeeper
 Kafka requires an installation of Apache Zookeeper for broker configuration 
-storage and coordination. A example of how to deploy a ZooKeeper ensemble on 
+storage and coordination. An example of how to deploy a ZooKeeper ensemble on 
 Kubernetes can be found 
 [here](https://github.com/kubernetes/contrib/tree/master/statefulsets/zookeeper).
 For testing purposes an ensemble of 1-3 servers is sufficient. For production 
