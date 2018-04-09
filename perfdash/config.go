@@ -79,6 +79,11 @@ var (
 			OutputFilePrefix: "APIResponsiveness",
 			Parser:           parseRequestCountData,
 		},
+		"DensityRequestCountByClient": {
+			Name:             "density",
+			OutputFilePrefix: "MetricsForE2E",
+			Parser:           parseApiserverRequestCount,
+		},
 		"LoadResponsiveness": {
 			Name:             "load",
 			OutputFilePrefix: "APIResponsiveness",
@@ -98,6 +103,11 @@ var (
 			Name:             "load",
 			OutputFilePrefix: "APIResponsiveness",
 			Parser:           parseRequestCountData,
+		},
+		"LoadRequestCountByClient:": {
+			Name:             "load",
+			OutputFilePrefix: "MetricsForE2E",
+			Parser:           parseApiserverRequestCount,
 		},
 	}
 
