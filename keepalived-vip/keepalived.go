@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"syscall"
 	"text/template"
+	"time"
 
 	"github.com/golang/glog"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
@@ -116,11 +117,13 @@ func (k *keepalived) Start() {
 	k.cmd.Stdout = os.Stdout
 	k.cmd.Stderr = os.Stderr
 
-	k.started = true
-
 	if err := k.cmd.Start(); err != nil {
 		glog.Errorf("keepalived error: %v", err)
 	}
+
+	// Give keepalived enough time to install its SIGHUP handler before we send the signal
+	time.Sleep(1000 * time.Millisecond)
+	k.started = true
 
 	if err := k.cmd.Wait(); err != nil {
 		glog.Fatalf("keepalived error: %v", err)
