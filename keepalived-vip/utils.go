@@ -171,7 +171,7 @@ func ipByInterface(name string) (string, int, error) {
 type stringSlice []string
 
 // pos returns the position of a string in a slice.
-// If it does not exists in the slice returns -1.
+// If it does not exist in the slice returns -1.
 func (slice stringSlice) pos(value string) int {
 	for p, v := range slice {
 		if v == value {
