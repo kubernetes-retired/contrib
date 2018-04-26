@@ -23,7 +23,7 @@ CONTEXT="$1"
 DEPLOYDIR="$2"
 ROLLING=$(echo "${3:0:7}" | tr '[:upper:]' '[:lower:]')
 
-#make sure we have the kubectl comand
+#make sure we have the kubectl command
 chmod +x $DIR/ensure-kubectl.sh
 $DIR/ensure-kubectl.sh
 
