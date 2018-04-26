@@ -9,7 +9,7 @@ source_type: packageManager
 # will be used as the Internal dns domain name if DNS is enabled. Services
 # will be discoverable under <service-name>.<namespace>.svc.<domainname>, e.g.
 # myservice.default.svc.cluster.local
-cluster_name: cluster.local
+cluster_name: cluster.internal
 
 # Set if you want to access kubernetes cluster via load balancer. The installer
 # assumes that a load balancer has been preconfigured or resolves to
@@ -88,10 +88,10 @@ flannel_host_prefix: 24
 #contiv_default_gw: 172.16.0.1
 
 # Set to false to disable logging with elasticsearch
-cluster_logging: true
+cluster_logging: false
 
 # Turn to false to disable cluster monitoring with heapster and influxdb
-cluster_monitoring: true
+cluster_monitoring: false
 
 # Turn to false to disable the kube-ui addon for this cluster
 kube_ui: false
@@ -143,3 +143,5 @@ kube_use_flannel_system_container: false
 system_images_registry: "candidate-registry.fedoraproject.org"
 system_images_registry_namespace: "f26"
 system_images_tag: "latest"
+
+# kube_version: 1.8.0
