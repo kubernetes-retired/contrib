@@ -116,7 +116,7 @@ Login to the Kubernetes master:
 vagrant ssh kube-master-1
 ```
 
-Verify the Kuberenetes cluster is up:
+Verify the Kubernetes cluster is up:
 ```
 [vagrant@kube-master-1 ~]$ kubectl cluster-info
 Kubernetes master is running at http://localhost:8080
