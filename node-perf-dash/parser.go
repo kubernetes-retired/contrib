@@ -330,13 +330,6 @@ func formatNodeName(labels map[string]string, job string) string {
 
 	machine = parts[0] + "-" + parts[1] + "-" + parts[2]
 
-	// GCI image name (gci-test-00-0000-0-0) is changed across build, drop the
-	// suffix for daily build (000-0-0) and keep milestone (test-gci-00)
-	// TODO(coufon): we should change test framework to use a consistent name.
-	if job == "continuous-node-e2e-docker-benchmark" && parts[3] == "gci" {
-		lastPart -= 3
-	}
-
 	result := ""
 	for _, part := range parts[3:lastPart] {
 		result += part + "-"

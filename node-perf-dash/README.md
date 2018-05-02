@@ -50,7 +50,7 @@ $MY_TEST_RESULT_PATH/
 
 You display the desired data by selecting
 
-* **Job**: select the test project (e.g. _kubelet-benchmark-gce-e2e-ci_, _continuous-node-e2e-docker-benchmark_)
+* **Job**: select the test project (e.g. _ci-kubernetes-node-kubelet-benchmark_)
 * **test**: display data for a test by selecting the short test name, or selecting test options one by one
 * **image/machine**: select from the available images and machine type (capacity in format _cpu:1core,memory:3.5G_)
 * **build**: periodic benchmark tests are running with incremental build number, node-perf-dash collects latest test data using total build count specified by _--builds_, you can change the range of builds in dashboar (see https://github.com/kubernetes/kubernetes/blob/master/test/e2e_node/jenkins/benchmark/benchmark-config.yam)
