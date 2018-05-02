@@ -126,7 +126,7 @@ func main() {
 	unschedulablePodLister := kube_utils.NewUnschedulablePodInNamespaceLister(kubeClient, *systemNamespace, stopChannel)
 	nodeLister := kube_utils.NewReadyNodeLister(kubeClient, stopChannel)
 
-	// TODO(piosz): consider reseting this set once every few hours.
+	// TODO(piosz): consider resetting this set once every few hours.
 	podsBeingProcessed := NewPodSet()
 
 	// As tolerations/taints feature changed from being specified in annotations
