@@ -111,7 +111,7 @@ Configure the DaemonSet in `vip-daemonset.yaml` to use the ServiceAccount. Add t
 
 Configure its ClusterRole. _keepalived_ needs to read the pods, nodes, endpoints and services.
 ```
-echo 'apiVersion: rbac.authorization.k8s.io/v1alpha1
+echo 'apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: kube-keepalived-vip
@@ -128,7 +128,7 @@ rules:
 
 Configure its ClusterRoleBinding. This binds the above ClusterRole to the `kube-keepalived-vip` ServiceAccount.
 ```
-apiVersion: rbac.authorization.k8s.io/v1alpha1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: kube-keepalived-vip
