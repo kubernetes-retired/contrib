@@ -53,7 +53,10 @@ type nodeInfo struct {
 
 // getNetworkInfo returns information of the node where the pod is running
 func getNetworkInfo(ip string) (*nodeInfo, error) {
-	iface, _, mask := interfaceByIP(ip)
+	iface, mask, err := interfaceByIP(ip)
+	if err != nil {
+		return nil, err
+	}
 	return &nodeInfo{
 		iface:   iface,
 		ip:      ip,
@@ -114,11 +117,11 @@ func getPodDetails(kubeClient *unversioned.Client) (*podInfo, error) {
 
 // netInterfaces returns a slice containing the local network interfaces
 // excluding lo, docker0, flannel.1 and veth interfaces.
-func netInterfaces() []net.Interface {
+func netInterfaces() ([]net.Interface, error) {
 	validIfaces := []net.Interface{}
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return validIfaces
+		return nil, err
 	}
 
 	for _, iface := range ifaces {
@@ -127,20 +130,25 @@ func netInterfaces() []net.Interface {
 		}
 	}
 
-	return validIfaces
+	return validIfaces, nil
 }
 
 // interfaceByIP returns the local network interface name that is using the
-// specified IP address. If no interface is found returns an empty string.
-func interfaceByIP(ip string) (string, string, int) {
-	for _, iface := range netInterfaces() {
+// specified IP address. Returns an error if no matching interface is found.
+func interfaceByIP(ip string) (string, int, error) {
+	ifaces, err := netInterfaces()
+	if err != nil {
+		return "", 0, err
+	}
+
+	for _, iface := range ifaces {
 		ifaceIP, mask, err := ipByInterface(iface.Name)
 		if err == nil && ip == ifaceIP {
-			return iface.Name, ip, mask
+			return iface.Name, mask, nil
 		}
 	}
 
-	return "", "", 0
+	return "", 0, fmt.Errorf("no matching interface found for IP %s", ip)
 }
 
 func ipByInterface(name string) (string, int, error) {
