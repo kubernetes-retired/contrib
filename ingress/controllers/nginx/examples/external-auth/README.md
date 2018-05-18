@@ -1,11 +1,11 @@
 **The Ingress controller examples have moved to the
-[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+[kubernetes/ingress](https://github.com/kubernetes/ingress-nginx) repository.**
 
 # External authentication
 
 ### Example 1:
 
-Use an external service (Basic Auth) located in `https://httpbin.org` 
+Use an external service (Basic Auth) located in `https://httpbin.org`
 
 ```
 $ kubectl create -f ingress.yaml

@@ -1,5 +1,5 @@
 **The Ingress controller examples have moved to the
-[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.**
+[kubernetes/ingress](https://github.com/kubernetes/ingress-nginx) repository.**
 
 This example shows how is possible to restrict access
 
@@ -122,4 +122,3 @@ x-real-ip=10.2.89.1
 BODY:
 * Connection #0 to host 172.17.4.99 left intact
 ```
-
