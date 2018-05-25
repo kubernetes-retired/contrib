@@ -71,7 +71,7 @@ var plotRules = {
 // Rules to parse test options
 var testOptions = {
     'density': {
-        options: ['opertation', 'mode', 'pods', 'background pods', 'interval (ms)', 'QPS'],
+        options: ['operation', 'mode', 'pods', 'background pods', 'interval (ms)', 'QPS'],
         remark: '',
     },
     'resource': {
