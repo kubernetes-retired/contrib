@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"sync"
 
-	apiv1 "k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/api/core/v1"
 )
 
-func podId(pod *apiv1.Pod) string {
+func podId(pod *v1.Pod) string {
 	return fmt.Sprintf("%s_%s", pod.Namespace, pod.Name)
 }
 
@@ -42,21 +42,21 @@ func NewPodSet() *podSet {
 }
 
 // Add the pod to the set.
-func (s *podSet) Add(pod *apiv1.Pod) {
+func (s *podSet) Add(pod *v1.Pod) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.set[podId(pod)] = struct{}{}
 }
 
 // Remove the pod from set.
-func (s *podSet) Remove(pod *apiv1.Pod) {
+func (s *podSet) Remove(pod *v1.Pod) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	delete(s.set, podId(pod))
 }
 
 // Has checks whether the pod is in the set.
-func (s *podSet) Has(pod *apiv1.Pod) bool {
+func (s *podSet) Has(pod *v1.Pod) bool {
 	return s.HasId(podId(pod))
 }
 
