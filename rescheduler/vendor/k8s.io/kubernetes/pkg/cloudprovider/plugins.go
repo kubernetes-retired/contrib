@@ -37,6 +37,8 @@ var (
 	providers      = make(map[string]Factory)
 )
 
+const externalCloudProvider = "external"
+
 // RegisterCloudProvider registers a cloudprovider.Factory by name.  This
 // is expected to happen during app startup.
 func RegisterCloudProvider(name string, cloud Factory) {
@@ -58,23 +60,11 @@ func IsCloudProvider(name string) bool {
 	return found
 }
 
-// CloudProviders returns the name of all registered cloud providers in a
-// string slice
-func CloudProviders() []string {
-	names := []string{}
-	providersMutex.Lock()
-	defer providersMutex.Unlock()
-	for name := range providers {
-		names = append(names, name)
-	}
-	return names
-}
-
 // GetCloudProvider creates an instance of the named cloud provider, or nil if
 // the name is unknown.  The error return is only used if the named provider
 // was known but failed to initialize. The config parameter specifies the
 // io.Reader handler of the configuration file for the cloud provider, or nil
-// for no configuation.
+// for no configuration.
 func GetCloudProvider(name string, config io.Reader) (Interface, error) {
 	providersMutex.Lock()
 	defer providersMutex.Unlock()
@@ -85,6 +75,11 @@ func GetCloudProvider(name string, config io.Reader) (Interface, error) {
 	return f(config)
 }
 
+// Detects if the string is an external cloud provider
+func IsExternal(name string) bool {
+	return name == externalCloudProvider
+}
+
 // InitCloudProvider creates an instance of the named cloud provider.
 func InitCloudProvider(name string, configFilePath string) (Interface, error) {
 	var cloud Interface
@@ -92,6 +87,11 @@ func InitCloudProvider(name string, configFilePath string) (Interface, error) {
 
 	if name == "" {
 		glog.Info("No cloud provider specified.")
+		return nil, nil
+	}
+
+	if IsExternal(name) {
+		glog.Info("External cloud provider specified")
 		return nil, nil
 	}
 

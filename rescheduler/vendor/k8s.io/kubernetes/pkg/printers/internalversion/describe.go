@@ -18,19 +18,22 @@ package internalversion
 
 import (
 	"bytes"
-	"encoding/json"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net"
 	"net/url"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/golang/glog"
 
+	"github.com/fatih/camelcase"
+	versionedextension "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -42,30 +45,32 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/kubernetes/federation/apis/federation"
-	fedclientset "k8s.io/kubernetes/federation/client/clientset_generated/federation_internalclientset"
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/annotations"
+	clientextensionsv1beta1 "k8s.io/client-go/kubernetes/typed/extensions/v1beta1"
 	"k8s.io/kubernetes/pkg/api/events"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/api/ref"
+	resourcehelper "k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/certificates"
+	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/apis/core/helper"
+	"k8s.io/kubernetes/pkg/apis/core/helper/qos"
 	"k8s.io/kubernetes/pkg/apis/extensions"
-	versionedextension "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
+	"k8s.io/kubernetes/pkg/apis/networking"
 	"k8s.io/kubernetes/pkg/apis/policy"
+	"k8s.io/kubernetes/pkg/apis/rbac"
+	"k8s.io/kubernetes/pkg/apis/scheduling"
 	"k8s.io/kubernetes/pkg/apis/storage"
 	storageutil "k8s.io/kubernetes/pkg/apis/storage/util"
-	versionedclientset "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
-	coreclientset "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/typed/core/v1"
-	extensionsclientset "k8s.io/kubernetes/pkg/client/clientset_generated/clientset/typed/extensions/v1beta1"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	coreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
-	extensionsclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/extensions/internalversion"
 	deploymentutil "k8s.io/kubernetes/pkg/controller/deployment/util"
 	"k8s.io/kubernetes/pkg/fieldpath"
-	"k8s.io/kubernetes/pkg/kubelet/qos"
 	"k8s.io/kubernetes/pkg/printers"
+	"k8s.io/kubernetes/pkg/registry/rbac/validation"
+	"k8s.io/kubernetes/pkg/util/slice"
 )
 
 // Each level has 2 spaces for PrefixWriter
@@ -76,11 +81,29 @@ const (
 	LEVEL_3
 )
 
-type PrefixWriter struct {
+// PrefixWriter can write text at various indentation levels.
+type PrefixWriter interface {
+	// Write writes text with the specified indentation level.
+	Write(level int, format string, a ...interface{})
+	// WriteLine writes an entire line with no indentation level.
+	WriteLine(a ...interface{})
+	// Flush forces indentation to be reset.
+	Flush()
+}
+
+// prefixWriter implements PrefixWriter
+type prefixWriter struct {
 	out io.Writer
 }
 
-func (pw *PrefixWriter) Write(level int, format string, a ...interface{}) {
+var _ PrefixWriter = &prefixWriter{}
+
+// NewPrefixWriter creates a new PrefixWriter.
+func NewPrefixWriter(out io.Writer) PrefixWriter {
+	return &prefixWriter{out: out}
+}
+
+func (pw *prefixWriter) Write(level int, format string, a ...interface{}) {
 	levelSpace := "  "
 	prefix := ""
 	for i := 0; i < level; i++ {
@@ -89,8 +112,14 @@ func (pw *PrefixWriter) Write(level int, format string, a ...interface{}) {
 	fmt.Fprintf(pw.out, prefix+format, a...)
 }
 
-func (pw *PrefixWriter) WriteLine(a ...interface{}) {
+func (pw *prefixWriter) WriteLine(a ...interface{}) {
 	fmt.Fprintln(pw.out, a...)
+}
+
+func (pw *prefixWriter) Flush() {
+	if f, ok := pw.out.(flusher); ok {
+		f.Flush()
+	}
 }
 
 func describerMap(c clientset.Interface) map[schema.GroupKind]printers.Describer {
@@ -108,19 +137,30 @@ func describerMap(c clientset.Interface) map[schema.GroupKind]printers.Describer
 		api.Kind("Namespace"):             &NamespaceDescriber{c},
 		api.Kind("Endpoints"):             &EndpointsDescriber{c},
 		api.Kind("ConfigMap"):             &ConfigMapDescriber{c},
+		api.Kind("PriorityClass"):         &PriorityClassDescriber{c},
 
 		extensions.Kind("ReplicaSet"):                  &ReplicaSetDescriber{c},
 		extensions.Kind("NetworkPolicy"):               &NetworkPolicyDescriber{c},
+		extensions.Kind("PodSecurityPolicy"):           &PodSecurityPolicyDescriber{c},
 		autoscaling.Kind("HorizontalPodAutoscaler"):    &HorizontalPodAutoscalerDescriber{c},
 		extensions.Kind("DaemonSet"):                   &DaemonSetDescriber{c},
-		extensions.Kind("Deployment"):                  &DeploymentDescriber{c, versionedClientsetForDeployment(c)},
+		extensions.Kind("Deployment"):                  &DeploymentDescriber{c, versionedExtensionsClientV1beta1(c)},
 		extensions.Kind("Ingress"):                     &IngressDescriber{c},
 		batch.Kind("Job"):                              &JobDescriber{c},
 		batch.Kind("CronJob"):                          &CronJobDescriber{c},
 		apps.Kind("StatefulSet"):                       &StatefulSetDescriber{c},
+		apps.Kind("Deployment"):                        &DeploymentDescriber{c, versionedExtensionsClientV1beta1(c)},
+		apps.Kind("DaemonSet"):                         &DaemonSetDescriber{c},
+		apps.Kind("ReplicaSet"):                        &ReplicaSetDescriber{c},
 		certificates.Kind("CertificateSigningRequest"): &CertificateSigningRequestDescriber{c},
 		storage.Kind("StorageClass"):                   &StorageClassDescriber{c},
 		policy.Kind("PodDisruptionBudget"):             &PodDisruptionBudgetDescriber{c},
+		rbac.Kind("Role"):                              &RoleDescriber{c},
+		rbac.Kind("ClusterRole"):                       &ClusterRoleDescriber{c},
+		rbac.Kind("RoleBinding"):                       &RoleBindingDescriber{c},
+		rbac.Kind("ClusterRoleBinding"):                &ClusterRoleBindingDescriber{c},
+		networking.Kind("NetworkPolicy"):               &NetworkPolicyDescriber{c},
+		scheduling.Kind("PriorityClass"):               &PriorityClassDescriber{c},
 	}
 
 	return m
@@ -146,13 +186,13 @@ func DescriberFor(kind schema.GroupKind, c clientset.Interface) (printers.Descri
 
 // GenericDescriberFor returns a generic describer for the specified mapping
 // that uses only information available from runtime.Unstructured
-func GenericDescriberFor(mapping *meta.RESTMapping, dynamic *dynamic.Client, events coreclient.EventsGetter) printers.Describer {
+func GenericDescriberFor(mapping *meta.RESTMapping, dynamic dynamic.Interface, events coreclient.EventsGetter) printers.Describer {
 	return &genericDescriber{mapping, dynamic, events}
 }
 
 type genericDescriber struct {
 	mapping *meta.RESTMapping
-	dynamic *dynamic.Client
+	dynamic dynamic.Interface
 	events  coreclient.EventsGetter
 }
 
@@ -162,26 +202,89 @@ func (g *genericDescriber) Describe(namespace, name string, describerSettings pr
 		Namespaced: g.mapping.Scope.Name() == meta.RESTScopeNameNamespace,
 		Kind:       g.mapping.GroupVersionKind.Kind,
 	}
-	obj, err := g.dynamic.Resource(apiResource, namespace).Get(name)
+	obj, err := g.dynamic.Resource(apiResource, namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = g.events.Events(namespace).Search(api.Scheme, obj)
+		events, _ = g.events.Events(namespace).Search(legacyscheme.Scheme, obj)
 	}
 
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", obj.GetName())
 		w.Write(LEVEL_0, "Namespace:\t%s\n", obj.GetNamespace())
 		printLabelsMultiline(w, "Labels", obj.GetLabels())
+		printAnnotationsMultiline(w, "Annotations", obj.GetAnnotations())
+		printUnstructuredContent(w, LEVEL_0, obj.UnstructuredContent(), "", ".metadata.name", ".metadata.namespace", ".metadata.labels", ".metadata.annotations")
 		if events != nil {
 			DescribeEvents(events, w)
 		}
 		return nil
 	})
+}
+
+func printUnstructuredContent(w PrefixWriter, level int, content map[string]interface{}, skipPrefix string, skip ...string) {
+	fields := []string{}
+	for field := range content {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+
+	for _, field := range fields {
+		value := content[field]
+		switch typedValue := value.(type) {
+		case map[string]interface{}:
+			skipExpr := fmt.Sprintf("%s.%s", skipPrefix, field)
+			if slice.ContainsString(skip, skipExpr, nil) {
+				continue
+			}
+			w.Write(level, "%s:\n", smartLabelFor(field))
+			printUnstructuredContent(w, level+1, typedValue, skipExpr, skip...)
+
+		case []interface{}:
+			skipExpr := fmt.Sprintf("%s.%s", skipPrefix, field)
+			if slice.ContainsString(skip, skipExpr, nil) {
+				continue
+			}
+			w.Write(level, "%s:\n", smartLabelFor(field))
+			for _, child := range typedValue {
+				switch typedChild := child.(type) {
+				case map[string]interface{}:
+					printUnstructuredContent(w, level+1, typedChild, skipExpr, skip...)
+				default:
+					w.Write(level+1, "%v\n", typedChild)
+				}
+			}
+
+		default:
+			skipExpr := fmt.Sprintf("%s.%s", skipPrefix, field)
+			if slice.ContainsString(skip, skipExpr, nil) {
+				continue
+			}
+			w.Write(level, "%s:\t%v\n", smartLabelFor(field), typedValue)
+		}
+	}
+}
+
+func smartLabelFor(field string) string {
+	commonAcronyms := []string{"API", "URL", "UID", "OSB", "GUID"}
+
+	splitted := camelcase.Split(field)
+	for i := 0; i < len(splitted); i++ {
+		part := splitted[i]
+
+		if slice.ContainsString(commonAcronyms, strings.ToUpper(part), nil) {
+			part = strings.ToUpper(part)
+		} else {
+			part = strings.Title(part)
+		}
+		splitted[i] = part
+	}
+
+	return strings.Join(splitted, " ")
 }
 
 // DefaultObjectDescriber can describe the default Kubernetes objects.
@@ -240,9 +343,10 @@ func (d *NamespaceDescriber) Describe(namespace, name string, describerSettings 
 
 func describeNamespace(namespace *api.Namespace, resourceQuotaList *api.ResourceQuotaList, limitRangeList *api.LimitRangeList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", namespace.Name)
 		printLabelsMultiline(w, "Labels", namespace.Labels)
+		printAnnotationsMultiline(w, "Annotations", namespace.Annotations)
 		w.Write(LEVEL_0, "Status:\t%s\n", string(namespace.Status.Phase))
 		if resourceQuotaList != nil {
 			w.Write(LEVEL_0, "\n")
@@ -256,7 +360,7 @@ func describeNamespace(namespace *api.Namespace, resourceQuotaList *api.Resource
 	})
 }
 
-func describeLimitRangeSpec(spec api.LimitRangeSpec, prefix string, w *PrefixWriter) {
+func describeLimitRangeSpec(spec api.LimitRangeSpec, prefix string, w PrefixWriter) {
 	for i := range spec.Limits {
 		item := spec.Limits[i]
 		maxResources := item.Max
@@ -322,7 +426,7 @@ func describeLimitRangeSpec(spec api.LimitRangeSpec, prefix string, w *PrefixWri
 }
 
 // DescribeLimitRanges merges a set of limit range items into a single tabular description
-func DescribeLimitRanges(limitRanges *api.LimitRangeList, w *PrefixWriter) {
+func DescribeLimitRanges(limitRanges *api.LimitRangeList, w PrefixWriter) {
 	if len(limitRanges.Items) == 0 {
 		w.Write(LEVEL_0, "No resource limits.\n")
 		return
@@ -335,7 +439,7 @@ func DescribeLimitRanges(limitRanges *api.LimitRangeList, w *PrefixWriter) {
 }
 
 // DescribeResourceQuotas merges a set of quota items into a single tabular description of all quotas
-func DescribeResourceQuotas(quotas *api.ResourceQuotaList, w *PrefixWriter) {
+func DescribeResourceQuotas(quotas *api.ResourceQuotaList, w PrefixWriter) {
 	if len(quotas.Items) == 0 {
 		w.Write(LEVEL_0, "No resource quota.\n")
 		return
@@ -394,7 +498,7 @@ func (d *LimitRangeDescriber) Describe(namespace, name string, describerSettings
 
 func describeLimitRange(limitRange *api.LimitRange) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", limitRange.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", limitRange.Namespace)
 		w.Write(LEVEL_0, "Type\tResource\tMin\tMax\tDefault Request\tDefault Limit\tMax Limit/Request Ratio\n")
@@ -436,7 +540,7 @@ func helpTextForResourceQuotaScope(scope api.ResourceQuotaScope) string {
 }
 func describeQuota(resourceQuota *api.ResourceQuota) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", resourceQuota.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", resourceQuota.Namespace)
 		if len(resourceQuota.Spec.Scopes) > 0 {
@@ -489,7 +593,7 @@ func (d *PodDescriber) Describe(namespace, name string, describerSettings printe
 			events, err2 := eventsInterface.List(options)
 			if describerSettings.ShowEvents && err2 == nil && len(events.Items) > 0 {
 				return tabbedString(func(out io.Writer) error {
-					w := &PrefixWriter{out}
+					w := NewPrefixWriter(out)
 					w.Write(LEVEL_0, "Pod '%v': error '%v', but found events.\n", name, err)
 					DescribeEvents(events, w)
 					return nil
@@ -501,11 +605,11 @@ func (d *PodDescriber) Describe(namespace, name string, describerSettings printe
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		if ref, err := api.GetReference(api.Scheme, pod); err != nil {
+		if ref, err := ref.GetReference(legacyscheme.Scheme, pod); err != nil {
 			glog.Errorf("Unable to construct reference to '%#v': %v", pod, err)
 		} else {
 			ref.Kind = ""
-			events, _ = d.Core().Events(namespace).Search(api.Scheme, ref)
+			events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, ref)
 		}
 	}
 
@@ -514,16 +618,25 @@ func (d *PodDescriber) Describe(namespace, name string, describerSettings printe
 
 func describePod(pod *api.Pod, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", pod.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", pod.Namespace)
-		w.Write(LEVEL_0, "Node:\t%s\n", pod.Spec.NodeName+"/"+pod.Status.HostIP)
+		if pod.Spec.Priority != nil {
+			w.Write(LEVEL_0, "Priority:\t%d\n", *pod.Spec.Priority)
+			w.Write(LEVEL_0, "PriorityClassName:\t%s\n", stringOrNone(pod.Spec.PriorityClassName))
+		}
+		if pod.Spec.NodeName == "" {
+			w.Write(LEVEL_0, "Node:\t<none>\n")
+		} else {
+			w.Write(LEVEL_0, "Node:\t%s\n", pod.Spec.NodeName+"/"+pod.Status.HostIP)
+		}
 		if pod.Status.StartTime != nil {
 			w.Write(LEVEL_0, "Start Time:\t%s\n", pod.Status.StartTime.Time.Format(time.RFC1123Z))
 		}
 		printLabelsMultiline(w, "Labels", pod.Labels)
+		printAnnotationsMultiline(w, "Annotations", pod.Annotations)
 		if pod.DeletionTimestamp != nil {
-			w.Write(LEVEL_0, "Status:\tTerminating (expires %s)\n", pod.DeletionTimestamp.Time.Format(time.RFC1123Z))
+			w.Write(LEVEL_0, "Status:\tTerminating (lasts %s)\n", translateTimestamp(*pod.DeletionTimestamp))
 			w.Write(LEVEL_0, "Termination Grace Period:\t%ds\n", *pod.DeletionGracePeriodSeconds)
 		} else {
 			w.Write(LEVEL_0, "Status:\t%s\n", string(pod.Status.Phase))
@@ -535,7 +648,12 @@ func describePod(pod *api.Pod, events *api.EventList) (string, error) {
 			w.Write(LEVEL_0, "Message:\t%s\n", pod.Status.Message)
 		}
 		w.Write(LEVEL_0, "IP:\t%s\n", pod.Status.PodIP)
-		w.Write(LEVEL_0, "Controllers:\t%s\n", printControllers(pod.Annotations))
+		if controlledBy := printController(pod); len(controlledBy) > 0 {
+			w.Write(LEVEL_0, "Controlled By:\t%s\n", controlledBy)
+		}
+		if len(pod.Status.NominatedNodeName) > 0 {
+			w.Write(LEVEL_0, "NominatedNodeName:\t%s\n", pod.Status.NominatedNodeName)
+		}
 
 		if len(pod.Spec.InitContainers) > 0 {
 			describeContainers("Init Containers", pod.Spec.InitContainers, pod.Status.InitContainerStatuses, EnvValueRetriever(pod), w, "")
@@ -550,7 +668,11 @@ func describePod(pod *api.Pod, events *api.EventList) (string, error) {
 			}
 		}
 		describeVolumes(pod.Spec.Volumes, w, "")
-		w.Write(LEVEL_0, "QoS Class:\t%s\n", pod.Status.QOSClass)
+		if pod.Status.QOSClass != "" {
+			w.Write(LEVEL_0, "QoS Class:\t%s\n", pod.Status.QOSClass)
+		} else {
+			w.Write(LEVEL_0, "QoS Class:\t%s\n", qos.GetPodQOS(pod))
+		}
 		printLabelsMultiline(w, "Node-Selectors", pod.Spec.NodeSelector)
 		printPodTolerationsMultiline(w, "Tolerations", pod.Spec.Tolerations)
 		if events != nil {
@@ -560,21 +682,16 @@ func describePod(pod *api.Pod, events *api.EventList) (string, error) {
 	})
 }
 
-func printControllers(annotation map[string]string) string {
-	value, ok := annotation[api.CreatedByAnnotation]
-	if ok {
-		var r api.SerializedReference
-		err := json.Unmarshal([]byte(value), &r)
-		if err == nil {
-			return fmt.Sprintf("%s/%s", r.Reference.Kind, r.Reference.Name)
-		}
+func printController(controllee metav1.Object) string {
+	if controllerRef := metav1.GetControllerOf(controllee); controllerRef != nil {
+		return fmt.Sprintf("%s/%s", controllerRef.Kind, controllerRef.Name)
 	}
-	return "<none>"
+	return ""
 }
 
-func describeVolumes(volumes []api.Volume, w *PrefixWriter, space string) {
+func describeVolumes(volumes []api.Volume, w PrefixWriter, space string) {
 	if volumes == nil || len(volumes) == 0 {
-		w.Write(LEVEL_0, "%sNo volumes.\n", space)
+		w.Write(LEVEL_0, "%sVolumes:\t<none>\n", space)
 		return
 	}
 	w.Write(LEVEL_0, "%sVolumes:\n", space)
@@ -621,23 +738,45 @@ func describeVolumes(volumes []api.Volume, w *PrefixWriter, space string) {
 			printCinderVolumeSource(volume.VolumeSource.Cinder, w)
 		case volume.VolumeSource.PhotonPersistentDisk != nil:
 			printPhotonPersistentDiskVolumeSource(volume.VolumeSource.PhotonPersistentDisk, w)
+		case volume.VolumeSource.PortworxVolume != nil:
+			printPortworxVolumeSource(volume.VolumeSource.PortworxVolume, w)
+		case volume.VolumeSource.ScaleIO != nil:
+			printScaleIOVolumeSource(volume.VolumeSource.ScaleIO, w)
+		case volume.VolumeSource.CephFS != nil:
+			printCephFSVolumeSource(volume.VolumeSource.CephFS, w)
+		case volume.VolumeSource.StorageOS != nil:
+			printStorageOSVolumeSource(volume.VolumeSource.StorageOS, w)
+		case volume.VolumeSource.FC != nil:
+			printFCVolumeSource(volume.VolumeSource.FC, w)
+		case volume.VolumeSource.AzureFile != nil:
+			printAzureFileVolumeSource(volume.VolumeSource.AzureFile, w)
+		case volume.VolumeSource.FlexVolume != nil:
+			printFlexVolumeSource(volume.VolumeSource.FlexVolume, w)
+		case volume.VolumeSource.Flocker != nil:
+			printFlockerVolumeSource(volume.VolumeSource.Flocker, w)
 		default:
 			w.Write(LEVEL_1, "<unknown>\n")
 		}
 	}
 }
 
-func printHostPathVolumeSource(hostPath *api.HostPathVolumeSource, w *PrefixWriter) {
+func printHostPathVolumeSource(hostPath *api.HostPathVolumeSource, w PrefixWriter) {
+	hostPathType := "<none>"
+	if hostPath.Type != nil {
+		hostPathType = string(*hostPath.Type)
+	}
 	w.Write(LEVEL_2, "Type:\tHostPath (bare host directory volume)\n"+
-		"    Path:\t%v\n", hostPath.Path)
+		"    Path:\t%v\n"+
+		"    HostPathType:\t%v\n",
+		hostPath.Path, hostPathType)
 }
 
-func printEmptyDirVolumeSource(emptyDir *api.EmptyDirVolumeSource, w *PrefixWriter) {
+func printEmptyDirVolumeSource(emptyDir *api.EmptyDirVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tEmptyDir (a temporary directory that shares a pod's lifetime)\n"+
 		"    Medium:\t%v\n", emptyDir.Medium)
 }
 
-func printGCEPersistentDiskVolumeSource(gce *api.GCEPersistentDiskVolumeSource, w *PrefixWriter) {
+func printGCEPersistentDiskVolumeSource(gce *api.GCEPersistentDiskVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tGCEPersistentDisk (a Persistent Disk resource in Google Compute Engine)\n"+
 		"    PDName:\t%v\n"+
 		"    FSType:\t%v\n"+
@@ -646,7 +785,7 @@ func printGCEPersistentDiskVolumeSource(gce *api.GCEPersistentDiskVolumeSource, 
 		gce.PDName, gce.FSType, gce.Partition, gce.ReadOnly)
 }
 
-func printAWSElasticBlockStoreVolumeSource(aws *api.AWSElasticBlockStoreVolumeSource, w *PrefixWriter) {
+func printAWSElasticBlockStoreVolumeSource(aws *api.AWSElasticBlockStoreVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tAWSElasticBlockStore (a Persistent Disk resource in AWS)\n"+
 		"    VolumeID:\t%v\n"+
 		"    FSType:\t%v\n"+
@@ -655,14 +794,14 @@ func printAWSElasticBlockStoreVolumeSource(aws *api.AWSElasticBlockStoreVolumeSo
 		aws.VolumeID, aws.FSType, aws.Partition, aws.ReadOnly)
 }
 
-func printGitRepoVolumeSource(git *api.GitRepoVolumeSource, w *PrefixWriter) {
+func printGitRepoVolumeSource(git *api.GitRepoVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tGitRepo (a volume that is pulled from git when the pod is created)\n"+
 		"    Repository:\t%v\n"+
 		"    Revision:\t%v\n",
 		git.Repository, git.Revision)
 }
 
-func printSecretVolumeSource(secret *api.SecretVolumeSource, w *PrefixWriter) {
+func printSecretVolumeSource(secret *api.SecretVolumeSource, w PrefixWriter) {
 	optional := secret.Optional != nil && *secret.Optional
 	w.Write(LEVEL_2, "Type:\tSecret (a volume populated by a Secret)\n"+
 		"    SecretName:\t%v\n"+
@@ -670,7 +809,7 @@ func printSecretVolumeSource(secret *api.SecretVolumeSource, w *PrefixWriter) {
 		secret.SecretName, optional)
 }
 
-func printConfigMapVolumeSource(configMap *api.ConfigMapVolumeSource, w *PrefixWriter) {
+func printConfigMapVolumeSource(configMap *api.ConfigMapVolumeSource, w PrefixWriter) {
 	optional := configMap.Optional != nil && *configMap.Optional
 	w.Write(LEVEL_2, "Type:\tConfigMap (a volume populated by a ConfigMap)\n"+
 		"    Name:\t%v\n"+
@@ -678,7 +817,7 @@ func printConfigMapVolumeSource(configMap *api.ConfigMapVolumeSource, w *PrefixW
 		configMap.Name, optional)
 }
 
-func printNFSVolumeSource(nfs *api.NFSVolumeSource, w *PrefixWriter) {
+func printNFSVolumeSource(nfs *api.NFSVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tNFS (an NFS mount that lasts the lifetime of a pod)\n"+
 		"    Server:\t%v\n"+
 		"    Path:\t%v\n"+
@@ -686,7 +825,7 @@ func printNFSVolumeSource(nfs *api.NFSVolumeSource, w *PrefixWriter) {
 		nfs.Server, nfs.Path, nfs.ReadOnly)
 }
 
-func printQuobyteVolumeSource(quobyte *api.QuobyteVolumeSource, w *PrefixWriter) {
+func printQuobyteVolumeSource(quobyte *api.QuobyteVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tQuobyte (a Quobyte mount on the host that shares a pod's lifetime)\n"+
 		"    Registry:\t%v\n"+
 		"    Volume:\t%v\n"+
@@ -694,18 +833,53 @@ func printQuobyteVolumeSource(quobyte *api.QuobyteVolumeSource, w *PrefixWriter)
 		quobyte.Registry, quobyte.Volume, quobyte.ReadOnly)
 }
 
-func printISCSIVolumeSource(iscsi *api.ISCSIVolumeSource, w *PrefixWriter) {
+func printPortworxVolumeSource(pwxVolume *api.PortworxVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tPortworxVolume (a Portworx Volume resource)\n"+
+		"    VolumeID:\t%v\n",
+		pwxVolume.VolumeID)
+}
+
+func printISCSIVolumeSource(iscsi *api.ISCSIVolumeSource, w PrefixWriter) {
+	initiator := "<none>"
+	if iscsi.InitiatorName != nil {
+		initiator = *iscsi.InitiatorName
+	}
 	w.Write(LEVEL_2, "Type:\tISCSI (an ISCSI Disk resource that is attached to a kubelet's host machine and then exposed to the pod)\n"+
 		"    TargetPortal:\t%v\n"+
 		"    IQN:\t%v\n"+
 		"    Lun:\t%v\n"+
 		"    ISCSIInterface\t%v\n"+
 		"    FSType:\t%v\n"+
-		"    ReadOnly:\t%v\n",
-		iscsi.TargetPortal, iscsi.IQN, iscsi.Lun, iscsi.ISCSIInterface, iscsi.FSType, iscsi.ReadOnly)
+		"    ReadOnly:\t%v\n"+
+		"    Portals:\t%v\n"+
+		"    DiscoveryCHAPAuth:\t%v\n"+
+		"    SessionCHAPAuth:\t%v\n"+
+		"    SecretRef:\t%v\n"+
+		"    InitiatorName:\t%v\n",
+		iscsi.TargetPortal, iscsi.IQN, iscsi.Lun, iscsi.ISCSIInterface, iscsi.FSType, iscsi.ReadOnly, iscsi.Portals, iscsi.DiscoveryCHAPAuth, iscsi.SessionCHAPAuth, iscsi.SecretRef, initiator)
 }
 
-func printGlusterfsVolumeSource(glusterfs *api.GlusterfsVolumeSource, w *PrefixWriter) {
+func printISCSIPersistentVolumeSource(iscsi *api.ISCSIPersistentVolumeSource, w PrefixWriter) {
+	initiatorName := "<none>"
+	if iscsi.InitiatorName != nil {
+		initiatorName = *iscsi.InitiatorName
+	}
+	w.Write(LEVEL_2, "Type:\tISCSI (an ISCSI Disk resource that is attached to a kubelet's host machine and then exposed to the pod)\n"+
+		"    TargetPortal:\t%v\n"+
+		"    IQN:\t%v\n"+
+		"    Lun:\t%v\n"+
+		"    ISCSIInterface\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    ReadOnly:\t%v\n"+
+		"    Portals:\t%v\n"+
+		"    DiscoveryCHAPAuth:\t%v\n"+
+		"    SessionCHAPAuth:\t%v\n"+
+		"    SecretRef:\t%v\n"+
+		"    InitiatorName:\t%v\n",
+		iscsi.TargetPortal, iscsi.IQN, iscsi.Lun, iscsi.ISCSIInterface, iscsi.FSType, iscsi.ReadOnly, iscsi.Portals, iscsi.DiscoveryCHAPAuth, iscsi.SessionCHAPAuth, iscsi.SecretRef, initiatorName)
+}
+
+func printGlusterfsVolumeSource(glusterfs *api.GlusterfsVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tGlusterfs (a Glusterfs mount on the host that shares a pod's lifetime)\n"+
 		"    EndpointsName:\t%v\n"+
 		"    Path:\t%v\n"+
@@ -713,14 +887,14 @@ func printGlusterfsVolumeSource(glusterfs *api.GlusterfsVolumeSource, w *PrefixW
 		glusterfs.EndpointsName, glusterfs.Path, glusterfs.ReadOnly)
 }
 
-func printPersistentVolumeClaimVolumeSource(claim *api.PersistentVolumeClaimVolumeSource, w *PrefixWriter) {
+func printPersistentVolumeClaimVolumeSource(claim *api.PersistentVolumeClaimVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tPersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)\n"+
 		"    ClaimName:\t%v\n"+
 		"    ReadOnly:\t%v\n",
 		claim.ClaimName, claim.ReadOnly)
 }
 
-func printRBDVolumeSource(rbd *api.RBDVolumeSource, w *PrefixWriter) {
+func printRBDVolumeSource(rbd *api.RBDVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tRBD (a Rados Block Device mount on the host that shares a pod's lifetime)\n"+
 		"    CephMonitors:\t%v\n"+
 		"    RBDImage:\t%v\n"+
@@ -733,7 +907,20 @@ func printRBDVolumeSource(rbd *api.RBDVolumeSource, w *PrefixWriter) {
 		rbd.CephMonitors, rbd.RBDImage, rbd.FSType, rbd.RBDPool, rbd.RadosUser, rbd.Keyring, rbd.SecretRef, rbd.ReadOnly)
 }
 
-func printDownwardAPIVolumeSource(d *api.DownwardAPIVolumeSource, w *PrefixWriter) {
+func printRBDPersistentVolumeSource(rbd *api.RBDPersistentVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tRBD (a Rados Block Device mount on the host that shares a pod's lifetime)\n"+
+		"    CephMonitors:\t%v\n"+
+		"    RBDImage:\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    RBDPool:\t%v\n"+
+		"    RadosUser:\t%v\n"+
+		"    Keyring:\t%v\n"+
+		"    SecretRef:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		rbd.CephMonitors, rbd.RBDImage, rbd.FSType, rbd.RBDPool, rbd.RadosUser, rbd.Keyring, rbd.SecretRef, rbd.ReadOnly)
+}
+
+func printDownwardAPIVolumeSource(d *api.DownwardAPIVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tDownwardAPI (a volume populated by information about the pod)\n    Items:\n")
 	for _, mapping := range d.Items {
 		if mapping.FieldRef != nil {
@@ -745,36 +932,186 @@ func printDownwardAPIVolumeSource(d *api.DownwardAPIVolumeSource, w *PrefixWrite
 	}
 }
 
-func printAzureDiskVolumeSource(d *api.AzureDiskVolumeSource, w *PrefixWriter) {
+func printAzureDiskVolumeSource(d *api.AzureDiskVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tAzureDisk (an Azure Data Disk mount on the host and bind mount to the pod)\n"+
 		"    DiskName:\t%v\n"+
 		"    DiskURI:\t%v\n"+
+		"    Kind: \t%v\n"+
 		"    FSType:\t%v\n"+
 		"    CachingMode:\t%v\n"+
 		"    ReadOnly:\t%v\n",
-		d.DiskName, d.DataDiskURI, *d.FSType, *d.CachingMode, *d.ReadOnly)
+		d.DiskName, d.DataDiskURI, *d.Kind, *d.FSType, *d.CachingMode, *d.ReadOnly)
 }
 
-func printVsphereVolumeSource(vsphere *api.VsphereVirtualDiskVolumeSource, w *PrefixWriter) {
+func printVsphereVolumeSource(vsphere *api.VsphereVirtualDiskVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tvSphereVolume (a Persistent Disk resource in vSphere)\n"+
 		"    VolumePath:\t%v\n"+
-		"    FSType:\t%v\n",
-		vsphere.VolumePath, vsphere.FSType)
+		"    FSType:\t%v\n"+
+		"    StoragePolicyName:\t%v\n",
+		vsphere.VolumePath, vsphere.FSType, vsphere.StoragePolicyName)
 }
 
-func printPhotonPersistentDiskVolumeSource(photon *api.PhotonPersistentDiskVolumeSource, w *PrefixWriter) {
+func printPhotonPersistentDiskVolumeSource(photon *api.PhotonPersistentDiskVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tPhotonPersistentDisk (a Persistent Disk resource in photon platform)\n"+
 		"    PdID:\t%v\n"+
 		"    FSType:\t%v\n",
 		photon.PdID, photon.FSType)
 }
 
-func printCinderVolumeSource(cinder *api.CinderVolumeSource, w *PrefixWriter) {
+func printCinderVolumeSource(cinder *api.CinderVolumeSource, w PrefixWriter) {
 	w.Write(LEVEL_2, "Type:\tCinder (a Persistent Disk resource in OpenStack)\n"+
 		"    VolumeID:\t%v\n"+
 		"    FSType:\t%v\n"+
 		"    ReadOnly:\t%v\n",
 		cinder.VolumeID, cinder.FSType, cinder.ReadOnly)
+}
+
+func printScaleIOVolumeSource(sio *api.ScaleIOVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tScaleIO (a persistent volume backed by a block device in ScaleIO)\n"+
+		"    Gateway:\t%v\n"+
+		"    System:\t%v\n"+
+		"    Protection Domain:\t%v\n"+
+		"    Storage Pool:\t%v\n"+
+		"    Storage Mode:\t%v\n"+
+		"    VolumeName:\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		sio.Gateway, sio.System, sio.ProtectionDomain, sio.StoragePool, sio.StorageMode, sio.VolumeName, sio.FSType, sio.ReadOnly)
+}
+
+func printScaleIOPersistentVolumeSource(sio *api.ScaleIOPersistentVolumeSource, w PrefixWriter) {
+	var secretNS, secretName string
+	if sio.SecretRef != nil {
+		secretName = sio.SecretRef.Name
+		secretNS = sio.SecretRef.Namespace
+	}
+	w.Write(LEVEL_2, "Type:\tScaleIO (a persistent volume backed by a block device in ScaleIO)\n"+
+		"    Gateway:\t%v\n"+
+		"    System:\t%v\n"+
+		"    Protection Domain:\t%v\n"+
+		"    Storage Pool:\t%v\n"+
+		"    Storage Mode:\t%v\n"+
+		"    VolumeName:\t%v\n"+
+		"    SecretName:\t%v\n"+
+		"    SecretNamespace:\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		sio.Gateway, sio.System, sio.ProtectionDomain, sio.StoragePool, sio.StorageMode, sio.VolumeName, secretName, secretNS, sio.FSType, sio.ReadOnly)
+}
+
+func printLocalVolumeSource(ls *api.LocalVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tLocalVolume (a persistent volume backed by local storage on a node)\n"+
+		"    Path:\t%v\n",
+		ls.Path)
+}
+
+func printCephFSVolumeSource(cephfs *api.CephFSVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tCephFS (a CephFS mount on the host that shares a pod's lifetime)\n"+
+		"    Monitors:\t%v\n"+
+		"    Path:\t%v\n"+
+		"    User:\t%v\n"+
+		"    SecretFile:\t%v\n"+
+		"    SecretRef:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		cephfs.Monitors, cephfs.Path, cephfs.User, cephfs.SecretFile, cephfs.SecretRef, cephfs.ReadOnly)
+}
+
+func printCephFSPersistentVolumeSource(cephfs *api.CephFSPersistentVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tCephFS (a CephFS mount on the host that shares a pod's lifetime)\n"+
+		"    Monitors:\t%v\n"+
+		"    Path:\t%v\n"+
+		"    User:\t%v\n"+
+		"    SecretFile:\t%v\n"+
+		"    SecretRef:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		cephfs.Monitors, cephfs.Path, cephfs.User, cephfs.SecretFile, cephfs.SecretRef, cephfs.ReadOnly)
+}
+
+func printStorageOSVolumeSource(storageos *api.StorageOSVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tStorageOS (a StorageOS Persistent Disk resource)\n"+
+		"    VolumeName:\t%v\n"+
+		"    VolumeNamespace:\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		storageos.VolumeName, storageos.VolumeNamespace, storageos.FSType, storageos.ReadOnly)
+}
+
+func printStorageOSPersistentVolumeSource(storageos *api.StorageOSPersistentVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tStorageOS (a StorageOS Persistent Disk resource)\n"+
+		"    VolumeName:\t%v\n"+
+		"    VolumeNamespace:\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		storageos.VolumeName, storageos.VolumeNamespace, storageos.FSType, storageos.ReadOnly)
+}
+
+func printFCVolumeSource(fc *api.FCVolumeSource, w PrefixWriter) {
+	lun := "<none>"
+	if fc.Lun != nil {
+		lun = strconv.Itoa(int(*fc.Lun))
+	}
+	w.Write(LEVEL_2, "Type:\tFC (a Fibre Channel disk)\n"+
+		"    TargetWWNs:\t%v\n"+
+		"    LUN:\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		strings.Join(fc.TargetWWNs, ", "), lun, fc.FSType, fc.ReadOnly)
+}
+
+func printAzureFileVolumeSource(azureFile *api.AzureFileVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tAzureFile (an Azure File Service mount on the host and bind mount to the pod)\n"+
+		"    SecretName:\t%v\n"+
+		"    ShareName:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		azureFile.SecretName, azureFile.ShareName, azureFile.ReadOnly)
+}
+
+func printAzureFilePersistentVolumeSource(azureFile *api.AzureFilePersistentVolumeSource, w PrefixWriter) {
+	ns := ""
+	if azureFile.SecretNamespace != nil {
+		ns = *azureFile.SecretNamespace
+	}
+	w.Write(LEVEL_2, "Type:\tAzureFile (an Azure File Service mount on the host and bind mount to the pod)\n"+
+		"    SecretName:\t%v\n"+
+		"    SecretNamespace:\t%v\n"+
+		"    ShareName:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		azureFile.SecretName, ns, azureFile.ShareName, azureFile.ReadOnly)
+}
+
+func printFlexPersistentVolumeSource(flex *api.FlexPersistentVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tFlexVolume (a generic volume resource that is provisioned/attached using an exec based plugin)\n"+
+		"    Driver:\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    SecretRef:\t%v\n"+
+		"    ReadOnly:\t%v\n"+
+		"    Options:\t%v\n",
+		flex.Driver, flex.FSType, flex.SecretRef, flex.ReadOnly, flex.Options)
+}
+
+func printFlexVolumeSource(flex *api.FlexVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tFlexVolume (a generic volume resource that is provisioned/attached using an exec based plugin)\n"+
+		"    Driver:\t%v\n"+
+		"    FSType:\t%v\n"+
+		"    SecretRef:\t%v\n"+
+		"    ReadOnly:\t%v\n"+
+		"    Options:\t%v\n",
+		flex.Driver, flex.FSType, flex.SecretRef, flex.ReadOnly, flex.Options)
+}
+
+func printFlockerVolumeSource(flocker *api.FlockerVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tFlocker (a Flocker volume mounted by the Flocker agent)\n"+
+		"    DatasetName:\t%v\n"+
+		"    DatasetUUID:\t%v\n",
+		flocker.DatasetName, flocker.DatasetUUID)
+}
+
+func printCSIPersistentVolumeSource(csi *api.CSIPersistentVolumeSource, w PrefixWriter) {
+	w.Write(LEVEL_2, "Type:\tCSI (a Container Storage Interface (CSI) volume source)\n"+
+		"    Driver:\t%v\n"+
+		"    VolumeHandle:\t%v\n"+
+		"    ReadOnly:\t%v\n",
+		csi.Driver, csi.VolumeHandle, csi.ReadOnly)
 }
 
 type PersistentVolumeDescriber struct {
@@ -789,27 +1126,82 @@ func (d *PersistentVolumeDescriber) Describe(namespace, name string, describerSe
 		return "", err
 	}
 
-	storage := pv.Spec.Capacity[api.ResourceStorage]
-
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = d.Core().Events(namespace).Search(api.Scheme, pv)
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, pv)
 	}
 
+	return describePersistentVolume(pv, events)
+}
+
+func printVolumeNodeAffinity(w PrefixWriter, affinity *api.VolumeNodeAffinity) {
+	w.Write(LEVEL_0, "Node Affinity:\t")
+	if affinity == nil || affinity.Required == nil {
+		w.WriteLine("<none>")
+		return
+	}
+	w.WriteLine("")
+
+	if affinity.Required != nil {
+		w.Write(LEVEL_1, "Required Terms:\t")
+		if len(affinity.Required.NodeSelectorTerms) == 0 {
+			w.WriteLine("<none>")
+		} else {
+			w.WriteLine("")
+			for i, term := range affinity.Required.NodeSelectorTerms {
+				printNodeSelectorTermsMultilineWithIndent(w, LEVEL_2, fmt.Sprintf("Term %v", i), "\t", term.MatchExpressions)
+			}
+		}
+	}
+}
+
+// printLabelsMultiline prints multiple labels with a user-defined alignment.
+func printNodeSelectorTermsMultilineWithIndent(w PrefixWriter, indentLevel int, title, innerIndent string, reqs []api.NodeSelectorRequirement) {
+	w.Write(indentLevel, "%s:%s", title, innerIndent)
+
+	if len(reqs) == 0 {
+		w.WriteLine("<none>")
+		return
+	}
+
+	for i, req := range reqs {
+		if i != 0 {
+			w.Write(indentLevel, "%s", innerIndent)
+		}
+		exprStr := fmt.Sprintf("%s %s", req.Key, strings.ToLower(string(req.Operator)))
+		if len(req.Values) > 0 {
+			exprStr = fmt.Sprintf("%s [%s]", exprStr, strings.Join(req.Values, ", "))
+		}
+		w.Write(LEVEL_0, "%s\n", exprStr)
+	}
+}
+
+func describePersistentVolume(pv *api.PersistentVolume, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", pv.Name)
 		printLabelsMultiline(w, "Labels", pv.Labels)
-		w.Write(LEVEL_0, "StorageClass:\t%s\n", storageutil.GetStorageClassAnnotation(pv.ObjectMeta))
-		w.Write(LEVEL_0, "Status:\t%s\n", pv.Status.Phase)
+		printAnnotationsMultiline(w, "Annotations", pv.Annotations)
+		w.Write(LEVEL_0, "Finalizers:\t%v\n", pv.ObjectMeta.Finalizers)
+		w.Write(LEVEL_0, "StorageClass:\t%s\n", helper.GetPersistentVolumeClass(pv))
+		if pv.ObjectMeta.DeletionTimestamp != nil {
+			w.Write(LEVEL_0, "Status:\tTerminating (lasts %s)\n", translateTimestamp(*pv.ObjectMeta.DeletionTimestamp))
+		} else {
+			w.Write(LEVEL_0, "Status:\t%v\n", pv.Status.Phase)
+		}
 		if pv.Spec.ClaimRef != nil {
 			w.Write(LEVEL_0, "Claim:\t%s\n", pv.Spec.ClaimRef.Namespace+"/"+pv.Spec.ClaimRef.Name)
 		} else {
 			w.Write(LEVEL_0, "Claim:\t%s\n", "")
 		}
 		w.Write(LEVEL_0, "Reclaim Policy:\t%v\n", pv.Spec.PersistentVolumeReclaimPolicy)
-		w.Write(LEVEL_0, "Access Modes:\t%s\n", api.GetAccessModesAsString(pv.Spec.AccessModes))
+		w.Write(LEVEL_0, "Access Modes:\t%s\n", helper.GetAccessModesAsString(pv.Spec.AccessModes))
+		if pv.Spec.VolumeMode != nil {
+			w.Write(LEVEL_0, "VolumeMode:\t%v\n", *pv.Spec.VolumeMode)
+		}
+		storage := pv.Spec.Capacity[api.ResourceStorage]
 		w.Write(LEVEL_0, "Capacity:\t%s\n", storage.String())
+		printVolumeNodeAffinity(w, pv.Spec.NodeAffinity)
 		w.Write(LEVEL_0, "Message:\t%s\n", pv.Status.Message)
 		w.Write(LEVEL_0, "Source:\n")
 
@@ -823,11 +1215,11 @@ func (d *PersistentVolumeDescriber) Describe(namespace, name string, describerSe
 		case pv.Spec.NFS != nil:
 			printNFSVolumeSource(pv.Spec.NFS, w)
 		case pv.Spec.ISCSI != nil:
-			printISCSIVolumeSource(pv.Spec.ISCSI, w)
+			printISCSIPersistentVolumeSource(pv.Spec.ISCSI, w)
 		case pv.Spec.Glusterfs != nil:
 			printGlusterfsVolumeSource(pv.Spec.Glusterfs, w)
 		case pv.Spec.RBD != nil:
-			printRBDVolumeSource(pv.Spec.RBD, w)
+			printRBDPersistentVolumeSource(pv.Spec.RBD, w)
 		case pv.Spec.Quobyte != nil:
 			printQuobyteVolumeSource(pv.Spec.Quobyte, w)
 		case pv.Spec.VsphereVolume != nil:
@@ -838,6 +1230,28 @@ func (d *PersistentVolumeDescriber) Describe(namespace, name string, describerSe
 			printAzureDiskVolumeSource(pv.Spec.AzureDisk, w)
 		case pv.Spec.PhotonPersistentDisk != nil:
 			printPhotonPersistentDiskVolumeSource(pv.Spec.PhotonPersistentDisk, w)
+		case pv.Spec.PortworxVolume != nil:
+			printPortworxVolumeSource(pv.Spec.PortworxVolume, w)
+		case pv.Spec.ScaleIO != nil:
+			printScaleIOPersistentVolumeSource(pv.Spec.ScaleIO, w)
+		case pv.Spec.Local != nil:
+			printLocalVolumeSource(pv.Spec.Local, w)
+		case pv.Spec.CephFS != nil:
+			printCephFSPersistentVolumeSource(pv.Spec.CephFS, w)
+		case pv.Spec.StorageOS != nil:
+			printStorageOSPersistentVolumeSource(pv.Spec.StorageOS, w)
+		case pv.Spec.FC != nil:
+			printFCVolumeSource(pv.Spec.FC, w)
+		case pv.Spec.AzureFile != nil:
+			printAzureFilePersistentVolumeSource(pv.Spec.AzureFile, w)
+		case pv.Spec.FlexVolume != nil:
+			printFlexPersistentVolumeSource(pv.Spec.FlexVolume, w)
+		case pv.Spec.Flocker != nil:
+			printFlockerVolumeSource(pv.Spec.Flocker, w)
+		case pv.Spec.CSI != nil:
+			printCSIPersistentVolumeSource(pv.Spec.CSI, w)
+		default:
+			w.Write(LEVEL_1, "<unknown>\n")
 		}
 
 		if events != nil {
@@ -860,27 +1274,39 @@ func (d *PersistentVolumeClaimDescriber) Describe(namespace, name string, descri
 		return "", err
 	}
 
-	storage := pvc.Spec.Resources.Requests[api.ResourceStorage]
-	capacity := ""
-	accessModes := ""
-	if pvc.Spec.VolumeName != "" {
-		accessModes = api.GetAccessModesAsString(pvc.Status.AccessModes)
-		storage = pvc.Status.Capacity[api.ResourceStorage]
-		capacity = storage.String()
-	}
+	events, _ := d.Core().Events(namespace).Search(legacyscheme.Scheme, pvc)
 
-	events, _ := d.Core().Events(namespace).Search(api.Scheme, pvc)
+	return describePersistentVolumeClaim(pvc, events)
+}
 
+func describePersistentVolumeClaim(pvc *api.PersistentVolumeClaim, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", pvc.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", pvc.Namespace)
-		w.Write(LEVEL_0, "StorageClass:\t%s\n", storageutil.GetStorageClassAnnotation(pvc.ObjectMeta))
-		w.Write(LEVEL_0, "Status:\t%v\n", pvc.Status.Phase)
+		w.Write(LEVEL_0, "StorageClass:\t%s\n", helper.GetPersistentVolumeClaimClass(pvc))
+		if pvc.ObjectMeta.DeletionTimestamp != nil {
+			w.Write(LEVEL_0, "Status:\tTerminating (lasts %s)\n", translateTimestamp(*pvc.ObjectMeta.DeletionTimestamp))
+		} else {
+			w.Write(LEVEL_0, "Status:\t%v\n", pvc.Status.Phase)
+		}
 		w.Write(LEVEL_0, "Volume:\t%s\n", pvc.Spec.VolumeName)
 		printLabelsMultiline(w, "Labels", pvc.Labels)
+		printAnnotationsMultiline(w, "Annotations", pvc.Annotations)
+		w.Write(LEVEL_0, "Finalizers:\t%v\n", pvc.ObjectMeta.Finalizers)
+		storage := pvc.Spec.Resources.Requests[api.ResourceStorage]
+		capacity := ""
+		accessModes := ""
+		if pvc.Spec.VolumeName != "" {
+			accessModes = helper.GetAccessModesAsString(pvc.Status.AccessModes)
+			storage = pvc.Status.Capacity[api.ResourceStorage]
+			capacity = storage.String()
+		}
 		w.Write(LEVEL_0, "Capacity:\t%s\n", capacity)
 		w.Write(LEVEL_0, "Access Modes:\t%s\n", accessModes)
+		if pvc.Spec.VolumeMode != nil {
+			w.Write(LEVEL_0, "VolumeMode:\t%v\n", *pvc.Spec.VolumeMode)
+		}
 		if events != nil {
 			DescribeEvents(events, w)
 		}
@@ -890,7 +1316,7 @@ func (d *PersistentVolumeClaimDescriber) Describe(namespace, name string, descri
 }
 
 func describeContainers(label string, containers []api.Container, containerStatuses []api.ContainerStatus,
-	resolverFn EnvVarResolverFunc, w *PrefixWriter, space string) {
+	resolverFn EnvVarResolverFunc, w PrefixWriter, space string) {
 	statuses := map[string]api.ContainerStatus{}
 	for _, status := range containerStatuses {
 		statuses[status.Name] = status
@@ -902,18 +1328,20 @@ func describeContainers(label string, containers []api.Container, containerStatu
 		status, ok := statuses[container.Name]
 		describeContainerBasicInfo(container, status, ok, space, w)
 		describeContainerCommand(container, w)
-		describeContainerResource(container, w)
 		if ok {
 			describeContainerState(status, w)
 		}
+		describeContainerResource(container, w)
 		describeContainerProbe(container, w)
-		describeContainerVolumes(container, w)
-		describeContainerEnvFrom(container, resolverFn, w)
+		if len(container.EnvFrom) > 0 {
+			describeContainerEnvFrom(container, resolverFn, w)
+		}
 		describeContainerEnvVars(container, resolverFn, w)
+		describeContainerVolumes(container, w)
 	}
 }
 
-func describeContainersLabel(containers []api.Container, label, space string, w *PrefixWriter) {
+func describeContainersLabel(containers []api.Container, label, space string, w PrefixWriter) {
 	none := ""
 	if len(containers) == 0 {
 		none = " <none>"
@@ -921,7 +1349,7 @@ func describeContainersLabel(containers []api.Container, label, space string, w 
 	w.Write(LEVEL_0, "%s%s:%s\n", space, label, none)
 }
 
-func describeContainerBasicInfo(container api.Container, status api.ContainerStatus, ok bool, space string, w *PrefixWriter) {
+func describeContainerBasicInfo(container api.Container, status api.ContainerStatus, ok bool, space string, w PrefixWriter) {
 	nameIndent := ""
 	if len(space) > 0 {
 		nameIndent = " "
@@ -938,7 +1366,13 @@ func describeContainerBasicInfo(container api.Container, status api.ContainerSta
 	if strings.Contains(portString, ",") {
 		w.Write(LEVEL_2, "Ports:\t%s\n", portString)
 	} else {
-		w.Write(LEVEL_2, "Port:\t%s\n", portString)
+		w.Write(LEVEL_2, "Port:\t%s\n", stringOrNone(portString))
+	}
+	hostPortString := describeContainerHostPorts(container.Ports)
+	if strings.Contains(hostPortString, ",") {
+		w.Write(LEVEL_2, "Host Ports:\t%s\n", hostPortString)
+	} else {
+		w.Write(LEVEL_2, "Host Port:\t%s\n", stringOrNone(hostPortString))
 	}
 }
 
@@ -950,7 +1384,15 @@ func describeContainerPorts(cPorts []api.ContainerPort) string {
 	return strings.Join(ports, ", ")
 }
 
-func describeContainerCommand(container api.Container, w *PrefixWriter) {
+func describeContainerHostPorts(cPorts []api.ContainerPort) string {
+	ports := make([]string, 0, len(cPorts))
+	for _, cPort := range cPorts {
+		ports = append(ports, fmt.Sprintf("%d/%s", cPort.HostPort, cPort.Protocol))
+	}
+	return strings.Join(ports, ", ")
+}
+
+func describeContainerCommand(container api.Container, w PrefixWriter) {
 	if len(container.Command) > 0 {
 		w.Write(LEVEL_2, "Command:\n")
 		for _, c := range container.Command {
@@ -965,7 +1407,7 @@ func describeContainerCommand(container api.Container, w *PrefixWriter) {
 	}
 }
 
-func describeContainerResource(container api.Container, w *PrefixWriter) {
+func describeContainerResource(container api.Container, w PrefixWriter) {
 	resources := container.Resources
 	if len(resources.Limits) > 0 {
 		w.Write(LEVEL_2, "Limits:\n")
@@ -984,7 +1426,7 @@ func describeContainerResource(container api.Container, w *PrefixWriter) {
 	}
 }
 
-func describeContainerState(status api.ContainerStatus, w *PrefixWriter) {
+func describeContainerState(status api.ContainerStatus, w PrefixWriter) {
 	describeStatus("State", status.State, w)
 	if status.LastTerminationState.Terminated != nil {
 		describeStatus("Last State", status.LastTerminationState, w)
@@ -993,7 +1435,7 @@ func describeContainerState(status api.ContainerStatus, w *PrefixWriter) {
 	w.Write(LEVEL_2, "Restart Count:\t%d\n", status.RestartCount)
 }
 
-func describeContainerProbe(container api.Container, w *PrefixWriter) {
+func describeContainerProbe(container api.Container, w PrefixWriter) {
 	if container.LivenessProbe != nil {
 		probe := DescribeProbe(container.LivenessProbe)
 		w.Write(LEVEL_2, "Liveness:\t%s\n", probe)
@@ -1004,12 +1446,13 @@ func describeContainerProbe(container api.Container, w *PrefixWriter) {
 	}
 }
 
-func describeContainerVolumes(container api.Container, w *PrefixWriter) {
+func describeContainerVolumes(container api.Container, w PrefixWriter) {
+	// Show volumeMounts
 	none := ""
 	if len(container.VolumeMounts) == 0 {
 		none = "\t<none>"
 	}
-	w.Write(LEVEL_2, "Volume Mounts:%s\n", none)
+	w.Write(LEVEL_2, "Mounts:%s\n", none)
 	sort.Sort(SortableVolumeMounts(container.VolumeMounts))
 	for _, mount := range container.VolumeMounts {
 		flags := []string{}
@@ -1023,14 +1466,22 @@ func describeContainerVolumes(container api.Container, w *PrefixWriter) {
 		}
 		w.Write(LEVEL_3, "%s from %s (%s)\n", mount.MountPath, mount.Name, strings.Join(flags, ","))
 	}
+	// Show volumeDevices if exists
+	if len(container.VolumeDevices) > 0 {
+		w.Write(LEVEL_2, "Devices:%s\n", none)
+		sort.Sort(SortableVolumeDevices(container.VolumeDevices))
+		for _, device := range container.VolumeDevices {
+			w.Write(LEVEL_3, "%s from %s\n", device.DevicePath, device.Name)
+		}
+	}
 }
 
-func describeContainerEnvVars(container api.Container, resolverFn EnvVarResolverFunc, w *PrefixWriter) {
+func describeContainerEnvVars(container api.Container, resolverFn EnvVarResolverFunc, w PrefixWriter) {
 	none := ""
 	if len(container.Env) == 0 {
 		none = "\t<none>"
 	}
-	w.Write(LEVEL_2, "Environment Variables:%s\n", none)
+	w.Write(LEVEL_2, "Environment:%s\n", none)
 
 	for _, e := range container.Env {
 		if e.ValueFrom == nil {
@@ -1046,7 +1497,7 @@ func describeContainerEnvVars(container api.Container, resolverFn EnvVarResolver
 			}
 			w.Write(LEVEL_3, "%s:\t%s (%s:%s)\n", e.Name, valueFrom, e.ValueFrom.FieldRef.APIVersion, e.ValueFrom.FieldRef.FieldPath)
 		case e.ValueFrom.ResourceFieldRef != nil:
-			valueFrom, err := fieldpath.InternalExtractContainerResourceValue(e.ValueFrom.ResourceFieldRef, &container)
+			valueFrom, err := resourcehelper.ExtractContainerResourceValue(e.ValueFrom.ResourceFieldRef, &container)
 			if err != nil {
 				valueFrom = ""
 			}
@@ -1065,7 +1516,7 @@ func describeContainerEnvVars(container api.Container, resolverFn EnvVarResolver
 	}
 }
 
-func describeContainerEnvFrom(container api.Container, resolverFn EnvVarResolverFunc, w *PrefixWriter) {
+func describeContainerEnvFrom(container api.Container, resolverFn EnvVarResolverFunc, w PrefixWriter) {
 	none := ""
 	if len(container.EnvFrom) == 0 {
 		none = "\t<none>"
@@ -1110,7 +1561,7 @@ func DescribeProbe(probe *api.Probe) string {
 		url.Path = probe.HTTPGet.Path
 		return fmt.Sprintf("http-get %s %s", url.String(), attrs)
 	case probe.TCPSocket != nil:
-		return fmt.Sprintf("tcp-socket :%s %s", probe.TCPSocket.Port.String(), attrs)
+		return fmt.Sprintf("tcp-socket %s:%s %s", probe.TCPSocket.Host, probe.TCPSocket.Port.String(), attrs)
 	}
 	return fmt.Sprintf("unknown %s", attrs)
 }
@@ -1120,7 +1571,7 @@ type EnvVarResolverFunc func(e api.EnvVar) string
 // EnvValueFrom is exported for use by describers in other packages
 func EnvValueRetriever(pod *api.Pod) EnvVarResolverFunc {
 	return func(e api.EnvVar) string {
-		internalFieldPath, _, err := api.Scheme.ConvertFieldLabel(e.ValueFrom.FieldRef.APIVersion, "Pod", e.ValueFrom.FieldRef.FieldPath, "")
+		internalFieldPath, _, err := legacyscheme.Scheme.ConvertFieldLabel(e.ValueFrom.FieldRef.APIVersion, "Pod", e.ValueFrom.FieldRef.FieldPath, "")
 		if err != nil {
 			return "" // pod validation should catch this on create
 		}
@@ -1134,7 +1585,7 @@ func EnvValueRetriever(pod *api.Pod) EnvVarResolverFunc {
 	}
 }
 
-func describeStatus(stateName string, state api.ContainerState, w *PrefixWriter) {
+func describeStatus(stateName string, state api.ContainerState, w PrefixWriter) {
 	switch {
 	case state.Running != nil:
 		w.Write(LEVEL_2, "%s:\tRunning\n", stateName)
@@ -1160,6 +1611,26 @@ func describeStatus(stateName string, state api.ContainerState, w *PrefixWriter)
 		w.Write(LEVEL_3, "Finished:\t%s\n", state.Terminated.FinishedAt.Time.Format(time.RFC1123Z))
 	default:
 		w.Write(LEVEL_2, "%s:\tWaiting\n", stateName)
+	}
+}
+
+func describeVolumeClaimTemplates(templates []api.PersistentVolumeClaim, w PrefixWriter) {
+	if len(templates) == 0 {
+		w.Write(LEVEL_0, "Volume Claims:\t<none>\n")
+		return
+	}
+	w.Write(LEVEL_0, "Volume Claims:\n")
+	for _, pvc := range templates {
+		w.Write(LEVEL_1, "Name:\t%s\n", pvc.Name)
+		w.Write(LEVEL_1, "StorageClass:\t%s\n", helper.GetPersistentVolumeClaimClass(&pvc))
+		printLabelsMultilineWithIndent(w, "  ", "Labels", "\t", pvc.Labels, sets.NewString())
+		printLabelsMultilineWithIndent(w, "  ", "Annotations", "\t", pvc.Annotations, sets.NewString())
+		if capacity, ok := pvc.Spec.Resources.Requests[api.ResourceStorage]; ok {
+			w.Write(LEVEL_1, "Capacity:\t%s\n", capacity.String())
+		} else {
+			w.Write(LEVEL_1, "Capacity:\t%s\n", "<default>")
+		}
+		w.Write(LEVEL_1, "Access Modes:\t%s\n", pvc.Spec.AccessModes)
 	}
 }
 
@@ -1194,14 +1665,14 @@ func (d *ReplicationControllerDescriber) Describe(namespace, name string, descri
 		return "", err
 	}
 
-	running, waiting, succeeded, failed, err := getPodStatusForController(pc, labels.SelectorFromSet(controller.Spec.Selector))
+	running, waiting, succeeded, failed, err := getPodStatusForController(pc, labels.SelectorFromSet(controller.Spec.Selector), controller.UID)
 	if err != nil {
 		return "", err
 	}
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = d.Core().Events(namespace).Search(api.Scheme, controller)
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, controller)
 	}
 
 	return describeReplicationController(controller, events, running, waiting, succeeded, failed)
@@ -1209,21 +1680,21 @@ func (d *ReplicationControllerDescriber) Describe(namespace, name string, descri
 
 func describeReplicationController(controller *api.ReplicationController, events *api.EventList, running, waiting, succeeded, failed int) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", controller.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", controller.Namespace)
-		if controller.Spec.Template != nil {
-			w.Write(LEVEL_0, "Image(s):\t%s\n", makeImageList(&controller.Spec.Template.Spec))
-		} else {
-			w.Write(LEVEL_0, "Image(s):\t%s\n", "<unset>")
-		}
 		w.Write(LEVEL_0, "Selector:\t%s\n", labels.FormatLabels(controller.Spec.Selector))
 		printLabelsMultiline(w, "Labels", controller.Labels)
+		printAnnotationsMultiline(w, "Annotations", controller.Annotations)
 		w.Write(LEVEL_0, "Replicas:\t%d current / %d desired\n", controller.Status.Replicas, controller.Spec.Replicas)
 		w.Write(LEVEL_0, "Pods Status:\t%d Running / %d Waiting / %d Succeeded / %d Failed\n", running, waiting, succeeded, failed)
-
-		if controller.Spec.Template != nil {
-			describeVolumes(controller.Spec.Template.Spec.Volumes, w, "")
+		DescribePodTemplate(controller.Spec.Template, w)
+		if len(controller.Status.Conditions) > 0 {
+			w.Write(LEVEL_0, "Conditions:\n  Type\tStatus\tReason\n")
+			w.Write(LEVEL_1, "----\t------\t------\n")
+			for _, c := range controller.Status.Conditions {
+				w.Write(LEVEL_1, "%v \t%v\t%v\n", c.Type, c.Status, c.Reason)
+			}
 		}
 		if events != nil {
 			DescribeEvents(events, w)
@@ -1232,15 +1703,15 @@ func describeReplicationController(controller *api.ReplicationController, events
 	})
 }
 
-func DescribePodTemplate(template *api.PodTemplateSpec, out io.Writer) {
-	w := &PrefixWriter{out}
+func DescribePodTemplate(template *api.PodTemplateSpec, w PrefixWriter) {
+	w.Write(LEVEL_0, "Pod Template:\n")
 	if template == nil {
 		w.Write(LEVEL_1, "<unset>")
 		return
 	}
 	printLabelsMultiline(w, "  Labels", template.Labels)
 	if len(template.Annotations) > 0 {
-		printLabelsMultiline(w, "  Annotations", template.Annotations)
+		printAnnotationsMultiline(w, "  Annotations", template.Annotations)
 	}
 	if len(template.Spec.ServiceAccountName) > 0 {
 		w.Write(LEVEL_1, "Service Account:\t%s\n", template.Spec.ServiceAccountName)
@@ -1271,11 +1742,11 @@ func (d *ReplicaSetDescriber) Describe(namespace, name string, describerSettings
 		return "", err
 	}
 
-	running, waiting, succeeded, failed, getPodErr := getPodStatusForController(pc, selector)
+	running, waiting, succeeded, failed, getPodErr := getPodStatusForController(pc, selector, rs.UID)
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = d.Core().Events(namespace).Search(api.Scheme, rs)
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, rs)
 	}
 
 	return describeReplicaSet(rs, events, running, waiting, succeeded, failed, getPodErr)
@@ -1283,12 +1754,15 @@ func (d *ReplicaSetDescriber) Describe(namespace, name string, describerSettings
 
 func describeReplicaSet(rs *extensions.ReplicaSet, events *api.EventList, running, waiting, succeeded, failed int, getPodErr error) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", rs.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", rs.Namespace)
-		w.Write(LEVEL_0, "Image(s):\t%s\n", makeImageList(&rs.Spec.Template.Spec))
 		w.Write(LEVEL_0, "Selector:\t%s\n", metav1.FormatLabelSelector(rs.Spec.Selector))
 		printLabelsMultiline(w, "Labels", rs.Labels)
+		printAnnotationsMultiline(w, "Annotations", rs.Annotations)
+		if controlledBy := printController(rs); len(controlledBy) > 0 {
+			w.Write(LEVEL_0, "Controlled By:\t%s\n", controlledBy)
+		}
 		w.Write(LEVEL_0, "Replicas:\t%d current / %d desired\n", rs.Status.Replicas, rs.Spec.Replicas)
 		w.Write(LEVEL_0, "Pods Status:\t")
 		if getPodErr != nil {
@@ -1296,7 +1770,14 @@ func describeReplicaSet(rs *extensions.ReplicaSet, events *api.EventList, runnin
 		} else {
 			w.Write(LEVEL_0, "%d Running / %d Waiting / %d Succeeded / %d Failed\n", running, waiting, succeeded, failed)
 		}
-		describeVolumes(rs.Spec.Template.Spec.Volumes, w, "")
+		DescribePodTemplate(&rs.Spec.Template, w)
+		if len(rs.Status.Conditions) > 0 {
+			w.Write(LEVEL_0, "Conditions:\n  Type\tStatus\tReason\n")
+			w.Write(LEVEL_1, "----\t------\t------\n")
+			for _, c := range rs.Status.Conditions {
+				w.Write(LEVEL_1, "%v \t%v\t%v\n", c.Type, c.Status, c.Reason)
+			}
+		}
 		if events != nil {
 			DescribeEvents(events, w)
 		}
@@ -1317,7 +1798,7 @@ func (d *JobDescriber) Describe(namespace, name string, describerSettings printe
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = d.Core().Events(namespace).Search(api.Scheme, job)
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, job)
 	}
 
 	return describeJob(job, events)
@@ -1325,12 +1806,16 @@ func (d *JobDescriber) Describe(namespace, name string, describerSettings printe
 
 func describeJob(job *batch.Job, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", job.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", job.Namespace)
-		w.Write(LEVEL_0, "Image(s):\t%s\n", makeImageList(&job.Spec.Template.Spec))
 		selector, _ := metav1.LabelSelectorAsSelector(job.Spec.Selector)
 		w.Write(LEVEL_0, "Selector:\t%s\n", selector)
+		printLabelsMultiline(w, "Labels", job.Labels)
+		printAnnotationsMultiline(w, "Annotations", job.Annotations)
+		if controlledBy := printController(job); len(controlledBy) > 0 {
+			w.Write(LEVEL_0, "Controlled By:\t%s\n", controlledBy)
+		}
 		w.Write(LEVEL_0, "Parallelism:\t%d\n", *job.Spec.Parallelism)
 		if job.Spec.Completions != nil {
 			w.Write(LEVEL_0, "Completions:\t%d\n", *job.Spec.Completions)
@@ -1343,9 +1828,8 @@ func describeJob(job *batch.Job, events *api.EventList) (string, error) {
 		if job.Spec.ActiveDeadlineSeconds != nil {
 			w.Write(LEVEL_0, "Active Deadline Seconds:\t%ds\n", *job.Spec.ActiveDeadlineSeconds)
 		}
-		printLabelsMultiline(w, "Labels", job.Labels)
 		w.Write(LEVEL_0, "Pods Statuses:\t%d Running / %d Succeeded / %d Failed\n", job.Status.Active, job.Status.Succeeded, job.Status.Failed)
-		describeVolumes(job.Spec.Template.Spec.Volumes, w, "")
+		DescribePodTemplate(&job.Spec.Template, w)
 		if events != nil {
 			DescribeEvents(events, w)
 		}
@@ -1353,46 +1837,47 @@ func describeJob(job *batch.Job, events *api.EventList) (string, error) {
 	})
 }
 
-// CronJobDescriber generates information about a scheduled job and the jobs it has created.
+// CronJobDescriber generates information about a cron job and the jobs it has created.
 type CronJobDescriber struct {
 	clientset.Interface
 }
 
 func (d *CronJobDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
-	scheduledJob, err := d.Batch().CronJobs(namespace).Get(name, metav1.GetOptions{})
+	cronJob, err := d.Batch().CronJobs(namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = d.Core().Events(namespace).Search(api.Scheme, scheduledJob)
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, cronJob)
 	}
 
-	return describeCronJob(scheduledJob, events)
+	return describeCronJob(cronJob, events)
 }
 
-func describeCronJob(scheduledJob *batch.CronJob, events *api.EventList) (string, error) {
+func describeCronJob(cronJob *batch.CronJob, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
-		w.Write(LEVEL_0, "Name:\t%s\n", scheduledJob.Name)
-		w.Write(LEVEL_0, "Namespace:\t%s\n", scheduledJob.Namespace)
-		w.Write(LEVEL_0, "Schedule:\t%s\n", scheduledJob.Spec.Schedule)
-		w.Write(LEVEL_0, "Concurrency Policy:\t%s\n", scheduledJob.Spec.ConcurrencyPolicy)
-		w.Write(LEVEL_0, "Suspend:\t%s\n", printBoolPtr(scheduledJob.Spec.Suspend))
-		if scheduledJob.Spec.StartingDeadlineSeconds != nil {
-			w.Write(LEVEL_0, "Starting Deadline Seconds:\t%ds\n", *scheduledJob.Spec.StartingDeadlineSeconds)
+		w := NewPrefixWriter(out)
+		w.Write(LEVEL_0, "Name:\t%s\n", cronJob.Name)
+		w.Write(LEVEL_0, "Namespace:\t%s\n", cronJob.Namespace)
+		printLabelsMultiline(w, "Labels", cronJob.Labels)
+		printAnnotationsMultiline(w, "Annotations", cronJob.Annotations)
+		w.Write(LEVEL_0, "Schedule:\t%s\n", cronJob.Spec.Schedule)
+		w.Write(LEVEL_0, "Concurrency Policy:\t%s\n", cronJob.Spec.ConcurrencyPolicy)
+		w.Write(LEVEL_0, "Suspend:\t%s\n", printBoolPtr(cronJob.Spec.Suspend))
+		if cronJob.Spec.StartingDeadlineSeconds != nil {
+			w.Write(LEVEL_0, "Starting Deadline Seconds:\t%ds\n", *cronJob.Spec.StartingDeadlineSeconds)
 		} else {
 			w.Write(LEVEL_0, "Starting Deadline Seconds:\t<unset>\n")
 		}
-		describeJobTemplate(scheduledJob.Spec.JobTemplate, w)
-		printLabelsMultiline(w, "Labels", scheduledJob.Labels)
-		if scheduledJob.Status.LastScheduleTime != nil {
-			w.Write(LEVEL_0, "Last Schedule Time:\t%s\n", scheduledJob.Status.LastScheduleTime.Time.Format(time.RFC1123Z))
+		describeJobTemplate(cronJob.Spec.JobTemplate, w)
+		if cronJob.Status.LastScheduleTime != nil {
+			w.Write(LEVEL_0, "Last Schedule Time:\t%s\n", cronJob.Status.LastScheduleTime.Time.Format(time.RFC1123Z))
 		} else {
 			w.Write(LEVEL_0, "Last Schedule Time:\t<unset>\n")
 		}
-		printActiveJobs(w, "Active Jobs", scheduledJob.Status.Active)
+		printActiveJobs(w, "Active Jobs", cronJob.Status.Active)
 		if events != nil {
 			DescribeEvents(events, w)
 		}
@@ -1400,8 +1885,7 @@ func describeCronJob(scheduledJob *batch.CronJob, events *api.EventList) (string
 	})
 }
 
-func describeJobTemplate(jobTemplate batch.JobTemplateSpec, w *PrefixWriter) {
-	w.Write(LEVEL_0, "Image(s):\t%s\n", makeImageList(&jobTemplate.Spec.Template.Spec))
+func describeJobTemplate(jobTemplate batch.JobTemplateSpec, w PrefixWriter) {
 	if jobTemplate.Spec.Selector != nil {
 		selector, _ := metav1.LabelSelectorAsSelector(jobTemplate.Spec.Selector)
 		w.Write(LEVEL_0, "Selector:\t%s\n", selector)
@@ -1421,10 +1905,10 @@ func describeJobTemplate(jobTemplate batch.JobTemplateSpec, w *PrefixWriter) {
 	if jobTemplate.Spec.ActiveDeadlineSeconds != nil {
 		w.Write(LEVEL_0, "Active Deadline Seconds:\t%ds\n", *jobTemplate.Spec.ActiveDeadlineSeconds)
 	}
-	describeVolumes(jobTemplate.Spec.Template.Spec.Volumes, w, "")
+	DescribePodTemplate(&jobTemplate.Spec.Template, w)
 }
 
-func printActiveJobs(w *PrefixWriter, title string, jobs []api.ObjectReference) {
+func printActiveJobs(w PrefixWriter, title string, jobs []api.ObjectReference) {
 	w.Write(LEVEL_0, "%s:\t", title)
 	if len(jobs) == 0 {
 		w.WriteLine("<none>")
@@ -1458,14 +1942,14 @@ func (d *DaemonSetDescriber) Describe(namespace, name string, describerSettings 
 	if err != nil {
 		return "", err
 	}
-	running, waiting, succeeded, failed, err := getPodStatusForController(pc, selector)
+	running, waiting, succeeded, failed, err := getPodStatusForController(pc, selector, daemon.UID)
 	if err != nil {
 		return "", err
 	}
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = d.Core().Events(namespace).Search(api.Scheme, daemon)
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, daemon)
 	}
 
 	return describeDaemonSet(daemon, events, running, waiting, succeeded, failed)
@@ -1473,9 +1957,8 @@ func (d *DaemonSetDescriber) Describe(namespace, name string, describerSettings 
 
 func describeDaemonSet(daemon *extensions.DaemonSet, events *api.EventList, running, waiting, succeeded, failed int) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", daemon.Name)
-		w.Write(LEVEL_0, "Image(s):\t%s\n", makeImageList(&daemon.Spec.Template.Spec))
 		selector, err := metav1.LabelSelectorAsSelector(daemon.Spec.Selector)
 		if err != nil {
 			// this shouldn't happen if LabelSelector passed validation
@@ -1484,10 +1967,14 @@ func describeDaemonSet(daemon *extensions.DaemonSet, events *api.EventList, runn
 		w.Write(LEVEL_0, "Selector:\t%s\n", selector)
 		w.Write(LEVEL_0, "Node-Selector:\t%s\n", labels.FormatLabels(daemon.Spec.Template.Spec.NodeSelector))
 		printLabelsMultiline(w, "Labels", daemon.Labels)
+		printAnnotationsMultiline(w, "Annotations", daemon.Annotations)
 		w.Write(LEVEL_0, "Desired Number of Nodes Scheduled: %d\n", daemon.Status.DesiredNumberScheduled)
 		w.Write(LEVEL_0, "Current Number of Nodes Scheduled: %d\n", daemon.Status.CurrentNumberScheduled)
+		w.Write(LEVEL_0, "Number of Nodes Scheduled with Up-to-date Pods: %d\n", daemon.Status.UpdatedNumberScheduled)
+		w.Write(LEVEL_0, "Number of Nodes Scheduled with Available Pods: %d\n", daemon.Status.NumberAvailable)
 		w.Write(LEVEL_0, "Number of Nodes Misscheduled: %d\n", daemon.Status.NumberMisscheduled)
 		w.Write(LEVEL_0, "Pods Status:\t%d Running / %d Waiting / %d Succeeded / %d Failed\n", running, waiting, succeeded, failed)
+		DescribePodTemplate(&daemon.Spec.Template, w)
 		if events != nil {
 			DescribeEvents(events, w)
 		}
@@ -1513,12 +2000,12 @@ func (d *SecretDescriber) Describe(namespace, name string, describerSettings pri
 
 func describeSecret(secret *api.Secret) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", secret.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", secret.Namespace)
 		printLabelsMultiline(w, "Labels", secret.Labels)
-		skipAnnotations := sets.NewString(annotations.LastAppliedConfigAnnotation)
-		printLabelsMultilineWithFilter(w, "Annotations", secret.Annotations, skipAnnotations)
+		skipAnnotations := sets.NewString(api.LastAppliedConfigAnnotation)
+		printAnnotationsMultilineWithFilter(w, "Annotations", secret.Annotations, skipAnnotations)
 
 		w.Write(LEVEL_0, "\nType:\t%s\n", secret.Type)
 
@@ -1571,7 +2058,7 @@ func (i *IngressDescriber) describeBackend(ns string, backend *extensions.Ingres
 
 func (i *IngressDescriber) describeIngress(ing *extensions.Ingress, describerSettings printers.DescriberSettings) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%v\n", ing.Name)
 		w.Write(LEVEL_0, "Namespace:\t%v\n", ing.Namespace)
 		w.Write(LEVEL_0, "Address:\t%v\n", loadBalancerStatusStringer(ing.Status.LoadBalancer, true))
@@ -1613,7 +2100,7 @@ func (i *IngressDescriber) describeIngress(ing *extensions.Ingress, describerSet
 		describeIngressAnnotations(w, ing.Annotations)
 
 		if describerSettings.ShowEvents {
-			events, _ := i.Core().Events(ing.Namespace).Search(api.Scheme, ing)
+			events, _ := i.Core().Events(ing.Namespace).Search(legacyscheme.Scheme, ing)
 			if events != nil {
 				DescribeEvents(events, w)
 			}
@@ -1622,7 +2109,7 @@ func (i *IngressDescriber) describeIngress(ing *extensions.Ingress, describerSet
 	})
 }
 
-func describeIngressTLS(w *PrefixWriter, ingTLS []extensions.IngressTLS) {
+func describeIngressTLS(w PrefixWriter, ingTLS []extensions.IngressTLS) {
 	w.Write(LEVEL_0, "TLS:\n")
 	for _, t := range ingTLS {
 		if t.SecretName == "" {
@@ -1635,15 +2122,10 @@ func describeIngressTLS(w *PrefixWriter, ingTLS []extensions.IngressTLS) {
 }
 
 // TODO: Move from annotations into Ingress status.
-func describeIngressAnnotations(w *PrefixWriter, annotations map[string]string) {
+func describeIngressAnnotations(w PrefixWriter, annotations map[string]string) {
 	w.Write(LEVEL_0, "Annotations:\n")
 	for k, v := range annotations {
-		if !strings.HasPrefix(k, "ingress") {
-			continue
-		}
-		parts := strings.Split(k, "/")
-		name := parts[len(parts)-1]
-		w.Write(LEVEL_1, "%v:\t%s\n", name, v)
+		w.Write(LEVEL_1, "%v:\t%s\n", k, v)
 	}
 	return
 }
@@ -1664,7 +2146,7 @@ func (d *ServiceDescriber) Describe(namespace, name string, describerSettings pr
 	endpoints, _ := d.Core().Endpoints(namespace).Get(name, metav1.GetOptions{})
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = d.Core().Events(namespace).Search(api.Scheme, service)
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, service)
 	}
 	return describeService(service, endpoints, events)
 }
@@ -1690,15 +2172,19 @@ func describeService(service *api.Service, endpoints *api.Endpoints, events *api
 		endpoints = &api.Endpoints{}
 	}
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", service.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", service.Namespace)
 		printLabelsMultiline(w, "Labels", service.Labels)
+		printAnnotationsMultiline(w, "Annotations", service.Annotations)
 		w.Write(LEVEL_0, "Selector:\t%s\n", labels.FormatLabels(service.Spec.Selector))
 		w.Write(LEVEL_0, "Type:\t%s\n", service.Spec.Type)
 		w.Write(LEVEL_0, "IP:\t%s\n", service.Spec.ClusterIP)
 		if len(service.Spec.ExternalIPs) > 0 {
 			w.Write(LEVEL_0, "External IPs:\t%v\n", strings.Join(service.Spec.ExternalIPs, ","))
+		}
+		if service.Spec.LoadBalancerIP != "" {
+			w.Write(LEVEL_0, "IP:\t%s\n", service.Spec.LoadBalancerIP)
 		}
 		if service.Spec.ExternalName != "" {
 			w.Write(LEVEL_0, "External Name:\t%s\n", service.Spec.ExternalName)
@@ -1715,12 +2201,26 @@ func describeService(service *api.Service, endpoints *api.Endpoints, events *api
 				name = "<unset>"
 			}
 			w.Write(LEVEL_0, "Port:\t%s\t%d/%s\n", name, sp.Port, sp.Protocol)
+			if sp.TargetPort.Type == intstr.Type(intstr.Int) {
+				w.Write(LEVEL_0, "TargetPort:\t%d/%s\n", sp.TargetPort.IntVal, sp.Protocol)
+			} else {
+				w.Write(LEVEL_0, "TargetPort:\t%s/%s\n", sp.TargetPort.StrVal, sp.Protocol)
+			}
 			if sp.NodePort != 0 {
 				w.Write(LEVEL_0, "NodePort:\t%s\t%d/%s\n", name, sp.NodePort, sp.Protocol)
 			}
 			w.Write(LEVEL_0, "Endpoints:\t%s\n", formatEndpoints(endpoints, sets.NewString(sp.Name)))
 		}
 		w.Write(LEVEL_0, "Session Affinity:\t%s\n", service.Spec.SessionAffinity)
+		if service.Spec.ExternalTrafficPolicy != "" {
+			w.Write(LEVEL_0, "External Traffic Policy:\t%s\n", service.Spec.ExternalTrafficPolicy)
+		}
+		if service.Spec.HealthCheckNodePort != 0 {
+			w.Write(LEVEL_0, "HealthCheck NodePort:\t%d\n", service.Spec.HealthCheckNodePort)
+		}
+		if len(service.Spec.LoadBalancerSourceRanges) > 0 {
+			w.Write(LEVEL_0, "LoadBalancer Source Ranges:\t%v\n", strings.Join(service.Spec.LoadBalancerSourceRanges, ","))
+		}
 		if events != nil {
 			DescribeEvents(events, w)
 		}
@@ -1743,7 +2243,7 @@ func (d *EndpointsDescriber) Describe(namespace, name string, describerSettings 
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		events, _ = d.Core().Events(namespace).Search(api.Scheme, ep)
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, ep)
 	}
 
 	return describeEndpoints(ep, events)
@@ -1751,10 +2251,11 @@ func (d *EndpointsDescriber) Describe(namespace, name string, describerSettings 
 
 func describeEndpoints(ep *api.Endpoints, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", ep.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", ep.Namespace)
 		printLabelsMultiline(w, "Labels", ep.Labels)
+		printAnnotationsMultiline(w, "Annotations", ep.Annotations)
 
 		w.Write(LEVEL_0, "Subsets:\n")
 		for i := range ep.Subsets {
@@ -1852,16 +2353,21 @@ func (d *ServiceAccountDescriber) Describe(namespace, name string, describerSett
 		}
 	}
 
-	return describeServiceAccount(serviceAccount, tokens, missingSecrets)
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = d.Core().Events(namespace).Search(legacyscheme.Scheme, serviceAccount)
+	}
+
+	return describeServiceAccount(serviceAccount, tokens, missingSecrets, events)
 }
 
-func describeServiceAccount(serviceAccount *api.ServiceAccount, tokens []api.Secret, missingSecrets sets.String) (string, error) {
+func describeServiceAccount(serviceAccount *api.ServiceAccount, tokens []api.Secret, missingSecrets sets.String, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", serviceAccount.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", serviceAccount.Namespace)
 		printLabelsMultiline(w, "Labels", serviceAccount.Labels)
-		w.WriteLine()
+		printAnnotationsMultiline(w, "Annotations", serviceAccount.Annotations)
 
 		var (
 			emptyHeader = "                   "
@@ -1889,7 +2395,8 @@ func describeServiceAccount(serviceAccount *api.ServiceAccount, tokens []api.Sec
 			mountHeader: mountSecretNames,
 			tokenHeader: tokenSecretNames,
 		}
-		for header, names := range types {
+		for _, header := range sets.StringKeySet(types).List() {
+			names := types[header]
 			if len(names) == 0 {
 				w.Write(LEVEL_0, "%s\t<none>\n", header)
 			} else {
@@ -1903,7 +2410,169 @@ func describeServiceAccount(serviceAccount *api.ServiceAccount, tokens []api.Sec
 					prefix = emptyHeader
 				}
 			}
-			w.WriteLine()
+		}
+
+		if events != nil {
+			DescribeEvents(events, w)
+		}
+
+		return nil
+	})
+}
+
+// RoleDescriber generates information about a node.
+type RoleDescriber struct {
+	clientset.Interface
+}
+
+func (d *RoleDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
+	role, err := d.Rbac().Roles(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	breakdownRules := []rbac.PolicyRule{}
+	for _, rule := range role.Rules {
+		breakdownRules = append(breakdownRules, validation.BreakdownRule(rule)...)
+	}
+
+	compactRules, err := validation.CompactRules(breakdownRules)
+	if err != nil {
+		return "", err
+	}
+	sort.Stable(rbac.SortableRuleSlice(compactRules))
+
+	return tabbedString(func(out io.Writer) error {
+		w := NewPrefixWriter(out)
+		w.Write(LEVEL_0, "Name:\t%s\n", role.Name)
+		printLabelsMultiline(w, "Labels", role.Labels)
+		printAnnotationsMultiline(w, "Annotations", role.Annotations)
+
+		w.Write(LEVEL_0, "PolicyRule:\n")
+		w.Write(LEVEL_1, "Resources\tNon-Resource URLs\tResource Names\tVerbs\n")
+		w.Write(LEVEL_1, "---------\t-----------------\t--------------\t-----\n")
+		for _, r := range compactRules {
+			w.Write(LEVEL_1, "%s\t%v\t%v\t%v\n", combineResourceGroup(r.Resources, r.APIGroups), r.NonResourceURLs, r.ResourceNames, r.Verbs)
+		}
+
+		return nil
+	})
+}
+
+// ClusterRoleDescriber generates information about a node.
+type ClusterRoleDescriber struct {
+	clientset.Interface
+}
+
+func (d *ClusterRoleDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
+	role, err := d.Rbac().ClusterRoles().Get(name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	breakdownRules := []rbac.PolicyRule{}
+	for _, rule := range role.Rules {
+		breakdownRules = append(breakdownRules, validation.BreakdownRule(rule)...)
+	}
+
+	compactRules, err := validation.CompactRules(breakdownRules)
+	if err != nil {
+		return "", err
+	}
+	sort.Stable(rbac.SortableRuleSlice(compactRules))
+
+	return tabbedString(func(out io.Writer) error {
+		w := NewPrefixWriter(out)
+		w.Write(LEVEL_0, "Name:\t%s\n", role.Name)
+		printLabelsMultiline(w, "Labels", role.Labels)
+		printAnnotationsMultiline(w, "Annotations", role.Annotations)
+
+		w.Write(LEVEL_0, "PolicyRule:\n")
+		w.Write(LEVEL_1, "Resources\tNon-Resource URLs\tResource Names\tVerbs\n")
+		w.Write(LEVEL_1, "---------\t-----------------\t--------------\t-----\n")
+		for _, r := range compactRules {
+			w.Write(LEVEL_1, "%s\t%v\t%v\t%v\n", combineResourceGroup(r.Resources, r.APIGroups), r.NonResourceURLs, r.ResourceNames, r.Verbs)
+		}
+
+		return nil
+	})
+}
+
+func combineResourceGroup(resource, group []string) string {
+	if len(resource) == 0 {
+		return ""
+	}
+	parts := strings.SplitN(resource[0], "/", 2)
+	combine := parts[0]
+
+	if len(group) > 0 && group[0] != "" {
+		combine = combine + "." + group[0]
+	}
+
+	if len(parts) == 2 {
+		combine = combine + "/" + parts[1]
+	}
+	return combine
+}
+
+// RoleBindingDescriber generates information about a node.
+type RoleBindingDescriber struct {
+	clientset.Interface
+}
+
+func (d *RoleBindingDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
+	binding, err := d.Rbac().RoleBindings(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	return tabbedString(func(out io.Writer) error {
+		w := NewPrefixWriter(out)
+		w.Write(LEVEL_0, "Name:\t%s\n", binding.Name)
+		printLabelsMultiline(w, "Labels", binding.Labels)
+		printAnnotationsMultiline(w, "Annotations", binding.Annotations)
+
+		w.Write(LEVEL_0, "Role:\n")
+		w.Write(LEVEL_1, "Kind:\t%s\n", binding.RoleRef.Kind)
+		w.Write(LEVEL_1, "Name:\t%s\n", binding.RoleRef.Name)
+
+		w.Write(LEVEL_0, "Subjects:\n")
+		w.Write(LEVEL_1, "Kind\tName\tNamespace\n")
+		w.Write(LEVEL_1, "----\t----\t---------\n")
+		for _, s := range binding.Subjects {
+			w.Write(LEVEL_1, "%s\t%s\t%s\n", s.Kind, s.Name, s.Namespace)
+		}
+
+		return nil
+	})
+}
+
+// ClusterRoleBindingDescriber generates information about a node.
+type ClusterRoleBindingDescriber struct {
+	clientset.Interface
+}
+
+func (d *ClusterRoleBindingDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
+	binding, err := d.Rbac().ClusterRoleBindings().Get(name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	return tabbedString(func(out io.Writer) error {
+		w := NewPrefixWriter(out)
+		w.Write(LEVEL_0, "Name:\t%s\n", binding.Name)
+		printLabelsMultiline(w, "Labels", binding.Labels)
+		printAnnotationsMultiline(w, "Annotations", binding.Annotations)
+
+		w.Write(LEVEL_0, "Role:\n")
+		w.Write(LEVEL_1, "Kind:\t%s\n", binding.RoleRef.Kind)
+		w.Write(LEVEL_1, "Name:\t%s\n", binding.RoleRef.Name)
+
+		w.Write(LEVEL_0, "Subjects:\n")
+		w.Write(LEVEL_1, "Kind\tName\tNamespace\n")
+		w.Write(LEVEL_1, "----\t----\t---------\n")
+		for _, s := range binding.Subjects {
+			w.Write(LEVEL_1, "%s\t%s\t%s\n", s.Kind, s.Name, s.Namespace)
 		}
 
 		return nil
@@ -1939,12 +2608,12 @@ func (d *NodeDescriber) Describe(namespace, name string, describerSettings print
 
 	var events *api.EventList
 	if describerSettings.ShowEvents {
-		if ref, err := api.GetReference(api.Scheme, node); err != nil {
+		if ref, err := ref.GetReference(legacyscheme.Scheme, node); err != nil {
 			glog.Errorf("Unable to construct reference to '%#v': %v", node, err)
 		} else {
 			// TODO: We haven't decided the namespace for Node object yet.
 			ref.UID = types.UID(ref.Name)
-			events, _ = d.Core().Events("").Search(api.Scheme, ref)
+			events, _ = d.Core().Events("").Search(legacyscheme.Scheme, ref)
 		}
 	}
 
@@ -1953,13 +2622,18 @@ func (d *NodeDescriber) Describe(namespace, name string, describerSettings print
 
 func describeNode(node *api.Node, nodeNonTerminatedPodsList *api.PodList, events *api.EventList, canViewPods bool) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", node.Name)
-		w.Write(LEVEL_0, "Role:\t%s\n", findNodeRole(node))
+		if roles := findNodeRoles(node); len(roles) > 0 {
+			w.Write(LEVEL_0, "Roles:\t%s\n", strings.Join(roles, ","))
+		} else {
+			w.Write(LEVEL_0, "Roles:\t%s\n", "<none>")
+		}
 		printLabelsMultiline(w, "Labels", node.Labels)
-		printNodeTaintsMultiline(w, "Taints", node.Spec.Taints)
+		printAnnotationsMultiline(w, "Annotations", node.Annotations)
 		w.Write(LEVEL_0, "CreationTimestamp:\t%s\n", node.CreationTimestamp.Time.Format(time.RFC1123Z))
-		w.Write(LEVEL_0, "Phase:\t%v\n", node.Status.Phase)
+		printNodeTaintsMultiline(w, "Taints", node.Spec.Taints)
+		w.Write(LEVEL_0, "Unschedulable:\t%v\n", node.Spec.Unschedulable)
 		if len(node.Status.Conditions) > 0 {
 			w.Write(LEVEL_0, "Conditions:\n  Type\tStatus\tLastHeartbeatTime\tLastTransitionTime\tReason\tMessage\n")
 			w.Write(LEVEL_1, "----\t------\t-----------------\t------------------\t------\t-------\n")
@@ -1973,9 +2647,10 @@ func describeNode(node *api.Node, nodeNonTerminatedPodsList *api.PodList, events
 					c.Message)
 			}
 		}
-		addresses := make([]string, 0, len(node.Status.Addresses))
+
+		w.Write(LEVEL_0, "Addresses:\n")
 		for _, address := range node.Status.Addresses {
-			addresses = append(addresses, address.Address)
+			w.Write(LEVEL_1, "%s:\t%s\n", address.Type, address.Address)
 		}
 
 		printResourceList := func(resourceList api.ResourceList) {
@@ -1990,7 +2665,6 @@ func describeNode(node *api.Node, nodeNonTerminatedPodsList *api.PodList, events
 			}
 		}
 
-		w.Write(LEVEL_0, "Addresses:\t%s\n", strings.Join(addresses, ","))
 		if len(node.Status.Capacity) > 0 {
 			w.Write(LEVEL_0, "Capacity:\n")
 			printResourceList(node.Status.Capacity)
@@ -2018,10 +2692,11 @@ func describeNode(node *api.Node, nodeNonTerminatedPodsList *api.PodList, events
 		if len(node.Spec.ExternalID) > 0 {
 			w.Write(LEVEL_0, "ExternalID:\t%s\n", node.Spec.ExternalID)
 		}
+		if len(node.Spec.ProviderID) > 0 {
+			w.Write(LEVEL_0, "ProviderID:\t%s\n", node.Spec.ProviderID)
+		}
 		if canViewPods && nodeNonTerminatedPodsList != nil {
-			if err := describeNodeResource(nodeNonTerminatedPodsList, node, w); err != nil {
-				return err
-			}
+			describeNodeResource(nodeNonTerminatedPodsList, node, w)
 		} else {
 			w.Write(LEVEL_0, "Pods:\tnot authorized\n")
 		}
@@ -2048,29 +2723,36 @@ func (p *StatefulSetDescriber) Describe(namespace, name string, describerSetting
 		return "", err
 	}
 
-	running, waiting, succeeded, failed, err := getPodStatusForController(pc, selector)
+	running, waiting, succeeded, failed, err := getPodStatusForController(pc, selector, ps.UID)
 	if err != nil {
 		return "", err
 	}
 
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = p.client.Core().Events(namespace).Search(legacyscheme.Scheme, ps)
+	}
+
+	return describeStatefulSet(ps, selector, events, running, waiting, succeeded, failed)
+}
+
+func describeStatefulSet(ps *apps.StatefulSet, selector labels.Selector, events *api.EventList, running, waiting, succeeded, failed int) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
-		w.Write(LEVEL_0, "Name:\t%s\n", ps.Name)
-		w.Write(LEVEL_0, "Namespace:\t%s\n", ps.Namespace)
-		w.Write(LEVEL_0, "Image(s):\t%s\n", makeImageList(&ps.Spec.Template.Spec))
-		w.Write(LEVEL_0, "Selector:\t%s\n", metav1.FormatLabelSelector(ps.Spec.Selector))
-		w.Write(LEVEL_0, "Labels:\t%s\n", labels.FormatLabels(ps.Labels))
-		w.Write(LEVEL_0, "Replicas:\t%d current / %d desired\n", ps.Status.Replicas, ps.Spec.Replicas)
-		w.Write(LEVEL_0, "Annotations:\t%s\n", labels.FormatLabels(ps.Annotations))
+		w := NewPrefixWriter(out)
+		w.Write(LEVEL_0, "Name:\t%s\n", ps.ObjectMeta.Name)
+		w.Write(LEVEL_0, "Namespace:\t%s\n", ps.ObjectMeta.Namespace)
 		w.Write(LEVEL_0, "CreationTimestamp:\t%s\n", ps.CreationTimestamp.Time.Format(time.RFC1123Z))
+		w.Write(LEVEL_0, "Selector:\t%s\n", selector)
+		printLabelsMultiline(w, "Labels", ps.Labels)
+		printAnnotationsMultiline(w, "Annotations", ps.Annotations)
+		w.Write(LEVEL_0, "Replicas:\t%d desired | %d total\n", ps.Spec.Replicas, ps.Status.Replicas)
 		w.Write(LEVEL_0, "Pods Status:\t%d Running / %d Waiting / %d Succeeded / %d Failed\n", running, waiting, succeeded, failed)
-		describeVolumes(ps.Spec.Template.Spec.Volumes, w, "")
-		if describerSettings.ShowEvents {
-			events, _ := p.client.Core().Events(namespace).Search(api.Scheme, ps)
-			if events != nil {
-				DescribeEvents(events, w)
-			}
+		DescribePodTemplate(&ps.Spec.Template, w)
+		describeVolumeClaimTemplates(ps.Spec.VolumeClaimTemplates, w)
+		if events != nil {
+			DescribeEvents(events, w)
 		}
+
 		return nil
 	})
 }
@@ -2094,7 +2776,16 @@ func (p *CertificateSigningRequestDescriber) Describe(namespace, name string, de
 		return "", err
 	}
 
-	printListHelper := func(w *PrefixWriter, prefix, name string, values []string) {
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = p.client.Core().Events(namespace).Search(legacyscheme.Scheme, csr)
+	}
+
+	return describeCertificateSigningRequest(csr, cr, status, events)
+}
+
+func describeCertificateSigningRequest(csr *certificates.CertificateSigningRequest, cr *x509.CertificateRequest, status string, events *api.EventList) (string, error) {
+	printListHelper := func(w PrefixWriter, prefix, name string, values []string) {
 		if len(values) == 0 {
 			return
 		}
@@ -2104,7 +2795,7 @@ func (p *CertificateSigningRequestDescriber) Describe(namespace, name string, de
 	}
 
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", csr.Name)
 		w.Write(LEVEL_0, "Labels:\t%s\n", labels.FormatLabels(csr.Labels))
 		w.Write(LEVEL_0, "Annotations:\t%s\n", labels.FormatLabels(csr.Annotations))
@@ -2134,12 +2825,10 @@ func (p *CertificateSigningRequestDescriber) Describe(namespace, name string, de
 			printListHelper(w, "\t", "IP Addresses", ipaddrs)
 		}
 
-		if describerSettings.ShowEvents {
-			events, _ := p.client.Core().Events(namespace).Search(api.Scheme, csr)
-			if events != nil {
-				DescribeEvents(events, w)
-			}
+		if events != nil {
+			DescribeEvents(events, w)
 		}
+
 		return nil
 	})
 }
@@ -2154,12 +2843,22 @@ func (d *HorizontalPodAutoscalerDescriber) Describe(namespace, name string, desc
 	if err != nil {
 		return "", err
 	}
+
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = d.client.Core().Events(namespace).Search(legacyscheme.Scheme, hpa)
+	}
+
+	return describeHorizontalPodAutoscaler(hpa, events, d)
+}
+
+func describeHorizontalPodAutoscaler(hpa *autoscaling.HorizontalPodAutoscaler, events *api.EventList, d *HorizontalPodAutoscalerDescriber) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", hpa.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", hpa.Namespace)
 		printLabelsMultiline(w, "Labels", hpa.Labels)
-		printLabelsMultiline(w, "Annotations", hpa.Annotations)
+		printAnnotationsMultiline(w, "Annotations", hpa.Annotations)
 		w.Write(LEVEL_0, "CreationTimestamp:\t%s\n", hpa.CreationTimestamp.Time.Format(time.RFC1123Z))
 		w.Write(LEVEL_0, "Reference:\t%s/%s\n",
 			hpa.Spec.ScaleTargetRef.Kind,
@@ -2167,6 +2866,22 @@ func (d *HorizontalPodAutoscalerDescriber) Describe(namespace, name string, desc
 		w.Write(LEVEL_0, "Metrics:\t( current / target )\n")
 		for i, metric := range hpa.Spec.Metrics {
 			switch metric.Type {
+			case autoscaling.ExternalMetricSourceType:
+				if metric.External.TargetAverageValue != nil {
+					current := "<unknown>"
+					if len(hpa.Status.CurrentMetrics) > i && hpa.Status.CurrentMetrics[i].External != nil &&
+						hpa.Status.CurrentMetrics[i].External.CurrentAverageValue != nil {
+						current = hpa.Status.CurrentMetrics[i].External.CurrentAverageValue.String()
+					}
+					w.Write(LEVEL_1, "%q (target average value):\t%s / %s\n", metric.External.MetricName, current, metric.External.TargetAverageValue.String())
+				} else {
+					current := "<unknown>"
+					if len(hpa.Status.CurrentMetrics) > i && hpa.Status.CurrentMetrics[i].External != nil {
+						current = hpa.Status.CurrentMetrics[i].External.CurrentValue.String()
+					}
+					w.Write(LEVEL_1, "%q (target value):\t%s / %s\n", metric.External.MetricName, current, metric.External.TargetValue.String())
+
+				}
 			case autoscaling.PodsMetricSourceType:
 				current := "<unknown>"
 				if len(hpa.Status.CurrentMetrics) > i && hpa.Status.CurrentMetrics[i].Pods != nil {
@@ -2220,18 +2935,24 @@ func (d *HorizontalPodAutoscalerDescriber) Describe(namespace, name string, desc
 				w.Write(LEVEL_0, "failed to check Replication Controller\n")
 			}
 		}
-
-		if describerSettings.ShowEvents {
-			events, _ := d.client.Core().Events(namespace).Search(api.Scheme, hpa)
-			if events != nil {
-				DescribeEvents(events, w)
+		if len(hpa.Status.Conditions) > 0 {
+			w.Write(LEVEL_0, "Conditions:\n")
+			w.Write(LEVEL_1, "Type\tStatus\tReason\tMessage\n")
+			w.Write(LEVEL_1, "----\t------\t------\t-------\n")
+			for _, c := range hpa.Status.Conditions {
+				w.Write(LEVEL_1, "%v\t%v\t%v\t%v\n", c.Type, c.Status, c.Reason, c.Message)
 			}
 		}
+
+		if events != nil {
+			DescribeEvents(events, w)
+		}
+
 		return nil
 	})
 }
 
-func describeNodeResource(nodeNonTerminatedPodsList *api.PodList, node *api.Node, w *PrefixWriter) error {
+func describeNodeResource(nodeNonTerminatedPodsList *api.PodList, node *api.Node, w PrefixWriter) {
 	w.Write(LEVEL_0, "Non-terminated Pods:\t(%d in total)\n", len(nodeNonTerminatedPodsList.Items))
 	w.Write(LEVEL_1, "Namespace\tName\t\tCPU Requests\tCPU Limits\tMemory Requests\tMemory Limits\n")
 	w.Write(LEVEL_1, "---------\t----\t\t------------\t----------\t---------------\t-------------\n")
@@ -2241,10 +2962,7 @@ func describeNodeResource(nodeNonTerminatedPodsList *api.PodList, node *api.Node
 	}
 
 	for _, pod := range nodeNonTerminatedPodsList.Items {
-		req, limit, err := api.PodRequestsAndLimits(&pod)
-		if err != nil {
-			return err
-		}
+		req, limit := resourcehelper.PodRequestsAndLimits(&pod)
 		cpuReq, cpuLimit, memoryReq, memoryLimit := req[api.ResourceCPU], limit[api.ResourceCPU], req[api.ResourceMemory], limit[api.ResourceMemory]
 		fractionCpuReq := float64(cpuReq.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
 		fractionCpuLimit := float64(cpuLimit.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
@@ -2257,42 +2975,29 @@ func describeNodeResource(nodeNonTerminatedPodsList *api.PodList, node *api.Node
 
 	w.Write(LEVEL_0, "Allocated resources:\n  (Total limits may be over 100 percent, i.e., overcommitted.)\n  CPU Requests\tCPU Limits\tMemory Requests\tMemory Limits\n")
 	w.Write(LEVEL_1, "------------\t----------\t---------------\t-------------\n")
-	reqs, limits, err := getPodsTotalRequestsAndLimits(nodeNonTerminatedPodsList)
-	if err != nil {
-		return err
-	}
+	reqs, limits := getPodsTotalRequestsAndLimits(nodeNonTerminatedPodsList)
 	cpuReqs, cpuLimits, memoryReqs, memoryLimits := reqs[api.ResourceCPU], limits[api.ResourceCPU], reqs[api.ResourceMemory], limits[api.ResourceMemory]
-	fractionCpuReqs := float64(cpuReqs.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
-	fractionCpuLimits := float64(cpuLimits.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
-	fractionMemoryReqs := float64(memoryReqs.Value()) / float64(allocatable.Memory().Value()) * 100
-	fractionMemoryLimits := float64(memoryLimits.Value()) / float64(allocatable.Memory().Value()) * 100
+	fractionCpuReqs := float64(0)
+	fractionCpuLimits := float64(0)
+	if allocatable.Cpu().MilliValue() != 0 {
+		fractionCpuReqs = float64(cpuReqs.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
+		fractionCpuLimits = float64(cpuLimits.MilliValue()) / float64(allocatable.Cpu().MilliValue()) * 100
+	}
+	fractionMemoryReqs := float64(0)
+	fractionMemoryLimits := float64(0)
+	if allocatable.Memory().Value() != 0 {
+		fractionMemoryReqs = float64(memoryReqs.Value()) / float64(allocatable.Memory().Value()) * 100
+		fractionMemoryLimits = float64(memoryLimits.Value()) / float64(allocatable.Memory().Value()) * 100
+	}
 	w.Write(LEVEL_1, "%s (%d%%)\t%s (%d%%)\t%s (%d%%)\t%s (%d%%)\n",
 		cpuReqs.String(), int64(fractionCpuReqs), cpuLimits.String(), int64(fractionCpuLimits),
 		memoryReqs.String(), int64(fractionMemoryReqs), memoryLimits.String(), int64(fractionMemoryLimits))
-	return nil
 }
 
-func filterTerminatedPods(pods []*api.Pod) []*api.Pod {
-	if len(pods) == 0 {
-		return pods
-	}
-	result := []*api.Pod{}
-	for _, pod := range pods {
-		if pod.Status.Phase == api.PodSucceeded || pod.Status.Phase == api.PodFailed {
-			continue
-		}
-		result = append(result, pod)
-	}
-	return result
-}
-
-func getPodsTotalRequestsAndLimits(podList *api.PodList) (reqs map[api.ResourceName]resource.Quantity, limits map[api.ResourceName]resource.Quantity, err error) {
+func getPodsTotalRequestsAndLimits(podList *api.PodList) (reqs map[api.ResourceName]resource.Quantity, limits map[api.ResourceName]resource.Quantity) {
 	reqs, limits = map[api.ResourceName]resource.Quantity{}, map[api.ResourceName]resource.Quantity{}
 	for _, pod := range podList.Items {
-		podReqs, podLimits, err := api.PodRequestsAndLimits(&pod)
-		if err != nil {
-			return nil, nil, err
-		}
+		podReqs, podLimits := resourcehelper.PodRequestsAndLimits(&pod)
 		for podReqName, podReqValue := range podReqs {
 			if value, ok := reqs[podReqName]; !ok {
 				reqs[podReqName] = *podReqValue.Copy()
@@ -2313,35 +3018,40 @@ func getPodsTotalRequestsAndLimits(podList *api.PodList) (reqs map[api.ResourceN
 	return
 }
 
-func DescribeEvents(el *api.EventList, w *PrefixWriter) {
+func DescribeEvents(el *api.EventList, w PrefixWriter) {
 	if len(el.Items) == 0 {
-		w.Write(LEVEL_0, "No events.\n")
+		w.Write(LEVEL_0, "Events:\t<none>\n")
 		return
 	}
+	w.Flush()
 	sort.Sort(events.SortableEvents(el.Items))
-	w.Write(LEVEL_0, "Events:\n  FirstSeen\tLastSeen\tCount\tFrom\tSubObjectPath\tType\tReason\tMessage\n")
-	w.Write(LEVEL_1, "---------\t--------\t-----\t----\t-------------\t--------\t------\t-------\n")
+	w.Write(LEVEL_0, "Events:\n  Type\tReason\tAge\tFrom\tMessage\n")
+	w.Write(LEVEL_1, "----\t------\t----\t----\t-------\n")
 	for _, e := range el.Items {
-		w.Write(LEVEL_1, "%s\t%s\t%d\t%v\t%v\t%v\t%v\t%v\n",
-			translateTimestamp(e.FirstTimestamp),
-			translateTimestamp(e.LastTimestamp),
-			e.Count,
-			formatEventSource(e.Source),
-			e.InvolvedObject.FieldPath,
+		var interval string
+		if e.Count > 1 {
+			interval = fmt.Sprintf("%s (x%d over %s)", translateTimestamp(e.LastTimestamp), e.Count, translateTimestamp(e.FirstTimestamp))
+		} else {
+			interval = translateTimestamp(e.FirstTimestamp)
+		}
+		w.Write(LEVEL_1, "%v\t%v\t%s\t%v\t%v\n",
 			e.Type,
 			e.Reason,
-			e.Message)
+			interval,
+			formatEventSource(e.Source),
+			strings.TrimSpace(e.Message),
+		)
 	}
 }
 
 // DeploymentDescriber generates information about a deployment.
 type DeploymentDescriber struct {
 	clientset.Interface
-	versionedClient versionedclientset.Interface
+	extensionV1beta1Client clientextensionsv1beta1.ExtensionsV1beta1Interface
 }
 
 func (dd *DeploymentDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
-	d, err := dd.versionedClient.Extensions().Deployments(namespace).Get(name, metav1.GetOptions{})
+	d, err := dd.extensionV1beta1Client.Deployments(namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -2349,12 +3059,27 @@ func (dd *DeploymentDescriber) Describe(namespace, name string, describerSetting
 	if err != nil {
 		return "", err
 	}
+	internalDeployment := &extensions.Deployment{}
+	if err := legacyscheme.Scheme.Convert(d, internalDeployment, extensions.SchemeGroupVersion); err != nil {
+		return "", err
+	}
+
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = dd.Core().Events(namespace).Search(legacyscheme.Scheme, d)
+	}
+
+	return describeDeployment(d, selector, internalDeployment, events, dd)
+}
+
+func describeDeployment(d *versionedextension.Deployment, selector labels.Selector, internalDeployment *extensions.Deployment, events *api.EventList, dd *DeploymentDescriber) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", d.ObjectMeta.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", d.ObjectMeta.Namespace)
 		w.Write(LEVEL_0, "CreationTimestamp:\t%s\n", d.CreationTimestamp.Time.Format(time.RFC1123Z))
 		printLabelsMultiline(w, "Labels", d.Labels)
+		printAnnotationsMultiline(w, "Annotations", d.Annotations)
 		w.Write(LEVEL_0, "Selector:\t%s\n", selector)
 		w.Write(LEVEL_0, "Replicas:\t%d desired | %d updated | %d total | %d available | %d unavailable\n", *(d.Spec.Replicas), d.Status.UpdatedReplicas, d.Status.Replicas, d.Status.AvailableReplicas, d.Status.UnavailableReplicas)
 		w.Write(LEVEL_0, "StrategyType:\t%s\n", d.Spec.Strategy.Type)
@@ -2363,6 +3088,7 @@ func (dd *DeploymentDescriber) Describe(namespace, name string, describerSetting
 			ru := d.Spec.Strategy.RollingUpdate
 			w.Write(LEVEL_0, "RollingUpdateStrategy:\t%s max unavailable, %s max surge\n", ru.MaxUnavailable.String(), ru.MaxSurge.String())
 		}
+		DescribePodTemplate(&internalDeployment.Spec.Template, w)
 		if len(d.Status.Conditions) > 0 {
 			w.Write(LEVEL_0, "Conditions:\n  Type\tStatus\tReason\n")
 			w.Write(LEVEL_1, "----\t------\t------\n")
@@ -2370,7 +3096,7 @@ func (dd *DeploymentDescriber) Describe(namespace, name string, describerSetting
 				w.Write(LEVEL_1, "%v \t%v\t%v\n", c.Type, c.Status, c.Reason)
 			}
 		}
-		oldRSs, _, newRS, err := deploymentutil.GetAllReplicaSets(d, dd.versionedClient)
+		oldRSs, _, newRS, err := deploymentutil.GetAllReplicaSets(d, dd.extensionV1beta1Client)
 		if err == nil {
 			w.Write(LEVEL_0, "OldReplicaSets:\t%s\n", printReplicaSetsByLabels(oldRSs))
 			var newRSs []*versionedextension.ReplicaSet
@@ -2379,60 +3105,12 @@ func (dd *DeploymentDescriber) Describe(namespace, name string, describerSetting
 			}
 			w.Write(LEVEL_0, "NewReplicaSet:\t%s\n", printReplicaSetsByLabels(newRSs))
 		}
-		overlapWith := d.Annotations[deploymentutil.OverlapAnnotation]
-		if len(overlapWith) > 0 {
-			w.Write(LEVEL_0, "!!!WARNING!!! This deployment has overlapping label selector with deployment %q and won't behave as expected. Please fix it before continue.\n", overlapWith)
+		if events != nil {
+			DescribeEvents(events, w)
 		}
-		if describerSettings.ShowEvents {
-			events, err := dd.Core().Events(namespace).Search(api.Scheme, d)
-			if err == nil && events != nil {
-				DescribeEvents(events, w)
-			}
-		}
+
 		return nil
 	})
-}
-
-// Get all daemon set whose selectors would match a given set of labels.
-// TODO: Move this to pkg/client and ideally implement it server-side (instead
-// of getting all DS's and searching through them manually).
-// TODO: write an interface for controllers and fuse getReplicationControllersForLabels
-// and getDaemonSetsForLabels.
-func getDaemonSetsForLabels(c extensionsclient.DaemonSetInterface, labelsToMatch labels.Labels) ([]extensions.DaemonSet, error) {
-	// Get all daemon sets
-	// TODO: this needs a namespace scope as argument
-	dss, err := c.List(metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("error getting daemon set: %v", err)
-	}
-
-	// Find the ones that match labelsToMatch.
-	var matchingDaemonSets []extensions.DaemonSet
-	for _, ds := range dss.Items {
-		selector, err := metav1.LabelSelectorAsSelector(ds.Spec.Selector)
-		if err != nil {
-			// this should never happen if the DaemonSet passed validation
-			return nil, err
-		}
-		if selector.Matches(labelsToMatch) {
-			matchingDaemonSets = append(matchingDaemonSets, ds)
-		}
-	}
-	return matchingDaemonSets, nil
-}
-
-func printReplicationControllersByLabels(matchingRCs []*api.ReplicationController) string {
-	// Format the matching RC's into strings.
-	rcStrings := make([]string, 0, len(matchingRCs))
-	for _, controller := range matchingRCs {
-		rcStrings = append(rcStrings, fmt.Sprintf("%s (%d/%d replicas created)", controller.Name, controller.Status.Replicas, controller.Spec.Replicas))
-	}
-
-	list := strings.Join(rcStrings, ", ")
-	if list == "" {
-		return "<none>"
-	}
-	return list
 }
 
 func printReplicaSetsByLabels(matchingRSs []*versionedextension.ReplicaSet) string {
@@ -2449,13 +3127,18 @@ func printReplicaSetsByLabels(matchingRSs []*versionedextension.ReplicaSet) stri
 	return list
 }
 
-func getPodStatusForController(c coreclient.PodInterface, selector labels.Selector) (running, waiting, succeeded, failed int, err error) {
+func getPodStatusForController(c coreclient.PodInterface, selector labels.Selector, uid types.UID) (running, waiting, succeeded, failed int, err error) {
 	options := metav1.ListOptions{LabelSelector: selector.String()}
 	rcPods, err := c.List(options)
 	if err != nil {
 		return
 	}
 	for _, pod := range rcPods.Items {
+		controllerRef := metav1.GetControllerOf(&pod)
+		// Skip pods that are orphans or owned by other controllers.
+		if controllerRef == nil || controllerRef.UID != uid {
+			continue
+		}
 		switch pod.Status.Phase {
 		case api.PodRunning:
 			running++
@@ -2483,75 +3166,38 @@ func (d *ConfigMapDescriber) Describe(namespace, name string, describerSettings 
 		return "", err
 	}
 
-	return describeConfigMap(configMap)
-}
-
-func describeConfigMap(configMap *api.ConfigMap) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", configMap.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", configMap.Namespace)
 		printLabelsMultiline(w, "Labels", configMap.Labels)
-		printLabelsMultiline(w, "Annotations", configMap.Annotations)
+		printAnnotationsMultiline(w, "Annotations", configMap.Annotations)
 
 		w.Write(LEVEL_0, "\nData\n====\n")
 		for k, v := range configMap.Data {
 			w.Write(LEVEL_0, "%s:\n----\n", k)
 			w.Write(LEVEL_0, "%s\n", string(v))
 		}
-
-		return nil
-	})
-}
-
-type ClusterDescriber struct {
-	fedclientset.Interface
-}
-
-func (d *ClusterDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
-	cluster, err := d.Federation().Clusters().Get(name, metav1.GetOptions{})
-	if err != nil {
-		return "", err
-	}
-	return describeCluster(cluster)
-}
-
-func describeCluster(cluster *federation.Cluster) (string, error) {
-	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
-		w.Write(LEVEL_0, "Name:\t%s\n", cluster.Name)
-		w.Write(LEVEL_0, "Labels:\t%s\n", labels.FormatLabels(cluster.Labels))
-
-		w.Write(LEVEL_0, "ServerAddressByClientCIDRs:\n  ClientCIDR\tServerAddress\n")
-		w.Write(LEVEL_1, "----\t----\n")
-		for _, cidrAddr := range cluster.Spec.ServerAddressByClientCIDRs {
-			w.Write(LEVEL_1, "%v \t%v\n\n", cidrAddr.ClientCIDR, cidrAddr.ServerAddress)
-		}
-
-		if len(cluster.Status.Conditions) > 0 {
-			w.Write(LEVEL_0, "Conditions:\n  Type\tStatus\tLastUpdateTime\tLastTransitionTime\tReason\tMessage\n")
-			w.Write(LEVEL_1, "----\t------\t-----------------\t------------------\t------\t-------\n")
-			for _, c := range cluster.Status.Conditions {
-				w.Write(LEVEL_1, "%v \t%v \t%s \t%s \t%v \t%v\n",
-					c.Type,
-					c.Status,
-					c.LastProbeTime.Time.Format(time.RFC1123Z),
-					c.LastTransitionTime.Time.Format(time.RFC1123Z),
-					c.Reason,
-					c.Message)
+		if describerSettings.ShowEvents {
+			events, err := d.Core().Events(namespace).Search(legacyscheme.Scheme, configMap)
+			if err != nil {
+				return err
+			}
+			if events != nil {
+				DescribeEvents(events, w)
 			}
 		}
 		return nil
 	})
 }
 
-// NetworkPolicyDescriber generates information about a NetworkPolicy
+// NetworkPolicyDescriber generates information about a networking.NetworkPolicy
 type NetworkPolicyDescriber struct {
 	clientset.Interface
 }
 
 func (d *NetworkPolicyDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
-	c := d.Extensions().NetworkPolicies(namespace)
+	c := d.Networking().NetworkPolicies(namespace)
 
 	networkPolicy, err := c.Get(name, metav1.GetOptions{})
 	if err != nil {
@@ -2561,16 +3207,114 @@ func (d *NetworkPolicyDescriber) Describe(namespace, name string, describerSetti
 	return describeNetworkPolicy(networkPolicy)
 }
 
-func describeNetworkPolicy(networkPolicy *extensions.NetworkPolicy) (string, error) {
+func describeNetworkPolicy(networkPolicy *networking.NetworkPolicy) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", networkPolicy.Name)
 		w.Write(LEVEL_0, "Namespace:\t%s\n", networkPolicy.Namespace)
+		w.Write(LEVEL_0, "Created on:\t%s\n", networkPolicy.CreationTimestamp)
 		printLabelsMultiline(w, "Labels", networkPolicy.Labels)
-		printLabelsMultiline(w, "Annotations", networkPolicy.Annotations)
-
+		printAnnotationsMultiline(w, "Annotations", networkPolicy.Annotations)
+		describeNetworkPolicySpec(networkPolicy.Spec, w)
 		return nil
 	})
+}
+
+func describeNetworkPolicySpec(nps networking.NetworkPolicySpec, w PrefixWriter) {
+	w.Write(LEVEL_0, "Spec:\n")
+	w.Write(LEVEL_1, "PodSelector: ")
+	if len(nps.PodSelector.MatchLabels) == 0 && len(nps.PodSelector.MatchExpressions) == 0 {
+		w.Write(LEVEL_2, "<none> (Allowing the specific traffic to all pods in this namespace)\n")
+	} else {
+		w.Write(LEVEL_2, "%s\n", metav1.FormatLabelSelector(&nps.PodSelector))
+	}
+	w.Write(LEVEL_1, "Allowing ingress traffic:\n")
+	printNetworkPolicySpecIngressFrom(nps.Ingress, "    ", w)
+	w.Write(LEVEL_1, "Allowing egress traffic:\n")
+	printNetworkPolicySpecEgressTo(nps.Egress, "    ", w)
+	w.Write(LEVEL_1, "Policy Types: %v\n", policyTypesToString(nps.PolicyTypes))
+}
+
+func printNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngressRule, initialIndent string, w PrefixWriter) {
+	if len(npirs) == 0 {
+		w.Write(LEVEL_0, "%s%s\n", initialIndent, "<none> (Selected pods are isolated for ingress connectivity)")
+		return
+	}
+	for i, npir := range npirs {
+		if len(npir.Ports) == 0 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "To Port: <any> (traffic allowed to all ports)")
+		} else {
+			for _, port := range npir.Ports {
+				var proto api.Protocol
+				if port.Protocol != nil {
+					proto = *port.Protocol
+				} else {
+					proto = api.ProtocolTCP
+				}
+				w.Write(LEVEL_0, "%s%s: %s/%s\n", initialIndent, "To Port", port.Port, proto)
+			}
+		}
+		if len(npir.From) == 0 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "From: <any> (traffic not restricted by source)")
+		} else {
+			for _, from := range npir.From {
+				w.Write(LEVEL_0, "%s", initialIndent)
+				if from.PodSelector != nil {
+					w.Write(LEVEL_0, "%s: %s\n", "From PodSelector", metav1.FormatLabelSelector(from.PodSelector))
+				} else if from.NamespaceSelector != nil {
+					w.Write(LEVEL_0, "%s: %s\n", "From NamespaceSelector", metav1.FormatLabelSelector(from.NamespaceSelector))
+				} else if from.IPBlock != nil {
+					w.Write(LEVEL_0, "From IPBlock:\n")
+					w.Write(LEVEL_0, "%s%sCIDR: %s\n", initialIndent, initialIndent, from.IPBlock.CIDR)
+					w.Write(LEVEL_0, "%s%sExcept: %v\n", initialIndent, initialIndent, strings.Join(from.IPBlock.Except, ", "))
+				}
+			}
+		}
+		if i != len(npirs)-1 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "----------")
+		}
+	}
+}
+
+func printNetworkPolicySpecEgressTo(npers []networking.NetworkPolicyEgressRule, initialIndent string, w PrefixWriter) {
+	if len(npers) == 0 {
+		w.Write(LEVEL_0, "%s%s\n", initialIndent, "<none> (Selected pods are isolated for egress connectivity)")
+		return
+	}
+	for i, nper := range npers {
+		if len(nper.Ports) == 0 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "To Port: <any> (traffic allowed to all ports)")
+		} else {
+			for _, port := range nper.Ports {
+				var proto api.Protocol
+				if port.Protocol != nil {
+					proto = *port.Protocol
+				} else {
+					proto = api.ProtocolTCP
+				}
+				w.Write(LEVEL_0, "%s%s: %s/%s\n", initialIndent, "To Port", port.Port, proto)
+			}
+		}
+		if len(nper.To) == 0 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "To: <any> (traffic not restricted by source)")
+		} else {
+			for _, to := range nper.To {
+				w.Write(LEVEL_0, "%s", initialIndent)
+				if to.PodSelector != nil {
+					w.Write(LEVEL_0, "%s: %s\n", "To PodSelector", metav1.FormatLabelSelector(to.PodSelector))
+				} else if to.NamespaceSelector != nil {
+					w.Write(LEVEL_0, "%s: %s\n", "To NamespaceSelector", metav1.FormatLabelSelector(to.NamespaceSelector))
+				} else if to.IPBlock != nil {
+					w.Write(LEVEL_0, "To IPBlock:\n")
+					w.Write(LEVEL_0, "%s%sCIDR: %s\n", initialIndent, initialIndent, to.IPBlock.CIDR)
+					w.Write(LEVEL_0, "%s%sExcept: %v\n", initialIndent, initialIndent, strings.Join(to.IPBlock.Except, ", "))
+				}
+			}
+		}
+		if i != len(npers)-1 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "----------")
+		}
+	}
 }
 
 type StorageClassDescriber struct {
@@ -2582,22 +3326,42 @@ func (s *StorageClassDescriber) Describe(namespace, name string, describerSettin
 	if err != nil {
 		return "", err
 	}
+
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = s.Core().Events(namespace).Search(legacyscheme.Scheme, sc)
+	}
+
+	return describeStorageClass(sc, events)
+}
+
+func describeStorageClass(sc *storage.StorageClass, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", sc.Name)
 		w.Write(LEVEL_0, "IsDefaultClass:\t%s\n", storageutil.IsDefaultAnnotationText(sc.ObjectMeta))
 		w.Write(LEVEL_0, "Annotations:\t%s\n", labels.FormatLabels(sc.Annotations))
 		w.Write(LEVEL_0, "Provisioner:\t%s\n", sc.Provisioner)
 		w.Write(LEVEL_0, "Parameters:\t%s\n", labels.FormatLabels(sc.Parameters))
-		if describerSettings.ShowEvents {
-			events, err := s.Core().Events(namespace).Search(api.Scheme, sc)
-			if err != nil {
-				return err
-			}
-			if events != nil {
-				DescribeEvents(events, w)
+		w.Write(LEVEL_0, "AllowVolumeExpansion:\t%s\n", printBoolPtr(sc.AllowVolumeExpansion))
+		if len(sc.MountOptions) == 0 {
+			w.Write(LEVEL_0, "MountOptions:\t<none>\n")
+		} else {
+			w.Write(LEVEL_0, "MountOptions:\n")
+			for _, option := range sc.MountOptions {
+				w.Write(LEVEL_1, "%s\n", option)
 			}
 		}
+		if sc.ReclaimPolicy != nil {
+			w.Write(LEVEL_0, "ReclaimPolicy:\t%s\n", *sc.ReclaimPolicy)
+		}
+		if sc.VolumeBindingMode != nil {
+			w.Write(LEVEL_0, "VolumeBindingMode:\t%s\n", *sc.VolumeBindingMode)
+		}
+		if events != nil {
+			DescribeEvents(events, w)
+		}
+
 		return nil
 	})
 }
@@ -2611,10 +3375,27 @@ func (p *PodDisruptionBudgetDescriber) Describe(namespace, name string, describe
 	if err != nil {
 		return "", err
 	}
+
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = p.Core().Events(namespace).Search(legacyscheme.Scheme, pdb)
+	}
+
+	return describePodDisruptionBudget(pdb, events)
+}
+
+func describePodDisruptionBudget(pdb *policy.PodDisruptionBudget, events *api.EventList) (string, error) {
 	return tabbedString(func(out io.Writer) error {
-		w := &PrefixWriter{out}
+		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%s\n", pdb.Name)
-		w.Write(LEVEL_0, "Min available:\t%s\n", pdb.Spec.MinAvailable.String())
+		w.Write(LEVEL_0, "Namespace:\t%s\n", pdb.Namespace)
+
+		if pdb.Spec.MinAvailable != nil {
+			w.Write(LEVEL_0, "Min available:\t%s\n", pdb.Spec.MinAvailable.String())
+		} else if pdb.Spec.MaxUnavailable != nil {
+			w.Write(LEVEL_0, "Max unavailable:\t%s\n", pdb.Spec.MaxUnavailable.String())
+		}
+
 		if pdb.Spec.Selector != nil {
 			w.Write(LEVEL_0, "Selector:\t%s\n", metav1.FormatLabelSelector(pdb.Spec.Selector))
 		} else {
@@ -2625,17 +3406,198 @@ func (p *PodDisruptionBudgetDescriber) Describe(namespace, name string, describe
 		w.Write(LEVEL_2, "Current:\t%d\n", pdb.Status.CurrentHealthy)
 		w.Write(LEVEL_2, "Desired:\t%d\n", pdb.Status.DesiredHealthy)
 		w.Write(LEVEL_2, "Total:\t%d\n", pdb.Status.ExpectedPods)
-		if describerSettings.ShowEvents {
-			events, err := p.Core().Events(namespace).Search(api.Scheme, pdb)
-			if err != nil {
-				return err
-			}
-			if events != nil {
-				DescribeEvents(events, w)
-			}
+		if events != nil {
+			DescribeEvents(events, w)
 		}
+
 		return nil
 	})
+}
+
+// PriorityClassDescriber generates information about a PriorityClass.
+type PriorityClassDescriber struct {
+	clientset.Interface
+}
+
+func (s *PriorityClassDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
+	pc, err := s.Scheduling().PriorityClasses().Get(name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	var events *api.EventList
+	if describerSettings.ShowEvents {
+		events, _ = s.Core().Events(namespace).Search(legacyscheme.Scheme, pc)
+	}
+
+	return describePriorityClass(pc, events)
+}
+
+func describePriorityClass(pc *scheduling.PriorityClass, events *api.EventList) (string, error) {
+	return tabbedString(func(out io.Writer) error {
+		w := NewPrefixWriter(out)
+		w.Write(LEVEL_0, "Name:\t%s\n", pc.Name)
+		w.Write(LEVEL_0, "Value:\t%v\n", pc.Value)
+		w.Write(LEVEL_0, "GlobalDefault:\t%v\n", pc.GlobalDefault)
+		w.Write(LEVEL_0, "Description:\t%s\n", pc.Description)
+
+		w.Write(LEVEL_0, "Annotations:\t%s\n", labels.FormatLabels(pc.Annotations))
+		if events != nil {
+			DescribeEvents(events, w)
+		}
+
+		return nil
+	})
+}
+
+// PodSecurityPolicyDescriber generates information about a PodSecurityPolicy.
+type PodSecurityPolicyDescriber struct {
+	clientset.Interface
+}
+
+func (d *PodSecurityPolicyDescriber) Describe(namespace, name string, describerSettings printers.DescriberSettings) (string, error) {
+	psp, err := d.Extensions().PodSecurityPolicies().Get(name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	return describePodSecurityPolicy(psp)
+}
+
+func describePodSecurityPolicy(psp *extensions.PodSecurityPolicy) (string, error) {
+	return tabbedString(func(out io.Writer) error {
+		w := NewPrefixWriter(out)
+		w.Write(LEVEL_0, "Name:\t%s\n", psp.Name)
+
+		w.Write(LEVEL_0, "\nSettings:\n")
+
+		w.Write(LEVEL_1, "Allow Privileged:\t%t\n", psp.Spec.Privileged)
+		w.Write(LEVEL_1, "Allow Privilege Escalation:\t%v\n", psp.Spec.AllowPrivilegeEscalation)
+		w.Write(LEVEL_1, "Default Add Capabilities:\t%v\n", capsToString(psp.Spec.DefaultAddCapabilities))
+		w.Write(LEVEL_1, "Required Drop Capabilities:\t%s\n", capsToString(psp.Spec.RequiredDropCapabilities))
+		w.Write(LEVEL_1, "Allowed Capabilities:\t%s\n", capsToString(psp.Spec.AllowedCapabilities))
+		w.Write(LEVEL_1, "Allowed Volume Types:\t%s\n", fsTypeToString(psp.Spec.Volumes))
+
+		if len(psp.Spec.AllowedFlexVolumes) > 0 {
+			w.Write(LEVEL_1, "Allowed FlexVolume Types:\t%s\n", flexVolumesToString(psp.Spec.AllowedFlexVolumes))
+		}
+		w.Write(LEVEL_1, "Allow Host Network:\t%t\n", psp.Spec.HostNetwork)
+		w.Write(LEVEL_1, "Allow Host Ports:\t%s\n", hostPortRangeToString(psp.Spec.HostPorts))
+		w.Write(LEVEL_1, "Allow Host PID:\t%t\n", psp.Spec.HostPID)
+		w.Write(LEVEL_1, "Allow Host IPC:\t%t\n", psp.Spec.HostIPC)
+		w.Write(LEVEL_1, "Read Only Root Filesystem:\t%v\n", psp.Spec.ReadOnlyRootFilesystem)
+
+		w.Write(LEVEL_1, "SELinux Context Strategy: %s\t\n", string(psp.Spec.SELinux.Rule))
+		var user, role, seLinuxType, level string
+		if psp.Spec.SELinux.SELinuxOptions != nil {
+			user = psp.Spec.SELinux.SELinuxOptions.User
+			role = psp.Spec.SELinux.SELinuxOptions.Role
+			seLinuxType = psp.Spec.SELinux.SELinuxOptions.Type
+			level = psp.Spec.SELinux.SELinuxOptions.Level
+		}
+		w.Write(LEVEL_2, "User:\t%s\n", stringOrNone(user))
+		w.Write(LEVEL_2, "Role:\t%s\n", stringOrNone(role))
+		w.Write(LEVEL_2, "Type:\t%s\n", stringOrNone(seLinuxType))
+		w.Write(LEVEL_2, "Level:\t%s\n", stringOrNone(level))
+
+		w.Write(LEVEL_1, "Run As User Strategy: %s\t\n", string(psp.Spec.RunAsUser.Rule))
+		w.Write(LEVEL_2, "Ranges:\t%s\n", userIDRangeToString(psp.Spec.RunAsUser.Ranges))
+
+		w.Write(LEVEL_1, "FSGroup Strategy: %s\t\n", string(psp.Spec.FSGroup.Rule))
+		w.Write(LEVEL_2, "Ranges:\t%s\n", groupIDRangeToString(psp.Spec.FSGroup.Ranges))
+
+		w.Write(LEVEL_1, "Supplemental Groups Strategy: %s\t\n", string(psp.Spec.SupplementalGroups.Rule))
+		w.Write(LEVEL_2, "Ranges:\t%s\n", groupIDRangeToString(psp.Spec.SupplementalGroups.Ranges))
+
+		return nil
+	})
+}
+
+func stringOrNone(s string) string {
+	return stringOrDefaultValue(s, "<none>")
+}
+
+func stringOrDefaultValue(s, defaultValue string) string {
+	if len(s) > 0 {
+		return s
+	}
+	return defaultValue
+}
+
+func fsTypeToString(volumes []extensions.FSType) string {
+	strVolumes := []string{}
+	for _, v := range volumes {
+		strVolumes = append(strVolumes, string(v))
+	}
+	return stringOrNone(strings.Join(strVolumes, ","))
+}
+
+func flexVolumesToString(flexVolumes []extensions.AllowedFlexVolume) string {
+	volumes := []string{}
+	for _, flexVolume := range flexVolumes {
+		volumes = append(volumes, "driver="+flexVolume.Driver)
+	}
+	return stringOrDefaultValue(strings.Join(volumes, ","), "<all>")
+}
+
+func hostPortRangeToString(ranges []extensions.HostPortRange) string {
+	formattedString := ""
+	if ranges != nil {
+		strRanges := []string{}
+		for _, r := range ranges {
+			strRanges = append(strRanges, fmt.Sprintf("%d-%d", r.Min, r.Max))
+		}
+		formattedString = strings.Join(strRanges, ",")
+	}
+	return stringOrNone(formattedString)
+}
+
+func userIDRangeToString(ranges []extensions.UserIDRange) string {
+	formattedString := ""
+	if ranges != nil {
+		strRanges := []string{}
+		for _, r := range ranges {
+			strRanges = append(strRanges, fmt.Sprintf("%d-%d", r.Min, r.Max))
+		}
+		formattedString = strings.Join(strRanges, ",")
+	}
+	return stringOrNone(formattedString)
+}
+
+func groupIDRangeToString(ranges []extensions.GroupIDRange) string {
+	formattedString := ""
+	if ranges != nil {
+		strRanges := []string{}
+		for _, r := range ranges {
+			strRanges = append(strRanges, fmt.Sprintf("%d-%d", r.Min, r.Max))
+		}
+		formattedString = strings.Join(strRanges, ",")
+	}
+	return stringOrNone(formattedString)
+}
+
+func capsToString(caps []api.Capability) string {
+	formattedString := ""
+	if caps != nil {
+		strCaps := []string{}
+		for _, c := range caps {
+			strCaps = append(strCaps, string(c))
+		}
+		formattedString = strings.Join(strCaps, ",")
+	}
+	return stringOrNone(formattedString)
+}
+
+func policyTypesToString(pts []networking.PolicyType) string {
+	formattedString := ""
+	if pts != nil {
+		strPts := []string{}
+		for _, p := range pts {
+			strPts = append(strPts, string(p))
+		}
+		formattedString = strings.Join(strPts, ", ")
+	}
+	return stringOrNone(formattedString)
 }
 
 // newErrNoDescriber creates a new ErrNoDescriber with the names of the provided types.
@@ -2779,19 +3741,13 @@ func (fn typeFunc) Describe(exact interface{}, extra ...interface{}) (string, er
 	return s, err
 }
 
-// printLabelsMultilineWithFilter prints filtered multiple labels with a proper alignment.
-func printLabelsMultilineWithFilter(w *PrefixWriter, title string, labels map[string]string, skip sets.String) {
-	printLabelsMultilineWithIndent(w, "", title, "\t", labels, skip)
-}
-
 // printLabelsMultiline prints multiple labels with a proper alignment.
-func printLabelsMultiline(w *PrefixWriter, title string, labels map[string]string) {
+func printLabelsMultiline(w PrefixWriter, title string, labels map[string]string) {
 	printLabelsMultilineWithIndent(w, "", title, "\t", labels, sets.NewString())
 }
 
 // printLabelsMultiline prints multiple labels with a user-defined alignment.
-func printLabelsMultilineWithIndent(w *PrefixWriter, initialIndent, title, innerIndent string, labels map[string]string, skip sets.String) {
-
+func printLabelsMultilineWithIndent(w PrefixWriter, initialIndent, title, innerIndent string, labels map[string]string, skip sets.String) {
 	w.Write(LEVEL_0, "%s%s:%s", initialIndent, title, innerIndent)
 
 	if labels == nil || len(labels) == 0 {
@@ -2824,12 +3780,12 @@ func printLabelsMultilineWithIndent(w *PrefixWriter, initialIndent, title, inner
 }
 
 // printTaintsMultiline prints multiple taints with a proper alignment.
-func printNodeTaintsMultiline(w *PrefixWriter, title string, taints []api.Taint) {
+func printNodeTaintsMultiline(w PrefixWriter, title string, taints []api.Taint) {
 	printTaintsMultilineWithIndent(w, "", title, "\t", taints)
 }
 
 // printTaintsMultilineWithIndent prints multiple taints with a user-defined alignment.
-func printTaintsMultilineWithIndent(w *PrefixWriter, initialIndent, title, innerIndent string, taints []api.Taint) {
+func printTaintsMultilineWithIndent(w PrefixWriter, initialIndent, title, innerIndent string, taints []api.Taint) {
 	w.Write(LEVEL_0, "%s%s:%s", initialIndent, title, innerIndent)
 
 	if taints == nil || len(taints) == 0 {
@@ -2859,12 +3815,12 @@ func printTaintsMultilineWithIndent(w *PrefixWriter, initialIndent, title, inner
 }
 
 // printPodTolerationsMultiline prints multiple tolerations with a proper alignment.
-func printPodTolerationsMultiline(w *PrefixWriter, title string, tolerations []api.Toleration) {
+func printPodTolerationsMultiline(w PrefixWriter, title string, tolerations []api.Toleration) {
 	printTolerationsMultilineWithIndent(w, "", title, "\t", tolerations)
 }
 
 // printTolerationsMultilineWithIndent prints multiple tolerations with a user-defined alignment.
-func printTolerationsMultilineWithIndent(w *PrefixWriter, initialIndent, title, innerIndent string, tolerations []api.Toleration) {
+func printTolerationsMultilineWithIndent(w PrefixWriter, initialIndent, title, innerIndent string, tolerations []api.Toleration) {
 	w.Write(LEVEL_0, "%s%s:%s", initialIndent, title, innerIndent)
 
 	if tolerations == nil || len(tolerations) == 0 {
@@ -2886,12 +3842,15 @@ func printTolerationsMultilineWithIndent(w *PrefixWriter, initialIndent, title, 
 					w.Write(LEVEL_0, "%s", initialIndent)
 					w.Write(LEVEL_0, "%s", innerIndent)
 				}
-				w.Write(LEVEL_0, "%s=%s", toleration.Key, toleration.Value)
-				if len(toleration.Operator) != 0 {
-					w.Write(LEVEL_0, ":%s", toleration.Operator)
+				w.Write(LEVEL_0, "%s", toleration.Key)
+				if len(toleration.Value) != 0 {
+					w.Write(LEVEL_0, "=%s", toleration.Value)
 				}
 				if len(toleration.Effect) != 0 {
 					w.Write(LEVEL_0, ":%s", toleration.Effect)
+				}
+				if toleration.TolerationSeconds != nil {
+					w.Write(LEVEL_0, " for %ds", *toleration.TolerationSeconds)
 				}
 				w.Write(LEVEL_0, "\n")
 				i++
@@ -2900,10 +3859,14 @@ func printTolerationsMultilineWithIndent(w *PrefixWriter, initialIndent, title, 
 	}
 }
 
+type flusher interface {
+	Flush()
+}
+
 func tabbedString(f func(io.Writer) error) (string, error) {
 	out := new(tabwriter.Writer)
 	buf := &bytes.Buffer{}
-	out.Init(buf, 0, 8, 1, '\t', 0)
+	out.Init(buf, 0, 8, 2, ' ', 0)
 
 	err := f(out)
 	if err != nil {
@@ -2967,34 +3930,76 @@ func (list SortableVolumeMounts) Less(i, j int) bool {
 	return list[i].MountPath < list[j].MountPath
 }
 
-// SortedQoSResourceNames returns the sorted resource names of a QoS list.
-func SortedQoSResourceNames(list qos.QOSList) []api.ResourceName {
-	resources := make([]api.ResourceName, 0, len(list))
-	for res := range list {
-		resources = append(resources, api.ResourceName(res))
-	}
-	sort.Sort(SortableResourceNames(resources))
-	return resources
+type SortableVolumeDevices []api.VolumeDevice
+
+func (list SortableVolumeDevices) Len() int {
+	return len(list)
 }
 
-func listOfImages(spec *api.PodSpec) []string {
-	images := make([]string, 0, len(spec.Containers))
-	for _, container := range spec.Containers {
-		images = append(images, container.Image)
-	}
-	return images
+func (list SortableVolumeDevices) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
 }
 
-func makeImageList(spec *api.PodSpec) string {
-	return strings.Join(listOfImages(spec), ",")
+func (list SortableVolumeDevices) Less(i, j int) bool {
+	return list[i].DevicePath < list[j].DevicePath
 }
 
-func versionedClientsetForDeployment(internalClient clientset.Interface) versionedclientset.Interface {
+// TODO: get rid of this and plumb the caller correctly
+func versionedExtensionsClientV1beta1(internalClient clientset.Interface) clientextensionsv1beta1.ExtensionsV1beta1Interface {
 	if internalClient == nil {
-		return &versionedclientset.Clientset{}
+		return &clientextensionsv1beta1.ExtensionsV1beta1Client{}
 	}
-	return &versionedclientset.Clientset{
-		CoreV1Client:            coreclientset.New(internalClient.Core().RESTClient()),
-		ExtensionsV1beta1Client: extensionsclientset.New(internalClient.Extensions().RESTClient()),
+	return clientextensionsv1beta1.New(internalClient.Extensions().RESTClient())
+}
+
+var maxAnnotationLen = 200
+
+// printAnnotationsMultilineWithFilter prints filtered multiple annotations with a proper alignment.
+func printAnnotationsMultilineWithFilter(w PrefixWriter, title string, annotations map[string]string, skip sets.String) {
+	printAnnotationsMultilineWithIndent(w, "", title, "\t", annotations, skip)
+}
+
+// printAnnotationsMultiline prints multiple annotations with a proper alignment.
+func printAnnotationsMultiline(w PrefixWriter, title string, annotations map[string]string) {
+	printAnnotationsMultilineWithIndent(w, "", title, "\t", annotations, sets.NewString())
+}
+
+// printAnnotationsMultilineWithIndent prints multiple annotations with a user-defined alignment.
+// If annotation string is too long, we omit chars more than 200 length.
+func printAnnotationsMultilineWithIndent(w PrefixWriter, initialIndent, title, innerIndent string, annotations map[string]string, skip sets.String) {
+
+	w.Write(LEVEL_0, "%s%s:%s", initialIndent, title, innerIndent)
+
+	if len(annotations) == 0 {
+		w.WriteLine("<none>")
+		return
+	}
+
+	// to print labels in the sorted order
+	keys := make([]string, 0, len(annotations))
+	for key := range annotations {
+		if skip.Has(key) {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	if len(annotations) == 0 {
+		w.WriteLine("<none>")
+		return
+	}
+	sort.Strings(keys)
+
+	for i, key := range keys {
+		if i != 0 {
+			w.Write(LEVEL_0, initialIndent)
+			w.Write(LEVEL_0, innerIndent)
+		}
+		line := fmt.Sprintf("%s=%s", key, annotations[key])
+		if len(line) > maxAnnotationLen {
+			w.Write(LEVEL_0, "%s...\n", line[:maxAnnotationLen])
+		} else {
+			w.Write(LEVEL_0, "%s\n", line)
+		}
+		i++
 	}
 }

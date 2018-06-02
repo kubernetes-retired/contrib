@@ -24,14 +24,16 @@ import (
 
 	"github.com/golang/glog"
 
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/integer"
 	"k8s.io/client-go/util/jsonpath"
-	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/printers"
+
+	"vbom.ml/util/sortorder"
 )
 
 // Sorting printer sorts list types before delegating to another printer.
@@ -58,8 +60,12 @@ func (s *SortingPrinter) PrintObj(obj runtime.Object, out io.Writer) error {
 }
 
 // TODO: implement HandledResources()
-func (p *SortingPrinter) HandledResources() []string {
+func (s *SortingPrinter) HandledResources() []string {
 	return []string{}
+}
+
+func (s *SortingPrinter) IsGeneric() bool {
+	return s.Delegate.IsGeneric()
 }
 
 func (s *SortingPrinter) sortObj(obj runtime.Object) error {
@@ -175,14 +181,15 @@ func isLess(i, j reflect.Value) (bool, error) {
 	case reflect.Float32, reflect.Float64:
 		return i.Float() < j.Float(), nil
 	case reflect.String:
-		return i.String() < j.String(), nil
+		return sortorder.NaturalLess(i.String(), j.String()), nil
 	case reflect.Ptr:
 		return isLess(i.Elem(), j.Elem())
 	case reflect.Struct:
 		// sort metav1.Time
 		in := i.Interface()
 		if t, ok := in.(metav1.Time); ok {
-			return t.Before(j.Interface().(metav1.Time)), nil
+			time := j.Interface().(metav1.Time)
+			return t.Before(&time), nil
 		}
 		// fallback to the fields comparison
 		for idx := 0; idx < i.NumField(); idx++ {
@@ -254,7 +261,7 @@ func isLess(i, j reflect.Value) (bool, error) {
 			}
 		case string:
 			if jtype, ok := j.Interface().(string); ok {
-				return itype < jtype, nil
+				return sortorder.NaturalLess(itype, jtype), nil
 			}
 		default:
 			return false, fmt.Errorf("unsortable type: %T", itype)

@@ -17,9 +17,14 @@ limitations under the License.
 package componentconfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 )
 
@@ -31,6 +36,10 @@ type IPVar struct {
 }
 
 func (v IPVar) Set(s string) error {
+	if len(s) == 0 {
+		v.Val = nil
+		return nil
+	}
 	if net.ParseIP(s) == nil {
 		return fmt.Errorf("%q is not a valid IP address", s)
 	}
@@ -53,20 +62,53 @@ func (v IPVar) Type() string {
 	return "ip"
 }
 
-func (m *ProxyMode) Set(s string) error {
-	*m = ProxyMode(s)
+// IPPortVar allows IP or IP:port formats.
+type IPPortVar struct {
+	Val *string
+}
+
+func (v IPPortVar) Set(s string) error {
+	if len(s) == 0 {
+		v.Val = nil
+		return nil
+	}
+
+	if v.Val == nil {
+		// it's okay to panic here since this is programmer error
+		panic("the string pointer passed into IPPortVar should not be nil")
+	}
+
+	// Both IP and IP:port are valid.
+	// Attempt to parse into IP first.
+	if net.ParseIP(s) != nil {
+		*v.Val = s
+		return nil
+	}
+
+	// Can not parse into IP, now assume IP:port.
+	host, port, err := net.SplitHostPort(s)
+	if err != nil {
+		return fmt.Errorf("%q is not in a valid format (ip or ip:port): %v", s, err)
+	}
+	if net.ParseIP(host) == nil {
+		return fmt.Errorf("%q is not a valid IP address", host)
+	}
+	if _, err := strconv.Atoi(port); err != nil {
+		return fmt.Errorf("%q is not a valid number", port)
+	}
+	*v.Val = s
 	return nil
 }
 
-func (m *ProxyMode) String() string {
-	if m != nil {
-		return string(*m)
+func (v IPPortVar) String() string {
+	if v.Val == nil {
+		return ""
 	}
-	return ""
+	return *v.Val
 }
 
-func (m *ProxyMode) Type() string {
-	return "ProxyMode"
+func (v IPPortVar) Type() string {
+	return "ipport"
 }
 
 type PortRangeVar struct {
@@ -94,4 +136,22 @@ func (v PortRangeVar) String() string {
 
 func (v PortRangeVar) Type() string {
 	return "port-range"
+}
+
+// ConvertObjToConfigMap converts an object to a ConfigMap.
+// This is specifically meant for ComponentConfigs.
+func ConvertObjToConfigMap(name string, obj runtime.Object) (*v1.ConfigMap, error) {
+	eJSONBytes, err := json.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+	cm := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Data: map[string]string{
+			name: string(eJSONBytes[:]),
+		},
+	}
+	return cm, nil
 }

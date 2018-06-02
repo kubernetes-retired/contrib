@@ -1,12 +1,4 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])
-
-load(
-    "@io_bazel_rules_go//go:def.bzl",
-    "go_library",
-    "go_test",
-)
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -18,30 +10,59 @@ go_library(
         "metrics_nil.go",
         "metrics_statfs.go",
         "plugins.go",
-        "util.go",
         "volume.go",
-        "volume_linux.go",
-    ],
-    tags = ["automanaged"],
+    ] + select({
+        "@io_bazel_rules_go//go/platform:android": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:dragonfly": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:linux": [
+            "volume_linux.go",
+        ],
+        "@io_bazel_rules_go//go/platform:nacl": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris": [
+            "volume_unsupported.go",
+        ],
+        "@io_bazel_rules_go//go/platform:windows": [
+            "volume_unsupported.go",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "k8s.io/kubernetes/pkg/volume",
+    visibility = ["//visibility:public"],
     deps = [
-        "//pkg/api/v1:go_default_library",
-        "//pkg/client/clientset_generated/clientset:go_default_library",
         "//pkg/cloudprovider:go_default_library",
-        "//pkg/util/chmod:go_default_library",
-        "//pkg/util/chown:go_default_library",
         "//pkg/util/io:go_default_library",
         "//pkg/util/mount:go_default_library",
-        "//pkg/volume/util:go_default_library",
-        "//vendor:github.com/golang/glog",
-        "//vendor:k8s.io/apimachinery/pkg/api/errors",
-        "//vendor:k8s.io/apimachinery/pkg/api/resource",
-        "//vendor:k8s.io/apimachinery/pkg/apis/meta/v1",
-        "//vendor:k8s.io/apimachinery/pkg/fields",
-        "//vendor:k8s.io/apimachinery/pkg/types",
-        "//vendor:k8s.io/apimachinery/pkg/util/errors",
-        "//vendor:k8s.io/apimachinery/pkg/util/sets",
-        "//vendor:k8s.io/apimachinery/pkg/util/validation",
-        "//vendor:k8s.io/apimachinery/pkg/watch",
+        "//pkg/volume/util/fs:go_default_library",
+        "//pkg/volume/util/recyclerclient:go_default_library",
+        "//vendor/github.com/golang/glog:go_default_library",
+        "//vendor/k8s.io/api/core/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/validation:go_default_library",
+        "//vendor/k8s.io/client-go/kubernetes:go_default_library",
     ],
 )
 
@@ -49,34 +70,36 @@ go_test(
     name = "go_default_test",
     srcs = [
         "metrics_nil_test.go",
-        "metrics_statfs_test.go",
         "plugins_test.go",
-        "util_test.go",
     ],
-    library = ":go_default_library",
-    tags = ["automanaged"],
+    embed = [":go_default_library"],
     deps = [
-        "//pkg/api:go_default_library",
-        "//pkg/api/v1:go_default_library",
-        "//vendor:k8s.io/apimachinery/pkg/api/errors",
-        "//vendor:k8s.io/apimachinery/pkg/api/resource",
-        "//vendor:k8s.io/apimachinery/pkg/apis/meta/v1",
-        "//vendor:k8s.io/apimachinery/pkg/types",
-        "//vendor:k8s.io/apimachinery/pkg/util/sets",
-        "//vendor:k8s.io/apimachinery/pkg/watch",
-        "//vendor:k8s.io/client-go/util/testing",
+        "//vendor/k8s.io/api/core/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
     ],
 )
 
 go_test(
     name = "go_default_xtest",
-    srcs = ["metrics_du_test.go"],
-    tags = ["automanaged"],
+    srcs = [
+        "metrics_statfs_test.go",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:linux": [
+            "metrics_du_test.go",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
-        "//pkg/volume:go_default_library",
+        ":go_default_library",
         "//pkg/volume/testing:go_default_library",
-        "//vendor:k8s.io/client-go/util/testing",
-    ],
+        "//vendor/k8s.io/client-go/util/testing:go_default_library",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:linux": [
+            "//vendor/golang.org/x/sys/unix:go_default_library",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 filegroup(
@@ -96,6 +119,7 @@ filegroup(
         "//pkg/volume/cephfs:all-srcs",
         "//pkg/volume/cinder:all-srcs",
         "//pkg/volume/configmap:all-srcs",
+        "//pkg/volume/csi:all-srcs",
         "//pkg/volume/downwardapi:all-srcs",
         "//pkg/volume/empty_dir:all-srcs",
         "//pkg/volume/fc:all-srcs",
@@ -106,15 +130,21 @@ filegroup(
         "//pkg/volume/glusterfs:all-srcs",
         "//pkg/volume/host_path:all-srcs",
         "//pkg/volume/iscsi:all-srcs",
+        "//pkg/volume/local:all-srcs",
         "//pkg/volume/nfs:all-srcs",
         "//pkg/volume/photon_pd:all-srcs",
+        "//pkg/volume/portworx:all-srcs",
         "//pkg/volume/projected:all-srcs",
         "//pkg/volume/quobyte:all-srcs",
         "//pkg/volume/rbd:all-srcs",
+        "//pkg/volume/scaleio:all-srcs",
         "//pkg/volume/secret:all-srcs",
+        "//pkg/volume/storageos:all-srcs",
         "//pkg/volume/testing:all-srcs",
         "//pkg/volume/util:all-srcs",
+        "//pkg/volume/validation:all-srcs",
         "//pkg/volume/vsphere_volume:all-srcs",
     ],
     tags = ["automanaged"],
+    visibility = ["//visibility:public"],
 )
