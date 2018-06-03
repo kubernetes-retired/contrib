@@ -16,6 +16,7 @@ vrrp_instance vips {
   track_interface {
     {{ $iface }}
   }
+  {{ if .notify }} notify {{ .notify }} {{ end }}
 
   {{ if .useUnicast }}
   unicast_src_ip {{ .myIP }}
