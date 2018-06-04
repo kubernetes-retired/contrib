@@ -22,18 +22,18 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/autoscaler/cluster-autoscaler/simulator"
+	"k8s.io/client-go/kubernetes/fake"
 	core "k8s.io/client-go/testing"
 	kube_record "k8s.io/client-go/tools/record"
-	"k8s.io/contrib/cluster-autoscaler/simulator"
-	apiv1 "k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
 )
 
 func TestWaitForScheduled(t *testing.T) {
-	pod := createTestPod("test-pod", true, 150)
+	pod := createTestPod("test-pod", true, false, 150)
 	counter := 0
 	fakeClient := &fake.Clientset{}
 	fakeClient.Fake.AddReactor("get", "pods", func(action core.Action) (bool, runtime.Object, error) {
@@ -52,24 +52,25 @@ func TestWaitForScheduled(t *testing.T) {
 	assert.False(t, podsBeingProcessed.HasId("kube-system_test-pod"))
 }
 
-func TestFilterCriticalPods(t *testing.T) {
-	allPods := []*apiv1.Pod{}
+func TestFilterCriticalPodsCreatedByDaemonSet(t *testing.T) {
+	allPods := []*v1.Pod{}
 	podsBeingProcessed := NewPodSet()
-	filtered := filterCriticalPods(allPods, podsBeingProcessed)
+	filtered := filterCriticalDaemonSetPods(allPods, podsBeingProcessed)
 	assert.Equal(t, 0, len(filtered))
 
-	allPods = []*apiv1.Pod{
-		createTestPod("heapster", true, 0),
-		createTestPod("random", false, 0),
-		createTestPod("dns", true, 0),
+	allPods = []*v1.Pod{
+		createTestPod("heapster", true, true, 0),
+		createTestPod("random1", false, false, 0),
+		createTestPod("random1", true, false, 0), // Eventhough this is criticalPod, this is not created by DS.
+		createTestPod("dns", true, true, 0),
 	}
-	filtered = filterCriticalPods(allPods, podsBeingProcessed)
+	filtered = filterCriticalDaemonSetPods(allPods, podsBeingProcessed)
 	assert.Equal(t, 2, len(filtered))
 	assert.Equal(t, "heapster", filtered[0].Name)
 	assert.Equal(t, "dns", filtered[1].Name)
 
 	podsBeingProcessed.Add(allPods[0])
-	filtered = filterCriticalPods(allPods, podsBeingProcessed)
+	filtered = filterCriticalDaemonSetPods(allPods, podsBeingProcessed)
 	assert.Equal(t, 1, len(filtered))
 	assert.Equal(t, "dns", filtered[0].Name)
 }
@@ -79,12 +80,12 @@ func TestReleaseTaintsOnNodes(t *testing.T) {
 	fakeClient := &fake.Clientset{}
 	fakeClient.Fake.AddReactor("update", "nodes", func(action core.Action) (bool, runtime.Object, error) {
 		update := action.(core.UpdateAction)
-		obj := update.GetObject().(*apiv1.Node)
+		obj := update.GetObject().(*v1.Node)
 		updatedNodes <- obj.Name
 		return true, obj, nil
 	})
 
-	nodes := []*apiv1.Node{
+	nodes := []*v1.Node{
 		createTestNode("node1", 1000),
 		createTestNode("node2", 1000),
 		createTestNode("node3", 1000),
@@ -93,7 +94,7 @@ func TestReleaseTaintsOnNodes(t *testing.T) {
 	addTaintToNode(nodes[1], "kube-system_dns")
 
 	podsBeingProcessed := NewPodSet()
-	podsBeingProcessed.Add(createTestPod("heapster", true, 200))
+	podsBeingProcessed.Add(createTestPod("heapster", true, true, 200))
 
 	releaseTaintsOnNodes(fakeClient, nodes, podsBeingProcessed)
 	assert.Equal(t, nodes[1].Name, getStringFromChan(updatedNodes))
@@ -105,12 +106,12 @@ func TestReleaseTaintsOnNodesDeprecated(t *testing.T) {
 	fakeClient := &fake.Clientset{}
 	fakeClient.Fake.AddReactor("update", "nodes", func(action core.Action) (bool, runtime.Object, error) {
 		update := action.(core.UpdateAction)
-		obj := update.GetObject().(*apiv1.Node)
+		obj := update.GetObject().(*v1.Node)
 		updatedNodes <- obj.Name
 		return true, obj, nil
 	})
 
-	nodes := []*apiv1.Node{
+	nodes := []*v1.Node{
 		createTestNode("node1", 1000),
 		createTestNode("node2", 1000),
 		createTestNode("node3", 1000),
@@ -126,23 +127,23 @@ func TestReleaseTaintsOnNodesDeprecated(t *testing.T) {
 
 func TestFindNodeForPod(t *testing.T) {
 	predicateChecker := simulator.NewTestPredicateChecker()
-	nodes := []*apiv1.Node{
+	nodes := []*v1.Node{
 		createTestNode("node1", 500),
 		createTestNode("node2", 1000),
 		createTestNode("node3", 2000),
 	}
-	pods1 := []apiv1.Pod{
-		*createTestPod("p1n1", true, 100),
-		*createTestPod("p2n1", false, 300),
+	pods1 := []v1.Pod{
+		*createTestPod("p1n1", true, true, 100),
+		*createTestPod("p2n1", false, false, 300),
 	}
-	pods2 := []apiv1.Pod{
-		*createTestPod("p1n2", false, 500),
-		*createTestPod("p2n2", true, 300),
+	pods2 := []v1.Pod{
+		*createTestPod("p1n2", false, false, 500),
+		*createTestPod("p2n2", true, true, 300),
 	}
-	pods3 := []apiv1.Pod{
-		*createTestPod("p1n3", false, 500),
-		*createTestPod("p2n3", false, 500),
-		*createTestPod("p3n3", false, 300),
+	pods3 := []v1.Pod{
+		*createTestPod("p1n3", false, false, 500),
+		*createTestPod("p2n3", false, false, 500),
+		*createTestPod("p3n3", false, false, 300),
 	}
 
 	fakeClient := &fake.Clientset{}
@@ -151,7 +152,7 @@ func TestFindNodeForPod(t *testing.T) {
 		assert.True(t, ok)
 		restrictions := listAction.GetListRestrictions().Fields.String()
 
-		podList := &apiv1.PodList{}
+		podList := &v1.PodList{}
 		switch restrictions {
 		case "spec.nodeName=node1":
 			podList.Items = pods1
@@ -165,10 +166,10 @@ func TestFindNodeForPod(t *testing.T) {
 		return true, podList, nil
 	})
 
-	pod1 := createTestPod("pod1", true, 100)
-	pod2 := createTestPod("pod2", true, 500)
-	pod3 := createTestPod("pod3", true, 800)
-	pod4 := createTestPod("pod4", true, 2200)
+	pod1 := createTestPod("pod1", true, true, 100)
+	pod2 := createTestPod("pod2", true, true, 500)
+	pod3 := createTestPod("pod3", true, true, 800)
+	pod4 := createTestPod("pod4", true, true, 2200)
 
 	node := findNodeForPod(fakeClient, predicateChecker, nodes, pod1)
 	assert.Equal(t, "node1", node.Name)
@@ -191,17 +192,17 @@ func TestPrepareNodeForPod(t *testing.T) {
 	predicateChecker := simulator.NewTestPredicateChecker()
 
 	node := createTestNode("test-node", 1000)
-	podsOnNode := []apiv1.Pod{
-		*createTestPod("p1", true, 150),
-		*createTestPod("p2", false, 150),
-		*createTestPod("p3", false, 250),
-		*createTestPod("p4", false, 150),
-		*createTestPod("p5", true, 150),
+	podsOnNode := []v1.Pod{
+		*createTestPod("p1", true, true, 150),
+		*createTestPod("p2", false, false, 150),
+		*createTestPod("p3", false, false, 250),
+		*createTestPod("p4", false, false, 150),
+		*createTestPod("p5", true, true, 150),
 	}
-	criticalPod := createTestPod("critical-pod", true, 500)
+	criticalPod := createTestPod("critical-pod", true, true, 500)
 
 	fakeClient.Fake.AddReactor("list", "pods", func(action core.Action) (bool, runtime.Object, error) {
-		return true, &apiv1.PodList{Items: podsOnNode}, nil
+		return true, &v1.PodList{Items: podsOnNode}, nil
 	})
 	fakeClient.Fake.AddReactor("delete", "pods", func(action core.Action) (bool, runtime.Object, error) {
 		deleteAction := action.(core.DeleteAction)
@@ -217,19 +218,19 @@ func TestPrepareNodeForPod(t *testing.T) {
 	assert.Equal(t, "Nothing returned", getStringFromChan(deletedPods))
 }
 
-func createTestPod(name string, isCritical bool, cpu int64) *apiv1.Pod {
-	pod := &apiv1.Pod{
+func createTestPod(name string, isCritical bool, isDaemonSet bool, cpu int64) *v1.Pod {
+	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "kube-system",
 			Name:      name,
 			SelfLink:  fmt.Sprintf("/api/v1/namespaces/default/pods/%s", name),
 		},
-		Spec: apiv1.PodSpec{
-			Containers: []apiv1.Container{
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
 				{
-					Resources: apiv1.ResourceRequirements{
-						Requests: apiv1.ResourceList{
-							apiv1.ResourceCPU: *resource.NewMilliQuantity(cpu, resource.DecimalSI),
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							v1.ResourceCPU: *resource.NewMilliQuantity(cpu, resource.DecimalSI),
 						},
 					},
 				},
@@ -239,24 +240,34 @@ func createTestPod(name string, isCritical bool, cpu int64) *apiv1.Pod {
 	if isCritical {
 		pod.ObjectMeta.Annotations = map[string]string{criticalPodAnnotation: ""}
 	}
+	if isDaemonSet {
+		pod.ObjectMeta.OwnerReferences = getDaemonSetOwnerRefList()
+	}
 	return pod
 }
 
-func createTestNode(name string, cpu int64) *apiv1.Node {
-	node := &apiv1.Node{
+// getDaemonSetOwnerRefList returns the ownerRef needed for daemonset pod.
+func getDaemonSetOwnerRefList() []metav1.OwnerReference {
+	ownerRefList := make([]metav1.OwnerReference, 0)
+	ownerRefList = append(ownerRefList, metav1.OwnerReference{Kind: "DaemonSet", APIVersion: "v1"})
+	return ownerRefList
+}
+
+func createTestNode(name string, cpu int64) *v1.Node {
+	node := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Status: apiv1.NodeStatus{
-			Capacity: apiv1.ResourceList{
-				apiv1.ResourceCPU:    *resource.NewMilliQuantity(cpu, resource.DecimalSI),
-				apiv1.ResourceMemory: *resource.NewQuantity(2*1024*1024*1024, resource.DecimalSI),
-				apiv1.ResourcePods:   *resource.NewQuantity(100, resource.DecimalSI),
+		Status: v1.NodeStatus{
+			Capacity: v1.ResourceList{
+				v1.ResourceCPU:    *resource.NewMilliQuantity(cpu, resource.DecimalSI),
+				v1.ResourceMemory: *resource.NewQuantity(2*1024*1024*1024, resource.DecimalSI),
+				v1.ResourcePods:   *resource.NewQuantity(100, resource.DecimalSI),
 			},
-			Conditions: []apiv1.NodeCondition{
+			Conditions: []v1.NodeCondition{
 				{
-					Type:   apiv1.NodeReady,
-					Status: apiv1.ConditionTrue,
+					Type:   v1.NodeReady,
+					Status: v1.ConditionTrue,
 				},
 			},
 		},
@@ -265,15 +276,15 @@ func createTestNode(name string, cpu int64) *apiv1.Node {
 	return node
 }
 
-func addTaintToNode(node *apiv1.Node, name string) {
-	node.Spec.Taints = append(node.Spec.Taints, apiv1.Taint{
+func addTaintToNode(node *v1.Node, name string) {
+	node.Spec.Taints = append(node.Spec.Taints, v1.Taint{
 		Key:    criticalAddonsOnlyTaintKey,
 		Value:  name,
-		Effect: apiv1.TaintEffectNoSchedule,
+		Effect: v1.TaintEffectNoSchedule,
 	})
 }
 
-func addTaintAnnotationToNode(node *apiv1.Node, name string) {
+func addTaintAnnotationToNode(node *v1.Node, name string) {
 	node.Annotations = map[string]string{
 		TaintsAnnotationKey: fmt.Sprintf("[{\"key\":\"CriticalAddonsOnly\", \"value\":\"%s\"}]", name),
 	}

@@ -21,12 +21,11 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	fedclientset "k8s.io/kubernetes/federation/client/clientset_generated/federation_internalclientset"
-	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	oldclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/version"
 )
 
@@ -34,7 +33,6 @@ func NewClientCache(loader clientcmd.ClientConfig, discoveryClientFactory Discov
 	return &ClientCache{
 		clientsets:             make(map[schema.GroupVersion]internalclientset.Interface),
 		configs:                make(map[schema.GroupVersion]*restclient.Config),
-		fedClientSets:          make(map[schema.GroupVersion]fedclientset.Interface),
 		loader:                 loader,
 		discoveryClientFactory: discoveryClientFactory,
 	}
@@ -43,30 +41,56 @@ func NewClientCache(loader clientcmd.ClientConfig, discoveryClientFactory Discov
 // ClientCache caches previously loaded clients for reuse, and ensures MatchServerVersion
 // is invoked only once
 type ClientCache struct {
-	loader        clientcmd.ClientConfig
-	clientsets    map[schema.GroupVersion]internalclientset.Interface
-	fedClientSets map[schema.GroupVersion]fedclientset.Interface
-	configs       map[schema.GroupVersion]*restclient.Config
+	loader     clientcmd.ClientConfig
+	clientsets map[schema.GroupVersion]internalclientset.Interface
+	configs    map[schema.GroupVersion]*restclient.Config
 
 	// noVersionConfig provides a cached config for the case of no required version specified
 	noVersionConfig *restclient.Config
 
 	matchVersion bool
 
-	defaultConfigLock sync.Mutex
-	defaultConfig     *restclient.Config
+	lock          sync.Mutex
+	defaultConfig *restclient.Config
 	// discoveryClientFactory comes as a factory method so that we can defer resolution until after
 	// argument evaluation
 	discoveryClientFactory DiscoveryClientFactory
 	discoveryClient        discovery.DiscoveryInterface
+
+	kubernetesClientCache kubernetesClientCache
+}
+
+// kubernetesClientCache creates a new kubernetes.Clientset one time
+// and then returns the result for all future requests
+type kubernetesClientCache struct {
+	// once makes sure the client is only initialized once
+	once sync.Once
+	// client is the cached client value
+	client *kubernetes.Clientset
+	// err is the cached error value
+	err error
+}
+
+// KubernetesClientSetForVersion returns a new kubernetes.Clientset.  It will cache the value
+// the first time it is called and return the cached value on subsequent calls.
+// If an error is encountered the first time KubernetesClientSetForVersion is called,
+// the error will be cached.
+func (c *ClientCache) KubernetesClientSetForVersion(requiredVersion *schema.GroupVersion) (*kubernetes.Clientset, error) {
+	c.kubernetesClientCache.once.Do(func() {
+		config, err := c.ClientConfigForVersion(requiredVersion)
+		if err != nil {
+			c.kubernetesClientCache.err = err
+			return
+		}
+		c.kubernetesClientCache.client, c.kubernetesClientCache.err = kubernetes.NewForConfig(config)
+	})
+	return c.kubernetesClientCache.client, c.kubernetesClientCache.err
 }
 
 // also looks up the discovery client.  We can't do this during init because the flags won't have been set
-// because this is constructed pre-command execution before the command tree is even set up
+// because this is constructed pre-command execution before the command tree is
+// even set up. Requires the lock to already be acquired
 func (c *ClientCache) getDefaultConfig() (restclient.Config, discovery.DiscoveryInterface, error) {
-	c.defaultConfigLock.Lock()
-	defer c.defaultConfigLock.Unlock()
-
 	if c.defaultConfig != nil && c.discoveryClient != nil {
 		return *c.defaultConfig, c.discoveryClient, nil
 	}
@@ -92,19 +116,15 @@ func (c *ClientCache) getDefaultConfig() (restclient.Config, discovery.Discovery
 
 // ClientConfigForVersion returns the correct config for a server
 func (c *ClientCache) ClientConfigForVersion(requiredVersion *schema.GroupVersion) (*restclient.Config, error) {
-	// TODO: have a better config copy method
-	config, discoveryClient, err := c.getDefaultConfig()
-	if err != nil {
-		return nil, err
-	}
-	if requiredVersion == nil && config.GroupVersion != nil {
-		// if someone has set the values via flags, our config will have the groupVersion set
-		// that means it is required.
-		requiredVersion = config.GroupVersion
-	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
-	// required version may still be nil, since config.GroupVersion may have been nil.  Do the check
-	// before looking up from the cache
+	return c.clientConfigForVersion(requiredVersion)
+}
+
+// clientConfigForVersion returns the correct config for a server
+func (c *ClientCache) clientConfigForVersion(requiredVersion *schema.GroupVersion) (*restclient.Config, error) {
+	// only lookup in the cache if the requiredVersion is set
 	if requiredVersion != nil {
 		if config, ok := c.configs[*requiredVersion]; ok {
 			return copyConfig(config), nil
@@ -113,14 +133,24 @@ func (c *ClientCache) ClientConfigForVersion(requiredVersion *schema.GroupVersio
 		return copyConfig(c.noVersionConfig), nil
 	}
 
-	negotiatedVersion, err := discovery.NegotiateVersion(discoveryClient, requiredVersion, api.Registry.EnabledVersions())
+	// this returns a shallow copy to work with
+	config, discoveryClient, err := c.getDefaultConfig()
 	if err != nil {
 		return nil, err
 	}
-	config.GroupVersion = negotiatedVersion
+
+	if requiredVersion != nil {
+		if err := discovery.ServerSupportsVersion(discoveryClient, *requiredVersion); err != nil {
+			return nil, err
+		}
+		config.GroupVersion = requiredVersion
+	} else {
+		// TODO remove this hack.  This is allowing the GetOptions to be serialized.
+		config.GroupVersion = &schema.GroupVersion{Group: "", Version: "v1"}
+	}
 
 	// TODO this isn't what we want.  Each clientset should be setting defaults as it sees fit.
-	oldclient.SetKubernetesDefaults(&config)
+	setKubernetesDefaults(&config)
 
 	if requiredVersion != nil {
 		c.configs[*requiredVersion] = copyConfig(&config)
@@ -135,6 +165,22 @@ func (c *ClientCache) ClientConfigForVersion(requiredVersion *schema.GroupVersio
 	return copyConfig(&config), nil
 }
 
+// setKubernetesDefaults sets default values on the provided client config for accessing the
+// Kubernetes API or returns an error if any of the defaults are impossible or invalid.
+func setKubernetesDefaults(config *restclient.Config) error {
+	if config.APIPath == "" {
+		config.APIPath = "/api"
+	}
+	// TODO chase down uses and tolerate nil
+	if config.GroupVersion == nil {
+		config.GroupVersion = &schema.GroupVersion{}
+	}
+	if config.NegotiatedSerializer == nil {
+		config.NegotiatedSerializer = legacyscheme.Codecs
+	}
+	return restclient.SetKubernetesDefaults(config)
+}
+
 func copyConfig(in *restclient.Config) *restclient.Config {
 	configCopy := *in
 	copyGroupVersion := *configCopy.GroupVersion
@@ -145,12 +191,15 @@ func copyConfig(in *restclient.Config) *restclient.Config {
 // ClientSetForVersion initializes or reuses a clientset for the specified version, or returns an
 // error if that is not possible
 func (c *ClientCache) ClientSetForVersion(requiredVersion *schema.GroupVersion) (internalclientset.Interface, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	if requiredVersion != nil {
 		if clientset, ok := c.clientsets[*requiredVersion]; ok {
 			return clientset, nil
 		}
 	}
-	config, err := c.ClientConfigForVersion(requiredVersion)
+	config, err := c.clientConfigForVersion(requiredVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -174,42 +223,4 @@ func (c *ClientCache) ClientSetForVersion(requiredVersion *schema.GroupVersion) 
 	}
 
 	return clientset, nil
-}
-
-func (c *ClientCache) FederationClientSetForVersion(version *schema.GroupVersion) (fedclientset.Interface, error) {
-	if version != nil {
-		if clientSet, found := c.fedClientSets[*version]; found {
-			return clientSet, nil
-		}
-	}
-	config, err := c.ClientConfigForVersion(version)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: support multi versions of client with clientset
-	clientSet, err := fedclientset.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-	c.fedClientSets[*config.GroupVersion] = clientSet
-
-	if version != nil {
-		configCopy := *config
-		clientSet, err := fedclientset.NewForConfig(&configCopy)
-		if err != nil {
-			return nil, err
-		}
-		c.fedClientSets[*version] = clientSet
-	}
-
-	return clientSet, nil
-}
-
-func (c *ClientCache) FederationClientForVersion(version *schema.GroupVersion) (*restclient.RESTClient, error) {
-	fedClientSet, err := c.FederationClientSetForVersion(version)
-	if err != nil {
-		return nil, err
-	}
-	return fedClientSet.Federation().RESTClient().(*restclient.RESTClient), nil
 }

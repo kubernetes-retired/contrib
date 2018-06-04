@@ -19,9 +19,12 @@ package printers
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 )
 
@@ -29,7 +32,6 @@ import (
 type NamePrinter struct {
 	Decoders []runtime.Decoder
 	Typer    runtime.ObjectTyper
-	Mapper   meta.RESTMapper
 }
 
 func (p *NamePrinter) AfterPrint(w io.Writer, res string) error {
@@ -62,30 +64,55 @@ func (p *NamePrinter) PrintObj(obj runtime.Object, w io.Writer) error {
 		}
 	}
 
-	kind := obj.GetObjectKind().GroupVersionKind()
-	if len(kind.Kind) == 0 {
-		if gvks, _, err := p.Typer.ObjectKinds(obj); err == nil {
-			for _, gvk := range gvks {
-				if mappings, err := p.Mapper.RESTMappings(gvk.GroupKind(), gvk.Version); err == nil && len(mappings) > 0 {
-					fmt.Fprintf(w, "%s/%s\n", mappings[0].Resource, name)
-				}
-			}
-		} else {
-			fmt.Fprintf(w, "<unknown>/%s\n", name)
-		}
+	return printObj(w, name, GetObjectGroupKind(obj, p.Typer))
+}
 
-	} else {
-		if mappings, err := p.Mapper.RESTMappings(kind.GroupKind(), kind.Version); err == nil && len(mappings) > 0 {
-			fmt.Fprintf(w, "%s/%s\n", mappings[0].Resource, name)
-		} else {
-			fmt.Fprintf(w, "<unknown>/%s\n", name)
+func GetObjectGroupKind(obj runtime.Object, typer runtime.ObjectTyper) schema.GroupKind {
+	if obj == nil {
+		return schema.GroupKind{Kind: "<unknown>"}
+	}
+	groupVersionKind := obj.GetObjectKind().GroupVersionKind()
+	if len(groupVersionKind.Kind) > 0 {
+		return groupVersionKind.GroupKind()
+	}
+
+	if gvks, _, err := typer.ObjectKinds(obj); err == nil {
+		for _, gvk := range gvks {
+			if len(gvk.Kind) == 0 {
+				continue
+			}
+			return gvk.GroupKind()
 		}
 	}
 
+	if uns, ok := obj.(*unstructured.Unstructured); ok {
+		if len(uns.GroupVersionKind().Kind) > 0 {
+			return uns.GroupVersionKind().GroupKind()
+		}
+	}
+
+	return schema.GroupKind{Kind: "<unknown>"}
+}
+
+func printObj(w io.Writer, name string, groupKind schema.GroupKind) error {
+	if len(groupKind.Kind) == 0 {
+		return fmt.Errorf("missing kind for resource with name %v", name)
+	}
+
+	if len(groupKind.Group) == 0 {
+		fmt.Fprintf(w, "%s/%s\n", strings.ToLower(groupKind.Kind), name)
+		return nil
+	}
+
+	fmt.Fprintf(w, "%s.%s/%s\n", strings.ToLower(groupKind.Kind), groupKind.Group, name)
 	return nil
 }
 
 // TODO: implement HandledResources()
 func (p *NamePrinter) HandledResources() []string {
 	return []string{}
+}
+
+func (p *NamePrinter) IsGeneric() bool {
+	return true
 }

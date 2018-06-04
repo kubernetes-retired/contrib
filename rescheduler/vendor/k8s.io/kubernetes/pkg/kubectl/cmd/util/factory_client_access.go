@@ -23,34 +23,44 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"k8s.io/api/core/v1"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	appsv1 "k8s.io/api/apps/v1"
+	appsv1beta1 "k8s.io/api/apps/v1beta1"
+	appsv1beta2 "k8s.io/api/apps/v1beta2"
+	batchv1 "k8s.io/api/batch/v1"
+	batchv1beta1 "k8s.io/api/batch/v1beta1"
+	batchv2alpha1 "k8s.io/api/batch/v2alpha1"
+	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilflag "k8s.io/apiserver/pkg/util/flag"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	fedclientset "k8s.io/kubernetes/federation/client/clientset_generated/federation_internalclientset"
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/service"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/apis/apps"
-	"k8s.io/kubernetes/pkg/apis/batch"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
-	"k8s.io/kubernetes/pkg/printers"
-	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
+	"k8s.io/kubernetes/pkg/kubectl/util/transport"
 )
 
 type ring0Factory struct {
@@ -90,6 +100,7 @@ func NewClientAccessFactoryFromDiscovery(flags *pflag.FlagSet, clientConfig clie
 
 type discoveryFactory struct {
 	clientConfig clientcmd.ClientConfig
+	cacheDir     string
 }
 
 func (f *discoveryFactory) DiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
@@ -97,12 +108,28 @@ func (f *discoveryFactory) DiscoveryClient() (discovery.CachedDiscoveryInterface
 	if err != nil {
 		return nil, err
 	}
+
+	if f.cacheDir != "" {
+		wt := cfg.WrapTransport
+		cfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+			if wt != nil {
+				rt = wt(rt)
+			}
+			return transport.NewCacheRoundTripper(f.cacheDir, rt)
+		}
+	}
+
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 	cacheDir := computeDiscoverCacheDir(filepath.Join(homedir.HomeDir(), ".kube", "cache", "discovery"), cfg.Host)
 	return NewCachedDiscoveryClient(discoveryClient, cacheDir, time.Duration(10*time.Minute)), nil
+}
+
+func (f *discoveryFactory) BindFlags(flags *pflag.FlagSet) {
+	defaultCacheDir := filepath.Join(homedir.HomeDir(), ".kube", "http-cache")
+	flags.StringVar(&f.cacheDir, FlagHTTPCacheDir, defaultCacheDir, "Default HTTP cache directory")
 }
 
 // DefaultClientConfig creates a clientcmd.ClientConfig with the following hierarchy:
@@ -168,12 +195,12 @@ func (f *ring0Factory) DiscoveryClient() (discovery.CachedDiscoveryInterface, er
 	return f.discoveryFactory.DiscoveryClient()
 }
 
-func (f *ring0Factory) ClientSet() (internalclientset.Interface, error) {
-	return f.clientCache.ClientSetForVersion(nil)
+func (f *ring0Factory) KubernetesClientSet() (*kubernetes.Clientset, error) {
+	return f.clientCache.KubernetesClientSetForVersion(nil)
 }
 
-func (f *ring0Factory) ClientSetForVersion(requiredVersion *schema.GroupVersion) (internalclientset.Interface, error) {
-	return f.clientCache.ClientSetForVersion(requiredVersion)
+func (f *ring0Factory) ClientSet() (internalclientset.Interface, error) {
+	return f.clientCache.ClientSetForVersion(nil)
 }
 
 func (f *ring0Factory) ClientConfig() (*restclient.Config, error) {
@@ -181,10 +208,6 @@ func (f *ring0Factory) ClientConfig() (*restclient.Config, error) {
 }
 func (f *ring0Factory) BareClientConfig() (*restclient.Config, error) {
 	return f.clientConfig.ClientConfig()
-}
-
-func (f *ring0Factory) ClientConfigForVersion(requiredVersion *schema.GroupVersion) (*restclient.Config, error) {
-	return f.clientCache.ClientConfigForVersion(nil)
 }
 
 func (f *ring0Factory) RESTClient() (*restclient.RESTClient, error) {
@@ -195,48 +218,55 @@ func (f *ring0Factory) RESTClient() (*restclient.RESTClient, error) {
 	return restclient.RESTClientFor(clientConfig)
 }
 
-func (f *ring0Factory) FederationClientSetForVersion(version *schema.GroupVersion) (fedclientset.Interface, error) {
-	return f.clientCache.FederationClientSetForVersion(version)
-}
-
-func (f *ring0Factory) FederationClientForVersion(version *schema.GroupVersion) (*restclient.RESTClient, error) {
-	return f.clientCache.FederationClientForVersion(version)
-}
-
-func (f *ring0Factory) Decoder(toInternal bool) runtime.Decoder {
-	var decoder runtime.Decoder
-	if toInternal {
-		decoder = api.Codecs.UniversalDecoder()
-	} else {
-		decoder = api.Codecs.UniversalDeserializer()
-	}
-	return decoder
-}
-
-func (f *ring0Factory) JSONEncoder() runtime.Encoder {
-	return api.Codecs.LegacyCodec(api.Registry.EnabledVersions()...)
-}
-
-func (f *ring0Factory) UpdatePodSpecForObject(obj runtime.Object, fn func(*api.PodSpec) error) (bool, error) {
+func (f *ring0Factory) UpdatePodSpecForObject(obj runtime.Object, fn func(*v1.PodSpec) error) (bool, error) {
 	// TODO: replace with a swagger schema based approach (identify pod template via schema introspection)
 	switch t := obj.(type) {
-	case *api.Pod:
+	case *v1.Pod:
 		return true, fn(&t.Spec)
-	case *api.ReplicationController:
+	// ReplicationController
+	case *v1.ReplicationController:
 		if t.Spec.Template == nil {
-			t.Spec.Template = &api.PodTemplateSpec{}
+			t.Spec.Template = &v1.PodTemplateSpec{}
 		}
 		return true, fn(&t.Spec.Template.Spec)
-	case *extensions.Deployment:
+	// Deployment
+	case *extensionsv1beta1.Deployment:
 		return true, fn(&t.Spec.Template.Spec)
-	case *extensions.DaemonSet:
+	case *appsv1beta1.Deployment:
 		return true, fn(&t.Spec.Template.Spec)
-	case *extensions.ReplicaSet:
+	case *appsv1beta2.Deployment:
 		return true, fn(&t.Spec.Template.Spec)
-	case *apps.StatefulSet:
+	case *appsv1.Deployment:
 		return true, fn(&t.Spec.Template.Spec)
-	case *batch.Job:
+	// DaemonSet
+	case *extensionsv1beta1.DaemonSet:
 		return true, fn(&t.Spec.Template.Spec)
+	case *appsv1beta2.DaemonSet:
+		return true, fn(&t.Spec.Template.Spec)
+	case *appsv1.DaemonSet:
+		return true, fn(&t.Spec.Template.Spec)
+	// ReplicaSet
+	case *extensionsv1beta1.ReplicaSet:
+		return true, fn(&t.Spec.Template.Spec)
+	case *appsv1beta2.ReplicaSet:
+		return true, fn(&t.Spec.Template.Spec)
+	case *appsv1.ReplicaSet:
+		return true, fn(&t.Spec.Template.Spec)
+	// StatefulSet
+	case *appsv1beta1.StatefulSet:
+		return true, fn(&t.Spec.Template.Spec)
+	case *appsv1beta2.StatefulSet:
+		return true, fn(&t.Spec.Template.Spec)
+	case *appsv1.StatefulSet:
+		return true, fn(&t.Spec.Template.Spec)
+	// Job
+	case *batchv1.Job:
+		return true, fn(&t.Spec.Template.Spec)
+	// CronJob
+	case *batchv1beta1.CronJob:
+		return true, fn(&t.Spec.JobTemplate.Spec.Template.Spec)
+	case *batchv2alpha1.CronJob:
+		return true, fn(&t.Spec.JobTemplate.Spec.Template.Spec)
 	default:
 		return false, fmt.Errorf("the object is not a pod or does not have a pod template")
 	}
@@ -272,11 +302,7 @@ func (f *ring0Factory) MapBasedSelectorForObject(object runtime.Object) (string,
 		}
 		return kubectl.MakeLabels(t.Spec.Selector.MatchLabels), nil
 	default:
-		gvks, _, err := api.Scheme.ObjectKinds(object)
-		if err != nil {
-			return "", err
-		}
-		return "", fmt.Errorf("cannot extract pod selector from %v", gvks[0])
+		return "", fmt.Errorf("cannot extract pod selector from %T", object)
 	}
 }
 
@@ -294,11 +320,7 @@ func (f *ring0Factory) PortsForObject(object runtime.Object) ([]string, error) {
 	case *extensions.ReplicaSet:
 		return getPorts(t.Spec.Template.Spec), nil
 	default:
-		gvks, _, err := api.Scheme.ObjectKinds(object)
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("cannot extract ports from %v", gvks[0])
+		return nil, fmt.Errorf("cannot extract ports from %T", object)
 	}
 }
 
@@ -316,11 +338,7 @@ func (f *ring0Factory) ProtocolsForObject(object runtime.Object) (map[string]str
 	case *extensions.ReplicaSet:
 		return getProtocols(t.Spec.Template.Spec), nil
 	default:
-		gvks, _, err := api.Scheme.ObjectKinds(object)
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("cannot extract protocols from %v", gvks[0])
+		return nil, fmt.Errorf("cannot extract protocols from %T", object)
 	}
 }
 
@@ -373,6 +391,8 @@ func (f *ring0Factory) BindFlags(flags *pflag.FlagSet) {
 	// to do that automatically for every subcommand.
 	flags.BoolVar(&f.clientCache.matchVersion, FlagMatchBinaryVersion, false, "Require server version to match client version")
 
+	f.discoveryFactory.BindFlags(flags)
+
 	// Normalize all flags that are coming from other packages or pre-configurations
 	// a.k.a. change all "_" to "-". e.g. glog package
 	flags.SetNormalizeFunc(utilflag.WordSepNormalizeFunc)
@@ -381,24 +401,6 @@ func (f *ring0Factory) BindFlags(flags *pflag.FlagSet) {
 func (f *ring0Factory) BindExternalFlags(flags *pflag.FlagSet) {
 	// any flags defined by external projects (not part of pflags)
 	flags.AddGoFlagSet(flag.CommandLine)
-}
-
-func (f *ring0Factory) DefaultResourceFilterOptions(cmd *cobra.Command, withNamespace bool) *printers.PrintOptions {
-	columnLabel, err := cmd.Flags().GetStringSlice("label-columns")
-	if err != nil {
-		columnLabel = []string{}
-	}
-	opts := &printers.PrintOptions{
-		NoHeaders:          GetFlagBool(cmd, "no-headers"),
-		WithNamespace:      withNamespace,
-		Wide:               GetWideFlag(cmd),
-		ShowAll:            GetFlagBool(cmd, "show-all"),
-		ShowLabels:         GetFlagBool(cmd, "show-labels"),
-		AbsoluteTimestamps: isWatch(cmd),
-		ColumnLabels:       columnLabel,
-	}
-
-	return opts
 }
 
 func (f *ring0Factory) DefaultResourceFilterFunc() kubectl.Filters {
@@ -415,12 +417,6 @@ func (f *ring0Factory) SuggestedPodTemplateResources() []schema.GroupResource {
 	}
 }
 
-func (f *ring0Factory) Printer(mapping *meta.RESTMapping, options printers.PrintOptions) (printers.ResourcePrinter, error) {
-	p := printers.NewHumanReadablePrinter(options)
-	printersinternal.AddHandlers(p)
-	return p, nil
-}
-
 func (f *ring0Factory) Pauser(info *resource.Info) ([]byte, error) {
 	switch obj := info.Object.(type) {
 	case *extensions.Deployment:
@@ -428,7 +424,7 @@ func (f *ring0Factory) Pauser(info *resource.Info) ([]byte, error) {
 			return nil, errors.New("is already paused")
 		}
 		obj.Spec.Paused = true
-		return runtime.Encode(f.JSONEncoder(), info.Object)
+		return runtime.Encode(InternalVersionJSONEncoder(), info.Object)
 	default:
 		return nil, fmt.Errorf("pausing is not supported")
 	}
@@ -445,7 +441,7 @@ func (f *ring0Factory) Resumer(info *resource.Info) ([]byte, error) {
 			return nil, errors.New("is not paused")
 		}
 		obj.Spec.Paused = false
-		return runtime.Encode(f.JSONEncoder(), info.Object)
+		return runtime.Encode(InternalVersionJSONEncoder(), info.Object)
 	default:
 		return nil, fmt.Errorf("resuming is not supported")
 	}
@@ -456,31 +452,38 @@ func (f *ring0Factory) DefaultNamespace() (string, bool, error) {
 }
 
 const (
-	RunV1GeneratorName                     = "run/v1"
-	RunPodV1GeneratorName                  = "run-pod/v1"
-	ServiceV1GeneratorName                 = "service/v1"
-	ServiceV2GeneratorName                 = "service/v2"
-	ServiceNodePortGeneratorV1Name         = "service-nodeport/v1"
-	ServiceClusterIPGeneratorV1Name        = "service-clusterip/v1"
-	ServiceLoadBalancerGeneratorV1Name     = "service-loadbalancer/v1"
-	ServiceExternalNameGeneratorV1Name     = "service-externalname/v1"
-	ServiceAccountV1GeneratorName          = "serviceaccount/v1"
-	HorizontalPodAutoscalerV1GeneratorName = "horizontalpodautoscaler/v1"
-	DeploymentV1Beta1GeneratorName         = "deployment/v1beta1"
-	DeploymentBasicV1Beta1GeneratorName    = "deployment-basic/v1beta1"
-	JobV1GeneratorName                     = "job/v1"
-	CronJobV2Alpha1GeneratorName           = "cronjob/v2alpha1"
-	ScheduledJobV2Alpha1GeneratorName      = "scheduledjob/v2alpha1"
-	NamespaceV1GeneratorName               = "namespace/v1"
-	ResourceQuotaV1GeneratorName           = "resourcequotas/v1"
-	SecretV1GeneratorName                  = "secret/v1"
-	SecretForDockerRegistryV1GeneratorName = "secret-for-docker-registry/v1"
-	SecretForTLSV1GeneratorName            = "secret-for-tls/v1"
-	ConfigMapV1GeneratorName               = "configmap/v1"
-	ClusterRoleBindingV1GeneratorName      = "clusterrolebinding.rbac.authorization.k8s.io/v1alpha1"
-	RoleBindingV1GeneratorName             = "rolebinding.rbac.authorization.k8s.io/v1alpha1"
-	ClusterV1Beta1GeneratorName            = "cluster/v1beta1"
-	PodDisruptionBudgetV1GeneratorName     = "poddisruptionbudget/v1beta1"
+	// TODO(sig-cli): Enforce consistent naming for generators here.
+	// See discussion in https://github.com/kubernetes/kubernetes/issues/46237
+	// before you add any more.
+	RunV1GeneratorName                      = "run/v1"
+	RunPodV1GeneratorName                   = "run-pod/v1"
+	ServiceV1GeneratorName                  = "service/v1"
+	ServiceV2GeneratorName                  = "service/v2"
+	ServiceNodePortGeneratorV1Name          = "service-nodeport/v1"
+	ServiceClusterIPGeneratorV1Name         = "service-clusterip/v1"
+	ServiceLoadBalancerGeneratorV1Name      = "service-loadbalancer/v1"
+	ServiceExternalNameGeneratorV1Name      = "service-externalname/v1"
+	ServiceAccountV1GeneratorName           = "serviceaccount/v1"
+	HorizontalPodAutoscalerV1GeneratorName  = "horizontalpodautoscaler/v1"
+	DeploymentV1Beta1GeneratorName          = "deployment/v1beta1"
+	DeploymentAppsV1Beta1GeneratorName      = "deployment/apps.v1beta1"
+	DeploymentBasicV1Beta1GeneratorName     = "deployment-basic/v1beta1"
+	DeploymentBasicAppsV1Beta1GeneratorName = "deployment-basic/apps.v1beta1"
+	JobV1GeneratorName                      = "job/v1"
+	CronJobV2Alpha1GeneratorName            = "cronjob/v2alpha1"
+	CronJobV1Beta1GeneratorName             = "cronjob/v1beta1"
+	NamespaceV1GeneratorName                = "namespace/v1"
+	ResourceQuotaV1GeneratorName            = "resourcequotas/v1"
+	SecretV1GeneratorName                   = "secret/v1"
+	SecretForDockerRegistryV1GeneratorName  = "secret-for-docker-registry/v1"
+	SecretForTLSV1GeneratorName             = "secret-for-tls/v1"
+	ConfigMapV1GeneratorName                = "configmap/v1"
+	ClusterRoleBindingV1GeneratorName       = "clusterrolebinding.rbac.authorization.k8s.io/v1alpha1"
+	RoleBindingV1GeneratorName              = "rolebinding.rbac.authorization.k8s.io/v1alpha1"
+	ClusterV1Beta1GeneratorName             = "cluster/v1beta1"
+	PodDisruptionBudgetV1GeneratorName      = "poddisruptionbudget/v1beta1"
+	PodDisruptionBudgetV2GeneratorName      = "poddisruptionbudget/v1beta1/v2"
+	PriorityClassV1Alpha1GeneratorName      = "priorityclass/v1alpha1"
 )
 
 // DefaultGenerators returns the set of default generators for use in Factory instances
@@ -505,21 +508,21 @@ func DefaultGenerators(cmdName string) map[string]kubectl.Generator {
 			ServiceLoadBalancerGeneratorV1Name: kubectl.ServiceLoadBalancerGeneratorV1{},
 		}
 	case "deployment":
-		generator = map[string]kubectl.Generator{
-			DeploymentBasicV1Beta1GeneratorName: kubectl.DeploymentBasicGeneratorV1{},
-		}
+		// Create Deployment has only StructuredGenerators and no
+		// param-based Generators.
+		// The StructuredGenerators are as follows (as of 2017-07-17):
+		// DeploymentBasicV1Beta1GeneratorName -> kubectl.DeploymentBasicGeneratorV1
+		// DeploymentBasicAppsV1Beta1GeneratorName -> kubectl.DeploymentBasicAppsGeneratorV1
+		generator = map[string]kubectl.Generator{}
 	case "run":
 		generator = map[string]kubectl.Generator{
-			RunV1GeneratorName:                kubectl.BasicReplicationController{},
-			RunPodV1GeneratorName:             kubectl.BasicPod{},
-			DeploymentV1Beta1GeneratorName:    kubectl.DeploymentV1Beta1{},
-			JobV1GeneratorName:                kubectl.JobV1{},
-			ScheduledJobV2Alpha1GeneratorName: kubectl.CronJobV2Alpha1{},
-			CronJobV2Alpha1GeneratorName:      kubectl.CronJobV2Alpha1{},
-		}
-	case "autoscale":
-		generator = map[string]kubectl.Generator{
-			HorizontalPodAutoscalerV1GeneratorName: kubectl.HorizontalPodAutoscalerV1{},
+			RunV1GeneratorName:                 kubectl.BasicReplicationController{},
+			RunPodV1GeneratorName:              kubectl.BasicPod{},
+			DeploymentV1Beta1GeneratorName:     kubectl.DeploymentV1Beta1{},
+			DeploymentAppsV1Beta1GeneratorName: kubectl.DeploymentAppsV1Beta1{},
+			JobV1GeneratorName:                 kubectl.JobV1{},
+			CronJobV2Alpha1GeneratorName:       kubectl.CronJobV2Alpha1{},
+			CronJobV1Beta1GeneratorName:        kubectl.CronJobV1Beta1{},
 		}
 	case "namespace":
 		generator = map[string]kubectl.Generator{
@@ -546,13 +549,82 @@ func DefaultGenerators(cmdName string) map[string]kubectl.Generator {
 	return generator
 }
 
+// fallbackGeneratorNameIfNecessary returns the name of the old generator
+// if server does not support new generator. Otherwise, the
+// generator string is returned unchanged.
+//
+// If the generator name is changed, print a warning message to let the user
+// know.
+func FallbackGeneratorNameIfNecessary(
+	generatorName string,
+	discoveryClient discovery.DiscoveryInterface,
+	cmdErr io.Writer,
+) (string, error) {
+	switch generatorName {
+	case DeploymentBasicAppsV1Beta1GeneratorName:
+		hasResource, err := HasResource(discoveryClient, appsv1beta1.SchemeGroupVersion.WithResource("deployments"))
+		if err != nil {
+			return "", err
+		}
+		if !hasResource {
+			warning(cmdErr, DeploymentBasicAppsV1Beta1GeneratorName, DeploymentBasicV1Beta1GeneratorName)
+			return DeploymentBasicV1Beta1GeneratorName, nil
+		}
+	case CronJobV2Alpha1GeneratorName:
+		hasResource, err := HasResource(discoveryClient, batchv2alpha1.SchemeGroupVersion.WithResource("cronjobs"))
+		if err != nil {
+			return "", err
+		}
+		if !hasResource {
+			warning(cmdErr, CronJobV2Alpha1GeneratorName, JobV1GeneratorName)
+			return JobV1GeneratorName, nil
+		}
+	}
+	return generatorName, nil
+}
+
+func warning(cmdErr io.Writer, newGeneratorName, oldGeneratorName string) {
+	fmt.Fprintf(cmdErr, "WARNING: New deployments generator %q specified, "+
+		"but it isn't available. "+
+		"Falling back to %q.\n",
+		newGeneratorName,
+		oldGeneratorName,
+	)
+}
+
+func HasResource(client discovery.DiscoveryInterface, resource schema.GroupVersionResource) (bool, error) {
+	resources, err := client.ServerResourcesForGroupVersion(resource.GroupVersion().String())
+	if apierrors.IsNotFound(err) {
+		// entire group is missing
+		return false, nil
+	}
+	if err != nil {
+		// other errors error
+		return false, fmt.Errorf("failed to discover supported resources: %v", err)
+	}
+	for _, serverResource := range resources.APIResources {
+		if serverResource.Name == resource.Resource {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func Contains(resourcesList []*metav1.APIResourceList, resource schema.GroupVersionResource) bool {
+	resources := discovery.FilteredBy(discovery.ResourcePredicateFunc(func(gv string, r *metav1.APIResource) bool {
+		return resource.GroupVersion().String() == gv && resource.Resource == r.Name
+	}), resourcesList)
+	return len(resources) != 0
+}
+
 func (f *ring0Factory) Generators(cmdName string) map[string]kubectl.Generator {
 	return DefaultGenerators(cmdName)
 }
 
 func (f *ring0Factory) CanBeExposed(kind schema.GroupKind) error {
 	switch kind {
-	case api.Kind("ReplicationController"), api.Kind("Service"), api.Kind("Pod"), extensions.Kind("Deployment"), extensions.Kind("ReplicaSet"):
+	case api.Kind("ReplicationController"), api.Kind("Service"), api.Kind("Pod"),
+		extensions.Kind("Deployment"), apps.Kind("Deployment"), extensions.Kind("ReplicaSet"), apps.Kind("ReplicaSet"):
 		// nothing to do here
 	default:
 		return fmt.Errorf("cannot expose a %s", kind)
@@ -562,7 +634,8 @@ func (f *ring0Factory) CanBeExposed(kind schema.GroupKind) error {
 
 func (f *ring0Factory) CanBeAutoscaled(kind schema.GroupKind) error {
 	switch kind {
-	case api.Kind("ReplicationController"), extensions.Kind("Deployment"), extensions.Kind("ReplicaSet"):
+	case api.Kind("ReplicationController"), extensions.Kind("ReplicaSet"),
+		extensions.Kind("Deployment"), apps.Kind("Deployment"), apps.Kind("ReplicaSet"):
 		// nothing to do here
 	default:
 		return fmt.Errorf("cannot autoscale a %v", kind)
@@ -572,34 +645,6 @@ func (f *ring0Factory) CanBeAutoscaled(kind schema.GroupKind) error {
 
 func (f *ring0Factory) EditorEnvs() []string {
 	return []string{"KUBE_EDITOR", "EDITOR"}
-}
-
-func (f *ring0Factory) PrintObjectSpecificMessage(obj runtime.Object, out io.Writer) {
-	switch obj := obj.(type) {
-	case *api.Service:
-		if obj.Spec.Type == api.ServiceTypeNodePort {
-			msg := fmt.Sprintf(
-				`You have exposed your service on an external port on all nodes in your
-cluster.  If you want to expose this service to the external internet, you may
-need to set up firewall rules for the service port(s) (%s) to serve traffic.
-
-See http://kubernetes.io/docs/user-guide/services-firewalls for more details.
-`,
-				makePortsString(obj.Spec.Ports, true))
-			out.Write([]byte(msg))
-		}
-
-		if _, ok := obj.Annotations[service.AnnotationLoadBalancerSourceRangesKey]; ok {
-			msg := fmt.Sprintf(
-				`You are using service annotation [service.beta.kubernetes.io/load-balancer-source-ranges].
-It has been promoted to field [loadBalancerSourceRanges] in service spec. This annotation will be deprecated in the future.
-Please use the loadBalancerSourceRanges field instead.
-
-See http://kubernetes.io/docs/user-guide/services-firewalls for more details.
-`)
-			out.Write([]byte(msg))
-		}
-	}
 }
 
 // overlyCautiousIllegalFileCharacters matches characters that *might* not be supported.  Windows is really restrictive, so this is really restrictive
@@ -613,4 +658,13 @@ func computeDiscoverCacheDir(parentDir, host string) string {
 	safeHost := overlyCautiousIllegalFileCharacters.ReplaceAllString(schemelessHost, "_")
 
 	return filepath.Join(parentDir, safeHost)
+}
+
+// this method exists to help us find the points still relying on internal types.
+func InternalVersionDecoder() runtime.Decoder {
+	return legacyscheme.Codecs.UniversalDecoder()
+}
+
+func InternalVersionJSONEncoder() runtime.Encoder {
+	return legacyscheme.Codecs.LegacyCodec(legacyscheme.Registry.EnabledVersions()...)
 }
