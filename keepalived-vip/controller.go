@@ -354,7 +354,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		ipt:         iptInterface,
 		vrid:        vrid,
 		vrrpVersion: vrrpVersion,
-		notify: notify,
+		notify:      notify,
 	}
 
 	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)
