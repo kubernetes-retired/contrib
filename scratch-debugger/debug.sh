@@ -118,8 +118,10 @@ DOCKERCMD="/docker-cli/docker/docker -H unix:///mnt/docker.sock"
 
 # Command for installing busybox image from the debugger container into the target container.
 INSTALLCMD="set -x;" # Print commands, for debugging.
+# Ensure download directory exists
+INSTALLCMD="${INSTALLCMD} mkdir /docker-cli"
 # Download docker client
-INSTALLCMD="${INSTALLCMD} wget -qO/docker-cli/docker.tgz ${DOCKER_DOWNLOAD_URL}"
+INSTALLCMD="${INSTALLCMD} && wget -qO/docker-cli/docker.tgz ${DOCKER_DOWNLOAD_URL}"
 # Extract docker client
 INSTALLCMD="${INSTALLCMD} && tar zxvf /docker-cli/docker.tgz -C /docker-cli"
 # Create the directory structure for the install.
