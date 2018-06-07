@@ -65,9 +65,13 @@ colorList = ['rgba(51,153,255,0.3)', 'rgba(0,204,102,0.3)',
              'rgba(0,255,255,0.3)', 'rgba(102,0,102,0.3)', 
              'rgba(255,0,0,0.3)', 'rgba(255,128,0,0.3)',
              'rgba(204,204,0,0.3)', 'rgba(0,0,153,0.3)',
-             'rgba(153,0,0,0.3)'];
+             'rgba(153,0,0,0.3)', 'rgba(51,153,255,0.3)', 
+             'rgba(135,57,0,0.3)', 'rgba(167,111,32,0.3)', 
+             'rgba(145,12,124,0.3)', 'rgba(222,222,134,0.3)', 
+             'rgba(222,153,0,0.3)', 'rgba(14,15,0,0.3)', 
+             'rgba(51,13,132,0.3)'];
 
-opTimeSeriesShowList = ['create', 'running', 'pod_running', 'pod_config_change'];
+opTimeSeriesShowList = ['pod_syncloop_add', 'volume_mounted', 'pod_status_running', 'pod_syncloop_delete', 'volume_torn_down', 'pod_status_deleted'];
 
 // Plot the time series data for the selected build
 PerfDashApp.prototype.plotTimeSeries = function() {
