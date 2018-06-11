@@ -10,4 +10,4 @@ spec:
     targetPort: 8080
     protocol: TCP
   selector:
-    app: default-http-backend
+    app: default-public-http-backend
