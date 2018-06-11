@@ -5,6 +5,7 @@ metadata:
   namespace: nginx-public-ingress
 spec:
   ports:
+    type: NodePort
   - port: 80
     targetPort: 8080
     protocol: TCP
