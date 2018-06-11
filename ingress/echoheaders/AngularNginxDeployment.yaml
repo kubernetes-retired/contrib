@@ -35,7 +35,7 @@ spec:
            name: static
       initContainers:
       - name: static-file-builder
-        image: https://987529168231.dkr.ecr.us-west-2.amazonaws.com/docker_image
+        image: 655165516303.dkr.ecr.eu-west-1.amazonaws.com/angular:20180522T0907
         envFrom:
         - configMapRef:
            name: config
