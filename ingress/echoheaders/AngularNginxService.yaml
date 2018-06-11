@@ -3,8 +3,10 @@ kind: Service
 metadata:
   name: angular
 spec:
+  type: NodePort
   ports:
   - port: 80
+    targetPort: 80
   selector:
     app: angular
 
