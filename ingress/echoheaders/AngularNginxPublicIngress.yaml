@@ -8,9 +8,9 @@ spec:
   tls:
   - secretName: tls-key
     hosts:
-    - [[PUBLIC_KUB_ENDPOINT]]
+    - rvswebsite.com
   rules:
-  - host: [[PUBLIC_KUB_ENDPOINT]]
+  - host: rvswebsite.com
     http: 
       paths:
       - path: /
