@@ -1,0 +1,19 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: angular-public
+  annotations:
+    kubernetes.io/ingress.class: "nginx-public"
+spec:
+  tls:
+  - secretName: tls-key
+    hosts:
+    - [[PUBLIC_KUB_ENDPOINT]]
+  rules:
+  - host: [[PUBLIC_KUB_ENDPOINT]]
+    http: 
+      paths:
+      - path: /
+        backend:
+          serviceName: angular
+          servicePort: 80
