@@ -58,7 +58,7 @@ $ go build -o godep *.go
 ## Updating Godeps
 
 The most common dep to update is obviously going to be kubernetes proper. Updating
-kubernetes and it's dependancies in the Ingress subproject for example can be done
+kubernetes and it's dependencies in the Ingress subproject for example can be done
 as follows (the example assumes your Kubernetes repo is rooted at `$GOPATH/src/github.com/kubernetes`, `s/github.com\/kubernetes/k8s.io/` as required):
 ```shell
 cd $GOPATH/src/github.com/kubernetes/contrib/ingress
