@@ -4,7 +4,7 @@ metadata:
   name: default-public-http-backend
   namespace: nginx-public-ingress
 spec:
-  replicas: 1
+  replicas: 2
   template:
     metadata:
       labels:
