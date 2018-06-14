@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: kubernetes-demo
+  name: kubernetesdemo
 spec:
   ports:
   - protocol: TCP
     port: 80
     targetPort: 8080
   selector:
-    app: kubernetes-demo
+    app: kubernetesdemo
