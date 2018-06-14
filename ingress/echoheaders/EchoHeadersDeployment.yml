@@ -1,13 +1,13 @@
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
-  name: kubernetes-demo
+  name: kubernetesdemo
 spec:
   replicas: 1
   template:
     metadata:
       labels:
-        app: kubernetes-demo
+        app: kubernetesdemo
     spec:
       volumes:
       - name: shared-data
