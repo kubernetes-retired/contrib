@@ -1,13 +1,13 @@
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: kubernetes-demo-public
+  name: kubernetesdemo-public
 spec:
   rules:
   - host: afb59d7d96f1d11e8a3a00255995eb89-1717703683.us-west-2.elb.amazonaws.com
     http: 
       paths:
-      - path: /kubernetes-demo
+      - path: /kubernetesdemo
         backend:
-          serviceName: kubernetes-demo
+          serviceName: kubernetesdemo
           servicePort: 80
