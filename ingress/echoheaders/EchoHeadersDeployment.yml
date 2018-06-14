@@ -1,0 +1,19 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: kubernetdemo
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: kubernetdemo
+    spec:
+      volumes:
+      - name: shared-data
+        emptyDir: {}
+      containers:
+      - name: static-file-builder
+        image: 987529168231.dkr.ecr.us-west-2.amazonaws.com/docker_image:latest
+        ports:
+        - containerPort: 8080
