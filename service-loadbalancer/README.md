@@ -229,7 +229,7 @@ spec:
 We'll create the service and access mysql from outside the cluster:
 ```console
 $ kubectl create -f mysql-app.yaml
-$ kubeclt get svc
+$ kubectl get svc
 NAME         LABELS                                    SELECTOR    IP(S)         PORT(S)
 kubernetes   component=apiserver,provider=kubernetes   <none>      10.0.0.1      443/TCP
 nginxsvc     app=nginx                                 app=nginx   10.0.79.131   80/TCP
