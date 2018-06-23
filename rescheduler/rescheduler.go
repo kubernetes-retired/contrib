@@ -459,15 +459,12 @@ func filterCriticalDaemonSetPods(allPods []*v1.Pod, podsBeingProcessed *podSet) 
 }
 
 func isCriticalPod(pod *v1.Pod) bool {
-	return isCritical(pod.Namespace, pod.Annotations) || (pod.Spec.Priority != nil && isCriticalPodBasedOnPriority(*pod.Spec.Priority))
+	return pod.Namespace == kubeapi.NamespaceSystem &&
+		(isCritical(pod.Annotations) || (pod.Spec.Priority != nil && isCriticalPodBasedOnPriority(*pod.Spec.Priority)))
 }
 
 // isCritical returns true if parameters bear the critical pod annotation
-func isCritical(ns string, annotations map[string]string) bool {
-	// Critical pods are restricted to "kube-system" namespace as of now.
-	if ns != kubeapi.NamespaceSystem {
-		return false
-	}
+func isCritical(annotations map[string]string) bool {
 	val, ok := annotations[criticalPodAnnotation]
 	if ok && val == "" {
 		return true

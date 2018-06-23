@@ -33,7 +33,7 @@ import (
 )
 
 func TestWaitForScheduled(t *testing.T) {
-	pod := createTestPod("test-pod", true, false, 150)
+	pod := createTestPod("test-pod", "kube-system", true, false, 150)
 	counter := 0
 	fakeClient := &fake.Clientset{}
 	fakeClient.Fake.AddReactor("get", "pods", func(action core.Action) (bool, runtime.Object, error) {
@@ -59,10 +59,11 @@ func TestFilterCriticalPodsCreatedByDaemonSet(t *testing.T) {
 	assert.Equal(t, 0, len(filtered))
 
 	allPods = []*v1.Pod{
-		createTestPod("heapster", true, true, 0),
-		createTestPod("random1", false, false, 0),
-		createTestPod("random1", true, false, 0), // Eventhough this is criticalPod, this is not created by DS.
-		createTestPod("dns", true, true, 0),
+		createTestPod("heapster", "kube-system", true, true, 0),
+		createTestPod("random1", "kube-system", false, false, 0),
+		createTestPod("random1", "kube-system", true, false, 0), // Eventhough this is criticalPod, this is not created by DS.
+		createTestPod("dns", "kube-system", true, true, 0),
+		createTestPod("dns2", "non-kube-system", true, true, 0),
 	}
 	filtered = filterCriticalDaemonSetPods(allPods, podsBeingProcessed)
 	assert.Equal(t, 2, len(filtered))
@@ -94,7 +95,7 @@ func TestReleaseTaintsOnNodes(t *testing.T) {
 	addTaintToNode(nodes[1], "kube-system_dns")
 
 	podsBeingProcessed := NewPodSet()
-	podsBeingProcessed.Add(createTestPod("heapster", true, true, 200))
+	podsBeingProcessed.Add(createTestPod("heapster", "kube-system", true, true, 200))
 
 	releaseTaintsOnNodes(fakeClient, nodes, podsBeingProcessed)
 	assert.Equal(t, nodes[1].Name, getStringFromChan(updatedNodes))
@@ -133,17 +134,17 @@ func TestFindNodeForPod(t *testing.T) {
 		createTestNode("node3", 2000),
 	}
 	pods1 := []v1.Pod{
-		*createTestPod("p1n1", true, true, 100),
-		*createTestPod("p2n1", false, false, 300),
+		*createTestPod("p1n1", "kube-system", true, true, 100),
+		*createTestPod("p2n1", "kube-system", false, false, 300),
 	}
 	pods2 := []v1.Pod{
-		*createTestPod("p1n2", false, false, 500),
-		*createTestPod("p2n2", true, true, 300),
+		*createTestPod("p1n2", "kube-system", false, false, 500),
+		*createTestPod("p2n2", "kube-system", true, true, 300),
 	}
 	pods3 := []v1.Pod{
-		*createTestPod("p1n3", false, false, 500),
-		*createTestPod("p2n3", false, false, 500),
-		*createTestPod("p3n3", false, false, 300),
+		*createTestPod("p1n3", "kube-system", false, false, 500),
+		*createTestPod("p2n3", "kube-system", false, false, 500),
+		*createTestPod("p3n3", "kube-system", false, false, 300),
 	}
 
 	fakeClient := &fake.Clientset{}
@@ -166,10 +167,10 @@ func TestFindNodeForPod(t *testing.T) {
 		return true, podList, nil
 	})
 
-	pod1 := createTestPod("pod1", true, true, 100)
-	pod2 := createTestPod("pod2", true, true, 500)
-	pod3 := createTestPod("pod3", true, true, 800)
-	pod4 := createTestPod("pod4", true, true, 2200)
+	pod1 := createTestPod("pod1", "kube-system", true, true, 100)
+	pod2 := createTestPod("pod2", "kube-system", true, true, 500)
+	pod3 := createTestPod("pod3", "kube-system", true, true, 800)
+	pod4 := createTestPod("pod4", "kube-system", true, true, 2200)
 
 	node := findNodeForPod(fakeClient, predicateChecker, nodes, pod1)
 	assert.Equal(t, "node1", node.Name)
@@ -193,13 +194,13 @@ func TestPrepareNodeForPod(t *testing.T) {
 
 	node := createTestNode("test-node", 1000)
 	podsOnNode := []v1.Pod{
-		*createTestPod("p1", true, true, 150),
-		*createTestPod("p2", false, false, 150),
-		*createTestPod("p3", false, false, 250),
-		*createTestPod("p4", false, false, 150),
-		*createTestPod("p5", true, true, 150),
+		*createTestPod("p1", "kube-system", true, true, 150),
+		*createTestPod("p2", "kube-system", false, false, 150),
+		*createTestPod("p3", "kube-system", false, false, 250),
+		*createTestPod("p4", "kube-system", false, false, 150),
+		*createTestPod("p5", "kube-system", true, true, 150),
 	}
-	criticalPod := createTestPod("critical-pod", true, true, 500)
+	criticalPod := createTestPod("critical-pod", "kube-system", true, true, 500)
 
 	fakeClient.Fake.AddReactor("list", "pods", func(action core.Action) (bool, runtime.Object, error) {
 		return true, &v1.PodList{Items: podsOnNode}, nil
@@ -218,10 +219,11 @@ func TestPrepareNodeForPod(t *testing.T) {
 	assert.Equal(t, "Nothing returned", getStringFromChan(deletedPods))
 }
 
-func createTestPod(name string, isCritical bool, isDaemonSet bool, cpu int64) *v1.Pod {
+func createTestPod(name, namespace string, isCritical bool, isDaemonSet bool, cpu int64) *v1.Pod {
+	priority := SystemCriticalPriority + 1
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "kube-system",
+			Namespace: namespace,
 			Name:      name,
 			SelfLink:  fmt.Sprintf("/api/v1/namespaces/default/pods/%s", name),
 		},
@@ -239,6 +241,7 @@ func createTestPod(name string, isCritical bool, isDaemonSet bool, cpu int64) *v
 	}
 	if isCritical {
 		pod.ObjectMeta.Annotations = map[string]string{criticalPodAnnotation: ""}
+		pod.Spec.Priority = &priority
 	}
 	if isDaemonSet {
 		pod.ObjectMeta.OwnerReferences = getDaemonSetOwnerRefList()
