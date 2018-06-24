@@ -68,7 +68,7 @@ func Parse(allTestData map[string]TestToBuildData, testInfo *TestInfo, job strin
 	for buildNumber := lastBuildNumber; buildNumber >= startBuildNumber; buildNumber-- {
 		fmt.Printf("Fetching build %v... (Job: %s)\n", buildNumber, job)
 		if err := populateDataForOneBuild(allTestData[job], testInfo, job, buildNumber, source); err != nil {
-			return err
+			fmt.Printf("%+v\n", err)
 		}
 	}
 
