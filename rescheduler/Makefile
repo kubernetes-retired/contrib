@@ -1,7 +1,7 @@
 
 FLAGS =
 ENVVAR = GOOS=linux GOARCH=amd64 CGO_ENABLED=0
-REGISTRY = gcr.io/google-containers
+REGISTRY ?= gcr.io/k8s-image-staging
 TAG = v0.4.0
 ARCH ?= $(shell go env GOARCH)
 ALL_ARCH = amd64 arm arm64 ppc64le s390x
@@ -53,6 +53,9 @@ container: .container-$(ARCH)
 	GOOS=linux GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(TEMP_DIR)/rescheduler
 	cd $(TEMP_DIR) && sed -i 's|BASEIMAGE|$(BASEIMAGE)|g' Dockerfile
 	docker build --pull -t ${MULTI_ARCH_IMG}:$(TAG) $(TEMP_DIR)
+ifeq ($(ARCH),amd64)
+	docker tag $(MULTI_ARCH_IMG):$(TAG) $(IMAGE):$(TAG)
+endif
 
 push: .push-$(ARCH)
 .push-$(ARCH): .container-$(ARCH)
