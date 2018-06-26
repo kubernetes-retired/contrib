@@ -2,7 +2,7 @@
 FLAGS =
 ENVVAR = GOOS=linux GOARCH=amd64 CGO_ENABLED=0
 REGISTRY = gcr.io/google-containers
-TAG = v0.3.3
+TAG = v0.4.0
 ARCH ?= $(shell go env GOARCH)
 ALL_ARCH = amd64 arm arm64 ppc64le s390x
 
