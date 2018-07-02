@@ -47,7 +47,7 @@ is little to be gained from isolating the write ahead log from the snapshots
 directory.
 
 ## Headless Service
-The Kafka Stateful Set requires a Headless Service to control the network domain 
+The Kafka Stateful Set requires a [Headless Service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) to control the network domain 
 for the Kafka brokers. The yaml below creates a Headless Service that allows 
 brokers to be discovered and exposes the 9093 port for client connections.
 
@@ -68,7 +68,7 @@ spec:
  ```
 
 ## StatefulSet
-The Kafka StatefulSet deploys a configurable number of replicas on the 
+The Kafka [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) deploys a configurable number of replicas on the 
 Kubernetes cluster. The StatefulSet serviceName must match the Headless Service
 and specify the desired number of brokers.
 
@@ -198,7 +198,7 @@ ensure that this will not result in the Broker process dying because it has
 exhausted its allowable number of file descriptors.
 
 ### CPU
-Typical production Kafka broker deployments run on dual processor Xeon's with 
+Typical production Kafka broker deployments run on dual processor Xeons with 
 multiple hardware threads per core. However, CPU is unlikely to be your 
 bottleneck. An 8 CPU deployment should be more than sufficient for good 
 performance. You should start by simulating your workload with 2-4 CPUs and 
@@ -261,9 +261,9 @@ and a Pod Anti-Affinity rule.
                  topologyKey: "kubernetes.io/hostname"
 ```
 
-The Pod Anti-Affinity rule ensures that two Kafka Broker's will never be 
+The Pod Anti-Affinity rule ensures that two Kafka Brokers will never be 
 launched on the same Node. This isn't strictly necessary, but it helps provide 
-stronger availability garauntees in the presence of Node failure, and it helps 
+stronger availability guarantees in the presence of Node failure, and it helps 
 alleviate [disk throughput](#disk) bottlenecks.
 The Pod Affinity rule attempts to collocate Kafka and ZooKeeper on the same 
 Nodes. You will likely have more Kafka brokers than ZooKeeper servers, but the 
@@ -276,7 +276,7 @@ Anti-Affinity rule to ensure that ZooKeeper servers and Kafka brokers are not
 scheduled onto the same node.
 
 ## Testing
-The easies way to test your deployment is to use the create a topic and use the 
+The easiest way to test your deployment is to create a topic and use the 
 console producer and consumer.
 Use `kubectl exec` to execute a bash shell on one of the brokers.
 
