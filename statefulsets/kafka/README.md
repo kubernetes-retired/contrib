@@ -234,7 +234,7 @@ Pod Anti-Affinity rules to ensure that noisy neighbors are not collocated on the
 same Node.
 
 ### Pod Affinity
-The Kafka Pod in the StatefulSet's `PodTemplateSpec` contains a Pod Anti-Affinity
+The Kafka Pod in the StatefulSet's `PodTemplateSpec` contains a Pod Affinity
 and a Pod Anti-Affinity rule.
 
 ```yaml
