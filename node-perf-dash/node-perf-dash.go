@@ -98,7 +98,7 @@ func main() {
 			}
 			prettyResult, err := json.MarshalIndent(allTestData, "", " ")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error formating data: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error formatting data: %v\n", err)
 				os.Exit(1)
 			}
 			fmt.Printf("Result: %v\n", string(prettyResult))
