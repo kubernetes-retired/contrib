@@ -53,6 +53,7 @@ type image struct {
 }
 
 var imageName = flag.String("image", "", "namespace/name for the repository, default to go2docker/$(basename)")
+var caRoots = flag.String("caroots", "", "use this ca roots bundle instead of the system roots")
 
 const (
 	dockerVersion = "1.4.0"
@@ -198,7 +199,20 @@ func main() {
 	if _, err := io.Copy(ftw, file); err != nil {
 		log.Fatalf("failed to write /%s body: %v", aout, err)
 	}
+
+	// TODO(raggi): in go 1.7 we can get to the cert pool, but that doesn't give
+	// us the certs. Send a patch to enumerate certs in a cert pool. Once we can
+	// use the system certs, that should be the default so they're loosely up to
+	// date.
 	certBytes := []byte(caCerts)
+	if *caRoots != "" {
+		var err error
+		certBytes, err = ioutil.ReadFile(*caRoots)
+		if err != nil {
+			log.Fatalf("failed to read CA roots from %s: %s", *caRoots, err)
+		}
+	}
+
 	if err := ftw.WriteHeader(&tar.Header{
 		Name: "/etc/ssl/certs/ca-certificates.crt",
 		Size: int64(len(certBytes)),
