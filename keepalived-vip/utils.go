@@ -139,21 +139,25 @@ func netInterfaces() ([]net.Interface, error) {
 
 // interfaceByIP returns the local network interface name that is using the
 // specified IP address. Returns an error if no matching interface is found.
-func interfaceByIP(ip string) (string, string, int) {
-	for _, iface := range netInterfaces() {
+func interfaceByIP(ip string) (string, int, error) {
+	ifaces, err := netInterfaces()
+	if err != nil {
+		return "", 0, err
+	}
+
+	for _, iface := range ifaces {
 		ipMasks, err := ipsByInterface(iface.Name)
 		if err != nil {
 			continue
 		}
 		for _, ipMask := range ipMasks {
 			if ip == ipMask.ip {
-				return iface.Name, ip, ipMask.mask
+				return iface.Name, ipMask.mask, nil
 			}
 		}
 	}
 
-	glog.Warningf("no interface with IP address %v detected in the node", ip)
-	return "", "", 0
+	return "", 0, fmt.Errorf("no matching interface found for IP %s", ip)
 }
 
 func ipsByInterface(name string) ([]ipMask, error) {
