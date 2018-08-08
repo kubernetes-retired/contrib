@@ -402,3 +402,5 @@ virtual_server 10.4.0.50 80 {
 - https://github.com/kobolog/gorb
 - https://github.com/qmsk/clusterf
 - https://github.com/osrg/gobgp
+- https://github.com/munnerz/keepalived-cloud-provider
+
