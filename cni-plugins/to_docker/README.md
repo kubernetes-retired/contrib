@@ -6,7 +6,7 @@ identified in the config file.  This plugin works with any existing
 Docker network, regardless of which libnetwork driver/plugin made it.
 
 To meet all of the functional requirements of
-http://kubernetes.io/docs/admin/networking/#kubernetes-model some
+https://kubernetes.io/docs/concepts/cluster-administration/networking/#kubernetes-model some
 additional static configuration is required, which you must do
 yourself.
 
@@ -90,7 +90,7 @@ then each invocation of the plugin will produce some debugging output
 in `/tmp/`.
 
 A multi-host docker network does not necessarily meet the requirement
-(seen in http://kubernetes.io/docs/admin/networking/#kubernetes-model)
+(seen in https://kubernetes.io/docs/concepts/cluster-administration/networking/#kubernetes-model)
 that hosts and containers can open connections to each other.
 However, you can typically enable this with a bit of static
 configuration.  The particulars of this depend on the Docker network
