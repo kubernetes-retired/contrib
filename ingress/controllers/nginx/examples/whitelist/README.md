@@ -10,7 +10,7 @@ kind: Ingress
 metadata:
   name: whitelist
   annotations:
-    ingress.kubernetes.io/whitelist-source-range: "1.1.1.1/24"
+    nginx.ingress.kubernetes.io/whitelist-source-range: "1.1.1.1/24"
 spec:
   rules:
   - host: foo.bar.com
@@ -30,7 +30,7 @@ apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   annotations:
-    ingress.kubernetes.io/whitelist-source-range: 1.1.1.1/24
+    nginx.ingress.kubernetes.io/whitelist-source-range: 1.1.1.1/24
   creationTimestamp: 2016-06-09T21:39:06Z
   generation: 2
   name: whitelist
