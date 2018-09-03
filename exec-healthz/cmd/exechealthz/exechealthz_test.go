@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/kubernetes/pkg/util/clock"
-	"k8s.io/kubernetes/pkg/util/exec"
-	"k8s.io/kubernetes/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/utils/clock"
+	"k8s.io/utils/exec"
 )
 
 var (

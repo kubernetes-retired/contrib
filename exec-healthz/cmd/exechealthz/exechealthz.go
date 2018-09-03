@@ -20,6 +20,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -30,8 +31,8 @@ import (
 	"time"
 
 	"k8s.io/contrib/exec-healthz/pkg/version"
-	"k8s.io/kubernetes/pkg/util/clock"
-	utilexec "k8s.io/kubernetes/pkg/util/exec"
+	"k8s.io/utils/clock"
+	utilexec "k8s.io/utils/exec"
 )
 
 // TODO:
@@ -47,6 +48,7 @@ var (
 	port       = flag.Int("port", 8080, "Port number to serve /healthz (or customized path).")
 	period     = flag.Duration("period", 2*time.Second, "Period to run the given cmd in an async worker.")
 	maxLatency = flag.Duration("latency", 30*time.Second, "If the async worker hasn't updated the probe command output in this long, return a 503.")
+	timeout    = flag.Duration("timeout", 0, "If the command runs longer than this long, kill the command.")
 	quiet      = flag.Bool("quiet", false, "Run in quiet mode by only logging errors.")
 	showOutput = flag.Bool("output", false, "Return command output instead of ok.")
 	printVer   = flag.Bool("version", false, "Print the version and exit.")
@@ -137,7 +139,15 @@ func (h *execWorker) start() {
 		// If the command takes > period, the command runs continuously.
 		case <-ticker:
 			logf("Worker running %v to serve %v", h.probeCmd, h.probePath)
-			output, err := h.exec.Command("sh", "-c", h.probeCmd).CombinedOutput()
+			var output []byte
+			var err error
+			if *timeout == 0 {
+				output, err = h.exec.Command("sh", "-c", h.probeCmd).CombinedOutput()
+			} else {
+				ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+				defer cancel()
+				output, err = h.exec.CommandContext(ctx, "sh", "-c", h.probeCmd).CombinedOutput()
+			}
 			ts := h.clock.Now()
 			func() {
 				h.mutex.Lock()
