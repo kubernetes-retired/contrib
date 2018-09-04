@@ -18,7 +18,7 @@ import (
 
 const (
 	// Consts for Get/SetConsoleMode function
-	// -- See https://msdn.microsoft.com/en-us/library/windows/desktop/ms686033(v=vs.85).aspx
+	// -- See https://docs.microsoft.com/en-us/windows/console/setconsolemode
 	ENABLE_PROCESSED_INPUT = 0x0001
 	ENABLE_LINE_INPUT      = 0x0002
 	ENABLE_ECHO_INPUT      = 0x0004
@@ -32,7 +32,7 @@ const (
 	ENABLE_PROCESSED_OUTPUT   = 0x0001
 	ENABLE_WRAP_AT_EOL_OUTPUT = 0x0002
 
-	//http://msdn.microsoft.com/en-us/library/windows/desktop/ms682088(v=vs.85).aspx#_win32_character_attributes
+	//https://docs.microsoft.com/en-us/windows/console/console-screen-buffers#_win32_character_attributes
 	FOREGROUND_BLUE       = 1
 	FOREGROUND_GREEN      = 2
 	FOREGROUND_RED        = 4
@@ -93,7 +93,7 @@ const (
 	DEFAULT_HEIGHT   = 24
 )
 
-// http://msdn.microsoft.com/en-us/library/windows/desktop/dd375731(v=vs.85).aspx
+// https://docs.microsoft.com/zh-cn/windows/desktop/inputdev/virtual-key-codes
 const (
 	VK_PRIOR    = 0x21 // PAGE UP key
 	VK_NEXT     = 0x22 // PAGE DOWN key
@@ -142,7 +142,7 @@ var (
 )
 
 // types for calling various windows API
-// see http://msdn.microsoft.com/en-us/library/windows/desktop/ms682093(v=vs.85).aspx
+// see https://docs.microsoft.com/en-us/windows/console/console-screen-buffer-info-str
 type (
 	SHORT int16
 	BOOL  int32
@@ -175,7 +175,7 @@ type (
 		Visible BOOL
 	}
 
-	// http://msdn.microsoft.com/en-us/library/windows/desktop/ms684166(v=vs.85).aspx
+	// https://docs.microsoft.com/en-us/windows/console/key-event-record-str
 	KEY_EVENT_RECORD struct {
 		KeyDown         BOOL
 		RepeatCount     WORD
@@ -306,7 +306,7 @@ func getError(r1, r2 uintptr, lastErr error) error {
 }
 
 // GetConsoleMode gets the console mode for given file descriptor
-// http://msdn.microsoft.com/en-us/library/windows/desktop/ms683167(v=vs.85).aspx
+// https://docs.microsoft.com/en-us/windows/console/getconsolemode
 func GetConsoleMode(handle uintptr) (uint32, error) {
 	var mode uint32
 	err := syscall.GetConsoleMode(syscall.Handle(handle), &mode)
@@ -314,13 +314,13 @@ func GetConsoleMode(handle uintptr) (uint32, error) {
 }
 
 // SetConsoleMode sets the console mode for given file descriptor
-// http://msdn.microsoft.com/en-us/library/windows/desktop/ms686033(v=vs.85).aspx
+// https://docs.microsoft.com/en-us/windows/console/setconsolemode
 func SetConsoleMode(handle uintptr, mode uint32) error {
 	return getError(setConsoleModeProc.Call(handle, uintptr(mode), 0))
 }
 
 // SetCursorVisible sets the cursor visbility
-// http://msdn.microsoft.com/en-us/library/windows/desktop/ms686019(v=vs.85).aspx
+// https://docs.microsoft.com/en-us/windows/console/setconsolecursorinfo
 func SetCursorVisible(handle uintptr, isVisible BOOL) (bool, error) {
 	var cursorInfo *CONSOLE_CURSOR_INFO = &CONSOLE_CURSOR_INFO{}
 	if err := getError(getConsoleCursorInfoProc.Call(handle, uintptr(unsafe.Pointer(cursorInfo)), 0)); err != nil {
@@ -347,7 +347,7 @@ func SetWindowSize(handle uintptr, width, height, max SHORT) (bool, error) {
 }
 
 // GetConsoleScreenBufferInfo retrieves information about the specified console screen buffer.
-// http://msdn.microsoft.com/en-us/library/windows/desktop/ms683171(v=vs.85).aspx
+// https://docs.microsoft.com/en-us/windows/console/getconsolescreenbufferinfo
 func GetConsoleScreenBufferInfo(handle uintptr) (*CONSOLE_SCREEN_BUFFER_INFO, error) {
 	var info CONSOLE_SCREEN_BUFFER_INFO
 	if err := getError(getConsoleScreenBufferInfoProc.Call(handle, uintptr(unsafe.Pointer(&info)), 0)); err != nil {
@@ -358,7 +358,7 @@ func GetConsoleScreenBufferInfo(handle uintptr) (*CONSOLE_SCREEN_BUFFER_INFO, er
 
 // setConsoleTextAttribute sets the attributes of characters written to the
 // console screen buffer by the WriteFile or WriteConsole function,
-// http://msdn.microsoft.com/en-us/library/windows/desktop/ms686047(v=vs.85).aspx
+// https://docs.microsoft.com/en-us/windows/console/setconsoletextattribute
 func setConsoleTextAttribute(handle uintptr, attribute WORD) error {
 	return getError(setConsoleTextAttributeProc.Call(handle, uintptr(attribute), 0))
 }
@@ -370,7 +370,7 @@ func writeConsoleOutput(handle uintptr, buffer []CHAR_INFO, bufferSize COORD, bu
 	return true, nil
 }
 
-// http://msdn.microsoft.com/en-us/library/windows/desktop/ms682663(v=vs.85).aspx
+// https://docs.microsoft.com/en-us/windows/console/fillconsoleoutputcharacter
 func fillConsoleOutputCharacter(handle uintptr, fillChar byte, length uint32, writeCord COORD) (bool, error) {
 	out := int64(0)
 	if err := getError(fillConsoleOutputCharacterProc.Call(handle, uintptr(fillChar), uintptr(length), marshal(writeCord), uintptr(unsafe.Pointer(&out)))); err != nil {
@@ -495,7 +495,7 @@ func setConsoleCursorPosition(handle uintptr, isRelative bool, column int16, lin
 	return getError(setConsoleCursorPositionProc.Call(handle, marshal(position), 0))
 }
 
-// http://msdn.microsoft.com/en-us/library/windows/desktop/ms683207(v=vs.85).aspx
+// https://docs.microsoft.com/en-us/windows/console/getnumberofconsoleinputevents
 func getNumberOfConsoleInputEvents(handle uintptr) (uint16, error) {
 	var n DWORD
 	if err := getError(getNumberOfConsoleInputEventsProc.Call(handle, uintptr(unsafe.Pointer(&n)))); err != nil {
