@@ -127,7 +127,7 @@ func main() {
 	}
 
 	myName := strings.Join([]string{hostname, *svc, domainName}, ".")
-	svcFqdn := strings.Join([]string{ *svc, domainName}, ".")
+	svcFqdn := strings.Join([]string{*svc, domainName}, ".")
 	script := *onStart
 	if script == "" {
 		script = *onChange
