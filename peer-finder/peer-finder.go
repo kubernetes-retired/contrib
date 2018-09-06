@@ -127,13 +127,14 @@ func main() {
 	}
 
 	myName := strings.Join([]string{hostname, *svc, domainName}, ".")
+	svcFqdn := strings.Join([]string{ *svc, domainName}, ".")
 	script := *onStart
 	if script == "" {
 		script = *onChange
 		log.Printf("No on-start supplied, on-change %v will be applied on start.", script)
 	}
 	for newPeers, peers := sets.NewString(), sets.NewString(); script != ""; time.Sleep(pollPeriod) {
-		newPeers, err = lookup(*svc)
+		newPeers, err = lookup(svcFqdn)
 		if err != nil {
 			log.Printf("%v", err)
 			continue
