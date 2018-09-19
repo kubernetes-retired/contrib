@@ -61,7 +61,7 @@ $ kubectl proxy
 
 You can then access:
 
-`http://localhost:8001/api/v1/proxy/namespaces/default/pods/<leader-pod-name>:4040/`
+`http://localhost:8001/api/v1/namespaces/default/pods/<leader-pod-name>:4040/proxy`
 And you will see:
 
 `{"name":"(name-of-leader-here)"}`
