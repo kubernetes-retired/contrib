@@ -16,7 +16,7 @@ kube_script_dir: /usr/libexec/kubernetes
 # This directory is where all the additional config stuff goes
 # the kubernetes normally puts in /srv/kubernetes.
 # This puts them in a sane location.
-# Editting this value will almost surely break something. Don't
+# Editing this value will almost surely break something. Don't
 # change it. Things like the systemd scripts are hard coded to
 # look in here. Don't do it.
 kube_config_dir: /etc/kubernetes
@@ -24,7 +24,7 @@ kube_config_dir: /etc/kubernetes
 # The URL to download Kubernetes binaries from.
 kube_download_url_base: https://storage.googleapis.com/kubernetes-release/release/v{{ kube_version }}/bin/linux/{{ (ansible_architecture == 'x86_64') | ternary('amd64', ansible_architecture) }}
 
-# The URL do download distribution rpms shipping kubernetes binaries from
+# The URL to download distribution rpms shipping kubernetes binaries from
 kube_rpm_url_base: https://kojipkgs.fedoraproject.org//packages/kubernetes/1.2.0/0.27.git4a3f9c5.fc25/x86_64
 kube_rpm_url_sufix: 1.2.0-0.27.git4a3f9c5.fc25.x86_64.rpm
 
