@@ -1,2 +1,2 @@
 The 404-server (defaultbackend) has moved to the
-[kubernetes/ingress](https://github.com/kubernetes/ingress) repository.
+[kubernetes/ingress-gce](https://github.com/kubernetes/ingress-gce) repository.
