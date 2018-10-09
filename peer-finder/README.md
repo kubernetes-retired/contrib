@@ -30,7 +30,7 @@ There are several ways to bundle it with your main application.
 4. Both 1 and 2.
 
 Options 1 and 2 and 4 may be preferable since they do not require changes to the main container image.
-Option 3 is useful is signalling is necessary.
+Option 3 is useful if signalling is necessary.
 
 The peer-finder tool is intended to help legacy applications run in containers on Kubernetes.
 If possible, it may be preferable to modify an application to poll its own DNS to determine its peer set.
