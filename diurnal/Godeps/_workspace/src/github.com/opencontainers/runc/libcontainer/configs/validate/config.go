@@ -38,7 +38,7 @@ func (v *ConfigValidator) Validate(config *configs.Config) error {
 	return nil
 }
 
-// rootfs validates the the rootfs is an absolute path and is not a symlink
+// rootfs validates the rootfs is an absolute path and is not a symlink
 // to the container's root filesystem.
 func (v *ConfigValidator) rootfs(config *configs.Config) error {
 	cleaned, err := filepath.Abs(config.Rootfs)
