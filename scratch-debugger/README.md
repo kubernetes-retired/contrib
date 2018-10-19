@@ -9,7 +9,7 @@ complete, the target can be debugged through a standard kubectl exec.
 ## Usage
 
 ```
-scratch-debugger/debug.sh POD_NAME [POD_NAMESPACE CONTAINER_NAME]
+scratch-debugger/debug.sh POD_NAME [-n POD_NAMESPACE] [-c CONTAINER_NAME]
 ```
 
 - `POD_NAME` - The name of the pod to debug.
