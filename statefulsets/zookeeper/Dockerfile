@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 ENV ZK_USER=zookeeper \
     ZK_DATA_DIR=/var/lib/zookeeper/data \
@@ -10,14 +10,14 @@ ARG ZK_DIST=zookeeper-3.4.13
 
 RUN set -x \
     && apt-get update \
-    && apt-get install -y openjdk-8-jre-headless wget netcat-openbsd \
+    && apt-get install -y openjdk-8-jre-headless wget gpg netcat-openbsd \
     && wget -q "http://www.apache.org/dist/zookeeper/$ZK_DIST/$ZK_DIST.tar.gz" \
     && wget -q "http://www.apache.org/dist/zookeeper/$ZK_DIST/$ZK_DIST.tar.gz.asc" \
     && export GNUPGHOME="$(mktemp -d)" \
     && wget -qO- https://dist.apache.org/repos/dist/release/zookeeper/KEYS | gpg --import - \
     && gpg --batch --verify "$ZK_DIST.tar.gz.asc" "$ZK_DIST.tar.gz" \
     && tar -xzf "$ZK_DIST.tar.gz" -C /opt \
-    && rm -r "$GNUPGHOME" "$ZK_DIST.tar.gz" "$ZK_DIST.tar.gz.asc" \
+    && rm -rf "$GNUPGHOME" "$ZK_DIST.tar.gz" "$ZK_DIST.tar.gz.asc" \
     && ln -s /opt/$ZK_DIST /opt/zookeeper \
     && rm -rf /opt/zookeeper/CHANGES.txt \
     /opt/zookeeper/README.txt \
@@ -36,7 +36,7 @@ RUN set -x \
     /opt/zookeeper/$ZK_DIST.jar.asc \
     /opt/zookeeper/$ZK_DIST.jar.md5 \
     /opt/zookeeper/$ZK_DIST.jar.sha1 \
-    && apt-get autoremove -y wget \
+    && apt-get autoremove -y wget gpg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy configuration generator script to bin

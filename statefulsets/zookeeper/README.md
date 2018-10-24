@@ -9,13 +9,13 @@ in ZooKeeper 3.4.13 (The current stable release).
 3. Persistent Volumes must be used. emptyDirs will likely result in a loss of data.
 
 ## Docker Image
-The docker image contained in this repository is comprised of a base Ubuntu 16.04 image using the latest
-release of the OpenJDK JRE based on the 1.8 JVM (JDK 8u111) and the latest stable release of 
-ZooKeeper, 3.4.13. Ubuntu is a much larger image than BusyBox or Alpine, but these images contain
-mucl or ulibc. This requires a custom version of OpenJDK to be built against a libc runtime other 
-than glibc. No vendor of the ZooKeeper software supplies or verifies the software against such a 
-JVM, and, while Alpine or BusyBox would provide smaller images, we have prioritized a well known 
-environment.
+The docker image contained in this repository is comprised of a base Ubuntu 18.04 image using the 
+release of the OpenJDK JRE based on the 1.8 JVM from the Ubuntu repositories and the latest stable 
+release of ZooKeeper, 3.4.13. Ubuntu is a much larger image than BusyBox or Alpine, but these 
+images contain mucl or ulibc. This requires a custom version of OpenJDK to be built against a libc 
+runtime other than glibc. No vendor of the ZooKeeper software supplies or verifies the software 
+against such a JVM, and, while Alpine or BusyBox would provide smaller images, we have prioritized 
+a well known environment.
 
 The image is built such that the ZooKeeper process is designated to run as a non-root user. By default, 
 this user is zookeeper. The ZooKeeper package is installed into the /opt/zookeeper directory, all 
