@@ -31,6 +31,9 @@ ZK_MIN_SESSION_TIMEOUT=${ZK_MIN_SESSION_TIMEOUT:- $((ZK_TICK_TIME*2))}
 ZK_MAX_SESSION_TIMEOUT=${ZK_MAX_SESSION_TIMEOUT:- $((ZK_TICK_TIME*20))}
 ZK_SNAP_RETAIN_COUNT=${ZK_SNAP_RETAIN_COUNT:-3}
 ZK_PURGE_INTERVAL=${ZK_PURGE_INTERVAL:-0}
+ZK_PRE_ALLOC_SIZE=${ZK_PRE_ALLOC_SIZE:-64M}
+ZK_SNAP_COUNT=${ZK_SNAP_COUNT:-10000}
+ZK_LEADER_SERVES=${ZK_LEADER_SERVES:-yes}
 ID_FILE="$ZK_DATA_DIR/myid"
 ZK_CONFIG_FILE="$ZK_CONF_DIR/zoo.cfg"
 LOGGER_PROPS_FILE="$ZK_CONF_DIR/log4j.properties"
@@ -80,6 +83,9 @@ function validate_env() {
     echo "ZK_HEAP_SIZE=$ZK_HEAP_SIZE"
     echo "ZK_SNAP_RETAIN_COUNT=$ZK_SNAP_RETAIN_COUNT"
     echo "ZK_PURGE_INTERVAL=$ZK_PURGE_INTERVAL"
+    echo "ZK_PRE_ALLOC_SIZE=$ZK_PRE_ALLOC_SIZE"
+    echo "ZK_SNAP_COUNT=$ZK_SNAP_COUNT"
+    echo "ZK_LEADER_SERVES=$ZK_LEADER_SERVES"
     echo "ENSEMBLE"
     print_servers
     echo "Environment validation successful"
@@ -98,6 +104,9 @@ function create_config() {
     echo "maxClientCnxns=$ZK_MAX_CLIENT_CNXNS" >> $ZK_CONFIG_FILE
     echo "minSessionTimeout=$ZK_MIN_SESSION_TIMEOUT" >> $ZK_CONFIG_FILE
     echo "maxSessionTimeout=$ZK_MAX_SESSION_TIMEOUT" >> $ZK_CONFIG_FILE
+    echo "preAllocSize=$ZK_PRE_ALLOC_SIZE" >> $ZK_CONFIG_FILE
+    echo "snapCount=$ZK_SNAP_COUNT" >> $ZK_CONFIG_FILE
+    echo "leaderServes=$ZK_LEADER_SERVES" >> $ZK_CONFIG_FILE
     echo "autopurge.snapRetainCount=$ZK_SNAP_RETAIN_COUNT" >> $ZK_CONFIG_FILE
     echo "autopurge.purgeInterval=$ZK_PURGE_INTERVAL" >> $ZK_CONFIG_FILE
 

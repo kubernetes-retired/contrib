@@ -96,7 +96,8 @@ containers:
 |Variable|Type|Default|Description|
 |:------:|:---:|:-----:|:---------|
 |ZK_ENSEMBLE|string|N/A|A colon separated list of servers in the ensemble.|
-This is a mandatory configuration variable that is used to configure the membership of the 
+|ZK_LEADER_SERVES|yes/no|N/A|Determines if Zookeeper leader accepts client connections.|
+ZK_ENSEMBLE is a mandatory configuration variable that is used to configure the membership of the
 ZooKeeper ensemble. It is also used to prevent data loss during accidental scale operations. The 
 set can be computed as follows. For all integers in the range [0,replicas), prepend the name of 
 service followed by a dash to the integer. So for the Stateful Set above, the name is zk and we have
@@ -144,7 +145,9 @@ automatic data purge policies.
 |Variable|Type|Default|Description|
 |:------:|:---:|:-----:|:---------|
 |ZK_SNAP_RETAIN_COUNT|integer|3|The number of snapshots that the ZooKeeper process will retain if ZK_PURGE_INTERVAL is set to a value greater than 0.|
+|ZK_SNAP_COUNT|integer|1000|The number of transactions recorded in the transaction log before a snapshot can be taken.|
 |ZK_PURGE_INTERVAL|integer|0|The delay, in hours, between ZooKeeper log and snapshot cleanups.|
+|ZK_PRE_ALLOC_SIZE|string|64M|Amount of space, specified in (K/M/G) or kilobytes if integer, allocated in advance of transactions.|
 
 #### JVM Configuration
 Currently the only supported JVM configuration is the JVM heap size. Be sure that the heap size you

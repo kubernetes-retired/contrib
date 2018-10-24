@@ -24,7 +24,10 @@ data:
   tick: "2000"
   init: "10"
   sync: "5"
+  leaderserves: yes
+  preallocsize: "64M"
   client.cnxns: "60"
+  snap.count: "10000"
   snap.retain: "3"
   purge.interval: "0"
 ---
@@ -103,11 +106,26 @@ spec:
             configMapKeyRef:
                 name: zk-cm
                 key: client.cnxns
+        - name: ZK_LEADER_SERVES
+          valueFrom:
+            configMapKeyRef:
+                name: zk-cm
+                key: leaderserves
+        - name: ZK_PRE_ALLOC_SIZE
+          valueFrom:
+            configMapKeyRef:
+                name: zk-cm
+                key: preallocsize
         - name: ZK_SNAP_RETAIN_COUNT
           valueFrom:
             configMapKeyRef:
                 name: zk-cm
                 key: snap.retain
+        - name: ZK_SNAP_COUNT
+          valueFrom:
+            configMapKeyRef:
+                name: zk-cm
+                key: snap.count
         - name: ZK_PURGE_INTERVAL
           valueFrom:
             configMapKeyRef:
