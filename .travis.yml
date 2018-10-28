@@ -7,7 +7,9 @@ language: go
 
 matrix:
   include:
-    - go: 1.9
+    - go: 1.9.x
+    - go: 1.10.x
+    - go: 1.11.x
 
 install:
   - mkdir -p $HOME/gopath/src/k8s.io
