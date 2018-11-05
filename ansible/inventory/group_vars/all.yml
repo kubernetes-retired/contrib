@@ -13,7 +13,7 @@ cluster_name: cluster.local
 
 # Set if you want to access kubernetes cluster via load balancer. The installer
 # assumes that a load balancer has been preconfigured or resolves to
-# kubenetes master
+# kubernetes master
 #master_cluster_hostname: kubernetes-cluster.example.com
 
 # External fqdn used for the cluster (certificat only)
