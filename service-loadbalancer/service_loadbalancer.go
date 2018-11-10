@@ -619,7 +619,7 @@ func registerHandlers(s *staticPageHandler) {
 			if response.StatusCode != http.StatusOK {
 				contents, err := ioutil.ReadAll(response.Body)
 				if err != nil {
-					glog.Infof("Error reading resonse on receiving status %v: %v",
+					glog.Infof("Error reading response on receiving status %v: %v",
 						response.StatusCode, err)
 				}
 				glog.Infof("%v\n", string(contents))

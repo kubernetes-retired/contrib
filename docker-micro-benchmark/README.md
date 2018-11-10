@@ -72,5 +72,5 @@ Here are links of some previous benchmark results:
 TODOs
 -----
 * Support event stream benchmark. The old event stream benchmark is removed in this version.
-* Add error statisitcs and sanity check in current benchmarks to analyze docker reliability.
+* Add error statistics and sanity check in current benchmarks to analyze docker reliability.
 
