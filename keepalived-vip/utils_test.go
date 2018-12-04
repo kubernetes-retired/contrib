@@ -26,20 +26,27 @@ func TestParseNsSvcLVS(t *testing.T) {
 		Namespace     string
 		Service       string
 		ForwardMethod string
-		ExpectedOk    bool
+		Subnet        int
+		Gateway       string
+		VlanId        int
+		ExpectedKo    bool
 	}{
-		"just service name":      {"echoheaders", "", "", "", true},
-		"missing namespace":      {"echoheaders:NAT", "", "", "", true},
-		"default forward method": {"default/echoheaders", "default", "echoheaders", "NAT", false},
-		"with forward method":    {"default/echoheaders:NAT", "default", "echoheaders", "NAT", false},
-		"DR as forward method":   {"default/echoheaders:DR", "default", "echoheaders", "DR", false},
-		"invalid forward method": {"default/echoheaders:AJAX", "", "", "", true},
+		"just service name":          {"echoheaders", "", "", "", 0, "", 0, true},
+		"missing namespace":          {"echoheaders:NAT", "", "", "", 0, "", 0, true},
+		"default forward method":     {"default/echoheaders", "default", "echoheaders", "NAT", 0, "", 0, false},
+		"with forward method":        {"default/echoheaders:NAT", "default", "echoheaders", "NAT", 0, "", 0, false},
+		"DR as forward method":       {"default/echoheaders:DR", "default", "echoheaders", "DR", 0, "", 0, false},
+		"invalid forward method":     {"default/echoheaders:AJAX", "", "", "", 0, "", 0, true},
+		"with subnet and default fw": {"default/echoheaders::24", "default", "echoheaders", "NAT", 24, "", 0, false},
+		"with subnet and gateway":    {"default/echoheaders:DR:24:10.0.0.1", "default", "echoheaders", "DR", 24, "10.0.0.1", 0, false},
+		"with subnet and vlan only":  {"default/echoheaders::24::10", "default", "echoheaders", "NAT", 24, "", 10, false},
+		"with subnet, gw and vlan":   {"default/echoheaders::24:10.0.0.1:10", "default", "echoheaders", "NAT", 24, "10.0.0.1", 10, false},
 	}
 
 	for k, tc := range testcases {
-		ns, svc, lvs, err := parseNsSvcLVS(tc.Input)
+		ns, svc, lvs, subnet, gateway, vlanId, err := parseNsSvcLbVlan(tc.Input)
 
-		if tc.ExpectedOk && err == nil {
+		if tc.ExpectedKo && err == nil {
 			t.Errorf("%s: expected an error but valid information returned: %v ", k, tc.Input)
 		}
 
@@ -53,6 +60,18 @@ func TestParseNsSvcLVS(t *testing.T) {
 
 		if tc.ForwardMethod != lvs {
 			t.Errorf("%s: expected %v but returned %v - input %v", k, tc.ForwardMethod, lvs, tc.Input)
+		}
+
+		if tc.Subnet != subnet {
+			t.Errorf("%s: expected %v but returned %v - input %v", k, tc.Subnet, lvs, tc.Input)
+		}
+
+		if tc.Gateway != gateway {
+			t.Errorf("%s: expected %v but returned %v - input %v", k, tc.Gateway, lvs, tc.Input)
+		}
+
+		if tc.VlanId != vlanId {
+			t.Errorf("%s: expected %v but returned %v - input %v", k, tc.VlanId, lvs, tc.Input)
 		}
 	}
 }

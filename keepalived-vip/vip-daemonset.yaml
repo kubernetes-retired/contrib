@@ -2,15 +2,30 @@ apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
   name: kube-keepalived-vip
+  labels: 
+    k8s-app: kube-keepalived-vip
 spec:
+  selector:
+    matchLabels:
+      k8s-app: kube-keepalived-vip
   template:
     metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
       labels:
-        name: kube-keepalived-vip
+        k8s-app: kube-keepalived-vip
     spec:
       hostNetwork: true
+      serviceAccount: kube-keepalived-vip
+      serviceAccountName: kube-keepalived-vip
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+	type: worker
+      tolerations:
+      #- key: node-role.kubernetes.io/master
+      #  effect: NoSchedule
       containers:
-        - image: k8s.gcr.io/kube-keepalived-vip:0.11
+        - image: k8s.gcr.io/kube-keepalived-vip:0.12
           name: kube-keepalived-vip
           imagePullPolicy: Always
           securityContext:
@@ -39,6 +54,8 @@ spec:
           #- --use-unicast=true
           # vrrp version can be set to 2.  Default 3.
           #- --vrrp-version=2
+          # optional custom interface for vip if different from kubernetes interface
+          #- --custom-interface=eth1
       volumes:
         - name: modules
           hostPath:
@@ -46,5 +63,3 @@ spec:
         - name: dev
           hostPath:
             path: /dev
-      nodeSelector:
-        type: worker
