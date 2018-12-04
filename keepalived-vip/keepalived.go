@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"syscall"
 	"text/template"
+	"net"
 
 	"github.com/golang/glog"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
@@ -36,6 +37,25 @@ const (
 
 var keepalivedTmpl = "keepalived.tmpl"
 
+// VipInfo structure for VIP (since we no longer just handle ip addresses)
+type VipInfo struct {
+        IP          string
+        Subnet      int
+        VlanId      int
+	Gateway     string
+	FullSubnet  string
+}
+
+// moved from utils.go to keep next to VipInfo structure
+func appendIfMissing(slice []VipInfo, item VipInfo) []VipInfo {
+        for _, elem := range slice {
+                if elem == item {
+                        return slice
+                }
+        }
+        return append(slice, item)
+}
+
 type keepalived struct {
 	iface       string
 	ip          string
@@ -45,12 +65,15 @@ type keepalived struct {
 	neighbors   []string
 	useUnicast  bool
 	started     bool
-	vips        []string
+	vips        []VipInfo
+	vlans       []int
 	tmpl        *template.Template
 	cmd         *exec.Cmd
 	ipt         iptables.Interface
 	vrid        int
 	vrrpVersion int
+	customIface string
+
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -63,6 +86,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	defer w.Close()
 
 	k.vips = getVIPs(svcs)
+	k.vlans = ListVlans(svcs)
 
 	conf := make(map[string]interface{})
 	conf["iptablesChain"] = iptablesChain
@@ -70,12 +94,14 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["myIP"] = k.ip
 	conf["netmask"] = k.netmask
 	conf["svcs"] = svcs
-	conf["vips"] = getVIPs(svcs)
+	conf["vips"] = k.vips
+	conf["vlans"] = k.vlans
 	conf["nodes"] = k.neighbors
 	conf["priority"] = k.priority
 	conf["useUnicast"] = k.useUnicast
 	conf["vrid"] = k.vrid
 	conf["vrrpVersion"] = k.vrrpVersion
+	conf["customIface"] = k.customIface
 
 	if glog.V(2) {
 		b, _ := json.Marshal(conf)
@@ -87,10 +113,11 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 
 // getVIPs returns a list of the virtual IP addresses to be used in keepalived
 // without duplicates (a service can use more than one port)
-func getVIPs(svcs []vip) []string {
-	result := []string{}
+func getVIPs(svcs []vip) []VipInfo {
+	result := []VipInfo{}
 	for _, svc := range svcs {
-		result = appendIfMissing(result, svc.IP)
+		_, ipnet, _ := net.ParseCIDR(fmt.Sprintf("%v/%v",svc.IP,svc.Subnet))
+		result = appendIfMissing(result, VipInfo{IP: svc.IP, Subnet: svc.Subnet, VlanId: svc.VlanId, Gateway: svc.Gateway, FullSubnet: fmt.Sprintf("%v",ipnet)})
 	}
 
 	return result
@@ -170,9 +197,13 @@ func resetIPVS() error {
 	return nil
 }
 
-func (k *keepalived) removeVIP(vip string) error {
+func (k *keepalived) removeVIP(vip VipInfo) error {
 	glog.Infof("removing configured VIP %v", vip)
-	out, err := k8sexec.New().Command("ip", "addr", "del", vip+"/32", "dev", k.iface).CombinedOutput()
+	iface := CoalesceString(k.customIface, k.iface)
+	if vip.VlanId != 0 {
+		iface = fmt.Sprintf("%v.%v", iface, vip.VlanId)
+	}
+	out, err := k8sexec.New().Command("ip", "addr", "del", fmt.Sprintf("%v/%v",vip.IP,vip.Subnet), "dev", iface).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error reloading keepalived: %v\n%s", err, out)
 	}
@@ -187,3 +218,4 @@ func (k *keepalived) loadTemplate() error {
 	k.tmpl = tmpl
 	return nil
 }
+

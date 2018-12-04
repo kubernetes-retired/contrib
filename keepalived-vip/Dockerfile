@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
   iproute2 \
   ipvsadm \
+  vlan \
   bash && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
@@ -39,8 +40,10 @@ RUN mkdir -p /etc/keepalived && \
   ln -s /keepalived/sbin/keepalived /usr/sbin && \
   ln -s /keepalived/bin/genhash /usr/sbin
 
-COPY kube-keepalived-vip /
-COPY keepalived.tmpl /
+# Ordered COPY in less likely to change to more likely for better
+# use of caching during build and push
 COPY keepalived.conf /etc/keepalived
+COPY keepalived.tmpl /
+COPY kube-keepalived-vip /
 
 ENTRYPOINT ["/kube-keepalived-vip"]

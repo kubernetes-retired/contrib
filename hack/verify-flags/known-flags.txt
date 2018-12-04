@@ -20,6 +20,7 @@ config-file-path
 configuration-name
 current-release-pr
 custom-error-service
+custom-interface
 datasource
 default-backend-service
 default-return-code

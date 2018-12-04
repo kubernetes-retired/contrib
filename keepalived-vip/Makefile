@@ -1,7 +1,7 @@
 all: push
 
 # 0.0 shouldn't clobber any release builds, current "latest" is 0.11
-TAG = 0.11
+TAG = 0.12
 PREFIX = staging-k8s.gcr.io/kube-keepalived-vip
 BUILD_IMAGE = build-keepalived
 TEMP_GOPATH = ${GOPATH}:${GOPATH}/src/k8s.io/kubernetes/staging
@@ -24,6 +24,7 @@ push: container
 
 clean:
 	rm -f kube-keepalived-vip
+	rm -f keepalived.tar.gz
 
 update-godeps:
 	GOPATH=$(TEMP_GOPATH) godep save ./...
