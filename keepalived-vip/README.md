@@ -70,6 +70,11 @@ In the above diagram, one node assumes the role of a Master (negotiated via VRRP
 
 The only requirement is for [DaemonSets](https://github.com/kubernetes/kubernetes/blob/master/docs/design/daemon.md) to be enabled. Check this [guide](https://github.com/kubernetes/kubernetes/blob/master/docs/api.md#enabling-resources-in-the-extensions-group) to include the `kube-apiserver` flags for this to work.
 
+## Keepalived version
+
+According to [keepalived.org](http://www.keepalived.org): "Keepalived code present in git master branch must be considered as stable and futur proof. We do not backport bugfixes and extensions to previous release, dev circle is an allways forward release process. So you are strongly encouraged to upgrade to last 2.X release which provides extensive work, extensions and bugfixes."
+
+Packaged keepalived version is currently 2.0.10.
 
 ## Configuration
 
@@ -140,6 +145,11 @@ subjects:
 - kind: ServiceAccount
   name: kube-keepalived-vip
   namespace: default
+```
+
+Alternatively, you can just execute this command to create the above Service Account, Cluster Role and Cluster Role Binding:
+```
+$ kubectl create -f vip-rbac.yaml
 ```
 
 ### Load the _keepalived_ DaemonSet
@@ -240,7 +250,7 @@ vrrp_instance vips {
   advert_int 1
 
   track_interface {
-    eth1
+
   }
 
 
@@ -334,7 +344,7 @@ vrrp_instance vips {
   advert_int 1
 
   track_interface {
-    eth1
+
   }
 
 
@@ -396,6 +406,75 @@ virtual_server 10.4.0.50 80 {
 
 }
 ```
+
+## Custom Interface
+
+By default, the VIP will be associated to the network interface of the node where the ExternalIP (or InternalIP if not defined) is configured.
+
+If you want to use an other network interface, you can add to the DaemonSet the flag `custom-interface` as described:
+```
+          args:
+          - --services-configmap=default/vip-configmap
+          - --custom-interface=eth2
+```
+
+If specified this way, the custom interface is added to the list of tracked interfaces in the keepalived configuration. VRRP traffic is nonetheless kept on the default interface.
+```
+  track_interface {
+    eth2
+  }
+```
+
+Quick remark: the default interface defined in the vrrp instance is no longer added to the tracked interfaces. It is tracked by default.
+
+## Advanced Configuration
+
+Standard configuration use the format `VIP -> namespace/serviceName[:forwardMethod]`. It is possible to specify further information about the VIP such as subnet mask, custom gateway for this subnet and optional vlan id.
+
+The full configuration format is `VIP -> namespace/serviceName[[[[:forwardMethod]:subnetMask]:gateway]:vlanId]`
+
+Examples:
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vip-configmap
+data:
+  10.42.0.50: default/echoheaders
+  10.42.10.50: default/echoheaders::24::10
+  10.42.20.50: default/echoheaders:DR:24:10.42.20.254:20
+```
+
+If no forwardMethod is specified, as explained above, NAT is the default.
+
+If no subnetMask is specified, 32 is used to define a single IP address.
+
+If a gateway is specified, a route is added in `virtual_routes` keepalived configuration for corresponding calculated subnet (from VIP and subnet mask).
+```
+  virtual_routes {
+    10.42.20.0/24 via 10.42.20.254 dev eth1.20
+  }
+```
+
+If a vlan id is specified, kube-keepalived-vip will look for an interface with the name `<interface>.<vlanid>`. If none exists, it will create it (and track created interfaces to delete them when stopped). If an interface is thus created, a subnetMask is needed to be able to access the VIP:
+```
+  virtual_ipaddress {
+    10.42.0.50/32 dev eth1
+    10.42.10.50/24 dev eth1.10
+    10.42.20.50/24 dev eth1.20
+  }
+```
+
+These interfaces are also added to keepalived tracked interfaces.
+```
+  track_interface {
+    eth1
+    eth1.10
+    eth1.20
+  }
+```
+
+All the above works correctly with a custom interface.
 
 ## Related projects
 

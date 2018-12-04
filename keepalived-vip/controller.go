@@ -34,6 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
+	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/util/intstr"
@@ -77,6 +78,9 @@ type vip struct {
 	Protocol  string
 	LVSMethod string
 	Backends  []service
+	VlanId    int
+	Subnet    int
+	Gateway   string
 }
 
 type vipByNameIPPort []vip
@@ -101,6 +105,22 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 	return iPort < jPort
 }
 
+// ListVlan return a list of unique vlan id present in vips
+func ListVlans(vips []vip) ([]int) {
+        vlans := []int{}
+        for _, vip := range vips {
+                present := false
+                for _, vlan := range vlans {
+                        if vlan == vip.VlanId {
+                                present = true
+                                break
+                         }
+                }
+                if !present && vip.VlanId != 0 { vlans = append(vlans,vip.VlanId) }
+        }
+        return vlans
+}
+
 // ipvsControllerController watches the kubernetes api and adds/removes
 // services from LVS throgh ipvsadmin.
 type ipvsControllerController struct {
@@ -114,6 +134,8 @@ type ipvsControllerController struct {
 	configMapName     string
 	ruCfg             []vip
 	ruMD5             string
+	iface             string
+	createdVlan       []string
 
 	// stopLock is used to enforce only a single call to Stop is active.
 	// Needed because we allow stopping through an http endpoint and
@@ -169,9 +191,9 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 	svcs := []vip{}
 
 	// k -> IP to use
-	// v -> <namespace>/<service name>:<lvs method>
-	for externalIP, nsSvcLvs := range cfgMap.Data {
-		if nsSvcLvs == "" {
+	// v -> <namespace>/<service name>:<lvs method>:<vlan id>/<subnet>
+	for externalIP, nsSvcLvsVlan := range cfgMap.Data {
+		if nsSvcLvsVlan == "" {
 			// if target is empty string we will not forward to any service but
 			// instead just configure the IP on the machine and let it up to
 			// another Pod or daemon to bind to the IP address
@@ -182,18 +204,48 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 				LVSMethod: "VIP",
 				Backends:  nil,
 				Protocol:  "TCP",
+				VlanId:    0,
+				Subnet:    32,
+				Gateway:   "",
 			})
 			glog.V(2).Infof("Adding VIP only service: %v", externalIP)
 			continue
 		}
 
-		ns, svc, lvsm, err := parseNsSvcLVS(nsSvcLvs)
+		ns, svc, lvsm, subnet, gateway, vlanId, err := parseNsSvcLbVlan(nsSvcLvsVlan)
+
+		// If no subnet is given, use /32
+		if subnet == 0 {
+			subnet = 32
+		 }
+
 		if err != nil {
 			glog.Warningf("%v", err)
 			continue
 		}
 
 		nsSvc := fmt.Sprintf("%v/%v", ns, svc)
+
+                if nsSvc == "/" {
+                        // Target was not empty but service is, so we will not forward
+                        // to any service but instead just configure the IP (with 
+                        // possible vlan and subnet) on the machine and let it up to
+                        // another Pod or daemon to bind to the IP address
+                        svcs = append(svcs, vip{
+                                Name:      "",
+                                IP:        externalIP,
+                                Port:      0,
+                                LVSMethod: "VIP",
+                                Backends:  nil,
+                                Protocol:  "TCP",
+                                VlanId:    vlanId,
+                                Subnet:    subnet,
+				Gateway:   gateway,
+                        })
+                        glog.V(2).Infof("Adding VIP only service: %v", externalIP)
+                        continue
+                }
+
 		svcObj, svcExists, err := ipvsc.svcLister.Indexer.GetByKey(nsSvc)
 		if err != nil {
 			glog.Warningf("error getting service %v: %v", nsSvc, err)
@@ -222,6 +274,9 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *api.ConfigMap) []vip 
 				LVSMethod: lvsm,
 				Backends:  ep,
 				Protocol:  fmt.Sprintf("%v", servicePort.Protocol),
+                                VlanId:    vlanId,
+                                Subnet:    subnet,
+				Gateway:   gateway,
 			})
 			glog.V(2).Infof("found service: %v:%v", s.Name, servicePort.Port)
 		}
@@ -258,6 +313,11 @@ func (ipvsc *ipvsControllerController) sync(key string) error {
 	svc := ipvsc.getServices(cfgMap)
 	ipvsc.ruCfg = svc
 
+	err = ipvsc.CreateVlanInterface()
+	if err != nil {
+		return err
+	}
+
 	err = ipvsc.keepalived.WriteCfg(svc)
 	if err != nil {
 		return err
@@ -293,14 +353,68 @@ func (ipvsc *ipvsControllerController) Stop() error {
 
 		ipvsc.keepalived.Stop()
 
+		ipvsc.CleanupVlanInterface()
+
 		return nil
 	}
 
 	return fmt.Errorf("shutdown already in progress")
 }
 
+// CreateVlanInterface create missing vlan interface for VIP binding with vlan id
+func (ipvsc *ipvsControllerController) CreateVlanInterface() error {
+	existingIfaces, err := ListInterfaces()
+	if err != nil {
+		glog.Fatalf("unexpected error: %v", err)
+		return err
+	}
+
+	if !in(existingIfaces,ipvsc.iface) {
+		return fmt.Errorf("interface %v not found", ipvsc.iface)
+	}
+
+	vlans := ListVlans(ipvsc.ruCfg)
+
+	if len(vlans) > 0 {
+		err := loadVlanModule()
+		if err != nil {
+			glog.Fatalf("unexpected error: %v", err)
+			return err
+	        }
+	}
+
+	for _, vlan := range vlans {
+		if !in(existingIfaces,fmt.Sprintf("%v.%v",ipvsc.iface,vlan)) {
+			_, err := k8sexec.New().Command("vconfig", "add", ipvsc.iface, fmt.Sprintf("%v",vlan)).CombinedOutput()
+			if err != nil {
+				glog.Warningf("could not add vlan id %v to %v: %v", vlan, ipvsc.iface, err)
+				return err
+			}
+			_, err = k8sexec.New().Command("ip","link","set","up","dev", fmt.Sprintf("%v.%v", ipvsc.iface, vlan)).CombinedOutput()
+                        if err != nil {
+                                glog.Warningf("could set up interface %v.%v: %v", ipvsc.iface, vlan, err)
+                                return err
+                        }
+			ipvsc.createdVlan = append(ipvsc.createdVlan,fmt.Sprintf("%v.%v", ipvsc.iface, vlan))
+		}
+	}
+
+	return nil
+}
+
+// CleanupVlanInterface lazy clean up of vlan interface created
+func (ipvsc *ipvsControllerController) CleanupVlanInterface() {
+	for _, iface := range ipvsc.createdVlan {
+		_, err := k8sexec.New().Command("vconfig", "rem", iface).CombinedOutput()
+		if err != nil {
+			glog.Infof("%v was created but could not be removed", iface)
+		}
+	}
+	return
+}
+
 // newIPVSController creates a new controller from the given config.
-func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string, vrid int, vrrpVersion int) *ipvsControllerController {
+func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnicast bool, configMapName string, vrid int, vrrpVersion int, customIface string) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(reloadQPS, int(reloadQPS)),
@@ -352,7 +466,10 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		ipt:         iptInterface,
 		vrid:        vrid,
 		vrrpVersion: vrrpVersion,
+		customIface: customIface,
 	}
+
+	ipvsc.iface = CoalesceString(customIface, nodeInfo.iface)
 
 	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)
 

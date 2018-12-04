@@ -1,4 +1,9 @@
 
+## 0.12
+- Update keepalived to 2.0.10
+- Custom interface handling 
+- Vlan handling
+
 ## 0.9
 - Update godeps
 - Update keepalived to 1.2.24

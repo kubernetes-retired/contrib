@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"strconv"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
@@ -39,16 +40,34 @@ import (
 )
 
 var (
-	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
-	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
-	vethRegex     = regexp.MustCompile(`^veth.*`)
-	lvsRegex      = regexp.MustCompile(`NAT|DR`)
+	invalidIfaces     = []string{"lo", "docker0", "flannel.1", "cbr0"}
+	nsSvcLbVlanRegex  = regexp.MustCompile(`^(.*)/(.*):(.*?):(.*?):(.*?):(.*?)$|^(.*)/(.*):(.*?):(.*?):(.*?)$|^(.*)/(.*):(.*?):(.*?)$|^(.*)/(.*):(.*?)$|^(.*)/(.*)$`)
+	vethRegex         = regexp.MustCompile(`^veth.*`)
+	lvsRegex          = regexp.MustCompile(`NAT|DR`)
 )
 
 type nodeInfo struct {
 	iface   string
 	ip      string
 	netmask int
+}
+
+// CoalesceString returns the first non empty string
+func CoalesceString(str ...string) string {
+	for _, s := range str {
+		if s != "" { return s }
+	}
+	return ""
+}
+
+// Check if element is present in array
+func in(arr []string, val string) (bool) {
+	for i := 0; i < len(arr); i++ {
+		if arr[i] == val {
+			return true
+		}
+	}
+	return false
 }
 
 // getNetworkInfo returns information of the node where the pod is running
@@ -176,6 +195,20 @@ func ipByInterface(name string) (string, int, error) {
 	return "", 32, errors.New("Found no IPv4 addresses.")
 }
 
+// ListInterfaces return a list of all interfaces on the host
+func ListInterfaces() ([]string, error) {
+	result := []string{}
+	ifaces, err := netInterfaces()
+        if err != nil {
+                return result, err
+        }
+
+        for _, iface := range ifaces {
+		result = append(result, iface.Name)
+        }
+	return result, nil
+}
+
 type stringSlice []string
 
 // pos returns the position of a string in a slice.
@@ -247,6 +280,19 @@ func loadIPVModule() error {
 	return err
 }
 
+// loadVlanModule load module require to use vlan
+func loadVlanModule() error {
+        out, err := k8sexec.New().Command("modprobe", "8021q").CombinedOutput()
+        if err != nil {
+                glog.V(2).Infof("Error loading 8021q: %s, %v", string(out), err)
+                return err
+        }
+
+        _, err = os.Stat("/proc/net/vlan")
+        return err
+}
+
+
 // changeSysctl changes the required network setting in /proc to get
 // keepalived working in the local system.
 func changeSysctl() error {
@@ -260,15 +306,6 @@ func changeSysctl() error {
 	return nil
 }
 
-func appendIfMissing(slice []string, item string) []string {
-	for _, elem := range slice {
-		if elem == item {
-			return slice
-		}
-	}
-	return append(slice, item)
-}
-
 func parseNsName(input string) (string, string, error) {
 	nsName := strings.Split(input, "/")
 	if len(nsName) != 2 {
@@ -278,33 +315,28 @@ func parseNsName(input string) (string, string, error) {
 	return nsName[0], nsName[1], nil
 }
 
-func parseNsSvcLVS(input string) (string, string, string, error) {
-	nsSvcLb := nsSvcLbRegex.FindStringSubmatch(input)
-	if len(nsSvcLb) != 6 {
-		return "", "", "", fmt.Errorf("invalid format (namespace/service name[:NAT|DR]) found in '%v'", input)
-	}
+func parseNsSvcLbVlan(input string) (string, string, string, int, string, int, error) {
+        nsSvcLbVlan := nsSvcLbVlanRegex.FindStringSubmatch(input)
+        if len(nsSvcLbVlan) != 21 {
+                return "", "", "", 0, "", 0, fmt.Errorf("invalid format (namespace/service name[:NAT|DR][:subnet][:gateway][:vlan id]) found in '%v'", input)
+        }
 
-	ns := nsSvcLb[1]
-	svc := nsSvcLb[2]
-	kind := nsSvcLb[3]
+        ns := CoalesceString(nsSvcLbVlan[1],nsSvcLbVlan[7],nsSvcLbVlan[12],nsSvcLbVlan[16],nsSvcLbVlan[19])
+        svc := CoalesceString(nsSvcLbVlan[2],nsSvcLbVlan[8],nsSvcLbVlan[13],nsSvcLbVlan[17],nsSvcLbVlan[20])
+        kind := CoalesceString(nsSvcLbVlan[3],nsSvcLbVlan[9],nsSvcLbVlan[14],nsSvcLbVlan[18])
+	subnet,_ := strconv.Atoi(CoalesceString(nsSvcLbVlan[4],nsSvcLbVlan[10],nsSvcLbVlan[15]))
+	gateway := CoalesceString(nsSvcLbVlan[5],nsSvcLbVlan[11])
+	vlanId,_ := strconv.Atoi(nsSvcLbVlan[6])
 
-	if ns == "" {
-		ns = nsSvcLb[4]
-	}
+        if kind == "" {
+                kind = "NAT"
+        }
 
-	if svc == "" {
-		svc = nsSvcLb[5]
-	}
+        if !lvsRegex.MatchString(kind) {
+                return "", "", "", 0, "", 0, fmt.Errorf("invalid LVS method. Only NAT and DR are supported: %v", kind)
+        }
 
-	if kind == "" {
-		kind = "NAT"
-	}
-
-	if !lvsRegex.MatchString(kind) {
-		return "", "", "", fmt.Errorf("invalid LVS method. Only NAT and DR are supported: %v", kind)
-	}
-
-	return ns, svc, kind, nil
+        return ns, svc, kind, subnet, gateway, vlanId, nil
 }
 
 type nodeSelector map[string]string

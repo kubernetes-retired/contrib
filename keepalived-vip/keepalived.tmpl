@@ -1,4 +1,4 @@
-{{ $iface := .iface }}{{ $netmask := .netmask }}
+{{ $iface := .iface }}{{ $netmask := .netmask }}{{ $customIface := .customIface }}
 
 global_defs {
   vrrp_version {{ .vrrpVersion }}
@@ -14,7 +14,8 @@ vrrp_instance vips {
   advert_int 1
 
   track_interface {
-    {{ $iface }}
+    {{ if $customIface }}{{ $customIface }}{{ end }}{{ range $v, $vlan := .vlans }}
+    {{ if $customIface }}{{ $customIface }}{{ else }}{{ $iface }}{{ end }}.{{ $vlan }}{{ end }}
   }
 
   {{ if .useUnicast }}
@@ -24,12 +25,17 @@ vrrp_instance vips {
   }
   {{ end }}
 
-  virtual_ipaddress { {{ range .vips }}
-    {{ . }}{{ end }}
+  virtual_ipaddress { {{ range $i, $vip := .vips }}
+    {{ $vip.IP }}/{{ $vip.Subnet }} dev {{ if $customIface }}{{ $customIface }}{{ else }}{{ $iface }}{{ end }}{{ if ne $vip.VlanId 0 }}.{{ $vip.VlanId }}{{ end }}{{ end }}
   }
+
+  virtual_routes { {{ range $i, $vip := .vips }}
+    {{ if $vip.Gateway }}{{ $vip.FullSubnet }} via {{ $vip.Gateway }} dev {{ if $customIface }}{{ $customIface }}{{ else }}{{ $iface }}{{ end }}{{ if ne $vip.VlanId 0 }}.{{ $vip.VlanId }}{{ end }}{{ end }}{{ end }}
+  }
+
 }
 
-{{ range $i, $svc := .svcs }}
+{{ range $j, $svc := .svcs }}
 {{ if eq $svc.LVSMethod "VIP" }}
 # VIP Service with no pods: {{ $svc.IP }}
 {{ else }}
@@ -41,7 +47,7 @@ virtual_server {{ $svc.IP }} {{ $svc.Port }} {
   persistence_timeout 1800
   protocol {{ $svc.Protocol }}
 
-  {{ range $j, $backend := $svc.Backends }}
+  {{ range $k, $backend := $svc.Backends }}
   real_server {{ $backend.IP }} {{ $backend.Port }} {
     weight 1
     TCP_CHECK {

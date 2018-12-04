@@ -44,6 +44,7 @@ var (
 		with other keepalived instances`)
 
 	vrrpVersion = flags.Int("vrrp-version", 3, `Which VRRP version to use (2 or 3)`)
+	customIface = flags.String("custom-interface", "", `Optional custom interface to use for VIPs`)
 
 	configMapName = flags.String("services-configmap", "",
 		`Name of the ConfigMap that contains the definition of the services to expose.
@@ -124,7 +125,7 @@ func main() {
 	if *useUnicast {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
-	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid, *vrrpVersion)
+	ipvsc := newIPVSController(kubeClient, namespace, *useUnicast, *configMapName, *vrid, *vrrpVersion, *customIface)
 	go ipvsc.epController.Run(wait.NeverStop)
 	go ipvsc.svcController.Run(wait.NeverStop)
 
