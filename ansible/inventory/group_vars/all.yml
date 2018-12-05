@@ -141,5 +141,5 @@ kube_use_etcd_system_container: false
 kube_use_flannel_system_container: false
 
 system_images_registry: "candidate-registry.fedoraproject.org"
-system_images_registry_namespace: "f26"
+system_images_registry_namespace: "f28"
 system_images_tag: "latest"
