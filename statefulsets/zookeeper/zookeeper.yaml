@@ -63,7 +63,7 @@ spec:
       containers:
       - name: k8szk
         imagePullPolicy: Always
-        image: gcr.io/google_samples/k8szk:v3
+        image: gcr.io/google_samples/k8szk:v4
         resources:
           requests:
             memory: "2Gi"
