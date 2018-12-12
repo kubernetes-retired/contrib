@@ -37,7 +37,7 @@ Here is where IPVS can help.
 
 The idea is to expose a Virtual IP (VIP) address per service, outside of the kubernetes cluster. _keepalived_ then uses VRRP to sync this "mapping" in the local network. With 2 or more instance of the pod running in the cluster is possible to provide HA using a single VIP address.
 
-##### What is the difference between _keepalived_ and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx](https://github.com/kubernetes/ingress/tree/master/controllers/nginx)?
+##### What is the difference between _keepalived_ and [service-loadbalancer](https://github.com/kubernetes/contrib/tree/master/service-loadbalancer) or [nginx](https://github.com/kubernetes/ingress-nginx/)?
 
 _keepalived_ should be considered a complement to, and not a replacement for HAProxy or nginx. The goal is to provide robust HA, such that no downtime is experienced if one or more nodes go offline. To be exact, _keepalived_ ensures that the VIP, which exposes a service-loadbalancer or an Ingress, is always owned by a live node. The DNS record will simply point to this single VIP (ie. sans RR) and the failover will be handled entirely by _keepalived_.
 
@@ -68,7 +68,7 @@ In the above diagram, one node assumes the role of a Master (negotiated via VRRP
 
 ## Requirements
 
-The only requirement is for [DaemonSets](https://github.com/kubernetes/kubernetes/blob/master/docs/design/daemon.md) to be enabled. Check this [guide](https://github.com/kubernetes/kubernetes/blob/master/docs/api.md#enabling-resources-in-the-extensions-group) to include the `kube-apiserver` flags for this to work.
+The only requirement is for [DaemonSets](https://github.com/kubernetes/kubernetes/blob/master/docs/design/daemon.md) to be enabled. Check this [guide](https://kubernetes.io/docs/reference/using-api/api-overview/#enabling-resources-in-the-groups) to include the `kube-apiserver` flags for this to work.
 
 
 ## Configuration
