@@ -11,7 +11,7 @@ KUBELET_ADDRESS="--address=127.0.0.1"
 KUBELET_HOSTNAME="--hostname-override=127.0.0.1"
 
 # Edit the kubelet.kubeconfig to have correct cluster server address
-KUBELET_KUBECONFIG=/etc/kubernetes/kubelet.kubeconfig
+KUBELET_KUBECONFIG="--kubeconfig=/etc/kubernetes/kubelet.kubeconfig"
 
 # Add your own!
 KUBELET_ARGS="--cgroup-driver=systemd --fail-swap-on=false"
