@@ -21,3 +21,6 @@
 Session.vim
 .netrwhist
 
+# For GoLand/Idea IDE
+.idea
+
