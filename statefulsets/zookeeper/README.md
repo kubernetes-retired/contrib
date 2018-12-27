@@ -95,12 +95,7 @@ containers:
 #### Membership Configuration
 |Variable|Type|Default|Description|
 |:------:|:---:|:-----:|:---------|
-|ZK_ENSEMBLE|string|N/A|A colon separated list of servers in the ensemble.
-This is a mandatory configuration variable that is used to configure the membership of the 
-ZooKeeper ensemble. It is also used to prevent data loss during accidental scale operations. The 
-set can be computed as follows. For all integers in the range [0,replicas), prepend the name of 
-service followed by a dash to the integer. So for the Stateful Set above, the name is zk and we have
-3 replicas. for the set {0,1,2} we prepend zk- giving us zk-0;zk-1;zk-2.|
+|ZK_ENSEMBLE|string|N/A|A colon separated list of servers in the ensemble. This is a mandatory configuration variable that is used to configure the membership of the ZooKeeper ensemble. It is also used to prevent data loss during accidental scale operations. The set can be computed as follows. For all integers in the range [0,replicas), prepend the name of service followed by a dash to the integer. So for the Stateful Set above, the name is zk and we have 3 replicas. For the set {0,1,2} we prepend zk- giving us zk-0;zk-1;zk-2.|
 
 #### Network Configuration
 |Variable|Type|Default|Description|
