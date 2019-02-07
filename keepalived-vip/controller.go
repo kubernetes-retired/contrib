@@ -394,9 +394,14 @@ func (ipvsc *ipvsControllerController) CreateVlanInterface() error {
 			}
 			_, err = k8sexec.New().Command("ip", "link", "set", "up", "dev", fmt.Sprintf("%v.%v", ipvsc.iface, vlan)).CombinedOutput()
 			if err != nil {
-				glog.Warningf("could set up interface %v.%v: %v", ipvsc.iface, vlan, err)
+				glog.Warningf("could not set up interface %v.%v: %v", ipvsc.iface, vlan, err)
 				return err
 			}
+                        _, err = k8sexec.New().Command("add-table", fmt.Sprintf("%v", vlan)).CombinedOutput()
+                        if err != nil {
+                                glog.Warningf("could not create table for vlan %v: %v", vlan, err)
+                                return err
+                        }
 			ipvsc.createdVlan = append(ipvsc.createdVlan, fmt.Sprintf("%v.%v", ipvsc.iface, vlan))
 		}
 	}
@@ -412,6 +417,10 @@ func (ipvsc *ipvsControllerController) CleanupVlanInterface() {
 			glog.Infof("%v was created but could not be removed", iface)
 		}
 	}
+        _, err := k8sexec.New().Command("rm", "-f", "/etc/iproute2/rt_tables.d/vlan.*").CombinedOutput()
+        if err != nil {
+                glog.Infof("could not remove vlan tables: %v", err)
+        }
 	return
 }
 

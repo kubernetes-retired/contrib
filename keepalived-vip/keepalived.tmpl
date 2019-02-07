@@ -30,7 +30,14 @@ vrrp_instance vips {
   }
 
   virtual_routes { {{ range $i, $vip := .vips }}
-    {{ if $vip.Gateway }}{{ $vip.FullSubnet }} via {{ $vip.Gateway }} dev {{ if $customIface }}{{ $customIface }}{{ else }}{{ $iface }}{{ end }}{{ if ne $vip.VlanId 0 }}.{{ $vip.VlanId }}{{ end }}{{ end }}{{ end }}
+  {{ if and ($vip.Gateway) (ne $vip.VlanId 0) }}  {{ $vip.FullSubnet }} dev {{ if $customIface }}{{ $customIface }}{{ else }}{{ $iface }}{{ end }}.{{ $vip.VlanId }} src {{ $vip.IP }} table {{ tableid $vip.VlanId }}
+    default via {{ $vip.Gateway }} table {{ tableid $vip.VlanId }} no_track{{ end }}
+  {{ end }}
+  }
+
+  virtual_rules { {{ range $i, $vip := .vips }}
+  {{ if and ($vip.Gateway) (ne $vip.VlanId 0) }}  from {{ $vip.IP }} table {{ tableid $vip.VlanId }}{{ end }}
+  {{ end }}
   }
 
 }

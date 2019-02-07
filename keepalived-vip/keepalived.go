@@ -150,6 +150,7 @@ func (k *keepalived) Start() {
 
 	if err := k.cmd.Wait(); err != nil {
 		glog.Fatalf("keepalived error: %v", err)
+                //select { }
 	}
 }
 
@@ -210,8 +211,14 @@ func (k *keepalived) removeVIP(vip VipInfo) error {
 }
 
 func (k *keepalived) loadTemplate() error {
-	tmpl, err := template.ParseFiles(keepalivedTmpl)
+        funcMap := template.FuncMap{
+		"tableid": func(i int) int {
+			return i + 10000
+		},
+	}
+	tmpl, err := template.New(keepalivedTmpl).Funcs(funcMap).ParseFiles(keepalivedTmpl)
 	if err != nil {
+                glog.Errorf("error parsing template: %v", err)
 		return err
 	}
 	k.tmpl = tmpl

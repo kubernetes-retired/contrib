@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM k8s.gcr.io/ubuntu-slim:0.5
+FROM quay.io/kubernetes-ingress-controller/debian-base-amd64:0.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  libssl1.0.0 \
+  libssl1.1 \
   libnl-3-200 \
   libnl-route-3-200 \
   libnl-genl-3-200 \
   iptables \
   libnfnetlink0 \
   libiptcdata0 \
-  libipset3 \
+  libipset11 \
   libipset-dev \
   libsnmp30 \
   kmod \
@@ -44,6 +44,7 @@ RUN mkdir -p /etc/keepalived && \
 # use of caching during build and push
 COPY keepalived.conf /etc/keepalived
 COPY keepalived.tmpl /
+COPY add-table /usr/local/sbin/
 COPY kube-keepalived-vip /
 
 ENTRYPOINT ["/kube-keepalived-vip"]

@@ -25,7 +25,7 @@ spec:
       #- key: node-role.kubernetes.io/master
       #  effect: NoSchedule
       containers:
-        - image: k8s.gcr.io/kube-keepalived-vip:0.12
+        - image: k8s.gcr.io/kube-keepalived-vip:0.13
           name: kube-keepalived-vip
           imagePullPolicy: Always
           securityContext:
