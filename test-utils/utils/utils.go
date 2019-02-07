@@ -218,7 +218,7 @@ func (u *Utils) CheckStartedStatus(job string, buildNumber int) (*StartedFile, e
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		glog.Errorf("Got a non-success response %v while reading data for %v/%v/%v", response.StatusCode, job, buildNumber, "started.json")
-		return nil, err
+		return nil, fmt.Errorf("non-success response: %v", response.StatusCode)
 	}
 	result := &StartedFile{}
 	err = json.NewDecoder(response.Body).Decode(result)
