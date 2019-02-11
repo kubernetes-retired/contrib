@@ -51,6 +51,7 @@ type keepalived struct {
 	ipt         iptables.Interface
 	vrid        int
 	vrrpVersion int
+	notify      string
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -76,6 +77,7 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["useUnicast"] = k.useUnicast
 	conf["vrid"] = k.vrid
 	conf["vrrpVersion"] = k.vrrpVersion
+	conf["notify"] = k.notify
 
 	if glog.V(2) {
 		b, _ := json.Marshal(conf)

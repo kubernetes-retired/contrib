@@ -337,6 +337,8 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 
 	neighbors := getNodeNeighbors(nodeInfo, clusterNodes)
 
+	notify := os.Getenv("KEEPALIVED_NOTIFY")
+
 	execer := exec.New()
 	dbus := utildbus.New()
 	iptInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
@@ -352,6 +354,7 @@ func newIPVSController(kubeClient *unversioned.Client, namespace string, useUnic
 		ipt:         iptInterface,
 		vrid:        vrid,
 		vrrpVersion: vrrpVersion,
+		notify:      notify,
 	}
 
 	ipvsc.syncQueue = NewTaskQueue(ipvsc.sync)
