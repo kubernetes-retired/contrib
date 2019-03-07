@@ -65,7 +65,8 @@ You can then access:
 And you will see:
 
 `{"name":"(name-of-leader-here)"}`
-Leader election with sidecars 
+
+## Leader election with sidecars 
 
 Ok, that’s great, you can do leader election and find out the leader over HTTP, but how can you use it from your own application? This is where the notion of sidecars come in. In Kubernetes, Pods are made up of one or more containers. Often times, this means that you add sidecar containers to your main application to make up a Pod. (for a much more detailed treatment of this subject see my earlier blog post).
 
