@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM google/debian:jessie
+FROM gcr.io/distroless/static:latest
 MAINTAINER Zhou Fang, Dawn Chen <fangzhou051@gmail.com, dawnchen@google.com>
-RUN apt-get update
-RUN apt-get install -y -qq ca-certificates
 ADD node-perf-dash /node-perf-dash
 ADD www /www
