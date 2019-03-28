@@ -94,9 +94,28 @@ func (b *Bucket) ExpandPathURL(pathElements ...interface{}) *url.URL {
 // enclosed by the provided path. Note that there's currently no way to get a
 // path that ends in '/'.
 func (b *Bucket) ExpandListURL(pathElements ...interface{}) *url.URL {
+	return buildURL(map[string]string{
+		// GCS api doesn't like preceding '/', so remove it.
+		"prefix": strings.TrimPrefix(joinStringsAndInts(pathElements...), "/"),
+	})
+}
+
+// ExpandListDirURL produces the URL for a list API query which will list directories
+// enclosed by the provided path. Note that there's currently no way to get a
+// path that ends in '/'.
+func (b *Bucket) ExpandListDirURL(pathElements ...interface{}) *url.URL {
+	return buildURL(map[string]string{
+		// GCS api doesn't like preceding '/', so remove it.
+		"prefix":    strings.TrimPrefix(joinStringsAndInts(pathElements...)+"/", "/"),
+		"delimiter": "/",
+	})
+}
+
+func (b *Bucket) buildUrl(parameters map[string]string) *url.URL {
 	q := url.Values{}
-	// GCS api doesn't like preceding '/', so remove it.
-	q.Set("prefix", strings.TrimPrefix(joinStringsAndInts(pathElements...), "/"))
+	for key, value := range parameters {
+		q.Set(key, value)
+	}
 	return &url.URL{
 		Scheme:   b.scheme,
 		Host:     b.listHost,
@@ -109,21 +128,9 @@ func (b *Bucket) ExpandListURL(pathElements ...interface{}) *url.URL {
 // The returned file name included the complete path from bucket root
 func (b *Bucket) List(pathElements ...interface{}) ([]string, error) {
 	listURL := b.ExpandListURL(pathElements...)
-	res, err := getResponseWithRetry(listURL.String())
+	data, err := queryURL(listURL.String())
 	if err != nil {
-		return nil, fmt.Errorf("Failed to GET %v: %v", listURL, err)
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Got a non-success response %v while listing %v", res.StatusCode, listURL.String())
-	}
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to read the response for %v: %v", listURL.String(), err)
-	}
-	var data map[string]interface{}
-	err = json.Unmarshal(body, &data)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to unmarshal %v: %v", string(body), err)
+		return nil, err
 	}
 	var ret []string
 	if _, ok := data["items"]; !ok {
@@ -134,6 +141,45 @@ func (b *Bucket) List(pathElements ...interface{}) ([]string, error) {
 		ret = append(ret, (item.(map[string]interface{})["name"]).(string))
 	}
 	return ret, nil
+}
+
+// ListDirs returns a list of all directories inside the given path.
+// The returned direcotry name included the complete path from bucket root
+func (b *Bucket) ListDirs(pathElements ...interface{}) ([]string, error) {
+	listURL := b.ExpandListDirURL(pathElements...)
+	data, err := queryURL(listURL.String())
+	if err != nil {
+		return nil, err
+	}
+	var ret []string
+	if _, ok := data["prefixes"]; !ok {
+		glog.Warningf("No matching dirs were found (from: %v)", listURL.String())
+		return ret, nil
+	}
+	for _, item := range data["prefixes"].([]interface{}) {
+		ret = append(ret, item.(string))
+	}
+	return ret, nil
+}
+
+func queryURL(url string) (map[string]interface{}, error) {
+	res, err := getResponseWithRetry(url)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to GET %v: %v", url, err)
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Got a non-success response %v while listing %v", res.StatusCode, url)
+	}
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to read the response for %v: %v", url, err)
+	}
+	var data map[string]interface{}
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to unmarshal %v: %v", string(body), err)
+	}
+	return data, nil
 }
 
 func joinStringsAndInts(pathElements ...interface{}) string {

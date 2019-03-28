@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -199,6 +200,35 @@ func (u *Utils) GetLastestBuildNumberFromJenkinsGoogleBucket(job string) (int, e
 	return lastBuildNo, nil
 }
 
+// GetBuildNumbersFromJenkinsGoogleBucket returns list of available build numbers
+// of the given job from the Google project's GCS bucket.
+func (u *Utils) GetBuildNumbersFromJenkinsGoogleBucket(job string) ([]int, error) {
+	var results []string
+	var err error
+	if u.needsDeref(job) {
+		results, err = u.bucket.ListDirs(u.pullDirectory, lookUpDirectory, job)
+	} else {
+		results, err = u.bucket.ListDirs(u.directory, job)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	jobPrefix := fmt.Sprintf("%s/%s/", u.directory, job)
+	builds := make([]int, 0)
+	for _, r := range results {
+		build := strings.TrimPrefix(r, jobPrefix)
+		build = strings.TrimSuffix(build, "/")
+		buildNo, err := strconv.Atoi(build)
+		if err != nil {
+			fmt.Printf("jobPrefix: %s", jobPrefix)
+			return nil, fmt.Errorf("unknown build name convention: %s", build)
+		}
+		builds = append(builds, buildNo)
+	}
+	return builds, nil
+}
+
 // StartedFile is a type in which we store test starting information in GCS as started.json
 type StartedFile struct {
 	Version     string `json:"version"`
@@ -206,8 +236,7 @@ type StartedFile struct {
 	JenkinsNode string `json:"jenkins-node"`
 }
 
-// CheckStartedStatus reads the started.json file for a given job and build number.
-// It returns true if the result stored there is success, and false otherwise.
+// CheckStartedStatus returns the started.json file for a given job and build number.
 func (u *Utils) CheckStartedStatus(job string, buildNumber int) (*StartedFile, error) {
 	response, err := u.GetFileFromJenkinsGoogleBucket(job, buildNumber, "started.json")
 	if err != nil {
@@ -273,7 +302,6 @@ func (u *Utils) ListFilesInBuild(job string, buildNumber int, prefix string) ([]
 		}
 		return u.bucket.List(dir, prefix)
 	}
-
 	return u.bucket.List(u.directory, job, buildNumber, prefix)
 }
 
