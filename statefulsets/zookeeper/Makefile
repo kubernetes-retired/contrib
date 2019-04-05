@@ -1,4 +1,4 @@
-VERSION=v3
+VERSION=v4
 PROJECT_ID=google_samples
 PROJECT=gcr.io/${PROJECT_ID}
 
