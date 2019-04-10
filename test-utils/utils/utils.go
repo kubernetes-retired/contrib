@@ -282,7 +282,7 @@ func (u *Utils) CheckFinishedStatus(job string, buildNumber int) (bool, error) {
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		glog.Errorf("Failed to read the response for %v/%v/%v: %v", job, buildNumber, "finished.json", err)
-		return false, err
+		return false, fmt.Errorf("non-success response: %v", response.StatusCode)
 	}
 	err = json.Unmarshal(body, &result)
 	if err != nil {

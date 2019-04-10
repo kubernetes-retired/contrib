@@ -94,24 +94,13 @@ func (b *Bucket) ExpandPathURL(pathElements ...interface{}) *url.URL {
 // enclosed by the provided path. Note that there's currently no way to get a
 // path that ends in '/'.
 func (b *Bucket) ExpandListURL(pathElements ...interface{}) *url.URL {
-	return buildURL(map[string]string{
+	return b.buildURL(map[string]string{
 		// GCS api doesn't like preceding '/', so remove it.
 		"prefix": strings.TrimPrefix(joinStringsAndInts(pathElements...), "/"),
 	})
 }
 
-// ExpandListDirURL produces the URL for a list API query which will list directories
-// enclosed by the provided path. Note that there's currently no way to get a
-// path that ends in '/'.
-func (b *Bucket) ExpandListDirURL(pathElements ...interface{}) *url.URL {
-	return buildURL(map[string]string{
-		// GCS api doesn't like preceding '/', so remove it.
-		"prefix":    strings.TrimPrefix(joinStringsAndInts(pathElements...)+"/", "/"),
-		"delimiter": "/",
-	})
-}
-
-func (b *Bucket) buildUrl(parameters map[string]string) *url.URL {
+func (b *Bucket) buildURL(parameters map[string]string) *url.URL {
 	q := url.Values{}
 	for key, value := range parameters {
 		q.Set(key, value)
@@ -146,18 +135,31 @@ func (b *Bucket) List(pathElements ...interface{}) ([]string, error) {
 // ListDirs returns a list of all directories inside the given path.
 // The returned direcotry name included the complete path from bucket root
 func (b *Bucket) ListDirs(pathElements ...interface{}) ([]string, error) {
-	listURL := b.ExpandListDirURL(pathElements...)
-	data, err := queryURL(listURL.String())
-	if err != nil {
-		return nil, err
-	}
 	var ret []string
-	if _, ok := data["prefixes"]; !ok {
-		glog.Warningf("No matching dirs were found (from: %v)", listURL.String())
-		return ret, nil
-	}
-	for _, item := range data["prefixes"].([]interface{}) {
-		ret = append(ret, item.(string))
+	var pageToken string
+	for {
+		var ok bool
+		listURL := b.buildURL(map[string]string{
+			// GCS api doesn't like preceding '/', so remove it.
+			"prefix":    strings.TrimPrefix(joinStringsAndInts(pathElements...)+"/", "/"),
+			"delimiter": "/",
+			"pageToken": pageToken,
+		})
+		data, err := queryURL(listURL.String())
+		if err != nil {
+			return nil, err
+		}
+		if _, ok = data["prefixes"]; !ok {
+			glog.Warningf("No matching dirs were found (from: %v)", listURL.String())
+			return ret, nil
+		}
+		for _, item := range data["prefixes"].([]interface{}) {
+			ret = append(ret, item.(string))
+		}
+		pageToken, ok = data["nextPageToken"].(string)
+		if !ok {
+			break
+		}
 	}
 	return ret, nil
 }
