@@ -10,20 +10,7 @@ ALL_ARCH = amd64 arm arm64 ppc64le s390x
 IMAGE = $(REGISTRY)/rescheduler
 MULTI_ARCH_IMG = $(IMAGE)-$(ARCH)
 
-BASEIMAGE ?= busybox:latest
-
-ifeq ($(ARCH),arm)
-        BASEIMAGE=arm32v7/busybox:latest
-endif
-ifeq ($(ARCH),arm64)
-        BASEIMAGE=arm64v8/busybox:latest
-endif
-ifeq ($(ARCH),ppc64le)
-        BASEIMAGE=ppc64le/busybox:latest
-endif
-ifeq ($(ARCH),s390x)
-	BASEIMAGE=s390x/busybox:latest
-endif
+BASEIMAGE?=gcr.io/distroless/static:latest
 
 build: clean 
 	GOOS=linux GOARCH=$(ARCH) CGO_ENABLED=0 go build ./...
